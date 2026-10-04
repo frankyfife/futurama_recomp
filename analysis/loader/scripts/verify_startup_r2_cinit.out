@@ -1,0 +1,141 @@
+== _cinit 0xF9783 / _rtinit 0xF97DB
+000F97DB: 56                       push esi
+000F97DC: 57                       push edi
+000F97DD: b8e0de2b00               mov eax, 0x2bdee0
+000F97E2: bfecde2b00               mov edi, 0x2bdeec
+000F97E7: 3bc7                     cmp eax, edi
+000F97E9: 8bf0                     mov esi, eax
+000F97EB: 7314                     jae 0xf9801
+000F97ED: 8b06                     mov eax, dword ptr [esi]
+000F97EF: 85c0                     test eax, eax
+000F97F1: 7407                     je 0xf97fa
+000F97F3: 83f8ff                   cmp eax, -1
+000F97F6: 7402                     je 0xf97fa
+000F97F8: ffd0                     call eax
+000F97FA: 83c604                   add esi, 4
+000F97FD: 3bf7                     cmp esi, edi
+000F97FF: 72ec                     jb 0xf97ed
+000F9801: 5f                       pop edi
+000F9802: 5e                       pop esi
+000F9803: c3                       ret 
+--
+000F9783: a1fc852d00               mov eax, dword ptr [0x2d85fc]
+000F9788: 85c0                     test eax, eax
+000F978A: 7402                     je 0xf978e
+000F978C: ffd0                     call eax
+000F978E: 56                       push esi
+000F978F: 57                       push edi
+000F9790: b8345b2d00               mov eax, 0x2d5b34
+000F9795: bf485b2d00               mov edi, 0x2d5b48
+000F979A: 3bc7                     cmp eax, edi
+000F979C: 8bf0                     mov esi, eax
+000F979E: 7314                     jae 0xf97b4
+000F97A0: 8b06                     mov eax, dword ptr [esi]
+000F97A2: 85c0                     test eax, eax
+000F97A4: 7407                     je 0xf97ad
+000F97A6: 83f8ff                   cmp eax, -1
+000F97A9: 7402                     je 0xf97ad
+000F97AB: ffd0                     call eax
+000F97AD: 83c604                   add esi, 4
+000F97B0: 3bf7                     cmp esi, edi
+000F97B2: 72ec                     jb 0xf97a0
+000F97B4: bef0de2b00               mov esi, 0x2bdef0
+000F97B9: 8bc6                     mov eax, esi
+000F97BB: bf305b2d00               mov edi, 0x2d5b30
+000F97C0: 3bc7                     cmp eax, edi
+000F97C2: 7314                     jae 0xf97d8
+000F97C4: 8b06                     mov eax, dword ptr [esi]
+000F97C6: 85c0                     test eax, eax
+000F97C8: 7407                     je 0xf97d1
+000F97CA: 83f8ff                   cmp eax, -1
+000F97CD: 7402                     je 0xf97d1
+000F97CF: ffd0                     call eax
+000F97D1: 83c604                   add esi, 4
+000F97D4: 3bf7                     cmp esi, edi
+000F97D6: 72ec                     jb 0xf97c4
+000F97D8: 5f                       pop edi
+000F97D9: 5e                       pop esi
+000F97DA: c3                       ret 
+
+_rtinit table 0x2BDEE0..0x2BDEEC: ['0x0', '0x169467', '0x16edea']
+C init 0x2D5B34..0x2D5B48: ['0x0', '0x166ee2', '0x16c29b', '0x16ddb0', '0x16ed64']
+[0x2D85FC] = 0x1668a9
+C++ init entries 24336, nonzero 24335, distinct nonzero 24335, first entries ['0x0', '0x17e010', '0x17e030']
+in 0x17E010..0x233880: 24329 ; outside: [('0x2d3e68', '0x28d254', 'XPP'), ('0x2d3e6c', '0x235770', 'D3D'), ('0x2d3e70', '0x24968f', 'DSOUND'), ('0x2d3e74', '0x24969a', 'DSOUND'), ('0x2d3e78', '0x24f3d4', 'DSOUND'), ('0x2d3e7c', '0x24f3df', 'DSOUND')]
+RegisterLoader call as 4th instruction: 21791 ; within first 8 instructions: 21791
+
+== first executed C++ initializer 0x17E010
+0017E010: a1c0772d00               mov eax, dword ptr [0x2d77c0]
+0017E015: 6880961000               push 0x109680  ; NiExtraData::CreateObject
+0017E01A: 50                       push eax
+0017E01B: e8b0a7f8ff               call 0x1087d0  ; FUN_001087d0
+0017E020: 83c408                   add esp, 8
+0017E023: a3f8942d00               mov dword ptr [0x2d94f8], eax
+0017E028: c3                       ret 
+== NiStream::RegisterLoader 0x1087D0 (start)
+001087D0: 6aff                     push -1
+001087D2: 68aba81700               push 0x17a8ab
+001087D7: 64a100000000             mov eax, dword ptr fs:[0]
+001087DD: 50                       push eax
+001087DE: 64892500000000           mov dword ptr fs:[0], esp
+001087E5: 51                       push ecx
+001087E6: a1e0932f00               mov eax, dword ptr [0x2f93e0]
+001087EB: 85c0                     test eax, eax
+001087ED: 7536                     jne 0x108825
+001087EF: 6a14                     push 0x14
+001087F1: e80ac1f9ff               call 0xa4900  ; FUN_000a4900
+001087F6: 83c404                   add esp, 4
+001087F9: 89442400                 mov dword ptr [esp], eax
+001087FD: 85c0                     test eax, eax
+001087FF: c744240c00000000         mov dword ptr [esp + 0xc], 0
+00108807: 740d                     je 0x108816
+00108809: 6a00                     push 0
+0010880B: 6a25                     push 0x25
+0010880D: 8bc8                     mov ecx, eax
+0010880F: e81cf8ffff               call 0x108030  ; FUN_00108030
+00108814: eb02                     jmp 0x108818
+00108816: 33c0                     xor eax, eax
+00108818: c744240cffffffff         mov dword ptr [esp + 0xc], 0xffffffff
+00108820: a3e0932f00               mov dword ptr [0x2f93e0], eax
+00108825: 8b4c2418                 mov ecx, dword ptr [esp + 0x18]
+00108829: 8b542414                 mov edx, dword ptr [esp + 0x14]
+0010882D: 51                       push ecx
+0010882E: 52                       push edx
+callgraph callees of 0x1087D0: ['00108030 FUN_00108030', '0010bce0 FUN_0010bce0', '000a4900 FUN_000a4900']
+
+== XDK initializers outside NetImmerse range
+entry 0x2D3E68 -> 0x28D254 (XPP)
+0028D254: a180352900               mov eax, dword ptr [0x293580]  ; slot 8 ord 74 ?
+0028D259: a304c02800               mov dword ptr [0x28c004], eax
+0028D25E: a308c02800               mov dword ptr [0x28c008], eax
+0028D263: a314c02800               mov dword ptr [0x28c014], eax
+0028D268: a318c02800               mov dword ptr [0x28c018], eax
+0028D26D: a31cc02800               mov dword ptr [0x28c01c], eax
+0028D272: a320c02800               mov dword ptr [0x28c020], eax
+0028D277: a324c02800               mov dword ptr [0x28c024], eax
+0028D27C: a328c02800               mov dword ptr [0x28c028], eax
+0028D281: a334c02800               mov dword ptr [0x28c034], eax
+0028D286: a338c02800               mov dword ptr [0x28c038], eax
+0028D28B: c3                       ret 
+entry 0x2D3E6C -> 0x235770 (D3D)
+00235770: a1c0212400               mov eax, dword ptr [0x2421c0]
+00235775: 8b0dbc212400             mov ecx, dword ptr [0x2421bc]
+0023577B: 8b15b8212400             mov edx, dword ptr [0x2421b8]
+00235781: a3f4752d00               mov dword ptr [0x2d75f4], eax
+00235786: a1b4212400               mov eax, dword ptr [0x2421b4]
+0023578B: 890df8752d00             mov dword ptr [0x2d75f8], ecx
+00235791: 8915fc752d00             mov dword ptr [0x2d75fc], edx
+00235797: a300762d00               mov dword ptr [0x2d7600], eax
+0023579C: c3                       ret 
+entry 0x2D3E70 -> 0x24968F (DSOUND)
+0024968F: c705c8412600f43a2600     mov dword ptr [0x2641c8], 0x263af4
+00249699: c3                       ret 
+entry 0x2D3E74 -> 0x24969A (DSOUND)
+0024969A: c705c4412600f83a2600     mov dword ptr [0x2641c4], 0x263af8
+002496A4: c3                       ret 
+entry 0x2D3E78 -> 0x24F3D4 (DSOUND)
+0024F3D4: c70544422600fc3a2600     mov dword ptr [0x264244], 0x263afc
+0024F3DE: c3                       ret 
+entry 0x2D3E7C -> 0x24F3DF (DSOUND)
+0024F3DF: c70540422600003b2600     mov dword ptr [0x264240], 0x263b00
+0024F3E9: c3                       ret 

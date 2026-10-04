@@ -1,0 +1,55 @@
+00246e7d DSOUND::IDirectSound_Release                     ret 4
+00246e93 DSOUND::IDirectSoundBuffer_Release               ret 4
+00246ea9 DSOUND::DirectSoundUseFullHRTF                   ret 0
+00247911 DSOUND::IDirectSound_DownloadEffectsImage        ret 20
+00247938 DSOUND::IDirectSound_SynchPlayback               ret 4
+00247950 DSOUND::IDirectSoundBuffer_SetVolume             ret 8
+0024796c DSOUND::IDirectSoundBuffer_SetMixBins            ret 8
+00247988 DSOUND::IDirectSoundBuffer_Play                  ret 16
+002479ac DSOUND::IDirectSoundBuffer_Stop                  ret 4
+002479c4 DSOUND::IDirectSoundBuffer_GetStatus             ret 8
+002479e0 DSOUND::IDirectSoundStream_SetVolume             jmp->DSOUND::CDirectSoundStream_SetVolume ret 8
+002479e5 DSOUND::IDirectSoundStream_SetMixBins            jmp->DSOUND::CDirectSoundStream_SetMixBins ret 8
+002479ea DSOUND::IDirectSoundStream_Pause                 jmp->DSOUND::CDirectSoundStream_Pause ret 8
+002479ef DSOUND::IDirectSoundStream_FlushEx               ret 16
+00247a07 DSOUND::DirectSoundDoWork                        ret 0
+00248380 DSOUND::IDirectSound_CommitDeferredSettings      ret 4
+00248398 DSOUND::IDirectSoundBuffer_SetFrequency          ret 8
+002483b4 DSOUND::IDirectSoundBuffer_SetMaxDistance        ret 12
+002483d8 DSOUND::IDirectSoundBuffer_SetMinDistance        ret 12
+002483fc DSOUND::IDirectSoundBuffer_SetPosition           ret 20
+00248431 DSOUND::IDirectSoundBuffer_SetVelocity           ret 20
+00248466 DSOUND::IDirectSoundBuffer_SetRolloffCurve       ret 16
+0024848a DSOUND::IDirectSoundBuffer_SetI3DL2Source        ret 12
+002484aa DSOUND::IDirectSoundStream_SetFrequency          jmp->DSOUND::CDirectSoundStream_SetFrequency ret 8
+002484af DSOUND::IDirectSoundStream_SetMaxDistance        ret 12
+002484c7 DSOUND::IDirectSoundStream_SetMinDistance        ret 12
+002484df DSOUND::IDirectSoundStream_SetPosition           ret 20
+00248508 DSOUND::IDirectSoundStream_SetVelocity           ret 20
+00248531 DSOUND::IDirectSoundStream_SetRolloffCurve       jmp->DSOUND::CDirectSoundStream_SetRolloffCurve ret 16
+00248d60 DSOUND::IDirectSound_SetDistanceFactor           ret 12
+00248d84 DSOUND::IDirectSound_SetDopplerFactor            ret 12
+00248da8 DSOUND::IDirectSound_SetOrientation              ret 32
+00248df2 DSOUND::IDirectSound_SetPosition                 ret 20
+00248e27 DSOUND::IDirectSound_SetRolloffFactor            ret 12
+00248e4b DSOUND::IDirectSound_SetVelocity                 ret 20
+00248e80 DSOUND::IDirectSound_SetI3DL2Listener            ret 12
+00248ea0 DSOUND::IDirectSoundBuffer_SetBufferData         ret 12
+0024935c DSOUND::DirectSoundCreate                        ret 12
+002493a3 DSOUND::DirectSoundCreateBuffer                  ret 8
+002493fa DSOUND::DirectSoundCreateStream                  ret 8
+0024aebe FUN_0024aebe                                     ret 4
+00264360 FUN_00264360                                     ret 24
+00264677 FUN_00264677                                     ret 4
+00264759 FUN_00264759                                     ret 8
+002647c6 FUN_002647c6                                     ret 20
+00264943 FUN_00264943                                     ret 12
+00264962 FUN_00264962                                     ret 16
+00264fdf FUN_00264fdf                                     ret 4
+0028ce5c XAPILIB::XInputOpen                              ret 16
+0028ceb2 XAPILIB::XInputClose                             ret 4
+0028cebe XAPILIB::XInputGetState                          ret 8
+0028cf2a XAPILIB::XInputSetState                          ret 8
+0028cfe1 XAPILIB::XInitDevices                            jmp->XAPILIB::XInitDevices ret 8
+0028cfe6 XAPILIB::XGetDevices                             ret 4
+0028d008 XAPILIB::XGetDeviceChanges                       ret 12

@@ -1,0 +1,913 @@
+
+==================== stub
+# main thread stub 0xF8469 and entry 0xF84DD
+000f8469: e896130000             call 0xf9804  ; FUN_000f9804
+000f846e: e84d0e0000             call 0xf92c0  ; XAPILIB::XapiInitProcess
+000f8473: 64a120000000           mov eax, dword ptr fs:[0x20]
+000f8479: 8b8050020000           mov eax, dword ptr [eax + 0x250]
+000f847f: 85c0                   test eax, eax
+000f8481: 7405                   je 0xf8488
+000f8483: 8b4824                 mov ecx, dword ptr [eax + 0x24]
+000f8486: eb02                   jmp 0xf848a
+000f8488: 33c9                   xor ecx, ecx
+000f848a: 85c9                   test ecx, ecx
+000f848c: 7427                   je 0xf84b5
+000f848e: 57                     push edi
+000f848f: 64a128000000           mov eax, dword ptr fs:[0x28]
+000f8495: 648b3d04000000         mov edi, dword ptr fs:[4]
+000f849c: 8b15183d2f00           mov edx, dword ptr [0x2f3d18]
+000f84a2: 8b1497                 mov edx, dword ptr [edi + edx*4]
+000f84a5: 2b5028                 sub edx, dword ptr [eax + 0x28]
+000f84a8: c60101                 mov byte ptr [ecx], 1
+000f84ab: 81c204000000           add edx, 4
+000f84b1: 895104                 mov dword ptr [ecx + 4], edx
+000f84b4: 5f                     pop edi
+000f84b5: e821130000             call 0xf97db  ; XAPILIB::_rtinit
+000f84ba: e8c4120000             call 0xf9783  ; XAPILIB::_cinit
+000f84bf: 6a00                   push 0
+000f84c1: 6a00                   push 0
+000f84c3: 6a00                   push 0
+000f84c5: e8e6a4fdff             call 0xd29b0  ; FUN_000d29b0
+000f84ca: 83c40c                 add esp, 0xc
+000f84cd: 6a00                   push 0
+000f84cf: 6a01                   push 1
+000f84d1: 6a01                   push 1
+000f84d3: e8f20a0000             call 0xf8fca  ; XAPILIB::XapiBootToDash
+000f84d8: 33c0                   xor eax, eax
+000f84da: c20400                 ret 4
+000f84dd: 8b0d18010100           mov ecx, dword ptr [0x10118]
+000f84e3: a108010100             mov eax, dword ptr [0x10108]
+000f84e8: 2bc1                   sub eax, ecx
+000f84ea: 0500000100             add eax, 0x10000
+000f84ef: 3b01                   cmp eax, dword ptr [ecx]
+000f84f1: 7302                   jae 0xf84f5
+000f84f3: 8901                   mov dword ptr [ecx], eax
+000f84f5: a13c5d2a00             mov eax, dword ptr [0x2a5d3c]
+000f84fa: 2b052c5d2a00           sub eax, dword ptr [0x2a5d2c]
+000f8500: 8b0d305d2a00           mov ecx, dword ptr [0x2a5d30]
+000f8506: 56                     push esi
+000f8507: 8d44080f               lea eax, [eax + ecx + 0xf]
+000f850b: 57                     push edi
+000f850c: 83e0f0                 and eax, 0xfffffff0
+000f850f: 6afc                   push -4
+000f8511: 59                     pop ecx
+000f8512: 83c004                 add eax, 4
+000f8515: a394033100             mov dword ptr [0x310394], eax
+000f851a: 99                     cdq 
+000f851b: f7f9                   idiv ecx
+000f851d: 8b0d345d2a00           mov ecx, dword ptr [0x2a5d34]
+000f8523: 33f6                   xor esi, esi
+000f8525: 56                     push esi
+000f8526: 56                     push esi
+000f8527: 56                     push esi
+000f8528: 6869840f00             push 0xf8469
+000f852d: 56                     push esi
+000f852e: 56                     push esi
+000f852f: 8901                   mov dword ptr [ecx], eax
+000f8531: e83c150000             call 0xf9a72  ; XAPILIB::CreateThread
+000f8536: 8bf8                   mov edi, eax
+000f8538: 3bfe                   cmp edi, esi
+000f853a: 750a                   jne 0xf8546
+000f853c: 56                     push esi
+000f853d: 6a01                   push 1
+000f853f: 6a01                   push 1
+000f8541: e8840a0000             call 0xf8fca  ; XAPILIB::XapiBootToDash
+000f8546: 57                     push edi
+000f8547: e82becffff             call 0xf7177  ; XAPILIB::CloseHandle
+000f854c: 5f                     pop edi
+000f854d: 5e                     pop esi
+000f854e: c3                     ret 
+# CreateThread 0xF9A72
+000f9a72: 55                     push ebp
+000f9a73: 8bec                   mov ebp, esp
+000f9a75: 8b450c                 mov eax, dword ptr [ebp + 0xc]
+000f9a78: 85c0                   test eax, eax
+000f9a7a: 7505                   jne 0xf9a81
+000f9a7c: a130010100             mov eax, dword ptr [0x10130]
+000f9a81: 8b4d18                 mov ecx, dword ptr [ebp + 0x18]
+000f9a84: 68da990f00             push 0xf99da
+000f9a89: 6a00                   push 0
+000f9a8b: c1e902                 shr ecx, 2
+000f9a8e: 81e101ffffff           and ecx, 0xffffff01
+000f9a94: 51                     push ecx
+000f9a95: ff7514                 push dword ptr [ebp + 0x14]
+000f9a98: ff7510                 push dword ptr [ebp + 0x10]
+000f9a9b: ff751c                 push dword ptr [ebp + 0x1c]
+000f9a9e: ff3594033100           push dword ptr [0x310394]
+000f9aa4: 50                     push eax
+000f9aa5: 6a00                   push 0
+000f9aa7: 8d450c                 lea eax, [ebp + 0xc]
+000f9aaa: 50                     push eax
+000f9aab: ff1594362900           call dword ptr [0x293694]  ; slot 77 ord 255
+000f9ab1: 8bc8                   mov ecx, eax
+000f9ab3: 85c9                   test ecx, ecx
+000f9ab5: 7d22                   jge 0xf9ad9
+000f9ab7: 640fb60524000000       movzx eax, byte ptr fs:[0x24]
+000f9abf: 3c02                   cmp al, 2
+000f9ac1: 7316                   jae 0xf9ad9
+000f9ac3: 64a128000000           mov eax, dword ptr fs:[0x28]
+000f9ac9: 83782800               cmp dword ptr [eax + 0x28], 0
+000f9acd: 740a                   je 0xf9ad9
+000f9acf: 51                     push ecx
+000f9ad0: e8d5d3ffff             call 0xf6eaa  ; XAPILIB::XapiSetLastNTError
+000f9ad5: 33c0                   xor eax, eax
+000f9ad7: eb03                   jmp 0xf9adc
+000f9ad9: 8b450c                 mov eax, dword ptr [ebp + 0xc]
+000f9adc: 5d                     pop ebp
+000f9add: c21800                 ret 0x18
+# XapiThreadStartup 0xF99DA (ends with ord 258 + int3)
+000f99da: 6a18                   push 0x18
+000f99dc: 68d05e2a00             push 0x2a5ed0
+000f99e1: e8e2e30600             call 0x167dc8  ; __SEH_prolog
+000f99e6: 8365fc00               and dword ptr [ebp - 4], 0
+000f99ea: 64a128000000           mov eax, dword ptr fs:[0x28]
+000f99f0: 8945e4                 mov dword ptr [ebp - 0x1c], eax
+000f99f3: 8b5028                 mov edx, dword ptr [eax + 0x28]
+000f99f6: 83c204                 add edx, 4
+000f99f9: 8955e0                 mov dword ptr [ebp - 0x20], edx
+000f99fc: 8952fc                 mov dword ptr [edx - 4], edx
+000f99ff: 8b1d305d2a00           mov ebx, dword ptr [0x2a5d30]
+000f9a05: 8b352c5d2a00           mov esi, dword ptr [0x2a5d2c]
+000f9a0b: 2bde                   sub ebx, esi
+000f9a0d: 895ddc                 mov dword ptr [ebp - 0x24], ebx
+000f9a10: 8bcb                   mov ecx, ebx
+000f9a12: 8bfa                   mov edi, edx
+000f9a14: 8bc1                   mov eax, ecx
+000f9a16: c1e902                 shr ecx, 2
+000f9a19: f3a5                   rep movsd dword ptr es:[edi], dword ptr [esi]
+000f9a1b: 8bc8                   mov ecx, eax
+000f9a1d: 83e103                 and ecx, 3
+000f9a20: f3a4                   rep movsb byte ptr es:[edi], byte ptr [esi]
+000f9a22: 8b0d3c5d2a00           mov ecx, dword ptr [0x2a5d3c]
+000f9a28: 85c9                   test ecx, ecx
+000f9a2a: 7413                   je 0xf9a3f
+000f9a2c: 33c0                   xor eax, eax
+000f9a2e: 8d3c13                 lea edi, [ebx + edx]
+000f9a31: 8bd1                   mov edx, ecx
+000f9a33: c1e902                 shr ecx, 2
+000f9a36: f3ab                   rep stosd dword ptr es:[edi], eax
+000f9a38: 8bca                   mov ecx, edx
+000f9a3a: 83e103                 and ecx, 3
+000f9a3d: f3aa                   rep stosb byte ptr es:[edi], al
+000f9a3f: 6a01                   push 1
+000f9a41: e86ffeffff             call 0xf98b5  ; XAPILIB::XapiCallThreadNotifyRoutines
+000f9a46: ff750c                 push dword ptr [ebp + 0xc]
+000f9a49: ff5508                 call dword ptr [ebp + 8]
+000f9a4c: 8945d8                 mov dword ptr [ebp - 0x28], eax
+000f9a4f: 6a00                   push 0
+000f9a51: e85ffeffff             call 0xf98b5  ; XAPILIB::XapiCallThreadNotifyRoutines
+000f9a56: eb0c                   jmp 0xf9a64
+000f9a58: ff75ec                 push dword ptr [ebp - 0x14]
+000f9a5b: e83effffff             call 0xf999e  ; XAPILIB::UnhandledExceptionFilter
+000f9a60: c3                     ret 
+000f9a61: 8b65e8                 mov esp, dword ptr [ebp - 0x18]
+000f9a64: 834dfcff               or dword ptr [ebp - 4], 0xffffffff
+000f9a68: ff75d8                 push dword ptr [ebp - 0x28]
+000f9a6b: ff1590362900           call dword ptr [0x293690]  ; slot 76 ord 258
+000f9a71: cc                     int3 
+
+==================== xinit
+# XapiInitProcess 0xF92C0..0xF946D (BootToDash argument paths)
+000f92c0: 55                     push ebp
+000f92c1: 8bec                   mov ebp, esp
+000f92c3: 83ec34                 sub esp, 0x34
+000f92c6: 53                     push ebx
+000f92c7: 56                     push esi
+000f92c8: 57                     push edi
+000f92c9: 33db                   xor ebx, ebx
+000f92cb: 43                     inc ebx
+000f92cc: 53                     push ebx
+000f92cd: 33f6                   xor esi, esi
+000f92cf: 6830752d00             push 0x2d7530
+000f92d4: 8975fc                 mov dword ptr [ebp - 4], esi
+000f92d7: ff1588362900           call dword ptr [0x293688]  ; slot 74 ord 47
+000f92dd: e838080000             call 0xf9b1a  ; FUN_000f9b1a
+000f92e2: 6a0c                   push 0xc
+000f92e4: 59                     pop ecx
+000f92e5: 33c0                   xor eax, eax
+000f92e7: 8d7dcc                 lea edi, [ebp - 0x34]
+000f92ea: f3ab                   rep stosd dword ptr es:[edi], eax
+000f92ec: 8d45cc                 lea eax, [ebp - 0x34]
+000f92ef: 50                     push eax
+000f92f0: 56                     push esi
+000f92f1: c745cc30000000         mov dword ptr [ebp - 0x34], 0x30
+000f92f8: ff3538010100           push dword ptr [0x10138]
+000f92fe: ff3534010100           push dword ptr [0x10134]
+000f9304: 56                     push esi
+000f9305: 6a02                   push 2
+000f9307: 5f                     pop edi
+000f9308: 57                     push edi
+000f9309: e89abbffff             call 0xf4ea8  ; FUN_000f4ea8
+000f930e: 85c0                   test eax, eax
+000f9310: a39c033100             mov dword ptr [0x31039c], eax
+000f9315: 744b                   je 0xf9362
+000f9317: e8cafdffff             call 0xf90e6  ; FUN_000f90e6
+000f931c: 85c0                   test eax, eax
+000f931e: eb06                   jmp 0xf9326
+000f9320: 33c0                   xor eax, eax
+000f9322: 50                     push eax
+000f9323: 50                     push eax
+000f9324: eb44                   jmp 0xf936a
+000f9326: f6052401010008         test byte ptr [0x10124], 8
+000f932d: 750e                   jne 0xf933d
+000f932f: 68b0702d00             push 0x2d70b0
+000f9334: e876ffffff             call 0xf92af  ; FUN_000f92af
+000f9339: 85c0                   test eax, eax
+000f933b: 7c70                   jl 0xf93ad
+000f933d: a160362900             mov eax, dword ptr [0x293660]  ; slot 64 ord 322
+000f9342: f60008                 test byte ptr [eax], 8
+000f9345: 752e                   jne 0xf9375
+000f9347: 68a8702d00             push 0x2d70a8
+000f934c: 68a0702d00             push 0x2d70a0
+000f9351: ff1520362900           call dword ptr [0x293620]  ; slot 48 ord 67
+000f9357: 85c0                   test eax, eax
+000f9359: 7d1a                   jge 0xf9375
+000f935b: 3d350000c0             cmp eax, 0xc0000035
+000f9360: 7413                   je 0xf9375
+000f9362: 8bc3                   mov eax, ebx
+000f9364: 8bcb                   mov ecx, ebx
+000f9366: ff75fc                 push dword ptr [ebp - 4]
+000f9369: 51                     push ecx
+000f936a: 50                     push eax
+000f936b: e85afcffff             call 0xf8fca  ; XAPILIB::XapiBootToDash
+000f9370: 5f                     pop edi
+000f9371: 5e                     pop esi
+000f9372: 5b                     pop ebx
+000f9373: c9                     leave 
+000f9374: c3                     ret 
+000f9375: f6052401010018         test byte ptr [0x10124], 0x18
+000f937c: 7535                   jne 0xf93b3
+000f937e: a118010100             mov eax, dword ptr [0x10118]
+000f9383: 83c00c                 add eax, 0xc
+000f9386: 50                     push eax
+000f9387: a118010100             mov eax, dword ptr [0x10118]
+000f938c: ff7008                 push dword ptr [eax + 8]
+000f938f: e8e1fbffff             call 0xf8f75  ; FUN_000f8f75
+000f9394: 85c0                   test eax, eax
+000f9396: 7d1b                   jge 0xf93b3
+000f9398: 3d7f0000c0             cmp eax, 0xc000007f
+000f939d: 750e                   jne 0xf93ad
+000f939f: 6a54                   push 0x54
+000f93a1: 8bc7                   mov eax, edi
+000f93a3: 59                     pop ecx
+000f93a4: c745fc10000000         mov dword ptr [ebp - 4], 0x10
+000f93ab: ebb9                   jmp 0xf9366
+000f93ad: 8bc3                   mov eax, ebx
+000f93af: 8bcf                   mov ecx, edi
+000f93b1: ebb3                   jmp 0xf9366
+000f93b3: f6052401010008         test byte ptr [0x10124], 8
+000f93ba: 7521                   jne 0xf93dd
+000f93bc: 841d24010100           test byte ptr [0x10124], bl
+000f93c2: 7419                   je 0xf93dd
+000f93c4: a124010100             mov eax, dword ptr [0x10124]
+000f93c9: 23c7                   and eax, edi
+000f93cb: 50                     push eax
+000f93cc: e8abebffff             call 0xf7f7c  ; XAPILIB::XMountUtilityDrive
+000f93d1: 85c0                   test eax, eax
+000f93d3: 7508                   jne 0xf93dd
+000f93d5: 50                     push eax
+000f93d6: 57                     push edi
+000f93d7: 53                     push ebx
+000f93d8: e8edfbffff             call 0xf8fca  ; XAPILIB::XapiBootToDash
+000f93dd: e85c080000             call 0xf9c3e  ; XAPILIB::XGetParentalControlSetting
+000f93e2: 8b0d18010100           mov ecx, dword ptr [0x10118]
+000f93e8: 3981a4000000           cmp dword ptr [ecx + 0xa4], eax
+000f93ee: 7319                   jae 0xf9409
+000f93f0: 8b1518010100           mov edx, dword ptr [0x10118]
+000f93f6: 8b92a4000000           mov edx, dword ptr [edx + 0xa4]
+000f93fc: 6a04                   push 4
+000f93fe: 8bc3                   mov eax, ebx
+000f9400: 59                     pop ecx
+000f9401: 8955fc                 mov dword ptr [ebp - 4], edx
+000f9404: e95dffffff             jmp 0xf9366
+000f9409: a134362900             mov eax, dword ptr [0x293634]  ; slot 53 ord 164
+000f940e: 85c0                   test eax, eax
+000f9410: 7417                   je 0xf9429
+000f9412: 8b00                   mov eax, dword ptr [eax]
+000f9414: 85c0                   test eax, eax
+000f9416: 7411                   je 0xf9429
+000f9418: 8bf0                   mov esi, eax
+000f941a: 8d8614020000           lea eax, [esi + 0x214]
+000f9420: 8418                   test byte ptr [eax], bl
+000f9422: 7405                   je 0xf9429
+000f9424: 8b4004                 mov eax, dword ptr [eax + 4]
+000f9427: 8906                   mov dword ptr [esi], eax
+000f9429: b8645b2d00             mov eax, 0x2d5b64
+000f942e: bf685b2d00             mov edi, 0x2d5b68
+000f9433: 3bc7                   cmp eax, edi
+000f9435: 8bd8                   mov ebx, eax
+000f9437: 730f                   jae 0xf9448
+000f9439: 8b03                   mov eax, dword ptr [ebx]
+000f943b: 85c0                   test eax, eax
+000f943d: 7402                   je 0xf9441
+000f943f: ffd0                   call eax
+000f9441: 83c304                 add ebx, 4
+000f9444: 3bdf                   cmp ebx, edi
+000f9446: 72f1                   jb 0xf9439
+000f9448: 85f6                   test esi, esi
+000f944a: 0f8420ffffff           je 0xf9370
+000f9450: 833eff                 cmp dword ptr [esi], -1
+000f9453: 0f8517ffffff           jne 0xf9370
+000f9459: a134362900             mov eax, dword ptr [0x293634]  ; slot 53 ord 164
+000f945e: 832000                 and dword ptr [eax], 0
+000f9461: 56                     push esi
+000f9462: ff1538362900           call dword ptr [0x293638]  ; slot 54 ord 171
+000f9468: e903ffffff             jmp 0xf9370
+# XapiBootToDash
+// ==== FUNC 000f8fca XAPILIB::XapiBootToDash size=101 ====
+
+void XAPILIB::XapiBootToDash(undefined4 param_1,undefined4 param_2,undefined4 param_3)
+
+{
+  code *pcVar1;
+  int iVar2;
+  undefined4 *puVar3;
+  undefined4 local_c04 [768];
+  
+  if (XBE_CERTIFICATE_HEADER_00010180.TitleID != 0xfffe0000) {
+    puVar3 = local_c04;
+    for (iVar2 = 0x300; iVar2 != 0; iVar2 = iVar2 + -1) {
+      *puVar3 = 0;
+      puVar3 = puVar3 + 1;
+    }
+    local_c04[1] = 0;
+    local_c04[0] = param_1;
+    local_c04[2] = param_2;
+    local_c04[3] = param_3;
+    XLaunchNewImageA(0,local_c04);
+    return;
+  }
+  HalReturnToFirmware(4);
+  pcVar1 = (code *)swi(3);
+  (*pcVar1)();
+  return;
+}
+
+
+
+
+==================== loop
+# Game::Frame fixed-step core
+000a2ce8: d90548672d00           fld dword ptr [0x2d6748]
+000a2cee: d80df4bf2900           fmul dword ptr [0x29bff4]
+000a2cf4: d95c2410               fstp dword ptr [esp + 0x10]
+000a2cf8: e883fe0200             call 0xd2b80  ; FUN_000d2b80
+000a2cfd: d85c2410               fcomp dword ptr [esp + 0x10]
+000a2d01: dfe0                   fnstsw ax
+000a2d03: f6c441                 test ah, 0x41
+000a2d06: 751b                   jne 0xa2d23
+000a2d08: 8b442410               mov eax, dword ptr [esp + 0x10]
+000a2d0c: 50                     push eax
+000a2d0d: 8d4c2414               lea ecx, [esp + 0x14]
+000a2d11: e8fafd0200             call 0xd2b10  ; FUN_000d2b10
+000a2d16: 8b08                   mov ecx, dword ptr [eax]
+000a2d18: 894c2420               mov dword ptr [esp + 0x20], ecx
+000a2d1c: 8b5004                 mov edx, dword ptr [eax + 4]
+000a2d1f: 89542424               mov dword ptr [esp + 0x24], edx
+000a2d23: 381d4c672d00           cmp byte ptr [0x2d674c], bl
+000a2d29: 7559                   jne 0xa2d84
+000a2d2b: 8d4c2420               lea ecx, [esp + 0x20]
+000a2d2f: e84cfe0200             call 0xd2b80  ; FUN_000d2b80
+000a2d34: d91548672d00           fst dword ptr [0x2d6748]
+000a2d3a: d81d5c7a2e00           fcomp dword ptr [0x2e7a5c]
+000a2d40: dfe0                   fnstsw ax
+000a2d42: f6c441                 test ah, 0x41
+000a2d45: 750c                   jne 0xa2d53
+000a2d47: a15c7a2e00             mov eax, dword ptr [0x2e7a5c]
+000a2d4c: a348672d00             mov dword ptr [0x2d6748], eax
+000a2d51: eb1f                   jmp 0xa2d72
+000a2d53: d90548672d00           fld dword ptr [0x2d6748]
+000a2d59: d81d587a2e00           fcomp dword ptr [0x2e7a58]
+000a2d5f: dfe0                   fnstsw ax
+000a2d61: f6c405                 test ah, 5
+000a2d64: 7a0c                   jp 0xa2d72
+000a2d66: 8b0d587a2e00           mov ecx, dword ptr [0x2e7a58]
+000a2d6c: 890d48672d00           mov dword ptr [0x2d6748], ecx
+000a2d72: d905f8392900           fld dword ptr [0x2939f8]
+000a2d78: d83548672d00           fdiv dword ptr [0x2d6748]
+000a2d7e: d91d44672d00           fstp dword ptr [0x2d6744]
+000a2d84: bf64000000             mov edi, 0x64
+# FUN_000a46d0 (period: counter > 0x28 / > 200)
+// ==== FUNC 000a46d0 FUN_000a46d0 size=75 ====
+
+void FUN_000a46d0(void)
+
+{
+  DAT_002e8e48 = DAT_002e8e48 + 1;
+  if (0x28 < DAT_002e8e48) {
+    DAT_002e8e48 = 0;
+    FUN_000a3ce0();
+  }
+  DAT_002e8e44 = DAT_002e8e44 + 1;
+  if (200 < DAT_002e8e44) {
+    DAT_002e8e44 = 0;
+    FUN_000a3b10();
+    return;
+  }
+  return;
+}
+
+
+
+# CApp::Init
+// ==== FUNC 000d26a0 FUN_000d26a0 size=622 ====
+
+uint __fastcall FUN_000d26a0(int param_1)
+
+{
+  int *piVar1;
+  undefined4 *puVar2;
+  char cVar3;
+  undefined4 *puVar4;
+  uint uVar5;
+  int iVar6;
+  undefined4 uVar7;
+  undefined4 *unaff_FS_OFFSET;
+  undefined4 uStack_218;
+  undefined4 uStack_214;
+  undefined4 uStack_210;
+  undefined1 auStack_20c [256];
+  undefined1 auStack_10c [256];
+  undefined4 uStack_c;
+  undefined1 *puStack_8;
+  undefined4 uStack_4;
+  
+  uStack_c = *unaff_FS_OFFSET;
+  uStack_4 = 0xffffffff;
+  puStack_8 = &LAB_001780c8;
+  *unaff_FS_OFFSET = &uStack_c;
+  puVar4 = (undefined4 *)FUN_0014c170(0x280,0x1e0,2,1,0x14000002,0x4b,0,1);
+  puVar2 = *(undefined4 **)(param_1 + 0x104);
+  if (puVar2 != puVar4) {
+    if (puVar2 != (undefined4 *)0x0) {
+      piVar1 = puVar2 + 1;
+      *piVar1 = *piVar1 + -1;
+      if (*piVar1 == 0) {
+        (**(code **)*puVar2)(1);
+      }
+    }
+    *(undefined4 **)(param_1 + 0x104) = puVar4;
+    if (puVar4 != (undefined4 *)0x0) {
+      puVar4[1] = puVar4[1] + 1;
+    }
+  }
+  uVar5 = FUN_0009c2a0();
+  if (*(int **)(param_1 + 0x104) == (int *)0x0) {
+    uVar5 = uVar5 & 0xffffff00;
+  }
+  else {
+    uStack_218 = 0;
+    uStack_214 = 0;
+    uStack_210 = 0;
+    (**(code **)(**(int **)(param_1 + 0x104) + 0x6c))(&uStack_218);
+    iVar6 = FUN_000a4900(8);
+    uStack_4 = 0;
+    if (iVar6 == 0) {
+      uVar7 = 0;
+    }
+    else {
+      uVar7 = FUN_00098440();
+    }
+    uStack_4 = 0xffffffff;
+    *(undefined4 *)(param_1 + 0xfc) = uVar7;
+    cVar3 = thunk_FUN_0013fe70("sysPAL.img");
+    if (cVar3 == '\0') {
+      cVar3 = thunk_FUN_0013fe70("sysNTSC.img");
+      if (cVar3 != '\0') {
+        *(undefined4 *)(param_1 + 0xe8) = 1;
+      }
+    }
+    else {
+      *(undefined4 *)(param_1 + 0xe8) = 0;
+      FUN_000d9cf0();
+      uVar7 = FUN_000d9990();
+      FUN_000d9cf0(uVar7);
+      FUN_000d9b20(uVar7);
+    }
+    FUN_000f33e0();
+    iVar6 = FUN_000a4900(0xa4);
+    uStack_4 = 1;
+    if (iVar6 == 0) {
+      uVar7 = 0;
+    }
+    else {
+      uVar7 = FUN_000e4aa0();
+    }
+    uStack_4 = 0xffffffff;
+    *(undefined4 *)(param_1 + 0xf4) = uVar7;
+    uVar5 = 0;
+    do {
+      FUN_00166f54(auStack_20c,"FutPAL%02d.img",uVar5);
+      cVar3 = thunk_FUN_0013fe70(auStack_20c);
+      if (cVar3 == '\0') break;
+      uVar5 = uVar5 + 1;
+      *(undefined4 *)(param_1 + 0xe8) = 0;
+    } while (uVar5 < 100);
+    if (uVar5 == 0) {
+      uVar5 = 0;
+      do {
+        FUN_00166f54(auStack_10c,"FutNTSC%02d.img",uVar5);
+        cVar3 = thunk_FUN_0013fe70(auStack_10c);
+        if (cVar3 == '\0') break;
+        uVar5 = uVar5 + 1;
+      } while (uVar5 < 100);
+      *(undefined4 *)(param_1 + 0xe8) = 1;
+      if (uVar5 == 0) {
+        *(undefined4 *)(param_1 + 0xe8) = 0;
+      }
+    }
+    iVar6 = FUN_000a4900(0x7c);
+    uStack_4 = 2;
+    if (iVar6 == 0) {
+      uVar7 = 0;
+    }
+    else {
+      uVar7 = FUN_000ccd00();
+    }
+    uStack_4 = 0xffffffff;
+    *(undefined4 *)(param_1 + 0xf0) = uVar7;
+    iVar6 = FUN_000a4900(0xc);
+    uStack_4 = 3;
+    if (iVar6 == 0) {
+      uVar7 = 0;
+    }
+    else {
+      uVar7 = FUN_000255e0();
+    }
+    uStack_4 = 0xffffffff;
+    *(undefined4 *)(param_1 + 0x100) = uVar7;
+    FUN_000e51c0();
+    uVar5 = FUN_000a26a0();
+  }
+  *unaff_FS_OFFSET = uStack_c;
+  return uVar5;
+}
+
+
+
+# FUN_0002a660 (context switch, 8x ClearBuffer+DisplayFrame)
+// ==== FUNC 0002a660 FUN_0002a660 size=217 ====
+
+void FUN_0002a660(void)
+
+{
+  int *piVar1;
+  undefined4 *puVar2;
+  int *piVar3;
+  
+  FUN_000f27a0();
+  piVar3 = (int *)(**(code **)(*DAT_002e7b84 + 0x14))();
+  (**(code **)(*piVar3 + 0x6c))(&DAT_0030e8a0);
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  FUN_0013cf90();
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  (**(code **)(*piVar3 + 0x11c))();
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  (**(code **)(*piVar3 + 0x44))(0,1);
+  (**(code **)(*piVar3 + 0x40))();
+  puVar2 = (undefined4 *)piVar3[2];
+  if (puVar2 != (undefined4 *)0x0) {
+    piVar1 = puVar2 + 1;
+    *piVar1 = *piVar1 + -1;
+    if (*piVar1 == 0) {
+      (**(code **)*puVar2)(1);
+    }
+    piVar3[2] = 0;
+  }
+  return;
+}
+
+
+
+
+==================== timer
+# QPC callers [('0xd2bcd', 'call', 'FUN_000d2b90'), ('0x241a12', 'call', '<nofunc>'), ('0x241a61', 'call', '<nofunc>'), ('0x241b45', 'call', '<nofunc>'), ('0x26478b', 'call', 'FUN_00264775'), ('0x264dde', 'call', 'FUN_00264962'), ('0x264ffa', 'call', 'FUN_00264fdf')]
+# QPF callers [('0xd2bb1', 'call', 'FUN_000d2b90'), ('0x241b4e', 'call', '<nofunc>'), ('0x241d4e', 'call', 'FUN_00241c40'), ('0x26440a', 'call', 'FUN_00264360')]
+# raw bytes around suspected rdtsc 0x260bc0: 3540320d102a2d221215160d0f1b1d068803070304050604010810120d0b0e0f31595128b7a2403687a013078881201db0ab02888a9802168e9011231d838a00353f300f152b2c221418160d111b1a05
+# raw bytes around suspected rdtsc 0x2744e0: 1f0b2d2e212123392020232d220b252a27251f31151b1d2f352833101a01281e292c22191b1f23231f0f31012328053a151d163b2d1f091a091d0b201e030d1412140b031d281f351e1114251f2a2f2f
+# D3D rdtsc helper 0x23B780
+0023b780: 0f31                   rdtsc 
+0023b782: c3                     ret 
+  callers [('0x23b98b', 'call', 'FUN_0023b980'), ('0x23bd96', 'call', 'FUN_0023bd00')]
+
+==================== sleep
+# XAPILIB::SleepEx 0xf64be [('0xe0034', 'call', '<nofunc>'), ('0xf6528', 'call', 'XAPILIB::Sleep'), ('0x13f514', 'call', 'FUN_0013f4c0'), ('0x13f59e', 'call', 'FUN_0013f590'), ('0x13f5f9', 'call', 'FUN_0013f590')]
+# XAPILIB::Sleep 0xf6522 [('0x2419b5', 'call', '<nofunc>'), ('0x241bf2', 'call', '<nofunc>'), ('0x242045', 'call', 'FUN_00241c40'), ('0x2646d5', 'call', 'FUN_00264677')]
+# XAPILIB::WaitForSingleObject 0xf6510 [('0xf6ee3', 'call', 'XAPILIB::GetOverlappedResult'), ('0x24194e', 'call', '<nofunc>'), ('0x241a7a', 'call', '<nofunc>'), ('0x2420de', 'call', 'FUN_00241c40')]
+# XAPILIB::WaitForSingleObjectEx 0xf647a [('0xf651a', 'call', 'XAPILIB::WaitForSingleObject')]
+# XAPILIB::GetOverlappedResult 0xf6ec1 [('0x26471c', 'call', 'FUN_00264677')]
+# SleepEx wrapper 0xE0030 + vtable entry
+000e0030: 6a01                   push 1
+000e0032: 6a00                   push 0
+000e0034: e885640100             call 0xf64be  ; XAPILIB::SleepEx
+000e0039: b001                   mov al, 1
+000e003b: c3                     ret 
+  abs refs [('.rdata', '0x2a4de8')]
+  strings before vtable: 'U:\\' 'Futurama Options'
+# File::Poll 0x13F590 callers [('0xcb704', 'call', 'FUN_000cb6e0'), ('0xcc09f', 'call', 'FUN_000cc030'), ('0xcca56', 'call', '<nofunc>'), ('0xccb91', 'call', 'FUN_000ccb80'), ('0xd20a2', 'call', '<nofunc>'), ('0xd2557', 'call', 'FUN_000d2370'), ('0xf277e', 'call', 'FUN_000f2680'), ('0x13f735', 'call', 'FUN_0013f730'), ('0x13fa82', 'call', 'FUN_0013f8f0')]
+
+==================== cinit_xdk
+# XDK static initializers inside the C++ init table
+  slot ['0x2d3e68']
+0028d254: a180352900             mov eax, dword ptr [0x293580]  ; slot 8 ord 74
+0028d259: a304c02800             mov dword ptr [0x28c004], eax
+0028d25e: a308c02800             mov dword ptr [0x28c008], eax
+0028d263: a314c02800             mov dword ptr [0x28c014], eax
+0028d268: a318c02800             mov dword ptr [0x28c018], eax
+0028d26d: a31cc02800             mov dword ptr [0x28c01c], eax
+0028d272: a320c02800             mov dword ptr [0x28c020], eax
+0028d277: a324c02800             mov dword ptr [0x28c024], eax
+0028d27c: a328c02800             mov dword ptr [0x28c028], eax
+0028d281: a334c02800             mov dword ptr [0x28c034], eax
+0028d286: a338c02800             mov dword ptr [0x28c038], eax
+0028d28b: c3                     ret 
+  slot ['0x2d3e6c']
+00235770: a1c0212400             mov eax, dword ptr [0x2421c0]
+00235775: 8b0dbc212400           mov ecx, dword ptr [0x2421bc]
+0023577b: 8b15b8212400           mov edx, dword ptr [0x2421b8]
+00235781: a3f4752d00             mov dword ptr [0x2d75f4], eax
+00235786: a1b4212400             mov eax, dword ptr [0x2421b4]
+0023578b: 890df8752d00           mov dword ptr [0x2d75f8], ecx
+00235791: 8915fc752d00           mov dword ptr [0x2d75fc], edx
+00235797: a300762d00             mov dword ptr [0x2d7600], eax
+0023579c: c3                     ret 
+  slot ['0x2d3e70']
+0024968f: c705c8412600f43a2600   mov dword ptr [0x2641c8], 0x263af4
+00249699: c3                     ret 
+  slot ['0x2d3e74']
+0024969a: c705c4412600f83a2600   mov dword ptr [0x2641c4], 0x263af8
+002496a4: c3                     ret 
+  slot ['0x2d3e78']
+0024f3d4: c70544422600fc3a2600   mov dword ptr [0x264244], 0x263afc
+0024f3de: c3                     ret 
+  slot ['0x2d3e7c']
+0024f3df: c70540422600003b2600   mov dword ptr [0x264240], 0x263b00
+0024f3e9: c3                     ret 
+
+==================== dash
+# FUN_000e4b00 (memory dashboard)
+000e4b00: 81ec000c0000           sub esp, 0xc00
+000e4b06: 68804d2a00             push 0x2a4d80
+000e4b0b: e871350100             call 0xf8081  ; FUN_000f8081
+000e4b10: 8b8424040c0000         mov eax, dword ptr [esp + 0xc04]
+000e4b17: 8d4c2400               lea ecx, [esp]
+000e4b1b: 51                     push ecx
+000e4b1c: 6a00                   push 0
+000e4b1e: c744240802000000       mov dword ptr [esp + 8], 2
+000e4b26: c744240c00000000       mov dword ptr [esp + 0xc], 0
+000e4b2e: c744241055000000       mov dword ptr [esp + 0x10], 0x55
+000e4b36: 89442414               mov dword ptr [esp + 0x14], eax
+000e4b3a: e8a4370100             call 0xf82e3  ; XAPILIB::XLaunchNewImageA
+000e4b3f: 81c4000c0000           add esp, 0xc00
+000e4b45: c20400                 ret 4
+# FUN_000f8081 = cluster size (product of FILE_FS_SIZE_INFORMATION +0x10 * +0x14)
+// ==== FUNC 000f8081 FUN_000f8081 size=159 ====
+
+int FUN_000f8081(undefined4 param_1)
+
+{
+  int iVar1;
+  undefined1 local_38 [16];
+  int local_28;
+  int local_24;
+  undefined4 local_20;
+  undefined1 *local_1c;
+  undefined4 local_18;
+  undefined1 local_14 [8];
+  undefined1 local_c [8];
+  
+  RtlInitAnsiString(local_c,param_1);
+  local_1c = local_c;
+  local_20 = 0xfffffffd;
+  local_18 = 0x40;
+  iVar1 = NtOpenFile(&param_1,0x100001,&local_20,local_14,3,0x800021);
+  if (iVar1 < 0) {
+    XAPILIB::XapiSetLastNTError(iVar1);
+    iVar1 = XAPILIB::GetLastError();
+    if (iVar1 == 2) {
+      XAPILIB::SetLastError(3);
+    }
+    local_28 = 0;
+  }
+  else {
+    iVar1 = NtQueryVolumeInformationFile(param_1,local_14,local_38,0x18,3);
+    NtClose(param_1);
+    if (iVar1 < 0) {
+      XAPILIB::XapiSetLastNTError(iVar1);
+      local_28 = 0;
+    }
+    else {
+      local_28 = local_28 * local_24;
+    }
+  }
+  return local_28;
+}
+
+
+
+
+==================== exit
+# _atexit callers: 77
+# _amsg_exit 0x1692B4 -> [0x2D86AC] = 0x169fc5
+001692b4: e89e580000             call 0x16eb57  ; FUN_0016eb57
+001692b9: ff742404               push dword ptr [esp + 4]
+001692bd: e869580000             call 0x16eb2b  ; FUN_0016eb2b
+001692c2: 68ff000000             push 0xff
+001692c7: ff15ac862d00           call dword ptr [0x2d86ac]
+001692cd: 59                     pop ecx
+001692ce: 59                     pop ecx
+001692cf: c3                     ret 
+# doexit tail with KeBugCheck(0)
+00169fb0: 5e                     pop esi
+00169fb1: 7409                   je 0x169fbc
+00169fb3: 6a08                   push 8
+00169fb5: e8314c0000             call 0x16ebeb  ; FUN_0016ebeb
+00169fba: 59                     pop ecx
+00169fbb: c3                     ret 
+00169fbc: 6a00                   push 0
+00169fbe: ff1508372900           call dword ptr [0x293708]  ; slot 106 ord 95
+00169fc4: c3                     ret 
+00169fc5: 53                     push ebx
+00169fc6: 6a01                   push 1
+00169fc8: ff74240c               push dword ptr [esp + 0xc]
+00169fcc: 33db                   xor ebx, ebx
+00169fce: e848ffffff             call 0x169f1b  ; FUN_00169f1b
+00169fd3: 59                     pop ecx
+00169fd4: 59                     pop ecx
+00169fd5: 5b                     pop ebx
+# doexit callers [('0x169fce', 'call', 'FUN_00169fc5')]  _exit 0x169FC5 refs [('.data', '0x2d86ac')]
+
+==================== misc
+# getptd variant 0x169352 (fs:[0x24]/[0x28]/[4])
+00169352: 6a10                   push 0x10
+00169354: 68b8c22a00             push 0x2ac2b8
+00169359: e86aeaffff             call 0x167dc8  ; __SEH_prolog
+0016935e: 640fb60524000000       movzx eax, byte ptr fs:[0x24]
+00169366: 3c02                   cmp al, 2
+00169368: 7208                   jb 0x169372
+0016936a: 6a0a                   push 0xa
+0016936c: ff1508372900           call dword ptr [0x293708]  ; slot 106 ord 95
+00169372: 64a128000000           mov eax, dword ptr fs:[0x28]
+00169378: 83782800               cmp dword ptr [eax + 0x28], 0
+0016937c: 7417                   je 0x169395
+0016937e: a1183d2f00             mov eax, dword ptr [0x2f3d18]
+00169383: 648b0d04000000         mov ecx, dword ptr fs:[4]
+  callers [('0x16ed15', 'call', '<nofunc>')]
+# DSOUND fs:[0x58] before KeSaveFloatingPointState
+00246d7a: 64a158000000           mov eax, dword ptr fs:[0x58]
+00246d80: 85c0                   test eax, eax
+00246d82: 741a                   je 0x246d9e
+00246d84: a1d03a2600             mov eax, dword ptr [0x263ad0]
+00246d89: ff05d03a2600           inc dword ptr [0x263ad0]
+00246d8f: 85c0                   test eax, eax
+00246d91: 750b                   jne 0x246d9e
+00246d93: 68a4412600             push 0x2641a4
+00246d98: ff15f0362900           call dword ptr [0x2936f0]  ; slot 100 ord 142
+00246d9e: c3                     ret 
+# hotfix FUN_000f9804
+// ==== FUNC 000f9804 FUN_000f9804 size=177 ====
+
+void FUN_000f9804(void)
+
+{
+  ushort uVar1;
+  byte bVar2;
+  int *piVar3;
+  undefined4 uVar4;
+  
+  uVar1 = *(ushort *)(XboxKrnlVersion_exref + 4);
+  bVar2 = ~(byte)(*(uint *)XboxHardwareInfo_exref >> 1) & 1;
+  if (uVar1 == 0xf68) {
+    piVar3 = (int *)((-(uint)(bVar2 != 0) & 0xffff1471) + 0x80039749);
+  }
+  else if (uVar1 == 0xfc2) {
+    piVar3 = (int *)(-(uint)(bVar2 != 0) & 0x8002ab88);
+  }
+  else if (uVar1 == 0xfc7) {
+    piVar3 = (int *)((-(uint)(bVar2 != 0) & 0xffff12cb) + 0x800398cd);
+  }
+  else {
+    if (uVar1 < 0x12d1) {
+      return;
+    }
+    if (0x12d2 < uVar1) {
+      return;
+    }
+    piVar3 = (int *)((-(uint)(bVar2 != 0) & 0xffff1611) + 0x8003838f);
+  }
+  if ((piVar3 != (int *)0x0) && (*piVar3 == 0x20c5048d)) {
+    uVar4 = MmQueryAddressProtect(piVar3);
+    MmSetAddressProtect(piVar3,4,4);
+    *piVar3 = 0x28c5048d;
+    MmSetAddressProtect(piVar3,4,uVar4);
+  }
+  return;
+}
+
+
+
+# shutdown routine 0xF9C7F + DPC 0xF9B08 + XAutoPowerDownResetTimer
+000f9c7f: 56                     push esi
+000f9c80: 8b35bc362900           mov esi, dword ptr [0x2936bc]  ; slot 87 ord 357
+000f9c86: ff1564352900           call dword ptr [0x293564]  ; slot 1 ord 129
+000f9c8c: 8ac8                   mov cl, al
+000f9c8e: c746107c9c0f00         mov dword ptr [esi + 0x10], 0xf9c7c
+000f9c95: c74614639c0f00         mov dword ptr [esi + 0x14], 0xf9c63
+000f9c9c: ff1560352900           call dword ptr [0x293560]  ; slot 0 ord 161
+000f9ca2: 33c0                   xor eax, eax
+000f9ca4: 394620                 cmp dword ptr [esi + 0x20], eax
+000f9ca7: 5e                     pop esi
+000f9ca8: 7410                   je 0xf9cba
+000f9caa: 50                     push eax
+000f9cab: 50                     push eax
+000f9cac: 6a01                   push 1
+000f9cae: 50                     push eax
+000f9caf: 6840752d00             push 0x2d7540
+000f9cb4: ff1574352900           call dword ptr [0x293574]  ; slot 5 ord 159
+000f9cba: c20400                 ret 4
+000f9b08: 833d8803310000         cmp dword ptr [0x310388], 0
+000f9b0f: 7406                   je 0xf9b17
+000f9b11: ff1598362900           call dword ptr [0x293698]  ; slot 78 ord 360
+000f9b17: c21000                 ret 0x10
+000f9aed: 6acd                   push -0x33
+000f9aef: 59                     pop ecx
+000f9af0: 6840033100             push 0x310340
+000f9af5: 51                     push ecx
+000f9af6: b8009065b5             mov eax, 0xb5659000
+000f9afb: 50                     push eax
+000f9afc: 6860033100             push 0x310360
+000f9b01: ff1550362900           call dword ptr [0x293650]  ; slot 60 ord 149
+000f9b07: c3                     ret 
+# DisplayFrame 0x146460
+00146460: 56                     push esi
+00146461: 8bf1                   mov esi, ecx
+00146463: 8b4658                 mov eax, dword ptr [esi + 0x58]
+00146466: 8b4810                 mov ecx, dword ptr [eax + 0x10]
+00146469: 85c9                   test ecx, ecx
+0014646b: 751a                   jne 0x146487
+0014646d: 6a00                   push 0
+0014646f: e84cab0f00             call 0x240fc0  ; D3D8::D3DDevice_Swap
+00146474: 8b8eb4050000           mov ecx, dword ptr [esi + 0x5b4]
+0014647a: c7466400000000         mov dword ptr [esi + 0x64], 0
+00146481: 5e                     pop esi
+00146482: e9e9140100             jmp 0x157970  ; FUN_00157970
+00146487: 5e                     pop esi
+00146488: c3                     ret 
+# XGetLanguage
+// ==== FUNC 000f6440 XAPILIB::XGetLanguage size=58 ====
+
+uint XAPILIB::XGetLanguage(void)
+
+{
+  int iVar1;
+  undefined1 local_c [4];
+  uint local_8;
+  
+  iVar1 = ExQueryNonVolatileSetting(7,local_c,&local_8,4,0);
+  if (iVar1 < 0) {
+    local_8 = 0;
+  }
+  else if (9 < local_8) {
+    iVar1 = XGetGameRegion();
+    return (iVar1 == 2) + 1;
+  }
+  return local_8;
+}
+
+
+
+# XCalculateSignatureEnd -> FUN_000f6ffa: XboxHDKey (ord 323) zero test, XQueryValue(0xFFFF)
+000f6ffa: 55                     push ebp
+000f6ffb: 8bec                   mov ebp, esp
+000f6ffd: 81ec08010000           sub esp, 0x108
+000f7003: 56                     push esi
+000f7004: 8b35d8352900           mov esi, dword ptr [0x2935d8]  ; slot 30 ord 323
+000f700a: 32c0                   xor al, al
+000f700c: 57                     push edi
+000f700d: 33c9                   xor ecx, ecx
+000f700f: 0a0431                 or al, byte ptr [ecx + esi]
+000f7012: 41                     inc ecx
+000f7013: 83f910                 cmp ecx, 0x10
+000f7016: 7cf7                   jl 0xf700f
+000f7018: 84c0                   test al, al
+000f701a: 7524                   jne 0xf7040
+000f701c: 8d45f8                 lea eax, [ebp - 8]
+000f701f: 50                     push eax
+000f7020: 6800010000             push 0x100
+000f7025: 8d85f8feffff           lea eax, [ebp - 0x108]
+000f702b: 50                     push eax
+000f702c: 8d45fc                 lea eax, [ebp - 4]
+000f702f: 50                     push eax
+000f7030: 68ffff0000             push 0xffff
+000f7035: e8861a0000             call 0xf8ac0  ; XAPILIB::XQueryValue

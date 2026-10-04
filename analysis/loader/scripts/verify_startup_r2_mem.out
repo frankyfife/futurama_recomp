@@ -1,0 +1,218 @@
+== ord 166 slot 56 MmAllocateContiguousMemoryEx : 12 call sites, other refs []
+   0xF8449 in XAPILIB::XPhysicalAlloc(0xF8420) [.text]
+      000F843F push esi
+      000F8440 push dword ptr [ebp + 0x14]
+      000F8443 push dword ptr [ebp + 0x10]
+      000F8446 push eax
+      000F8447 push edx
+      000F8448 push ecx
+      next: mov esi, eax
+   0x237144 in D3D8::D3DDevice_CreateTexture2(0x2370D0) [D3D]
+      00237130 je 0x237154
+      00237132 push 0x404
+      00237137 push 0x80
+      0023713C push 0x7ffffff
+      00237141 push 0
+      00237143 push edi
+      next: test eax, eax
+   0x238B57 in FUN_00238b40(0x238B40) [D3D]
+      00238B46 push 0x404
+      00238B4B push 0
+      00238B4D push 0x7ffffff
+      00238B52 push 0
+      00238B54 push eax
+      00238B55 mov esi, ecx
+      next: test eax, eax
+   0x239A40 in D3D8::CDevice_InitializeFrameBuffers(0x2397C0) [D3D]
+      00239A2A mov dword ptr [esp + 0x28], ebp
+      00239A2E push 0x404
+      00239A33 push 0x4000
+      00239A38 push 0x7ffffff
+      00239A3D push 0
+      00239A3F push ebp
+      next: mov edi, eax
+   0x239B2F in D3D8::CDevice_InitializeFrameBuffers(0x2397C0) [D3D]
+      00239B1A push 0x404
+      00239B1F imul ecx, edi
+      00239B22 push 0x4000
+      00239B27 push 0x7ffffff
+      00239B2C push 0
+      00239B2E push ecx
+      next: mov esi, eax
+   0x239C0C in D3D8::CDevice_InitializeFrameBuffers(0x2397C0) [D3D]
+      00239BF8 jne 0x239bf0
+      00239BFA push 0x404
+      00239BFF push 0x4000
+      00239C04 push 0x7ffffff
+      00239C09 push 0
+      00239C0B push esi
+      next: mov ebp, eax
+   0x239D37 in FUN_00239d20(0x239D20) [D3D]
+      00239D26 push 4
+      00239D28 push 0
+      00239D2A push 0x7ffffff
+      00239D2F push 0
+      00239D31 push 0x60
+      00239D33 mov dword ptr [esp + 0x14], ecx
+      next: mov ecx, dword ptr [esp]
+   0x23A483 in D3D8::D3DDevice_CreateVertexBuffer2(0x23A460) [D3D]
+      0023A470 mov eax, dword ptr [esp + 8]
+      0023A474 push 0x404
+      0023A479 push 0
+      0023A47B push 0x7ffffff
+      0023A480 push 0
+      0023A482 push eax
+      next: test eax, eax
+   0x23A56F in D3D8::D3DDevice_CreatePalette2(0x23A540) [D3D]
+      0023A559 mov eax, dword ptr [esi*4 + 0x2428fc]
+      0023A560 push 0x404
+      0023A565 push 0
+      0023A567 push 0x7ffffff
+      0023A56C push 0
+      0023A56E push eax
+      next: test eax, eax
+   0x23CF2A in D3D8::D3D_CreateStandAloneSurface(0x23CEE0) [D3D]
+      0023CF19 je 0x23cf3a
+      0023CF1B push 0x404
+      0023CF20 push 0x40
+      0023CF22 push 0x7ffffff
+      0023CF27 push 0
+      0023CF29 push edi
+      next: test eax, eax
+   0x2417A6 in D3D8::D3D_AllocContiguousMemory(0x241790) [D3D]
+      00241794 mov ecx, dword ptr [esp + 4]
+      00241798 push 0x404
+      0024179D push eax
+      0024179E push 0x7ffffff
+      002417A3 push 0
+      002417A5 push ecx
+      next: ret 8
+   0x2494C1 in FUN_002494b0(0x2494B0) [DSOUND]
+      002494B0 push esi
+      002494B1 push dword ptr [esp + 0x10]
+      002494B5 push dword ptr [esp + 0x10]
+      002494B9 push -1
+      002494BB push 0
+      002494BD push dword ptr [esp + 0x18]
+      next: mov esi, eax
+== ord 165 slot 52 MmAllocateContiguousMemory : 2 call sites, other refs []
+   0xF81CF in FUN_000f81bb(0xF81BB) [.text]
+      000F81BE mov eax, dword ptr [0x293634]
+      000F81C3 cmp dword ptr [eax], 0
+      000F81C6 push esi
+      000F81C7 mov esi, 0x1000
+      000F81CC jne 0xf81dd
+      000F81CE push esi
+      next: mov ecx, dword ptr [0x293634]
+   0x28CC27 in FUN_0028cbc9(0x28CBC9) [XPP]
+      0028CC1C inc eax
+      0028CC1D push edi
+      0028CC1E shl eax, 0xc
+      0028CC21 mov edi, eax
+      0028CC23 push edi
+      0028CC24 mov dword ptr [ebp - 4], edi
+      next: push 0
+== ord 171 slot 54 MmFreeContiguousMemory : 9 call sites, other refs ['0x23976b', '0x23a3b1']
+   0xF8463 in XAPILIB::XPhysicalFree(0xF8463) [.text]
+   0xF9462 in XAPILIB::XapiInitProcess(0xF92C0) [.text]
+   0x2372CE in D3D8::D3D_DestroyResource(0x237290) [D3D]
+   0x2372F0 in D3D8::D3D_DestroyResource(0x237290) [D3D]
+   0x23731B in D3D8::D3D_DestroyResource(0x237290) [D3D]
+   0x238BFB in FUN_00238bf0(0x238BF0) [D3D]
+   0x240781 in FUN_00240690(0x240690) [D3D]
+   0x2417B0 in xboxkrnl.exe::MmFreeContiguousMemory(0x2417B0) [D3D]
+   0x249511 in FUN_002494ff(0x2494FF) [DSOUND]
+== ord 169 slot 107 MmCreateKernelStack : 1 call sites, other refs []
+   0x1708DA in XAPILIB::CreateFiber(0x1708B0) [.text]
+== ord 49 slot 55 HalReturnToFirmware : 2 call sites, other refs []
+   0xF82D2 in FUN_000f829c(0xF829C) [.text]
+      000F82CB push 2
+      000F82CD call dword ptr [eax + 0x14]
+      000F82D0 push 2
+      next: push eax
+   0xF9028 in XAPILIB::XapiBootToDash(0xF8FCA) [.text]
+      000F9022 leave 
+      000F9023 ret 0xc
+      000F9026 push 4
+      next: int3 
+== ord 15 slot 69 ExAllocatePoolWithTag : 3 call sites, other refs []
+   0x24945A in DSOUND::DSound_CMemoryManager_PoolAlloc(0x249451) [DSOUND]
+   0x28EEE3 in FUN_0028eed6(0x28EED6) [XPP]
+   0x28F2FE in FUN_0028f2a6(0x28F2A6) [XPP]
+
+== XPhysicalAlloc 0xF8420 callers
+   call 0xEE395 in FUN_000ee220(0xEE220)
+      000EE389 call 0x264759
+      000EE38E push 4
+      000EE390 push 0
+      000EE392 push -1
+      000EE394 push edi
+   call 0xEE3A4 in FUN_000ee220(0xEE220)
+      000EE39A push 4
+      000EE39C push 0
+      000EE39E push -1
+      000EE3A0 push edi
+      000EE3A1 mov dword ptr [esi + 0x2c], eax
+   call 0x17080C in XAPILIB::XMemAlloc(0x1707E2)
+      001707FF and eax, 0xf
+      00170802 shl eax, 0xc
+      00170805 push eax
+      00170806 push -1
+      00170808 push dword ptr [esp + 0x14]
+   call 0x241EFD in FUN_00241c40(0x241C40)
+      00241EE9 push 0x4000
+      00241EEE add esi, 0x1ff
+      00241EF4 push -1
+      00241EF6 and esi, 0xfffffe00
+      00241EFC push esi
+== XMemAlloc 0x1707E2 callers [('0x2643be', 'FUN_00264360(0x264360)')]
+
+== XapiBootToDash 0xF8FCA
+000F8FCA: 55                       push ebp
+000F8FCB: 8bec                     mov ebp, esp
+000F8FCD: 81ec000c0000             sub esp, 0xc00
+000F8FD3: a118010100               mov eax, dword ptr [0x10118]
+000F8FD8: 8178080000feff           cmp dword ptr [eax + 8], 0xfffe0000
+000F8FDF: 7445                     je 0xf9026
+000F8FE1: 57                       push edi
+000F8FE2: 33c0                     xor eax, eax
+000F8FE4: b900030000               mov ecx, 0x300
+000F8FE9: 8dbd00f4ffff             lea edi, [ebp - 0xc00]
+000F8FEF: f3ab                     rep stosd dword ptr es:[edi], eax
+000F8FF1: 8b4508                   mov eax, dword ptr [ebp + 8]
+000F8FF4: 83a504f4ffff00           and dword ptr [ebp - 0xbfc], 0
+000F8FFB: 898500f4ffff             mov dword ptr [ebp - 0xc00], eax
+000F9001: 8b450c                   mov eax, dword ptr [ebp + 0xc]
+000F9004: 898508f4ffff             mov dword ptr [ebp - 0xbf8], eax
+000F900A: 8b4510                   mov eax, dword ptr [ebp + 0x10]
+000F900D: 89850cf4ffff             mov dword ptr [ebp - 0xbf4], eax
+000F9013: 8d8500f4ffff             lea eax, [ebp - 0xc00]
+000F9019: 50                       push eax
+000F901A: 6a00                     push 0
+000F901C: e8c2f2ffff               call 0xf82e3  ; XAPILIB::XLaunchNewImageA
+000F9021: 5f                       pop edi
+000F9022: c9                       leave 
+000F9023: c20c00                   ret 0xc
+000F9026: 6a04                     push 4
+000F9028: ff153c362900             call dword ptr [0x29363c]  ; slot 55 ord 49 HalReturnToFirmware
+000F902E: cc                       int3 
+000F902F: 55                       push ebp
+000F9030: 8d6c248c                 lea ebp, [esp - 0x74]
+000F9034: 81ec88000000             sub esp, 0x88
+000F903A: a118010100               mov eax, dword ptr [0x10118]
+000F903F: 53                       push ebx
+000F9040: 8b5d7c                   mov ebx, dword ptr [ebp + 0x7c]
+000F9043: 8b8bab040000             mov ecx, dword ptr [ebx + 0x4ab]
+callers: [('0xf84d3', '<keine Ghidra-Funktion>'), ('0xf8541', 'entry(0xF84DD)'), ('0xf936b', 'XAPILIB::XapiInitProcess(0xF92C0)'), ('0xf93d8', 'XAPILIB::XapiInitProcess(0xF92C0)')]
+
+== XLaunchNewImageA callers
+0xf82e3 XAPILIB::XLaunchNewImageA [('0xe4b3a', 'FUN_000e4b00(0xE4B00)'), ('0xf901c', 'XAPILIB::XapiBootToDash(0xF8FCA)')]
+
+== counts
+pool new     0xA4900  raw call/jmp sites 2011   Ghidra caller functions 976   name=FUN_000a4900
+pool aligned 0xA48E0  raw call/jmp sites 6   Ghidra caller functions 6   name=FUN_000a48e0
+pool free    0xA3880  raw call/jmp sites 2696   Ghidra caller functions 949   name=FUN_000a3880
+malloc       0x16A083  raw call/jmp sites 12   Ghidra caller functions 11   name=_malloc
+LocalAlloc   0xF63E0  raw call/jmp sites 14   Ghidra caller functions 14   name=XAPILIB::LocalAlloc
+_atexit      0x166F42  raw call/jmp sites 77   Ghidra caller functions 77   name=_atexit
+malloc callers: ['FUN_00169e1c(0x169E1C)', 'FUN_0016a23c(0x16A23C)', 'FUN_0016b701(0x16B701)', 'FUN_0016ce28(0x16CE28)', 'FUN_0016dc8f(0x16DC8F)', 'FUN_0016ebfd(0x16EBFD)', 'FUN_0016edea(0x16EDEA)', 'FUN_0016f791(0x16F791)', '___onexitinit(0x166EE2)', '__getbuf(0x16EE4F)', '__getstream(0x16CC7F)', '__stbuf(0x16C3FC)']

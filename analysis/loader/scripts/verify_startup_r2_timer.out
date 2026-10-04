@@ -1,0 +1,105 @@
+== QPC 0xF641B / QPF 0xF642C
+000F641B: 8b4c2404                 mov ecx, dword ptr [esp + 4]
+000F641F: 0f31                     rdtsc 
+000F6421: 8901                     mov dword ptr [ecx], eax
+000F6423: 895104                   mov dword ptr [ecx + 4], edx
+000F6426: 33c0                     xor eax, eax
+000F6428: 40                       inc eax
+000F6429: c20400                   ret 4
+000F642C: 8b442404                 mov eax, dword ptr [esp + 4]
+000F6430: 83600400                 and dword ptr [eax + 4], 0
+000F6434: c70055c7b52b             mov dword ptr [eax], 0x2bb5c755
+000F643A: 33c0                     xor eax, eax
+000F643C: 40                       inc eax
+000F643D: c20400                   ret 4
+000F6440: 55                       push ebp
+000F6441: 8bec                     mov ebp, esp
+000F6443: 51                       push ecx
+000F6444: 51                       push ecx
+000F6445: 6a00                     push 0
+000F6447: 6a04                     push 4
+callers of 0xF641B:
+   call 0xD2BCD in FUN_000d2b90(0xD2B90)
+   call 0x241A12 in <keine Ghidra-Funktion>
+   call 0x241A61 in <keine Ghidra-Funktion>
+   call 0x241B45 in <keine Ghidra-Funktion>
+   call 0x26478B in FUN_00264775(0x264775)
+   call 0x264DDE in FUN_00264962(0x264962)
+   call 0x264FFA in FUN_00264fdf(0x264FDF)
+   abs refs: [('.XTLID', '0x31a0ec')]
+callers of 0xF642C:
+   call 0xD2BB1 in FUN_000d2b90(0xD2B90)
+   call 0x241B4E in <keine Ghidra-Funktion>
+   call 0x241D4E in FUN_00241c40(0x241C40)
+   call 0x26440A in FUN_00264360(0x264360)
+   abs refs: [('.XTLID', '0x31a0f4')]
+
+== rdtsc (0F 31) byte occurrences in code sections, with containing function
+  .text 0xF641F  func=XAPILIB::QueryPerformanceCounter(0xF641B)  decoded_as_rdtsc_in_func=True  ctx=8b4c24040f3189018951
+  D3D 0x23B780  func=FUN_0023b780(0x23B780)  decoded_as_rdtsc_in_func=True  ctx=909090900f31c3909090
+  DSOUND 0x260BDF  func=<keine Ghidra-Funktion>  decoded_as_rdtsc_in_func=False  ctx=120d0b0e0f31595128b7
+  XMV 0x274509  func=<keine Ghidra-Funktion>  decoded_as_rdtsc_in_func=False  ctx=1f23231f0f3101232805
+
+== imports 126 KeQueryPerformanceCounter / 127 KeQueryPerformanceFrequency / 156 KeTickCount / 128 KeQuerySystemTime
+126 None
+127 None
+156 None
+128 23
+
+== game timer FUN_000d2b90 and helpers
+000D2B10: df2d48b42e00             fild qword ptr [0x2eb448]
+000D2B16: 56                       push esi
+000D2B17: 8bf1                     mov esi, ecx
+000D2B19: d84c2408                 fmul dword ptr [esp + 8]
+000D2B1D: e85e450900               call 0x167080  ; FUN_00167080
+000D2B22: 8906                     mov dword ptr [esi], eax
+000D2B24: 895604                   mov dword ptr [esi + 4], edx
+000D2B27: 8bc6                     mov eax, esi
+000D2B29: 5e                       pop esi
+000D2B2A: c20400                   ret 4
+--
+000D2B30: 8b11                     mov edx, dword ptr [ecx]
+000D2B32: 8b442408                 mov eax, dword ptr [esp + 8]
+000D2B36: 8b4904                   mov ecx, dword ptr [ecx + 4]
+000D2B39: 56                       push esi
+000D2B3A: 2b10                     sub edx, dword ptr [eax]
+000D2B3C: 8b7004                   mov esi, dword ptr [eax + 4]
+000D2B3F: 8b442408                 mov eax, dword ptr [esp + 8]
+000D2B43: 1bce                     sbb ecx, esi
+000D2B45: 8910                     mov dword ptr [eax], edx
+000D2B47: 894804                   mov dword ptr [eax + 4], ecx
+000D2B4A: 5e                       pop esi
+000D2B4B: c20800                   ret 8
+--
+000D2B50: df2d48b42e00             fild qword ptr [0x2eb448]
+000D2B56: 56                       push esi
+000D2B57: 8bf1                     mov esi, ecx
+000D2B59: d84c240c                 fmul dword ptr [esp + 0xc]
+000D2B5D: e81e450900               call 0x167080  ; FUN_00167080
+000D2B62: 8b0e                     mov ecx, dword ptr [esi]
+000D2B64: 8b7604                   mov esi, dword ptr [esi + 4]
+000D2B67: 2bc8                     sub ecx, eax
+000D2B69: 8b442408                 mov eax, dword ptr [esp + 8]
+000D2B6D: 1bf2                     sbb esi, edx
+000D2B6F: 897004                   mov dword ptr [eax + 4], esi
+000D2B72: 8908                     mov dword ptr [eax], ecx
+000D2B74: 5e                       pop esi
+000D2B75: c20800                   ret 8
+--
+000D2B80: df29                     fild qword ptr [ecx]
+000D2B82: d80d50b42e00             fmul dword ptr [0x2eb450]
+000D2B88: c3                       ret 
+--
+000D2B90: 83ec08                   sub esp, 8
+000D2B93: 8b0d4cb42e00             mov ecx, dword ptr [0x2eb44c]
+000D2B99: 33c0                     xor eax, eax
+000D2B9B: 89442400                 mov dword ptr [esp], eax
+000D2B9F: 89442404                 mov dword ptr [esp + 4], eax
+000D2BA3: a148b42e00               mov eax, dword ptr [0x2eb448]
+000D2BA8: 0bc1                     or eax, ecx
+000D2BAA: 751c                     jne 0xd2bc8
+000D2BAC: 6848b42e00               push 0x2eb448
+000D2BB1: e876380200               call 0xf642c  ; XAPILIB::QueryPerformanceFrequency
+000D2BB6: df2d48b42e00             fild qword ptr [0x2eb448]
+--
+[0x2EB450] users (1/QPF): ['0xd2b84', '0xd2bc4']

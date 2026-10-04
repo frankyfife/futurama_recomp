@@ -1,0 +1,40 @@
+base 0x10000 headersize 0x968 imagesize 0x30A300 imageheadersize 0x180
+cert addr 0x10180  entry(enc) 0xA8F3D376  tls 0x2A5D2C
+stack commit [0x130]=0x10000 heap reserve [0x134]=0x100000 heap commit [0x138]=0x1000 pe base [0x13C]=0x10C40 pe size [0x140]=0x350CA0
+init flags [0x124]=0x5
+cert size 0x1EC titleid 0x46490002 allowedmedia 0x2 region 0x4 ratings 0x0
+cert title: Futurama
+TLS dir @0x2A5D2C: StartRaw 0x0 EndRaw 0x0 Index 0x2F3D18 Callbacks 0x0 ZeroFill 0x20 Characteristics 0x0
+TLS dir address in header [0x12C] = 0x2A5D2C
+computed TlsDataSize 0x24 index -9
+index var section: .data init value None
+
+.text      va 0x011000 vsz 0x2232C0 raw 0x001000 rsz 0x2232C0 end 0x2342C0
+D3D        va 0x2342C0 vsz 0x012A38 raw 0x225000 rsz 0x00F5D0 end 0x246CF8
+DSOUND     va 0x246D00 vsz 0x01D654 raw 0x235000 rsz 0x01D40C end 0x264354
+XMV        va 0x264360 vsz 0x027B6C raw 0x253000 rsz 0x027B5C end 0x28BECC
+XPP        va 0x28BEE0 vsz 0x00767C raw 0x27B000 rsz 0x00767C end 0x29355C
+.rdata     va 0x293560 vsz 0x02A97C raw 0x283000 rsz 0x02A96C end 0x2BDEDC
+.data      va 0x2BDEE0 vsz 0x052858 raw 0x2AE000 rsz 0x01B558 end 0x310738
+DOLBY      va 0x310740 vsz 0x007180 raw 0x2CA000 rsz 0x00716C end 0x3178C0
+$$XTIMAGE  va 0x3178C0 vsz 0x002800 raw 0x2D2000 rsz 0x002800 end 0x31A0C0
+.XTLID     va 0x31A0C0 vsz 0x000238 raw 0x2D5000 rsz 0x000238 end 0x31A2F8
+.text      flags 0x16 (W=0 preload=1 exec=1)
+D3D        flags 0x7 (W=1 preload=1 exec=1)
+DSOUND     flags 0x7 (W=1 preload=1 exec=1)
+XMV        flags 0x7 (W=1 preload=1 exec=1)
+XPP        flags 0x7 (W=1 preload=1 exec=1)
+.rdata     flags 0x6 (W=0 preload=1 exec=1)
+.data      flags 0x7 (W=1 preload=1 exec=1)
+DOLBY      flags 0x26 (W=0 preload=1 exec=1)
+$$XTIMAGE  flags 0x38 (W=0 preload=0 exec=0)
+.XTLID     flags 0x38 (W=0 preload=0 exec=0)
+
+dt [0x2D6748] = 0x3CA3D70A float=0.019999999552965164
+fps [0x2D6744] = 0x42480000 float=50.0
+fixed [0x2D674C] = 0x00010101 float=9.219562986332269e-41
+clearflags [0x2D6740] = 0x00000004 float=5.605193857299268e-45
+pb size [0x2D7CEC] = 0x00200000 float=2.938735877055719e-39
+pb kick [0x2D7CF0] = 0x00008000 float=4.591774807899561e-41
+align [0x2D6750] = 0x00000010 float=2.2420775429197073e-44
+6.0? [0x29BFF4] = 0x40C00000 float=6.0

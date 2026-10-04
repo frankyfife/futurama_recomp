@@ -1,0 +1,5 @@
+000f6453 call f6440 XAPILIB::XGetLanguage              last pushes: f6445:0; f6447:4; f644c:eax; f6450:eax; f6451:7
+000f856a call f8554 XAPILIB::XGetGameRegion            last pushes: f8559:0; f855b:4; f8560:eax; f8564:eax; f8565:0x104
+000f8ad2 call f8ac0 XAPILIB::XQueryValue               last pushes: f8ac3:dword ptr [ebp + 0x18]; f8ac6:dword ptr [ebp + 0x14]; f8ac9:dword ptr [ebp + 0x10]; f8acc:dword ptr [ebp + 0xc]; f8acf:dword ptr [ebp + 8]
+000f9c51 call f9c3e XAPILIB::XGetParentalControlSetting last pushes: f9c43:0; f9c45:4; f9c4a:eax; f9c4e:eax; f9c4f:0xa
+001707b3 call 1707a0 XAPILIB::XGetAudioFlags           last pushes: 1707a5:0; 1707a7:4; 1707ac:eax; 1707b0:eax; 1707b1:9

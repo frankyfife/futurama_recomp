@@ -1,0 +1,267 @@
+address	section	size	name	category	ret	ext_call_sites	ext_callers	callers_NiXBoxRenderer	callers_NiXBoxLib	callers_NiOther	callers_Game	callers_XMV	callers_DSOUND	callers_XPP	callers_OtherLib	int_callers	int_call_sites	ptr_refs	ptr_ref_addrs	note	ext_caller_list
+002342c0	D3D	23	D3D8::D3DDevice_GetDeviceCaps	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002342e0	D3D	23	D3D8::D3DDevice_SetRenderTarget	device/frame	8	2	2	1	1	0	0	0	0	0	0	2	2	0			00146400:NiXBoxRenderer::vf15,00148870:FUN_00148870
+00234300	D3D	270	D3D8::D3DDevice_SetTransform	state	8	9	5	2	3	0	0	0	0	0	0	1	1	0			001469e0:NiXBoxRenderer::vf47,00146d60:FUN_00146d60,001489a0:FUN_001489a0,0014b5f0:NiXBoxRenderer::vf54,00161f70:FUN_00161f70
+00234410	D3D	48	D3D8::D3DDevice_SetMaterial	state	4	1	1	0	1	0	0	0	0	0	0	0	0	0			00161880:FUN_00161880
+00234440	D3D	21	D3D8::D3DDevice_AddRef	device/frame	0	13	13	0	12	0	1	0	0	0	0	0	0	0			000ede40:FUN_000ede40,00156900:FUN_00156900,00157ae0:FUN_00157ae0,00158de0:FUN_00158de0,0015b4e0:FUN_0015b4e0,0015bcb0:FUN_0015bcb0,0015c2e0:FUN_0015c2e0,0015c530:sub_0015c530,0015c7b0:FUN_0015c7b0,0015fa90:FUN_0015fa90,00163a40:FUN_00163a40,00165860:FUN_00165860,00166330:FUN_00166330
+00234460	D3D	55	D3D8::D3DDevice_Release	device/frame	0	17	17	0	16	0	1	0	0	0	0	0	0	0			000ee190:FUN_000ee190,0014c860:FUN_0014c860,00156a40:FUN_00156a40,00157ba0:FUN_00157ba0,00159140:FUN_00159140,0015a020:FUN_0015a020,0015be30:FUN_0015be30,0015c250:FUN_0015c250,0015c900:FUN_0015c900,0015fbe0:FUN_0015fbe0,001636f0:FUN_001636f0,00165380:FUN_00165380,00165860:FUN_00165860,00166330:FUN_00166330,001663b0:FUN_001663b0,00166780:FUN_00166780,001667a0:FUN_001667a0
+002344a0	D3D	5	D3D8::D3D_KickOffAndWaitForIdle	internal	tail:00239310	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002344b0	D3D	15	D3D8::D3DDevice_BlockOnFence	device/frame	4	3	3	0	3	0	0	0	0	0	0	0	0	0			00155440:FUN_00155440,00155560:FUN_00155560,00158440:FUN_00158440
+002344c0	D3D	36	D3D8::D3DDevice_BlockUntilVerticalBlank	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002344f0	D3D	66	D3D8::D3DDevice_SetFlickerFilter	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00234540	D3D	81	D3D8::D3DDevice_SetSoftDisplayFilter	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002345a0	D3D	8	D3D8::D3DDevice_InsertFence	device/frame	0	3	2	0	2	0	0	0	0	0	0	0	0	0			001556f0:sub_001556f0,00157980:FUN_00157980
+002345b0	D3D	92	FUN_002345b0	internal	4	0	0	0	0	0	0	0	0	0	0	5	8	0			
+00234610	D3D	121	FUN_00234610	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00234690	D3D	193	D3D8::D3DDevice_GetDisplayMode	device/frame	4	1	1	0	0	0	0	1	0	0	0	0	0	0			00264360:FUN_00264360
+00234760	D3D	67	D3D8::D3DDevice_GetBackBuffer2	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002347b0	D3D	797	D3D8::D3DDevice_CopyRects	resource	0x14	1	1	1	0	0	0	0	0	0	0	0	0	0			00146800:NiXBoxRenderer::vf25
+00234ae0	D3D	26	D3D8::D3DDevice_GetRenderTarget2	device/frame	0	1	1	0	1	0	0	0	0	0	0	0	0	0			0014aab0:FUN_0014aab0
+00234b00	D3D	30	D3D8::D3DDevice_GetDepthStencilSurface2	device/frame	0	1	1	0	1	0	0	0	0	0	0	0	0	0			0014aab0:FUN_0014aab0
+00234b20	D3D	352	D3D8::D3DDevice_SetViewport	device/frame	4	2	2	2	0	0	0	0	0	0	0	1	1	0			00146490:NiXBoxRenderer::vf17,001469e0:NiXBoxRenderer::vf47
+00234c80	D3D	478	D3D8::D3DDevice_SetLight	state	8	1	1	0	1	0	0	0	0	0	0	1	1	0			0015ba40:FUN_0015ba40
+00234e60	D3D	228	D3D8::D3DDevice_LightEnable	state	8	4	3	0	3	0	0	0	0	0	0	0	0	0			0015b990:FUN_0015b990,0015b9e0:FUN_0015b9e0,0015ba40:FUN_0015ba40
+00234f50	D3D	420	D3D8::D3DDevice_SetTexture	state	8	9	5	0	5	0	0	0	0	0	0	4	4	0			0014c860:FUN_0014c860,00156c30:sub_00156c30,0015ab40:FUN_0015ab40,00161cd0:FUN_00161cd0,00162020:FUN_00162020
+00235100	D3D	141	D3D8::D3DDevice_SetPalette	state	8	1	1	0	1	0	0	0	0	0	0	0	0	0			00162020:FUN_00162020
+00235190	D3D	132	D3D8::D3DDevice_SetIndices	state	8	8	7	3	4	0	0	0	0	0	0	0	0	0			00148ae0:NiXBoxRenderer::vf52,00149530:NiXBoxRenderer::vf53,00149ae0:FUN_00149ae0,0014b700:NiXBoxRenderer::vf42,0014bc30:FUN_0014bc30,0014c860:FUN_0014c860,0015c900:FUN_0015c900
+00235220	D3D	47	D3D8::D3DDevice_IsBusy	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00235250	D3D	60	D3D8::D3DDevice_GetDisplayFieldStatus	device/frame	4	1	1	0	0	0	0	1	0	0	0	0	0	0			00264962:FUN_00264962
+00235290	D3D	184	D3D8::D3D_SetTileNoWait	internal	8	0	0	0	0	0	0	0	0	0	0	2	4	0			
+00235350	D3D	404	D3D8::D3DDevice_SetScissors	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002354f0	D3D	73	D3D8::D3DDevice_SetScreenSpaceOffset	device/frame	8	7	7	0	0	0	7	0	0	0	0	1	1	0			000a1920:FUN_000a1920,000a1930:FUN_000a1930,000a1950:FUN_000a1950,000a19d0:FUN_000a19d0,000a1a00:FUN_000a1a00,000a1a80:FUN_000a1a80,000a1ae0:FUN_000a1ae0
+00235770	D3D	45	FUN_00235770	internal	0	0	0	0	0	0	0	0	0	0	0	0	0	1	002d3e6c	static initializer, pointer in C++ init table at 0x2d3e6c	
+002357a0	D3D	34	D3D8::D3DDevice_SetRenderState_PSTextureModes	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	002422d0		001478c0:FUN_001478c0
+002357d0	D3D	39	D3D8::D3DDevice_SetRenderState_Simple	renderstate	0	28	7	0	7	0	0	0	0	0	0	1	1	0		__fastcall ecx=NV2A method header, edx=value; header table 0x293828; 27/28 external sites pass a constant header, only 0x147904 is variable [verify_d3d]	001478c0:FUN_001478c0,00159270:FUN_00159270,00159410:FUN_00159410,00159980:FUN_00159980,001599e0:FUN_001599e0,00159b60:FUN_00159b60,00159cd0:FUN_00159cd0
+00235800	D3D	93	D3D8::D3DDevice_SetRenderStateNotInline	internal	8	0	0	0	0	0	0	0	0	0	0	5	12	0			
+00235860	D3D	293	D3D8::D3DDevice_GetViewportOffsetAndScale	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00235990	D3D	320	D3D8::D3D_UpdateProjectionViewportTransform	internal	0	0	0	0	0	0	0	0	0	0	0	3	3	0			
+00235ad0	D3D	50	D3D8::D3DDevice_SetRenderState_EdgeAntiAlias	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	0024230c		001478c0:FUN_001478c0
+00235b10	D3D	53	D3D8::D3DDevice_SetRenderState_ShadowFunc	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242320		001478c0:FUN_001478c0
+00235b50	D3D	77	D3D8::D3DDevice_SetRenderState_FogColor	renderstate	4	2	2	0	2	0	0	0	0	0	0	0	0	1	002422d8		001478c0:FUN_001478c0,00159900:FUN_00159900
+00235ba0	D3D	104	D3D8::D3DDevice_SetRenderState_CullMode	renderstate	4	3	3	0	3	0	0	0	0	0	0	1	1	1	002422fc		001478c0:FUN_001478c0,00159410:FUN_00159410,001599e0:FUN_001599e0
+00235c10	D3D	58	D3D8::D3DDevice_SetRenderState_FrontFace	renderstate	tail:00235ba0	1	1	0	1	0	0	0	0	0	0	0	0	1	002422f8		001478c0:FUN_001478c0
+00235c50	D3D	57	D3D8::D3DDevice_SetRenderState_NormalizeNormals	renderstate	4	2	2	0	2	0	0	0	0	0	0	0	0	1	002422e8		001478c0:FUN_001478c0,00159200:FUN_00159200
+00235c90	D3D	81	D3D8::D3DDevice_SetRenderState_TextureFactor	renderstate	4	2	2	0	2	0	0	0	0	0	0	1	1	1	00242300		001478c0:FUN_001478c0,00162020:FUN_00162020
+00235cf0	D3D	101	D3D8::D3DDevice_SetRenderState_LineWidth	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242324		001478c0:FUN_001478c0
+00235d60	D3D	119	D3D8::D3DDevice_SetRenderState_Dxt1NoiseEnable	renderstate	4	1	1	0	1	0	0	0	0	0	0	1	1	1	0024232c		001478c0:FUN_001478c0
+00235de0	D3D	116	D3D8::D3DDevice_SetRenderState_ZBias	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242304		001478c0:FUN_001478c0
+00235e60	D3D	82	D3D8::D3DDevice_SetRenderState_LogicOp	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242308		001478c0:FUN_001478c0
+00235ec0	D3D	68	D3D8::D3DDevice_SetRenderState_FillMode	renderstate	4	3	3	0	3	0	0	0	0	0	0	0	0	1	002422dc		001478c0:FUN_001478c0,00159410:FUN_00159410,00159cd0:FUN_00159cd0
+00235f10	D3D	81	D3D8::D3DDevice_SetRenderState_BackFillMode	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	002422e0		001478c0:FUN_001478c0
+00235f70	D3D	99	D3D8::D3DDevice_SetRenderState_TwoSidedLighting	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	002422e4		001478c0:FUN_001478c0
+00235fe0	D3D	65	D3D8::D3DDevice_SetRenderState_VertexBlend	renderstate	4	7	6	2	4	0	0	0	0	0	0	0	0	1	002422d4		001478c0:FUN_001478c0,00147b70:FUN_00147b70,00149530:NiXBoxRenderer::vf53,00149ae0:FUN_00149ae0,0014b700:NiXBoxRenderer::vf42,0014bc30:FUN_0014bc30
+00236030	D3D	261	D3D8::D3DDevice_SetTextureState_TexCoordIndex	state	8	3	3	0	3	0	0	0	0	0	0	1	1	0			0015ab40:FUN_0015ab40,0015ffe0:sub_0015ffe0,00161f70:FUN_00161f70
+00236140	D3D	99	D3D8::D3DDevice_SetTextureState_BumpEnv	state	0xc	12	2	0	2	0	0	0	0	0	0	1	1	0			0015ab40:FUN_0015ab40,00162020:FUN_00162020
+002361b0	D3D	61	D3D8::D3DDevice_SetTextureState_BorderColor	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002361f0	D3D	57	D3D8::D3DDevice_SetTextureState_ColorKeyColor	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00236230	D3D	236	D3D8::D3DDevice_SetTextureStageStateNotInline	internal	0xc,tail:00236140	0	0	0	0	0	0	0	0	0	0	3	10	0			
+00236320	D3D	79	FUN_00236320	internal	0	0	0	0	0	0	0	0	0	0	0	1	2	0			
+00236370	D3D	485	FUN_00236370	internal	0	0	0	0	0	0	0	0	0	0	0	7	9	0			
+00236560	D3D	89	FUN_00236560	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002365c0	D3D	206	D3D8::D3D_CommonSetDebugRegisters	internal	0	0	0	0	0	0	0	0	0	0	0	3	3	0			
+00236690	D3D	1437	D3D8::D3D_CommonSetRenderTarget	internal	0xc	0	0	0	0	0	0	0	0	0	0	5	5	0			
+00236c30	D3D	143	D3D8::D3DDevice_SetRenderState_ZEnable	renderstate	4	2	2	0	2	0	0	0	0	0	0	0	0	1	002422ec		001478c0:FUN_001478c0,001591c0:FUN_001591c0
+00236cc0	D3D	132	D3D8::D3DDevice_SetRenderState_StencilEnable	renderstate	4	3	2	0	2	0	0	0	0	0	0	0	0	1	002422f0		001478c0:FUN_001478c0,001599e0:FUN_001599e0
+00236d50	D3D	109	D3D8::D3DDevice_SetRenderState_StencilFail	renderstate	4	2	2	0	2	0	0	0	0	0	0	0	0	1	002422f4		001478c0:FUN_001478c0,001599e0:FUN_001599e0
+00236dc0	D3D	43	D3D8::D3DDevice_SetRenderState_YuvEnable	renderstate	4	3	2	0	1	0	1	0	0	0	0	0	0	1	00242330		000ede90:FUN_000ede90,001478c0:FUN_001478c0
+00236df0	D3D	98	D3D8::D3DDevice_SetRenderState_OcclusionCullEnable	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242334		001478c0:FUN_001478c0
+00236e60	D3D	98	D3D8::D3DDevice_SetRenderState_StencilCullEnable	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242338		001478c0:FUN_001478c0
+00236ed0	D3D	17	D3D8::D3DDevice_SetRenderState_RopZCmpAlwaysRead	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	0024233c		001478c0:FUN_001478c0
+00236ef0	D3D	17	D3D8::D3DDevice_SetRenderState_RopZRead	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242340		001478c0:FUN_001478c0
+00236f10	D3D	17	D3D8::D3DDevice_SetRenderState_DoNotCullUncompressed	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242344		001478c0:FUN_001478c0
+00236f30	D3D	52	D3D8::D3DDevice_SetRenderState_MultiSampleMode	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242318		001478c0:FUN_001478c0
+00236f70	D3D	52	D3D8::D3DDevice_SetRenderState_MultiSampleRenderTargetMode	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	0024231c		001478c0:FUN_001478c0
+00236fb0	D3D	114	D3D8::D3DDevice_SetRenderState_MultiSampleAntiAlias	renderstate	4	2	2	0	2	0	0	0	0	0	0	0	0	1	00242310		001478c0:FUN_001478c0,00159410:FUN_00159410
+00237030	D3D	80	D3D8::D3DDevice_SetRenderState_MultiSampleMask	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242314		001478c0:FUN_001478c0
+00237080	D3D	78	D3D8::D3DDevice_SetRenderState_SampleAlpha	renderstate	4	1	1	0	1	0	0	0	0	0	0	0	0	1	00242328		001478c0:FUN_001478c0
+002370d0	D3D	181	D3D8::D3DDevice_CreateTexture2	resource	0x1c	6	6	0	5	0	1	0	0	0	0	0	0	0			000ee220:FUN_000ee220,0015d920:FUN_0015d920,0015e370:FUN_0015e370,0015e840:FUN_0015e840,0015ecf0:FUN_0015ecf0,0015f8f0:sub_0015f8f0
+00237190	D3D	5	D3D8::Get2DSurfaceDesc	resource	tail:0023aaa0	1	1	0	1	0	0	0	0	0	0	0	0	0		5-byte tail jmp to Get2DSurfaceDesc 0x23aaa0	00155d60:FUN_00155d60
+002371a0	D3D	74	D3D8::D3DTexture_GetSurfaceLevel2	resource	8	3	3	0	2	0	1	0	0	0	0	0	0	0			000ede90:FUN_000ede90,0015db00:FUN_0015db00,0015e430:FUN_0015e430
+002371f0	D3D	77	D3D8::D3DCubeTexture_GetCubeMapSurface2	resource	0xc	2	2	0	2	0	0	0	0	0	0	0	0	0			0015e8f0:FUN_0015e8f0,0015eba0:FUN_0015eba0
+00237240	D3D	70	FUN_00237240	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237290	D3D	156	D3D8::D3D_DestroyResource	internal	4	0	0	0	0	0	0	0	0	0	0	7	11	0			
+00237330	D3D	53	FUN_00237330	internal	4	0	0	0	0	0	0	0	0	0	0	1	2	0			
+00237370	D3D	50	FUN_00237370	internal	4	0	0	0	0	0	0	0	0	0	0	1	2	0			
+002373b0	D3D	55	D3D8::D3DResource_AddRef	resource	4	6	5	0	4	0	1	0	0	0	0	6	10	0			000ee220:FUN_000ee220,00158440:FUN_00158440,0015e430:FUN_0015e430,0015e8f0:FUN_0015e8f0,0015f580:FUN_0015f580
+002373f0	D3D	78	D3D8::D3DResource_Release	resource	4	50	35	0	32	0	3	0	0	0	0	4	7	0			000ede90:FUN_000ede90,000ee080:FUN_000ee080,000ee220:FUN_000ee220,00146f20:FUN_00146f20,001471a0:FUN_001471a0,0014b290:FUN_0014b290,0014bff0:FUN_0014bff0,0014c860:FUN_0014c860,00157780:FUN_00157780,00157a90:FUN_00157a90,00158440:FUN_00158440,0015c900:FUN_0015c900,0015cc06:FUN_0015cc06,0015cd0a:FUN_0015cd0a,0015da70:FUN_0015da70,0015db00:FUN_0015db00,0015e640:FUN_0015e640,0015e6d0:FUN_0015e6d0,0015e7a0:FUN_0015e7a0,0015eb30:FUN_0015eb30,0015eba0:FUN_0015eba0,0015f390:FUN_0015f390,0015f450:FUN_0015f450,0015f530:FUN_0015f530,0015fbe0:FUN_0015fbe0,00165220:FUN_00165220,00165380:FUN_00165380,00165e80:FUN_00165e80,00165f00:FUN_00165f00,00166100:FUN_00166100,001661f0:FUN_001661f0,001663b0:FUN_001663b0,001664d0:FUN_001664d0,00166710:FUN_00166710,001667d0:FUN_001667d0
+00237440	D3D	138	D3D8::D3DResource_GetType	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002374d0	D3D	40	D3D8::D3DResource_Register	resource	8	2	2	0	2	0	0	0	0	0	0	0	0	0			001558e0:sub_001558e0,001561e0:sub_001561e0
+00237500	D3D	98	FUN_00237500	internal	4	0	0	0	0	0	0	0	0	0	0	2	4	0			
+00237570	D3D	130	FUN_00237570	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002375f2	D3D	89	FUN_002375f2	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237650	D3D	313	FUN_00237650	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237790	D3D	174	FUN_00237790	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237840	D3D	104	FUN_00237840	internal	0xc	0	0	0	0	0	0	0	0	0	0	3	3	0			
+002378b0	D3D	409	FUN_002378b0	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237a50	D3D	247	FUN_00237a50	internal	8	0	0	0	0	0	0	0	0	0	0	1	2	0			
+00237b50	D3D	318	D3D8::D3DDevice_CreateVertexShader	shader	0x10	1	1	0	1	0	0	0	0	0	0	0	0	0			0015d4c0:FUN_0015d4c0
+00237c90	D3D	140	D3D8::D3DDevice_SetStreamSource	state	0xc	7	6	3	3	0	0	0	0	0	0	0	0	0			00148ae0:NiXBoxRenderer::vf52,00149530:NiXBoxRenderer::vf53,00149ae0:FUN_00149ae0,0014b700:NiXBoxRenderer::vf42,0014bc30:FUN_0014bc30,0014c860:FUN_0014c860
+00237d20	D3D	84	D3D8::D3DDevice_LoadVertexShader	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237d80	D3D	128	D3D8::D3DDevice_SelectVertexShader	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237e00	D3D	280	D3D8::D3DDevice_SetShaderConstantMode	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00237f20	D3D	57	FUN_00237f20	internal	8	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00237f60	D3D	239	FUN_00237f60	internal	0	0	0	0	0	0	0	0	0	0	0	7	7	0			
+00238050	D3D	338	D3D8::D3DDevice_SetVertexShader	shader	4	4	4	2	2	0	0	0	0	0	0	1	1	0			00148ae0:NiXBoxRenderer::vf52,00149530:NiXBoxRenderer::vf53,0014aca0:FUN_0014aca0,00163d10:FUN_00163d10
+002381b0	D3D	39	FUN_002381b0	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002381e0	D3D	39	FUN_002381e0	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00238210	D3D	87	FUN_00238210	internal	0x10	0	0	0	0	0	0	0	0	0	0	1	3	0			
+00238270	D3D	250	FUN_00238270	internal	0xc	0	0	0	0	0	0	0	0	0	0	2	4	0			
+00238370	D3D	214	FUN_00238370	internal	0xc	0	0	0	0	0	0	0	0	0	0	2	5	0			
+00238450	D3D	97	FUN_00238450	internal	4	0	0	0	0	0	0	0	0	0	0	3	3	0			
+002384c0	D3D	49	FUN_002384c0	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00238500	D3D	66	FUN_00238500	internal	4	0	0	0	0	0	0	0	0	0	0	2	4	0			
+00238550	D3D	1361	FUN_00238550	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	2	0			
+00238ab0	D3D	29	FUN_00238ab0	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00238ad0	D3D	112	FUN_00238ad0	internal	0xc	0	0	0	0	0	0	0	0	0	0	2	8	0			
+00238b40	D3D	173	FUN_00238b40	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00238bf0	D3D	32	FUN_00238bf0	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00238c10	D3D	97	FUN_00238c10	internal	0	0	0	0	0	0	0	0	0	0	0	1	3	0			
+00238c80	D3D	267	FUN_00238c80	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00238da0	D3D	45	FUN_00238da0	internal	0	0	0	0	0	0	0	0	0	0	0	2	3	0			
+00238dd0	D3D	30	D3D8::D3DDevice_IsFencePending	device/frame	4	3	3	0	3	0	0	0	0	0	0	0	0	0			00155440:FUN_00155440,00155560:FUN_00155560,00158440:FUN_00158440
+00238df0	D3D	216	D3D8::CDevice_KickOff	internal	0	0	0	0	0	0	0	0	0	0	0	4	5	0			
+00238ed0	D3D	104	FUN_00238ed0	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00238f40	D3D	164	D3D8::D3D_SetFence	internal	4	0	0	0	0	0	0	0	0	0	0	7	8	0			
+00238ff0	D3D	310	D3D8::D3D_BlockOnTime	internal	8	0	0	0	0	0	0	0	0	0	0	6	10	0			
+00239130	D3D	368	D3D8::D3D_MakeRequestedSpace_8	internal	8	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002392b0	D3D	15	D3D8::D3DDevice_MakeSpace	internal	0	0	0	0	0	0	0	0	0	0	0	64	77	0		push-buffer MakeSpace -> D3D_MakeRequestedSpace_8(0x239130); 77 internal sites in 63 real functions; int_callers=64 is an artifact: attribute() counts sub_0023b644 (truncated tail of D3DDevice_Clear) and sub_0023fe67 (tail of FUN_0023fdb0 behind jump table 0x23fe67) as functions [verify_d3d_r2]	
+002392c0	D3D	68	D3D8::D3DDevice_BeginStateBig	internal	4	0	0	0	0	0	0	0	0	0	0	4	5	0			
+00239310	D3D	17	D3D8::D3D_KickOffAndWaitForIdle	internal	0	0	0	0	0	0	0	0	0	0	0	3	3	0			
+00239330	D3D	120	D3D8::D3D_BlockOnResource	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002393b0	D3D	54	FUN_002393b0	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002393f0	D3D	227	FUN_002393f0	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002394e0	D3D	222	FUN_002394e0	internal	tail:002393f0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002395c0	D3D	210	FUN_002395c0	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002396a0	D3D	285	D3D8::CDevice_FreeFrameBuffers	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002397c0	D3D	1363	D3D8::CDevice_InitializeFrameBuffers	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00239d20	D3D	1362	FUN_00239d20	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0		CDevice init (called by Direct3D_CreateDevice)	
+0023a280	D3D	409	FUN_0023a280	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023a420	D3D	49	D3D8::D3DDevice_CreateIndexBuffer2	resource	4	3	3	0	3	0	0	0	0	0	0	0	0	0			0015cb42:FUN_0015cb42,0015cc06:FUN_0015cc06,0015cd0a:FUN_0015cd0a
+0023a460	D3D	77	D3D8::D3DDevice_CreateVertexBuffer2	resource	4	4	4	0	4	0	0	0	0	0	0	0	0	0			00158440:FUN_00158440,001655d0:FUN_001655d0,00165ed0:sub_00165ed0,001667d0:FUN_001667d0
+0023a4b0	D3D	75	D3D8::D3DVertexBuffer_Lock2	resource	8	8	7	2	5	0	0	0	0	0	0	0	0	0			00148ae0:NiXBoxRenderer::vf52,00149530:NiXBoxRenderer::vf53,00157900:FUN_00157900,00157c23:FUN_00157c23,00157ea0:FUN_00157ea0,001580b0:FUN_001580b0,001585a0:FUN_001585a0
+0023a500	D3D	28	D3D8::D3DVertexBuffer_GetDesc	resource	8	4	4	0	4	0	0	0	0	0	0	0	0	0			00157c23:FUN_00157c23,00157ea0:FUN_00157ea0,001580b0:FUN_001580b0,0015d740:FUN_0015d740
+0023a520	D3D	20	FUN_0023a520	resource	8	3	3	0	3	0	0	0	0	0	0	0	0	0		Vermutung D3DIndexBuffer_GetDesc (writes Format=0x65, Type=7; ret 8)	0015cb42:FUN_0015cb42,0015cc06:FUN_0015cc06,0015cd0a:FUN_0015cd0a
+0023a540	D3D	96	D3D8::D3DDevice_CreatePalette2	resource	4	1	1	0	1	0	0	0	0	0	0	0	0	0			0015f390:FUN_0015f390
+0023a5a0	D3D	30	D3D8::D3DPalette_Lock2	resource	8	1	1	0	1	0	0	0	0	0	0	1	1	0			0015f1b0:FUN_0015f1b0
+0023a5d0	D3D	9	FUN_0023a5d0	internal	4	0	0	0	0	0	0	0	0	0	0	8	17	0			
+0023a5e0	D3D	9	FUN_0023a5e0	internal	4	0	0	0	0	0	0	0	0	0	0	1	2	0			
+0023a5f0	D3D	82	FUN_0023a5f0	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023a650	D3D	11	FUN_0023a650	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023a660	D3D	14	FUN_0023a660	internal	0	0	0	0	0	0	0	0	0	0	0	1	3	0			
+0023a670	D3D	98	FUN_0023a670	internal	4	0	0	0	0	0	0	0	0	0	0	2	3	0			
+0023a730	D3D	26	FUN_0023a730	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023a750	D3D	35	FUN_0023a750	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023a780	D3D	60	FUN_0023a780	internal	8	0	0	0	0	0	0	0	0	0	0	1	2	0			
+0023a7c0	D3D	187	FUN_0023a7c0	internal	8	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023a8e0	D3D	18	FUN_0023a8e0	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023a950	D3D	336	FUN_0023a950	internal	0x1c	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023aaa0	D3D	177	D3D8::Get2DSurfaceDesc	internal	0xc	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023ab60	D3D	563	FUN_0023ab60	internal	0x20	0	0	0	0	0	0	0	0	0	0	3	3	0			
+0023ada0	D3D	155	D3D8::Lock2DSurface	internal	0x18	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023ae40	D3D	501	FUN_0023ae40	internal	0x28	0	0	0	0	0	0	0	0	0	0	4	6	0			
+0023b040	D3D	64	FUN_0023b040	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023b080	D3D	31	D3D8::CMiniport_GetDisplayCapabilities	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023b09f	D3D	121	FUN_0023b09f	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023b118	D3D	613	FUN_0023b118	internal	0x1c	0	0	0	0	0	0	0	0	0	0	1	1	0		CMiniport video mode selection (Width,Height,Refresh,Flags,Format,Interval,...)	
+0023b380	D3D	706	D3D8::D3DDevice_Clear	device/frame	0x18	1	1	1	0	0	0	0	0	0	0	1	1	0			00146490:NiXBoxRenderer::vf17
+0023b760	D3D	17	D3D8::CMiniport_IsFlipPending	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023b780	D3D	3	FUN_0023b780	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023b790	D3D	279	FUN_0023b790	internal	8	0	0	0	0	0	0	0	0	0	0	0	0	0		GPU interrupt service routine: passed as immediate to KeInitializeInterrupt by CMiniport_InitHardware (push 0x23b790 at 0x23c926); ptr_refs only counts data sections [verify_d3d]	
+0023b8b0	D3D	191	FUN_0023b8b0	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023b980	D3D	266	FUN_0023b980	internal	0	0	0	0	0	0	0	0	0	0	0	6	6	0			
+0023ba90	D3D	304	FUN_0023ba90	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023bbc0	D3D	122	FUN_0023bbc0	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023bcb0	D3D	11	FUN_0023bcb0	internal	0x10	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023bd00	D3D	550	FUN_0023bd00	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023bf90	D3D	171	FUN_0023bf90	internal	0	0	0	0	0	0	0	0	0	0	0	6	6	0			
+0023c040	D3D	302	FUN_0023c040	internal	0	0	0	0	0	0	0	0	0	0	0	3	3	0			
+0023c1d0	D3D	206	FUN_0023c1d0	internal	0x10	0	0	0	0	0	0	0	0	0	0	0	0	0		GPU DPC routine: passed as immediate to KeInitializeDpc by CMiniport_InitHardware (push 0x23c1d0 at 0x23c898); ptr_refs only counts data sections [verify_d3d]	
+0023c2b0	D3D	19	FUN_0023c2b0	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c2c3	D3D	64	FUN_0023c2c3	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c303	D3D	99	FUN_0023c303	internal	0x14	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c366	D3D	52	FUN_0023c366	internal	4	0	0	0	0	0	0	0	0	0	0	2	12	0			
+0023c39a	D3D	43	FUN_0023c39a	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c3c5	D3D	65	FUN_0023c3c5	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c406	D3D	131	FUN_0023c406	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c489	D3D	152	FUN_0023c489	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c521	D3D	90	FUN_0023c521	internal	0x10	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c57b	D3D	207	D3D8::CMiniport_CreateCtxDmaObject	internal	0x14	0	0	0	0	0	0	0	0	0	0	1	11	0			
+0023c64a	D3D	144	FUN_0023c64a	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	11	0			
+0023c6da	D3D	107	FUN_0023c6da	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023c745	D3D	21	FUN_0023c745	internal	0	0	0	0	0	0	0	0	0	0	0	2	3	0			
+0023c75a	D3D	30	FUN_0023c75a	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c778	D3D	206	FUN_0023c778	internal	0xc	0	0	0	0	0	0	0	0	0	0	2	3	0			
+0023c846	D3D	71	FUN_0023c846	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c88d	D3D	354	D3D8::CMiniport_InitHardware	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023c9ef	D3D	494	FUN_0023c9ef	internal	0x1c	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023cbdd	D3D	194	FUN_0023cbdd	internal	8	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023cc9f	D3D	444	FUN_0023cc9f	internal	0	0	0	0	0	0	0	0	0	0	0	2	3	0			
+0023ce60	D3D	78	FUN_0023ce60	internal	0x10	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023ceb0	D3D	48	FUN_0023ceb0	internal	0x10	0	0	0	0	0	0	0	0	0	0	1	3	0			
+0023cee0	D3D	146	D3D8::D3D_CreateStandAloneSurface	resource	0x10	3	3	0	3	0	0	0	0	0	0	0	0	0			0015e430:FUN_0015e430,0015e8f0:FUN_0015e8f0,0015f580:FUN_0015f580
+0023cf80	D3D	20	D3D8::D3DSurface_GetDesc	resource	8	6	6	1	4	0	0	1	0	0	0	0	0	0			001466b0:NiXBoxRenderer::vf24,0014aab0:FUN_0014aab0,0015db00:FUN_0015db00,0015dda0:FUN_0015dda0,0015f580:FUN_0015f580,00265b0b:FUN_00265b0b
+0023cfa0	D3D	32	D3D8::D3DSurface_LockRect	resource	0x10	5	5	1	3	0	0	1	0	0	0	0	0	0			001466b0:NiXBoxRenderer::vf24,0015db00:FUN_0015db00,0015dda0:FUN_0015dda0,0015f580:FUN_0015f580,00265b0b:FUN_00265b0b
+0023cfc0	D3D	152	FUN_0023cfc0	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023d060	D3D	357	D3D8::D3D_LazySetPointParams	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023d1d0	D3D	344	FUN_0023d1d0	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023d330	D3D	482	FUN_0023d330	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023d520	D3D	474	FUN_0023d520	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023d700	D3D	899	FUN_0023d700	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023dac0	D3D	250	FUN_0023dac0	internal	0x10	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023dbc0	D3D	410	FUN_0023dbc0	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023dd60	D3D	316	FUN_0023dd60	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023dea0	D3D	826	FUN_0023dea0	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023e1e0	D3D	499	FUN_0023e1e0	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023e3e0	D3D	122	FUN_0023e3e0	internal	0	0	0	0	0	0	0	0	0	0	0	3	3	0			
+0023e460	D3D	401	D3D8::CDevice_SetStateVB	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023e600	D3D	51	FUN_0023e600	internal	0	0	0	0	0	0	0	0	0	0	0	7	14	0			
+0023e640	D3D	359	FUN_0023e640	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023e7a7	D3D	254	FUN_0023e7a7	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023e8a5	D3D	207	FUN_0023e8a5	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023e974	D3D	54	FUN_0023e974	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023e9aa	D3D	48	FUN_0023e9aa	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023e9da	D3D	113	FUN_0023e9da	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023ea4b	D3D	63	FUN_0023ea4b	internal	0	0	0	0	0	0	0	0	0	0	0	5	8	0			
+0023ea8a	D3D	57	FUN_0023ea8a	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023eac3	D3D	509	FUN_0023eac3	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+0023ecc0	D3D	18	FUN_0023ecc0	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023ecd2	D3D	397	FUN_0023ecd2	internal	0x10	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023ee5f	D3D	57	FUN_0023ee5f	internal	0x14	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023ee98	D3D	117	FUN_0023ee98	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023ef0d	D3D	2527	FUN_0023ef0d	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023f8ec	D3D	291	FUN_0023f8ec	internal	4	0	0	0	0	0	0	0	0	0	0	3	3	0			
+0023fa0f	D3D	129	FUN_0023fa0f	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023fa90	D3D	629	FUN_0023fa90	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+0023fd10	D3D	129	FUN_0023fd10	internal	0	0	0	0	0	0	0	0	0	0	0	1	29	0			
+0023fdb0	D3D	181	FUN_0023fdb0	internal	8	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00240390	D3D	8	FUN_00240390	device/frame	4	1	1	0	1	0	0	0	0	0	0	0	0	0		Vermutung Direct3DCreate8 (mov eax,1; ret 4; result stored by NiXBoxRenderer::Create 0x14c170)	0014c170:FUN_0014c170
+002403a0	D3D	41	D3D8::D3D_GetAdapterIdentifier	device/frame	0xc	1	1	1	0	0	0	0	0	0	0	0	0	0			00146350:NiXBoxRenderer::vf11
+002403d0	D3D	46	D3D8::D3D_GetDeviceCaps	device/frame	0xc	1	1	0	1	0	0	0	0	0	0	0	0	0			00147550:FUN_00147550
+00240400	D3D	126	D3D8::D3D_CheckDeviceFormat	device/frame	0x18	1	1	0	1	0	0	0	0	0	0	0	0	0			0014a410:FUN_0014a410
+00240480	D3D	22	D3D8::D3D_SetPushBufferSize	device/frame	8	1	1	0	1	0	0	0	0	0	0	0	0	0			0014c170:FUN_0014c170
+002404a0	D3D	165	D3D8::Direct3D_CreateDevice	device/frame	0x18	1	1	0	1	0	0	0	0	0	0	0	0	0			0014c170:FUN_0014c170
+00240550	D3D	294	FUN_00240550	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00240690	D3D	278	FUN_00240690	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002407b0	D3D	281	FUN_002407b0	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+002408d0	D3D	381	FUN_002408d0	internal	4	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00240a50	D3D	88	FUN_00240a50	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00240ab0	D3D	89	FUN_00240ab0	internal	0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00240b10	D3D	375	FUN_00240b10	internal	tail:002414e0	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00240c90	D3D	471	FUN_00240c90	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00240e70	D3D	260	FUN_00240e70	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00240f80	D3D	64	FUN_00240f80	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00240fc0	D3D	219	D3D8::D3DDevice_Swap	device/frame	4	1	1	1	0	0	0	0	0	0	0	0	0	0			00146460:NiXBoxRenderer::vf16
+002410a0	D3D	188	FUN_002410a0	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00241160	D3D	148	D3D8::D3DDevice_DrawVertices	draw	0xc	2	2	1	1	0	0	0	0	0	0	0	0	0			00149ae0:FUN_00149ae0,0014b700:NiXBoxRenderer::vf42
+00241200	D3D	599	D3D8::D3DDevice_DrawIndexedVertices	draw	0xc	5	5	3	2	0	0	0	0	0	0	0	0	0			00148ae0:NiXBoxRenderer::vf52,00149530:NiXBoxRenderer::vf53,00149ae0:FUN_00149ae0,0014b700:NiXBoxRenderer::vf42,0014bc30:FUN_0014bc30
+00241460	D3D	55	D3D8::D3DDevice_SetVertexData2f	internal	0xc	0	0	0	0	0	0	0	0	0	0	1	6	0			
+002414a0	D3D	53	D3D8::D3DDevice_Begin	internal	4	0	0	0	0	0	0	0	0	0	0	1	1	0			
+002414e0	D3D	61	D3D8::D3DDevice_End	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00241520	D3D	69	D3D8::D3DDevice_CreatePixelShader	shader	8	1	1	0	1	0	0	0	0	0	0	0	0	0			00147740:FUN_00147740
+00241570	D3D	27	D3D8::D3DDevice_DeletePixelShader	shader	4,tail:000f63fd	1	1	0	1	0	0	0	0	0	0	0	0	0			0014aca0:FUN_0014aca0
+00241590	D3D	499	D3D8::D3DDevice_SetPixelShader	shader	4	4	4	2	2	0	0	0	0	0	0	2	2	0			00148ae0:NiXBoxRenderer::vf52,00149530:NiXBoxRenderer::vf53,0014aca0:FUN_0014aca0,00163cd0:FUN_00163cd0
+00241790	D3D	31	D3D8::D3D_AllocContiguousMemory	resource	8	2	2	0	2	0	0	0	0	0	0	0	0	0			00160f70:sub_00160f70,00160ff0:sub_00160ff0
+002417b0	D3D	6	xboxkrnl.exe::MmFreeContiguousMemory	resource		1	1	0	1	0	0	0	0	0	0	0	0	0			00161180:sub_00161180
+002417c0	D3D	77	FUN_002417c0	internal	0x18	0	0	0	0	0	0	0	0	0	0	2	2	0			
+00241810	D3D	140	FUN_00241810	internal	0	0	0	0	0	0	0	0	0	0	0	1	1	0			
+00241c40	D3D	2204	FUN_00241c40	internal	0,tail:002418c0	0	0	0	0	0	0	0	0	0	0	1	1	0		D3D built-in movie capture to cache file (strings 0x2437c0..0x243864), only if dev+0x498/0x49c set	

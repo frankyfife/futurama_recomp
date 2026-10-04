@@ -1,0 +1,367 @@
+// Configuration loading (INI + command line). See config.h.
+#include "core/config.h"
+
+#include <shellapi.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
+#include <sstream>
+
+namespace core {
+namespace {
+
+Config* g_config = nullptr;
+const LauncherInfo* g_launcherInfo = nullptr;
+LauncherInfo g_emptyLauncherInfo{};
+
+std::string Lower(std::string_view s) {
+    std::string r(s);
+    std::transform(r.begin(), r.end(), r.begin(),
+                   [](unsigned char c) { return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c); });
+    return r;
+}
+
+std::string_view Trim(std::string_view s) {
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\r' || s.front() == '\n')) {
+        s.remove_prefix(1);
+    }
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r' || s.back() == '\n')) {
+        s.remove_suffix(1);
+    }
+    return s;
+}
+
+std::string Unquote(std::string_view s) {
+    s = Trim(s);
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+        s = s.substr(1, s.size() - 2);
+    }
+    return std::string(s);
+}
+
+std::string MakeKey(std::string_view section, std::string_view key) {
+    return section.empty() ? Lower(key) : Lower(section) + "." + Lower(key);
+}
+
+bool ParseBool(std::string_view text, bool& out) {
+    const std::string v = Lower(Trim(text));
+    if (v == "1" || v == "true" || v == "yes" || v == "on") {
+        out = true;
+        return true;
+    }
+    if (v == "0" || v == "false" || v == "no" || v == "off") {
+        out = false;
+        return true;
+    }
+    return false;
+}
+
+bool ParseU32(std::string_view text, std::uint32_t& out) {
+    const std::string v(Trim(text));
+    if (v.empty()) {
+        return false;
+    }
+    char* end = nullptr;
+    const unsigned long long n = std::strtoull(v.c_str(), &end, 0);
+    if (end == nullptr || *end != 0 || n > 0xFFFFFFFFull) {
+        return false;
+    }
+    out = static_cast<std::uint32_t>(n);
+    return true;
+}
+
+std::vector<std::string> SplitList(std::string_view text) {
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t comma = text.find(',', start);
+        if (comma == std::string_view::npos) {
+            comma = text.size();
+        }
+        std::string item(Trim(text.substr(start, comma - start)));
+        if (!item.empty()) {
+            out.push_back(std::move(item));
+        }
+        start = comma + 1;
+    }
+    return out;
+}
+
+std::filesystem::path ResolvePath(const std::string& value, const std::filesystem::path& base) {
+    std::filesystem::path p(Utf8ToWide(value));
+    if (p.is_relative() && !base.empty()) {
+        p = base / p;
+    }
+    return p.lexically_normal();
+}
+
+bool ReadIni(const std::filesystem::path& file, std::map<std::string, std::string, std::less<>>& values,
+             std::string& error) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        error = "cannot open config file " + WideToUtf8(file.wstring());
+        return false;
+    }
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string text = ss.str();
+    if (text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF &&
+        static_cast<unsigned char>(text[1]) == 0xBB && static_cast<unsigned char>(text[2]) == 0xBF) {
+        text.erase(0, 3);
+    }
+    const std::filesystem::path iniDir = file.parent_path();
+    std::string section;
+    std::istringstream lines(text);
+    std::string rawLine;
+    int lineNo = 0;
+    while (std::getline(lines, rawLine)) {
+        ++lineNo;
+        const std::string_view line = Trim(rawLine);
+        if (line.empty() || line.front() == ';' || line.front() == '#') {
+            continue;
+        }
+        if (line.front() == '[') {
+            if (line.back() != ']') {
+                error = WideToUtf8(file.wstring()) + ":" + std::to_string(lineNo) + ": bad section header";
+                return false;
+            }
+            section = Lower(Trim(line.substr(1, line.size() - 2)));
+            continue;
+        }
+        const size_t eq = line.find('=');
+        if (eq == std::string_view::npos) {
+            error = WideToUtf8(file.wstring()) + ":" + std::to_string(lineNo) + ": expected key = value";
+            return false;
+        }
+        const std::string key = MakeKey(section, Trim(line.substr(0, eq)));
+        std::string value = Unquote(line.substr(eq + 1));
+        if (section == "paths" && !value.empty()) {
+            value = WideToUtf8(ResolvePath(value, iniDir).wstring());
+        }
+        values[key] = std::move(value);
+    }
+    return true;
+}
+
+}  // namespace
+
+// --- Config accessors ---------------------------------------------------------------------------
+
+bool Config::Has(std::string_view section, std::string_view key) const {
+    return values.find(MakeKey(section, key)) != values.end() || values.find(Lower(key)) != values.end();
+}
+
+std::string Config::GetString(std::string_view section, std::string_view key, std::string_view def) const {
+    auto it = values.find(MakeKey(section, key));
+    if (it == values.end()) {
+        it = values.find(Lower(key));
+    }
+    return it != values.end() ? it->second : std::string(def);
+}
+
+bool Config::GetBool(std::string_view section, std::string_view key, bool def) const {
+    bool v = def;
+    if (Has(section, key) && ParseBool(GetString(section, key), v)) {
+        return v;
+    }
+    return def;
+}
+
+std::uint32_t Config::GetU32(std::string_view section, std::string_view key, std::uint32_t def) const {
+    std::uint32_t v = def;
+    if (Has(section, key) && ParseU32(GetString(section, key), v)) {
+        return v;
+    }
+    return def;
+}
+
+std::vector<std::string> Config::GetList(std::string_view section, std::string_view key) const {
+    return SplitList(GetString(section, key));
+}
+
+std::filesystem::path Config::GetPath(std::string_view section, std::string_view key,
+                                      const std::filesystem::path& def) const {
+    if (!Has(section, key)) {
+        return def;
+    }
+    const std::string v = GetString(section, key);
+    if (v.empty()) {
+        return def;
+    }
+    return ResolvePath(v, configFile.empty() ? exeDir : configFile.parent_path());
+}
+
+// --- loading ----------------------------------------------------------------------------------
+
+bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath, Config& out,
+                std::string& error) {
+    out = Config{};
+    out.exePath = exePath;
+    out.exeDir = exePath.parent_path();
+
+    // 1. Command line -> overrides (applied after the INI).
+    std::map<std::string, std::string, std::less<>> overrides;
+    std::filesystem::path explicitConfig;
+    std::error_code ec;
+    const std::filesystem::path cwd = std::filesystem::current_path(ec);
+    int argc = 0;
+    LPWSTR* argv = (commandLine && *commandLine) ? CommandLineToArgvW(commandLine, &argc) : nullptr;
+    for (int i = 1; argv != nullptr && i < argc; ++i) {
+        const std::string arg = WideToUtf8(argv[i]);
+        auto valueOf = [&](std::string_view prefix, std::string& value) {
+            if (arg.size() > prefix.size() && arg.compare(0, prefix.size(), prefix) == 0) {
+                value = Unquote(std::string_view(arg).substr(prefix.size()));
+                return true;
+            }
+            return false;
+        };
+        std::string v;
+        if (valueOf("--config=", v)) {
+            explicitConfig = ResolvePath(v, cwd);
+        } else if (valueOf("--userdata=", v)) {
+            overrides["paths.userdata"] = WideToUtf8(ResolvePath(v, cwd).wstring());
+        } else if (valueOf("--iso=", v)) {
+            overrides["paths.iso"] = WideToUtf8(ResolvePath(v, cwd).wstring());
+        } else if (valueOf("--xbe=", v)) {
+            overrides["paths.xbe"] = WideToUtf8(ResolvePath(v, cwd).wstring());
+        } else if (valueOf("--stop-at=", v)) {
+            overrides["debug.stop_at"] = v;
+        } else if (arg == "--selftest") {
+            overrides["debug.selftest"] = "1";
+        } else if (valueOf("--trace=", v)) {
+            overrides["debug.trace"] = v;
+        } else if (arg == "--strict") {
+            overrides["kernel.strict"] = "1";
+        } else if (valueOf("--log-level=", v)) {
+            overrides["log.level"] = v;
+        } else if (valueOf("--set=", v)) {
+            const size_t eq = v.find('=');
+            if (eq == std::string::npos || eq == 0) {
+                error = "--set expects <section>.<key>=<value>: " + arg;
+                LocalFree(argv);
+                return false;
+            }
+            overrides[Lower(v.substr(0, eq))] = v.substr(eq + 1);
+        } else {
+            error = "unknown command line option '" + arg +
+                    "' (known: --config= --userdata= --iso= --xbe= --stop-at= --selftest --trace= --strict "
+                    "--log-level= --set=section.key=value)";
+            LocalFree(argv);
+            return false;
+        }
+    }
+    if (argv != nullptr) {
+        LocalFree(argv);
+    }
+
+    // 2. INI file.
+    if (!explicitConfig.empty()) {
+        if (!std::filesystem::exists(explicitConfig, ec)) {
+            error = "config file not found: " + WideToUtf8(explicitConfig.wstring());
+            return false;
+        }
+        out.configFile = explicitConfig;
+    } else {
+        const std::filesystem::path def = out.exeDir / L"futurama.ini";
+        if (std::filesystem::exists(def, ec)) {
+            out.configFile = def;
+        }
+    }
+    if (!out.configFile.empty() && !ReadIni(out.configFile, out.values, error)) {
+        return false;
+    }
+    for (auto& [k, v] : overrides) {
+        out.values[k] = v;
+    }
+
+    // 3. Typed fields.
+    out.iso = out.GetPath("paths", "iso");
+    out.xbe = out.GetPath("paths", "xbe");
+    out.userdata = out.GetPath("paths", "userdata");
+    if (out.userdata.empty()) {
+        wchar_t buf[MAX_PATH * 2];
+        const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, static_cast<DWORD>(std::size(buf)));
+        if (n == 0 || n >= std::size(buf)) {
+            error = "%LOCALAPPDATA% is not set; configure [paths] userdata";
+            return false;
+        }
+        out.userdata = std::filesystem::path(buf) / L"FuturamaPC";
+    }
+    out.stopAt = Lower(out.GetString("debug", "stop_at"));
+    out.selftest = out.GetBool("debug", "selftest", false);
+    out.trace = out.GetList("debug", "trace");
+    for (auto& t : out.trace) {
+        t = Lower(t);
+    }
+    out.strict = out.GetBool("kernel", "strict", false);
+    out.logLevel = Lower(out.GetString("log", "level", "info"));
+#ifdef NDEBUG
+    constexpr bool kDebugBuild = false;
+#else
+    constexpr bool kDebugBuild = true;
+#endif
+    out.logConsole = out.GetBool("log", "console", kDebugBuild);
+    out.logDebugger = out.GetBool("log", "debugger", kDebugBuild);
+    const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+    const bool hasStderr = err != nullptr && err != INVALID_HANDLE_VALUE && GetFileType(err) != FILE_TYPE_UNKNOWN;
+    out.msgbox = out.GetBool("debug", "msgbox", !hasStderr);
+    out.hooksDisable = out.GetList("hooks", "disable");
+
+    for (const char* boolKey : {"debug.selftest", "kernel.strict", "log.console", "log.debugger", "debug.msgbox"}) {
+        auto it = out.values.find(boolKey);
+        bool dummy = false;
+        if (it != out.values.end() && !ParseBool(it->second, dummy)) {
+            error = std::string("invalid boolean for ") + boolKey + ": '" + it->second + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+const Config& GetConfig() noexcept {
+    static const Config empty{};
+    return g_config != nullptr ? *g_config : empty;
+}
+
+void SetConfig(Config config) {
+    if (g_config == nullptr) {
+        g_config = new Config(std::move(config));  // intentionally never freed (process lifetime)
+    } else {
+        *g_config = std::move(config);
+    }
+}
+
+void SetLauncherInfo(const LauncherInfo* info) noexcept { g_launcherInfo = info; }
+
+const LauncherInfo& GetLauncherInfo() noexcept {
+    return g_launcherInfo != nullptr ? *g_launcherInfo : g_emptyLauncherInfo;
+}
+
+std::uint32_t TlsSlotIndex(FutTlsSlot slot) noexcept {
+    return static_cast<std::uint32_t>(GetLauncherInfo().tlsSlots[slot]);
+}
+
+std::string WideToUtf8(std::wstring_view text) {
+    if (text.empty()) {
+        return {};
+    }
+    const int n = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0,
+                                      nullptr, nullptr);
+    std::string out(static_cast<size_t>(n), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), n, nullptr, nullptr);
+    return out;
+}
+
+std::wstring Utf8ToWide(std::string_view text) {
+    if (text.empty()) {
+        return {};
+    }
+    const int n = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    std::wstring out(static_cast<size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), n);
+    return out;
+}
+
+}  // namespace core

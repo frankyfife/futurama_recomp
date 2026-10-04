@@ -1,0 +1,111 @@
+  0 KfLowerIrql                    OK: callgraph EXTERNAL:01=KfLowerIrql; decomp 23/23
+  1 KeRaiseIrqlToDpcLevel          OK: callgraph EXTERNAL:02=KeRaiseIrqlToDpcLevel; decomp 21/21
+  2 IoCreateDevice                 OK: callgraph EXTERNAL:03=IoCreateDevice; decomp 1/1
+  3 RtlInitAnsiString              OK: callgraph EXTERNAL:04=RtlInitAnsiString; decomp 18/18
+  4 KeSetEvent                     OK: callgraph EXTERNAL:05=KeSetEvent; decomp 5/5
+  5 KeWaitForSingleObject          OK: callgraph EXTERNAL:06=KeWaitForSingleObject; decomp 5/5
+  6 KeInitializeTimerEx            OK: callgraph EXTERNAL:07=KeInitializeTimerEx; decomp 5/5
+  7 KeInitializeDpc                OK: callgraph EXTERNAL:08=KeInitializeDpc; decomp 7/7
+  8 IoInvalidDeviceRequest         OK: decomp 1/1
+  9 RtlLeaveCriticalSection        OK: callgraph EXTERNAL:0a=RtlLeaveCriticalSection; decomp 55/55
+ 10 RtlEnterCriticalSection        OK: callgraph EXTERNAL:0b=RtlEnterCriticalSection; decomp 12/12
+ 11 NtFreeVirtualMemory            OK: callgraph EXTERNAL:0c=NtFreeVirtualMemory; decomp 6/6
+ 12 NtAllocateVirtualMemory        OK: callgraph EXTERNAL:0d=NtAllocateVirtualMemory; decomp 6/6
+ 13 RtlCompareMemoryUlong          OK: callgraph EXTERNAL:0e=RtlCompareMemoryUlong; decomp 3/3
+ 14 RtlInitializeCriticalSection   OK: callgraph EXTERNAL:0f=RtlInitializeCriticalSection; decomp 2/2
+ 15 NtQueryVirtualMemory           OK: callgraph EXTERNAL:10=NtQueryVirtualMemory; decomp 1/1
+ 16 RtlRaiseException              OK: callgraph EXTERNAL:11=RtlRaiseException; decomp 3/3
+ 17 ExQueryNonVolatileSetting      OK: decomp 6/6; stub 0f9cc6=xboxkrnl.exe::ExQueryNonVolatileSetting
+ 18 ExEventObjectType              OK: decomp 1/1
+ 19 NtSetEvent                     OK: callgraph EXTERNAL:14=NtSetEvent; decomp 3/3
+ 20 NtWaitForSingleObjectEx        OK: callgraph EXTERNAL:15=NtWaitForSingleObjectEx; decomp 1/1
+ 21 KeDelayExecutionThread         OK: callgraph EXTERNAL:16=KeDelayExecutionThread; decomp 3/3
+ 22 NtSetInformationFile           OK: callgraph EXTERNAL:17=NtSetInformationFile; decomp 10/10
+ 23 KeQuerySystemTime              OK: callgraph EXTERNAL:18=KeQuerySystemTime; decomp 9/9
+ 24 RtlNtStatusToDosError          OK: callgraph EXTERNAL:19=RtlNtStatusToDosError; decomp 5/5
+ 25 NtCreateFile                   OK: callgraph EXTERNAL:1a=NtCreateFile; decomp 7/7
+ 26 NtClose                        OK: callgraph EXTERNAL:1b=NtClose; decomp 19/19
+ 27 XcSHAUpdate                    OK: decomp 6/6; stub 0f9ccc=xboxkrnl.exe::XcSHAUpdate
+ 28 XcSHAInit                      OK: decomp 4/4; stub 0f9cd2=xboxkrnl.exe::XcSHAInit
+ 29 XcSHAFinal                     OK: decomp 3/3; stub 0f9cd8=xboxkrnl.exe::XcSHAFinal
+ 30 XboxHDKey                      OK: decomp 1/1
+ 31 XboxSignatureKey               OK: decomp 1/1
+ 32 XboxAlternateSignatureKeys     OK: decomp 1/1
+ 33 NtWaitForSingleObject          OK: callgraph EXTERNAL:22=NtWaitForSingleObject; decomp 2/2
+ 34 NtReadFile                     OK: callgraph EXTERNAL:23=NtReadFile; decomp 4/4
+ 35 NtWriteFile                    OK: callgraph EXTERNAL:24=NtWriteFile; decomp 7/7
+ 36 NtQueryInformationFile         OK: callgraph EXTERNAL:25=NtQueryInformationFile; decomp 7/7
+ 37 NtQueryVolumeInformationFile   OK: callgraph EXTERNAL:26=NtQueryVolumeInformationFile; decomp 4/4
+ 38 NtFlushBuffersFile             OK: callgraph EXTERNAL:27=NtFlushBuffersFile; decomp 1/1
+ 39 NtUserIoApcDispatcher          OK: decomp 2/2
+ 40 NtFsControlFile                OK: callgraph EXTERNAL:29=NtFsControlFile; decomp 1/1
+ 41 NtDeviceIoControlFile          OK: callgraph EXTERNAL:2a=NtDeviceIoControlFile; decomp 2/2
+ 42 MmFreeSystemMemory             OK: callgraph EXTERNAL:2b=MmFreeSystemMemory; decomp 1/1
+ 43 NtOpenFile                     OK: callgraph EXTERNAL:2c=NtOpenFile; decomp 13/13
+ 44 MmAllocateSystemMemory         OK: callgraph EXTERNAL:2d=MmAllocateSystemMemory; decomp 1/1
+ 45 NtQueryFullAttributesFile      OK: callgraph EXTERNAL:2e=NtQueryFullAttributesFile; decomp 1/1
+ 46 NtQueryDirectoryFile           OK: callgraph EXTERNAL:2f=NtQueryDirectoryFile; decomp 3/3
+ 47 HalDiskCachePartitionCount     OK: decomp 1/1
+ 48 IoCreateSymbolicLink           OK: callgraph EXTERNAL:31=IoCreateSymbolicLink; decomp 3/3
+ 49 NtQuerySymbolicLinkObject      OK: callgraph EXTERNAL:32=NtQuerySymbolicLinkObject; decomp 1/1
+ 50 NtOpenSymbolicLinkObject       OK: callgraph EXTERNAL:33=NtOpenSymbolicLinkObject; decomp 1/1
+ 51 MmPersistContiguousMemory      OK: callgraph EXTERNAL:34=MmPersistContiguousMemory; decomp 2/2
+ 52 MmAllocateContiguousMemory     OK: callgraph EXTERNAL:35=MmAllocateContiguousMemory; decomp 2/2
+ 53 LaunchDataPage                 OK: decomp 2/2
+ 54 MmFreeContiguousMemory         OK: callgraph EXTERNAL:37=MmFreeContiguousMemory; decomp 12/12; stub 0f8463=XAPILIB::XPhysicalFree; stub 2417b0=xboxkrnl.exe::MmFreeContiguousMemory
+ 55 HalReturnToFirmware            OK: callgraph EXTERNAL:38=HalReturnToFirmware; decomp 2/2
+ 56 MmAllocateContiguousMemoryEx   OK: callgraph EXTERNAL:39=MmAllocateContiguousMemoryEx; decomp 10/10
+ 57 MmQueryAllocationSize          OK: callgraph EXTERNAL:3a=MmQueryAllocationSize; decomp 3/3
+ 58 MmSetAddressProtect            OK: callgraph EXTERNAL:3b=MmSetAddressProtect; decomp 2/2
+ 59 MmQueryAddressProtect          OK: callgraph EXTERNAL:3c=MmQueryAddressProtect; decomp 2/2
+ 60 KeSetTimer                     OK: callgraph EXTERNAL:3d=KeSetTimer; decomp 15/15
+ 61 KeCancelTimer                  OK: callgraph EXTERNAL:3e=KeCancelTimer; decomp 15/15
+ 62 ObfDereferenceObject           OK: decomp 1/1
+ 63 ObReferenceObjectByHandle      OK: callgraph EXTERNAL:40=ObReferenceObjectByHandle; decomp 1/1
+ 64 XboxHardwareInfo               OK: decomp 7/7
+ 65 IoStartPacket                  OK: callgraph EXTERNAL:42=IoStartPacket; decomp 1/1
+ 66 IofCompleteRequest             OK: callgraph EXTERNAL:43=IofCompleteRequest; decomp 9/9
+ 67 IoStartNextPacket              OK: callgraph EXTERNAL:44=IoStartNextPacket; decomp 8/8
+ 68 ExFreePool                     OK: callgraph EXTERNAL:45=ExFreePool; decomp 2/2
+ 69 ExAllocatePoolWithTag          OK: callgraph EXTERNAL:46=ExAllocatePoolWithTag; decomp 3/3
+ 70 IoMarkIrpMustComplete          OK: callgraph EXTERNAL:47=IoMarkIrpMustComplete; decomp 1/1
+ 71 HalIsResetOrShutdownPending    OK: callgraph EXTERNAL:48=HalIsResetOrShutdownPending; decomp 1/1
+ 72 XcVerifyPKCS1Signature         OK: decomp 2/2; stub 0f9cde=xboxkrnl.exe::XcVerifyPKCS1Signature
+ 73 XePublicKeyData                OK: decomp 1/1
+ 74 HalRegisterShutdownNotification OK: callgraph EXTERNAL:4b=HalRegisterShutdownNotification; decomp 8/8
+ 75 XboxKrnlVersion                OK: decomp 1/1
+ 76 PsTerminateSystemThread        n/a: keine Ghidra-Referenz (Code liegt ausserhalb von Ghidra-Funktionen)
+ 77 PsCreateSystemThreadEx         OK: callgraph EXTERNAL:4e=PsCreateSystemThreadEx; decomp 1/1
+ 78 HalInitiateShutdown            n/a: keine Ghidra-Referenz (Code liegt ausserhalb von Ghidra-Funktionen)
+ 79 HalGetInterruptVector          OK: callgraph EXTERNAL:50=HalGetInterruptVector; decomp 4/4
+ 80 KfRaiseIrql                    OK: callgraph EXTERNAL:51=KfRaiseIrql; decomp 2/2
+ 81 KeConnectInterrupt             OK: callgraph EXTERNAL:52=KeConnectInterrupt; decomp 4/4
+ 82 KeInitializeInterrupt          OK: callgraph EXTERNAL:53=KeInitializeInterrupt; decomp 4/4
+ 83 KeStallExecutionProcessor      OK: callgraph EXTERNAL:54=KeStallExecutionProcessor; decomp 6/6
+ 84 RtlEqualString                 OK: callgraph EXTERNAL:55=RtlEqualString; decomp 1/1
+ 85 XeLoadSection                  OK: callgraph EXTERNAL:56=XeLoadSection; decomp 1/1
+ 86 XeUnloadSection                OK: callgraph EXTERNAL:57=XeUnloadSection; decomp 1/1
+ 87 IdexChannelObject              n/a: keine Ghidra-Referenz (Code liegt ausserhalb von Ghidra-Funktionen)
+ 88 MmGetPhysicalAddress           OK: callgraph EXTERNAL:59=MmGetPhysicalAddress; decomp 8/8
+ 89 MmLockUnlockBufferPages        OK: callgraph EXTERNAL:5a=MmLockUnlockBufferPages; decomp 10/10
+ 90 KeInsertQueueDpc               OK: callgraph EXTERNAL:5b=KeInsertQueueDpc; decomp 5/5
+ 91 MmLockUnlockPhysicalPage       OK: callgraph EXTERNAL:5c=MmLockUnlockPhysicalPage; decomp 2/2
+ 92 AvGetSavedDataAddress          OK: callgraph EXTERNAL:5d=AvGetSavedDataAddress; decomp 3/3
+ 93 AvSendTVEncoderOption          OK: callgraph EXTERNAL:5e=AvSendTVEncoderOption; decomp 6/6
+ 94 AvSetDisplayMode               OK: callgraph EXTERNAL:5f=AvSetDisplayMode; decomp 1/1
+ 95 AvSetSavedDataAddress          OK: callgraph EXTERNAL:60=AvSetSavedDataAddress; decomp 1/1
+ 96 HalReadWritePCISpace           OK: callgraph EXTERNAL:61=HalReadWritePCISpace; decomp 1/1
+ 97 KeDisconnectInterrupt          OK: callgraph EXTERNAL:62=KeDisconnectInterrupt; decomp 3/3
+ 98 DbgPrint                       OK: decomp 2/2; stub 0f9ce4=xboxkrnl.exe::DbgPrint
+ 99 MmClaimGpuInstanceMemory       OK: callgraph EXTERNAL:64=MmClaimGpuInstanceMemory; decomp 1/1
+100 KeSaveFloatingPointState       OK: callgraph EXTERNAL:65=KeSaveFloatingPointState; decomp 1/1
+101 KeRestoreFloatingPointState    OK: callgraph EXTERNAL:66=KeRestoreFloatingPointState; decomp 1/1
+102 ExQueryPoolBlockSize           OK: callgraph EXTERNAL:67=ExQueryPoolBlockSize; decomp 2/2
+103 KeRemoveQueueDpc               OK: callgraph EXTERNAL:68=KeRemoveQueueDpc; decomp 3/3
+104 KeSynchronizeExecution         OK: callgraph EXTERNAL:69=KeSynchronizeExecution; decomp 2/2
+105 RtlUnwind                      OK: decomp 3/3; stub 170aae=xboxkrnl.exe::RtlUnwind
+106 KeBugCheck                     OK: callgraph EXTERNAL:6b=KeBugCheck; decomp 3/3
+107 MmCreateKernelStack            OK: callgraph EXTERNAL:6c=MmCreateKernelStack; decomp 1/1
+108 MmDeleteKernelStack            OK: callgraph EXTERNAL:6d=MmDeleteKernelStack; decomp 1/1
+109 DbgBreakPoint                  OK: decomp 2/2; stub 170ab4=xboxkrnl.exe::DbgBreakPoint
+110 HalBootSMCVideoMode            OK: decomp 1/1

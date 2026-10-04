@@ -1,0 +1,76 @@
+slot	offset	address	overrides_parent	parent_impl	guessed_name	confidence	callers
+0	0x000	0x0014cb90	yes	0x00140750	~NiXBoxRenderer (scalar deleting dtor)	high	NiPointer-Release (generisch)
+1	0x004	0x0014b090	yes	0x001405f0	GetRTTI	high	generisch (IsKindOf)
+2	0x008	0x000114b0	no	0x000114b0	NiObject::vf02 (geerbt)	high	-
+3	0x00c	0x000fdf90	no	0x000fdf90	NiObject::vf03 (geerbt)	high	-
+4	0x010	0x000aed30	no	0x000aed30	NiObject-Stub (geerbt, leer)	high	-
+5	0x014	0x000fdfa0	no	0x000fdfa0	NiObject::vf05 (geerbt)	high	-
+6	0x018	0x000fdfb0	no	0x000fdfb0	NiObject::vf06 (geerbt)	high	-
+7	0x01c	0x000fdfd0	no	0x000fdfd0	NiObject::vf07 (geerbt)	high	-
+8	0x020	0x00140640	no	0x00140640	GetViewerStrings (NiRenderer)	medium	Debug-Viewer
+9	0x024	0x000b0390	no	0x000b0390	NiObject::vf09 (geerbt, leer)	high	-
+10	0x028	0x000b0390	no	0x000b0390	NiObject::vf09 (geerbt, leer)	high	-
+11	0x02c	0x00146350	yes(pure)	0x001668b6	GetDriverInfo	high	keine gefunden
+12	0x030	0x0014b130	yes(pure)	0x001668b6	GetFlags (Caps, this+0x2d8)	high	keine gefunden
+13	0x034	0x001463e0	yes(pure)	0x001668b6	FindClosestPixelFormat(const NiTexture::FormatPrefs&)	medium	keine virtuellen (intern direkt FUN_001572d0)
+14	0x038	0x0014b0a0	yes	0x00140620	unbekannt (Basis 0x800000, Xbox 0; 2 Args)	low	keine gefunden
+15	0x03c	0x00146400	yes(pure)	0x001668b6	SetRenderTarget(NiRenderedTexture* oder NULL=Backbuffer)	high	GAME FUN_0001f1a0(2x), FUN_0003b960(2x)
+16	0x040	0x00146460	yes(pure)	0x001668b6	DisplayFrame (D3DDevice_Swap nur wenn Backbuffer aktiv; danach this+0x64=0 und VB-Manager-Framezaehler++ via FUN_00157970)	high	GAME FUN_000d2630 (Hauptschleife), FUN_0002a660(8x), FUN_000a62b0(3x), FUN_000c8e90(2x), FUN_000ee080, FUN_000a26a0(2x); NI FUN_000feec0 (NiCamera-Wrapper <- GAME FUN_0003b960)
+17	0x044	0x00146490	yes(pure)	0x001668b6	ClearBuffer(const NiRect<float>*, uiMode 1=Back 2=Stencil 4=Z; Z/Stencil nur mit Depth-Surface; setzt vorher Viewport auf volle RT-Groesse)	high	GAME FUN_000d2630, FUN_0001bbb0, FUN_0001f1a0(2x), FUN_00021a80, FUN_0002a660(8x), FUN_000a4bb0, FUN_000a62b0(3x), FUN_000a8290, FUN_000c8e90(5x), FUN_000d62e0, FUN_000e1970, FUN_000e3310, FUN_000a26a0(2x); NI FUN_000fee90 (NiCamera-Wrapper <- GAME FUN_0003b960, FUN_00045f10, FUN_000e8920, FUN_000ede90, FUN_000ee080)
+18	0x048	0x00146600	yes	0x000aed40	GetLeftRightSwap	medium	keine gefunden
+19	0x04c	0x00146620	yes	0x001605f0	SetLeftRightSwap(bool)	medium	keine gefunden
+20	0x050	0x00146640	yes	0x00140600	SetWBuffer/UseWBuffer(bool) -> D3DRS_ZENABLE=USEW	medium	keine gefunden
+21	0x054	0x00146680	yes(pure)	0x001668b6	GetBufferWidth (aktuelles Render-Target)	high	GAME FUN_000d5bb0, FUN_000ef370, FUN_000ef680
+22	0x058	0x00146690	yes(pure)	0x001668b6	GetBufferHeight (aktuelles Render-Target)	high	GAME FUN_000d5bb0, FUN_000ef370, FUN_000ef680
+23	0x05c	0x001466a0	yes(pure)	0x001668b6	GetBufferDepth (Bits/Pixel des Render-Targets)	medium	keine gefunden
+24	0x060	0x001466b0	yes(pure)	0x001668b6	TakeScreenShot(const NiRect<unsigned>*) -> NiPixelData*	high	keine gefunden
+25	0x064	0x00146800	yes(pure)	0x001668b6	Blt/FastCopy(NiBltSource*, rect*, x, y) -> D3DDevice_CopyRects	medium	keine gefunden
+26	0x068	0x0014b0b0	yes	0x000aed30	SetDepthClear(float)	high	keine gefunden
+27	0x06c	0x0014b0c0	yes(pure)	0x001668b6	SetBackgroundColor(const NiColor&)	high	GAME FUN_000d26a0, FUN_00012210, FUN_00012cc0, FUN_00012d20, FUN_00021a80, FUN_0002a660, FUN_0003b960(2x), FUN_000a62b0, FUN_000c8e90(3x), FUN_000ede90(2x), FUN_000ee080
+28	0x070	0x0014b120	yes	0x000aed30	SetStencilClear(unsigned)	high	keine gefunden
+29	0x074	0x00146930	yes	0x00140610	GetMaxFogValue	medium	keine gefunden
+30	0x078	0x00146940	yes	0x000aed30	SetMaxFogValue(float)	medium	keine gefunden
+31	0x07c	0x00146990	yes(pure)	0x001668b6	PrecacheTexture(NiTexture*, ?, ?) -> jmp TextureManager-vf3 0x15f7e0 (ret 0xc = 3 Stack-Args; Ziel liegt ausserhalb jeder Ghidra-Funktion)	medium	keine gefunden
+32	0x080	0x001469a0	yes(pure)	0x001668b6	PurgeAllTextures(bool)	medium	keine gefunden
+33	0x084	0x00148000	yes(pure)	0x001668b6	PurgeTexture(NiTexture*) (RendererData +0x20 loeschen)	medium	keine gefunden
+34	0x088	0x000aef60	no	0x000aef60	unbekannt (Basis-Stub return false, 2 Args)	low	keine gefunden
+35	0x08c	0x00140630	no	0x00140630	unbekannt (Basis-Stub return false, 6 Args)	low	keine gefunden
+36	0x090	0x00013db0	no	0x00013db0	unbekannt (Basis-Stub return 0)	low	keine gefunden
+37	0x094	0x001605f0	yes(pure)	0x001668b6	unbekannt (pure in NiRenderer, Xbox return false)	low	keine gefunden
+38	0x098	0x00013db0	yes(pure)	0x001668b6	unbekannt (pure in NiRenderer, Xbox return 0)	low	keine gefunden
+39	0x09c	0x0014b140	yes	0x001469b0	PrecacheGeometry(NiGeometry*, uiFlags (Bit0: CPU-Arrays nach Upload in BeginScene freigeben), NiRendererSpecificProperty* (Vermutung), ?, ?); geskinnt -> FUN_00148170, sonst nur NiTriShape/NiTriStrips -> FUN_00148020	medium	GAME FUN_000ce930(2x), FUN_000d0dd0, FUN_000d1120
+40	0x0a0	0x00140130	no	0x00140130	unbekannt (setzt Out-Smartpointer auf NULL)	low	keine gefunden
+41	0x0a4	0x00146e20	yes	0x001403f0	BeginBatch(NiPropertyState*, NiDynamicEffectState*)	medium	keine gefunden
+42	0x0a8	0x0014b700	yes	0x000b0390	EndBatch (rendert Batch-Liste this+0x518)	medium	keine gefunden
+43	0x0ac	0x0014bc20	yes	0x00140110	BatchRenderShape (Thunk -> 0x1499b0)	medium	keine gefunden
+44	0x0b0	0x0014bc20	yes	0x00140120	BatchRenderStrips (Thunk -> 0x1499b0)	medium	keine gefunden
+45	0x0b4	0x00148950	yes	0x000b0390	BeginScene/BeginFrame (Caches reset, this+0x500=1)	high	NI NiCamera::Click FUN_00100c50
+46	0x0b8	0x001469c0	yes	0x000b0390	EndScene/EndFrame (this+0x500=0)	high	NI NiCamera::Click FUN_00100c50
+47	0x0bc	0x001469e0	yes(pure)	0x001668b6	SetCameraData(loc, dir, up, right, NiFrustum, NiRect<float> port); D3DDevice_SetTransform(0=VIEW / 1=PROJECTION, Xbox-Zaehlung) + SetViewport	high	NI NiCamera::Click FUN_00100c50; REN Create FUN_0014c170, FUN_00148870
+48	0x0c0	0x0014c4f0	yes(pure)	0x001668b6	RenderShape(NiTriShapeData*, NiSkinInstance*, const NiTransform&, const NiBound&)	high	NI NiTriShape::vf33 0x1166d0; NiRenderer::vf43 (Basis)
+49	0x0c4	0x0014b590	yes(pure)	0x001668b6	RenderTriangles(NiTrianglesData*, const NiTransform&, const NiBound&)	high	NI NiTriangles::vf33 0x11af60
+50	0x0c8	0x0014b590	yes(pure)	0x001668b6	RenderTriStrip(NiTriStripData*, const NiTransform&, const NiBound&)	high	NI NiTriStrip::vf33 0x11b9a0
+51	0x0cc	0x0014c4f0	yes(pure)	0x001668b6	RenderTristrips(NiTriStripsData*, NiSkinInstance*, const NiTransform&, const NiBound&)	high	NI NiTriStrips::vf33 0x11c460; NiRenderer::vf44 (Basis)
+52	0x0d0	0x00148ae0	yes(pure)	0x001668b6	RenderPoints(NiParticlesData*, const NiTransform&, const NiBound&)	high	NI NiParticles::vf33 0x10f820, NiAutoNormalParticles::vf33 0x10fc60
+53	0x0d4	0x00149530	yes(pure)	0x001668b6	RenderLines(NiLinesData*, const NiTransform&, const NiBound&)	high	NI NiLines::vf33 0x10e6f0
+54	0x0d8	0x0014b5f0	yes(pure)	0x001668b6	RenderScreenPolygon(NiScreenPolygon*)	high	NI FUN_00106af0 (NiScreenPolygon-Draw) <- NiCamera::Click; Polygone erzeugt das Spiel selbst (ctor FUN_00106d50 aus 13 GAME-Funktionen, u.a. Movie-Player FUN_000ee220)
+55	0x0dc	0x0014c570	yes(pure)	0x001668b6	RenderScreenTexture(NiScreenTexture*)	high	NI FUN_0010af70 <- NiCamera::Click
+56	0x0e0	0x00151dc0	yes(pure)	0x001668b6	unbekannt (0,0,0,Frustum-Plane-Maske; Xbox no-op)	low	NI FUN_000ff610 (NiCamera) <- alle Geometrie-vf33
+57	0x0e4	0x000256c0	no	0x000256c0	unbekannt (Basis return true)	low	keine gefunden
+58	0x0e8	0x00146ea0	yes	0x000aed30	PurgeGeometryData(NiGeometryData*)	high	NI FUN_00140190 (Broadcast) <- NiGeometryData dtor
+59	0x0ec	0x00146e90	yes	0x000aed30	PurgeMaterial(NiMaterialProperty*)	high	NI FUN_001401c0 <- NiMaterialProperty dtor
+60	0x0f0	0x00146e40	yes	0x000aed30	PurgeEffect(NiDynamicEffect*) (Xbox: nur NiLight)	high	NI FUN_00140160 <- NiTextureEffect/NiLight dtor
+61	0x0f4	0x00146ef0	yes	0x000aed30	PurgeScreenTextureRendererData(NiScreenTexture*)	high	NI FUN_001401f0 <- NiScreenTexture dtor
+62	0x0f8	0x00146ec0	yes	0x000aed30	PurgeSkinPartitionRendererData(NiSkinPartition*)	high	NI FUN_00140220 <- NiSkinPartition dtor
+63	0x0fc	0x000aed30	no	0x000aed30	unbekannt Purge* (leer; Vermutung PurgeSkinInstance)	low	keine gefunden
+64	0x100	0x000aed30	no	0x000aed30	PurgeScreenPolygonRendererData(NiScreenPolygon*) (leer)	medium	NI FUN_00140250 <- NiScreenPolygon dtor
+65	0x104	0x00147350	yes(pure)	0x001668b6	CreateSourceTextureRendererData(NiSourceTexture*) (muss true liefern, sonst liefert NiSourceTexture::Create NULL)	high	NI FUN_00117fc0 (Broadcast) <- NiSourceTexture::vf10, FUN_00118520, FUN_00118600 (<- GAME FUN_00099030, FUN_000ee220, FUN_000ee910; Preload-Flag DAT_002d7900=1); REN FUN_0015f8a0
+66	0x108	0x00147380	yes(pure)	0x001668b6	CreateRenderedTextureRendererData(NiRenderedTexture*)	high	NI NiRenderedTexture::Create FUN_0013ffe0 <- GAME FUN_0001f360, FUN_00038070, FUN_0006b670
+67	0x10c	0x001473b0	yes	0x001605f0	CreateRenderedCubeMapRendererData (Vermutung)	medium	keine gefunden
+68	0x110	0x001473e0	yes	0x001605f0	CreateSourceCubeMapRendererData (Vermutung)	medium	keine gefunden
+69	0x114	0x00147410	yes(pure)	0x001668b6	CreatePaletteRendererData(NiPalette*)	high	NI FUN_00110bd0 <- NiPalette ctor FUN_00110c80/FUN_00110d40 (<- GAME FUN_00099030), vf03; REN FUN_0015df60
+70	0x118	0x00147470	yes	0x000256c0	CreateBltSourceRendererData(NiBltSource*)	high	NI FUN_00111d70 <- NiBltSource::vf04; REN vf25
+71	0x11c	0x000b0390	no	0x000b0390	unbekannt (leer in Basis und Xbox)	low	GAME FUN_0002a660 (1x)
+72	0x120	0x001605f0	new	-	unbekannt (neu in NiXBoxRenderer, return false)	low	keine gefunden
+73	0x124	0x001557b0	new	-	unbekannt (neu in NiXBoxRenderer, return 0)	low	keine gefunden
+74	0x128	0x001469b0	new	-	unbekannt (neu in NiXBoxRenderer, return false, 5 Args)	low	keine gefunden

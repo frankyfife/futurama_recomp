@@ -1,0 +1,4 @@
+; Exports of futurama_host.dll. HostMain is __cdecl (see src/shared/launcher_info.h, HostMainFn).
+LIBRARY futurama_host
+EXPORTS
+    HostMain

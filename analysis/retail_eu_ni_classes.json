@@ -1,0 +1,2157 @@
+{
+ "classes": {
+  "AimController": {
+   "name": "AimController",
+   "rtti": 3000824,
+   "size": 140,
+   "parent": "NiTimeController",
+   "getrtti": [
+    226832
+   ],
+   "vtable": 2710064,
+   "vtable_len": 22
+  },
+  "LMSource": {
+   "name": "LMSource",
+   "rtti": 3057820,
+   "size": 240,
+   "parent": "LightSource",
+   "getrtti": [
+    785760
+   ],
+   "vtable": 2765024,
+   "vtable_len": 40
+  },
+  "LMTarget": {
+   "name": "LMTarget",
+   "rtti": 3057804,
+   "size": 224,
+   "parent": "LightTarget",
+   "getrtti": [
+    785696
+   ],
+   "vtable": 2764864,
+   "vtable_len": 40
+  },
+  "LightSource": {
+   "name": "LightSource",
+   "rtti": 3057876,
+   "size": 224,
+   "parent": "NiAVObject",
+   "getrtti": [
+    785504
+   ],
+   "vtable": 2764376,
+   "vtable_len": 40
+  },
+  "LightTarget": {
+   "name": "LightTarget",
+   "rtti": 3057836,
+   "size": 192,
+   "parent": "NiAVObject",
+   "getrtti": [
+    785440
+   ],
+   "vtable": 2764704,
+   "vtable_len": 40
+  },
+  "MasterPropertyAccumulator": {
+   "name": "MasterPropertyAccumulator",
+   "rtti": 3000960,
+   "size": 20,
+   "parent": "NiAccumulator",
+   "getrtti": [
+    229472
+   ],
+   "vtable": 2710216,
+   "vtable_len": 14
+  },
+  "NiAVObject": {
+   "name": "NiAVObject",
+   "rtti": 3117296,
+   "size": 192,
+   "parent": "NiObjectNET",
+   "getrtti": [
+    1248384
+   ],
+   "vtable": 2778296,
+   "vtable_len": 40,
+   "vtable_alternatives": [
+    2791040
+   ],
+   "ctor": 1058912
+  },
+  "NiAccumulator": {
+   "name": "NiAccumulator",
+   "rtti": 3205488,
+   "size": 12,
+   "parent": "NiObject",
+   "getrtti": [
+    213200
+   ],
+   "vtable": 2709768,
+   "vtable_len": 14
+  },
+  "NiAlphaAccumulator": {
+   "name": "NiAlphaAccumulator",
+   "rtti": 3118424,
+   "size": 68,
+   "parent": "NiClusterAccumulator",
+   "create": 1109712,
+   "alloc_size": 68,
+   "getrtti": [
+    173312
+   ],
+   "vtable": 2707836,
+   "vtable_len": 14,
+   "ctor": 173216
+  },
+  "NiAlphaController": {
+   "name": "NiAlphaController",
+   "rtti": 3120620,
+   "size": 64,
+   "parent": "NiFloatController",
+   "create": 1181088,
+   "alloc_size": 64,
+   "getrtti": [
+    1180944
+   ],
+   "vtable": 2789072,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiAlphaProperty": {
+   "name": "NiAlphaProperty",
+   "rtti": 3117392,
+   "size": 28,
+   "parent": "NiProperty",
+   "create": 1066080,
+   "alloc_size": 28,
+   "getrtti": [
+    81312
+   ],
+   "vtable": 2702004,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiAmbientLight": {
+   "name": "NiAmbientLight",
+   "rtti": 3118448,
+   "size": 272,
+   "parent": "NiLight",
+   "create": 1109840,
+   "alloc_size": 272,
+   "getrtti": [
+    1110016
+   ],
+   "vtable": 2781200,
+   "vtable_len": 41,
+   "ctor_inlined": true
+  },
+  "NiAutoNormalParticles": {
+   "name": "NiAutoNormalParticles",
+   "rtti": 3118644,
+   "size": 240,
+   "parent": "NiParticles",
+   "create": 1113056,
+   "alloc_size": 240,
+   "getrtti": [
+    1113152
+   ],
+   "vtable": 2781808,
+   "vtable_len": 47,
+   "ctor_inlined": true
+  },
+  "NiAutoNormalParticlesData": {
+   "name": "NiAutoNormalParticlesData",
+   "rtti": 3118568,
+   "size": 64,
+   "parent": "NiParticlesData",
+   "create": 1112784,
+   "alloc_size": 64,
+   "getrtti": [
+    1112912
+   ],
+   "vtable": 2781720,
+   "vtable_len": 16,
+   "ctor_inlined": true
+  },
+  "NiBSPNode": {
+   "name": "NiBSPNode",
+   "rtti": 3118824,
+   "size": 256,
+   "parent": "NiNode",
+   "create": 1124336,
+   "alloc_size": 256,
+   "getrtti": [
+    1124176
+   ],
+   "vtable": 2782448,
+   "vtable_len": 45,
+   "ctor": 1124064
+  },
+  "NiBillboardNode": {
+   "name": "NiBillboardNode",
+   "rtti": 3118672,
+   "size": 240,
+   "parent": "NiNode",
+   "create": 1114816,
+   "alloc_size": 240,
+   "getrtti": [
+    425424
+   ],
+   "vtable": 2735808,
+   "vtable_len": 45,
+   "ctor_inlined": true
+  },
+  "NiBltSource": {
+   "name": "NiBltSource",
+   "rtti": 3118788,
+   "size": 32,
+   "parent": "NiObject",
+   "create": 1122048,
+   "alloc_size": 32,
+   "getrtti": [
+    1121968
+   ],
+   "vtable": 2782348,
+   "vtable_len": 13,
+   "ctor": 1121856
+  },
+  "NiBoneLODController": {
+   "name": "NiBoneLODController",
+   "rtti": 3120728,
+   "size": 124,
+   "parent": "NiTimeController",
+   "create": 1189984,
+   "alloc_size": 124,
+   "getrtti": [
+    1189696
+   ],
+   "vtable": 2789208,
+   "vtable_len": 21,
+   "ctor": 1189520
+  },
+  "NiBsp": {
+   "name": "NiBsp",
+   "rtti": 3116700,
+   "size": 320,
+   "parent": "NiAVObject",
+   "create": 1038512,
+   "alloc_size": 320,
+   "getrtti": [
+    1037984
+   ],
+   "vtable": 2777360,
+   "vtable_len": 44,
+   "ctor": 1037712
+  },
+  "NiCamera": {
+   "name": "NiCamera",
+   "rtti": 3117184,
+   "size": 592,
+   "parent": "NiAVObject",
+   "create": 1052720,
+   "alloc_size": 592,
+   "getrtti": [
+    1047952
+   ],
+   "vtable": 2777840,
+   "vtable_len": 40,
+   "ctor": 1050944
+  },
+  "NiClusterAccumulator": {
+   "name": "NiClusterAccumulator",
+   "rtti": 3118364,
+   "size": 40,
+   "parent": "NiAccumulator",
+   "create": 1108832,
+   "alloc_size": 40,
+   "getrtti": [
+    1108656
+   ],
+   "vtable": 2781108,
+   "vtable_len": 14,
+   "ctor": 1108528
+  },
+  "NiCollisionSwitch": {
+   "name": "NiCollisionSwitch",
+   "rtti": 3118872,
+   "size": 224,
+   "parent": "NiNode",
+   "create": 1124784,
+   "alloc_size": 224,
+   "getrtti": [
+    1124640
+   ],
+   "vtable": 2782648,
+   "vtable_len": 45,
+   "ctor_inlined": true
+  },
+  "NiColorData": {
+   "name": "NiColorData",
+   "rtti": 3120760,
+   "size": 20,
+   "parent": "NiObject",
+   "create": 1196304,
+   "alloc_size": 20,
+   "getrtti": [
+    1196080
+   ],
+   "vtable": 2789324,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiDirectionalLight": {
+   "name": "NiDirectionalLight",
+   "rtti": 3118892,
+   "size": 288,
+   "parent": "NiLight",
+   "create": 1125264,
+   "alloc_size": 288,
+   "getrtti": [
+    1125120
+   ],
+   "vtable": 2782864,
+   "vtable_len": 41,
+   "ctor": 1125040
+  },
+  "NiDitherProperty": {
+   "name": "NiDitherProperty",
+   "rtti": 3118912,
+   "size": 24,
+   "parent": "NiProperty",
+   "create": 1125824,
+   "alloc_size": 24,
+   "getrtti": [
+    1125536
+   ],
+   "vtable": 2783048,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiDynamicEffect": {
+   "name": "NiDynamicEffect",
+   "rtti": 3205544,
+   "size": 224,
+   "parent": "NiAVObject",
+   "getrtti": [
+    1317136
+   ],
+   "vtable": 2793848,
+   "vtable_len": 41
+  },
+  "NiExtraData": {
+   "name": "NiExtraData",
+   "rtti": 3118072,
+   "size": 20,
+   "parent": "NiObject",
+   "create": 1087104,
+   "alloc_size": 20,
+   "getrtti": [
+    1086768
+   ],
+   "vtable": 2779780,
+   "vtable_len": 11,
+   "ctor": 1086656
+  },
+  "NiFlipController": {
+   "name": "NiFlipController",
+   "rtti": 3120800,
+   "size": 100,
+   "parent": "NiTimeController",
+   "create": 1200688,
+   "alloc_size": 100,
+   "getrtti": [
+    1200240
+   ],
+   "vtable": 2789392,
+   "vtable_len": 21,
+   "ctor": 1200128
+  },
+  "NiFloatController": {
+   "name": "NiFloatController",
+   "rtti": 3208596,
+   "size": 64,
+   "parent": "NiTimeController",
+   "getrtti": [
+    1180896
+   ],
+   "vtable": 2788984,
+   "vtable_len": 21
+  },
+  "NiFloatData": {
+   "name": "NiFloatData",
+   "rtti": 3120580,
+   "size": 20,
+   "parent": "NiObject",
+   "create": 1180176,
+   "alloc_size": 20,
+   "getrtti": [
+    1180048
+   ],
+   "vtable": 2788908,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiFltAnimationNode": {
+   "name": "NiFltAnimationNode",
+   "rtti": 3119020,
+   "size": 288,
+   "parent": "NiSwitchNode",
+   "create": 1130256,
+   "alloc_size": 288,
+   "getrtti": [
+    1130048
+   ],
+   "vtable": 2783368,
+   "vtable_len": 45,
+   "ctor_inlined": true
+  },
+  "NiFogProperty": {
+   "name": "NiFogProperty",
+   "rtti": 3117416,
+   "size": 40,
+   "parent": "NiProperty",
+   "create": 1066992,
+   "alloc_size": 40,
+   "getrtti": [
+    81408
+   ],
+   "vtable": 2702056,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiGeomMorpherController": {
+   "name": "NiGeomMorpherController",
+   "rtti": 3120856,
+   "size": 64,
+   "parent": "NiMorpherController",
+   "create": 1203984,
+   "alloc_size": 64,
+   "getrtti": [
+    1203408
+   ],
+   "vtable": 2789600,
+   "vtable_len": 23,
+   "ctor_inlined": true
+  },
+  "NiGeometry": {
+   "name": "NiGeometry",
+   "rtti": 3205996,
+   "size": 224,
+   "parent": "NiAVObject",
+   "getrtti": [
+    1328976
+   ],
+   "vtable": 2794440,
+   "vtable_len": 47,
+   "ctor": 1328992
+  },
+  "NiGeometryData": {
+   "name": "NiGeometryData",
+   "rtti": 3205936,
+   "size": 52,
+   "parent": "NiObject",
+   "getrtti": [
+    1325168
+   ],
+   "vtable": 2794296,
+   "vtable_len": 14,
+   "ctor": 1325424
+  },
+  "NiGravity": {
+   "name": "NiGravity",
+   "rtti": 3120916,
+   "size": 52,
+   "parent": "NiParticleModifier",
+   "create": 1205232,
+   "alloc_size": 52,
+   "getrtti": [
+    1205120
+   ],
+   "vtable": 2789768,
+   "vtable_len": 15,
+   "ctor": 1205024
+  },
+  "NiKeyframeController": {
+   "name": "NiKeyframeController",
+   "rtti": 3120980,
+   "size": 68,
+   "parent": "NiTimeController",
+   "create": 1210304,
+   "alloc_size": 68,
+   "getrtti": [
+    1209264
+   ],
+   "vtable": 2789976,
+   "vtable_len": 21,
+   "ctor": 1209200
+  },
+  "NiKeyframeData": {
+   "name": "NiKeyframeData",
+   "rtti": 3120948,
+   "size": 40,
+   "parent": "NiObject",
+   "create": 1206000,
+   "alloc_size": 40,
+   "getrtti": [
+    1206144
+   ],
+   "vtable": 2789844,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiKeyframeManager": {
+   "name": "NiKeyframeManager",
+   "rtti": 3121372,
+   "size": 192,
+   "parent": "NiTimeController",
+   "create": 1249904,
+   "alloc_size": 192,
+   "getrtti": [
+    1248368
+   ],
+   "vtable": 2790952,
+   "vtable_len": 22,
+   "ctor": 1248064
+  },
+  "NiLODNode": {
+   "name": "NiLODNode",
+   "rtti": 3119112,
+   "size": 304,
+   "parent": "NiSwitchNode",
+   "create": 1132304,
+   "alloc_size": 304,
+   "getrtti": [
+    1130800
+   ],
+   "vtable": 2783616,
+   "vtable_len": 45,
+   "ctor": 1132000
+  },
+  "NiLight": {
+   "name": "NiLight",
+   "rtti": 3206060,
+   "size": 272,
+   "parent": "NiDynamicEffect",
+   "getrtti": [
+    1332672
+   ],
+   "vtable": 2794856,
+   "vtable_len": 41,
+   "ctor": 1332688
+  },
+  "NiLightColorController": {
+   "name": "NiLightColorController",
+   "rtti": 3121424,
+   "size": 64,
+   "parent": "NiTimeController",
+   "create": 1252576,
+   "alloc_size": 64,
+   "getrtti": [
+    1252384
+   ],
+   "vtable": 2791128,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiLines": {
+   "name": "NiLines",
+   "rtti": 3118284,
+   "size": 224,
+   "parent": "NiGeometry",
+   "create": 1107584,
+   "alloc_size": 224,
+   "getrtti": [
+    1107680
+   ],
+   "vtable": 2780896,
+   "vtable_len": 47,
+   "ctor_inlined": true
+  },
+  "NiLinesData": {
+   "name": "NiLinesData",
+   "rtti": 3118248,
+   "size": 56,
+   "parent": "NiGeometryData",
+   "create": 1107040,
+   "alloc_size": 56,
+   "getrtti": [
+    1107280
+   ],
+   "vtable": 2780820,
+   "vtable_len": 14,
+   "ctor_inlined": true
+  },
+  "NiLookAtController": {
+   "name": "NiLookAtController",
+   "rtti": 3121496,
+   "size": 60,
+   "parent": "NiTimeController",
+   "create": 1258480,
+   "alloc_size": 60,
+   "getrtti": [
+    1257216
+   ],
+   "vtable": 2791232,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiMaterialColorController": {
+   "name": "NiMaterialColorController",
+   "rtti": 3121512,
+   "size": 64,
+   "parent": "NiTimeController",
+   "create": 1258944,
+   "alloc_size": 64,
+   "getrtti": [
+    1258752
+   ],
+   "vtable": 2791352,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiMaterialProperty": {
+   "name": "NiMaterialProperty",
+   "rtti": 3119144,
+   "size": 92,
+   "parent": "NiProperty",
+   "create": 1133552,
+   "alloc_size": 92,
+   "getrtti": [
+    1133328
+   ],
+   "vtable": 2783840,
+   "vtable_len": 13,
+   "ctor": 1133184
+  },
+  "NiMorphData": {
+   "name": "NiMorphData",
+   "rtti": 3120820,
+   "size": 24,
+   "parent": "NiObject",
+   "create": 1201536,
+   "alloc_size": 24,
+   "getrtti": [
+    1201664
+   ],
+   "vtable": 2789488,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiMorpherController": {
+   "name": "NiMorpherController",
+   "rtti": 3208688,
+   "size": 64,
+   "parent": "NiTimeController",
+   "getrtti": [
+    1388976
+   ],
+   "vtable": 2796880,
+   "vtable_len": 23,
+   "ctor": 1388864
+  },
+  "NiNode": {
+   "name": "NiNode",
+   "rtti": 3117456,
+   "size": 224,
+   "parent": "NiAVObject",
+   "create": 1074112,
+   "alloc_size": 224,
+   "getrtti": [
+    1072112
+   ],
+   "vtable": 2779048,
+   "vtable_len": 45,
+   "ctor": 1072000
+  },
+  "NiObject": {
+   "name": "NiObject",
+   "rtti": 3117076,
+   "size": 8,
+   "parent": null,
+   "getrtti": [
+    1040256
+   ],
+   "vtable": 2777588,
+   "vtable_len": 11,
+   "ctor": 1040224
+  },
+  "NiObjectNET": {
+   "name": "NiObjectNET",
+   "rtti": 3117092,
+   "size": 20,
+   "parent": "NiObject",
+   "getrtti": [
+    1041280
+   ],
+   "vtable": 2777688,
+   "vtable_len": 11,
+   "ctor": 1041152
+  },
+  "NiOutline": {
+   "name": "NiOutline",
+   "rtti": 3163340,
+   "size": 272,
+   "parent": "NiNode",
+   "create": 1298992,
+   "alloc_size": 272,
+   "getrtti": [
+    1298704
+   ],
+   "vtable": 2792640,
+   "vtable_len": 45,
+   "ctor": 1298544
+  },
+  "NiOutlineData": {
+   "name": "NiOutlineData",
+   "rtti": 3122192,
+   "size": 44,
+   "parent": "NiObject",
+   "create": 1294512,
+   "alloc_size": 44,
+   "getrtti": [
+    1294784
+   ],
+   "vtable": 2792448,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiPalette": {
+   "name": "NiPalette",
+   "rtti": 3118732,
+   "size": 32,
+   "parent": "NiObject",
+   "create": 1117184,
+   "alloc_size": 32,
+   "getrtti": [
+    1116944
+   ],
+   "vtable": 2782168,
+   "vtable_len": 11,
+   "ctor": 1116848
+  },
+  "NiParticleBomb": {
+   "name": "NiParticleBomb",
+   "rtti": 3121576,
+   "size": 64,
+   "parent": "NiParticleModifier",
+   "create": 1260912,
+   "alloc_size": 64,
+   "getrtti": [
+    1260800
+   ],
+   "vtable": 2791452,
+   "vtable_len": 15,
+   "ctor": 1260704
+  },
+  "NiParticleCollider": {
+   "name": "NiParticleCollider",
+   "rtti": 3208804,
+   "size": 40,
+   "parent": "NiParticleModifier",
+   "getrtti": [
+    1391424
+   ],
+   "vtable": 2797048,
+   "vtable_len": 16,
+   "ctor": 1391344
+  },
+  "NiParticleColorModifier": {
+   "name": "NiParticleColorModifier",
+   "rtti": 3121604,
+   "size": 20,
+   "parent": "NiParticleModifier",
+   "create": 1262000,
+   "alloc_size": 20,
+   "getrtti": [
+    1261568
+   ],
+   "vtable": 2791536,
+   "vtable_len": 15,
+   "ctor": 1261456
+  },
+  "NiParticleGrowFade": {
+   "name": "NiParticleGrowFade",
+   "rtti": 3121680,
+   "size": 24,
+   "parent": "NiParticleModifier",
+   "create": 1263072,
+   "alloc_size": 24,
+   "getrtti": [
+    1262656
+   ],
+   "vtable": 2791616,
+   "vtable_len": 15,
+   "ctor_inlined": true
+  },
+  "NiParticleMeshModifier": {
+   "name": "NiParticleMeshModifier",
+   "rtti": 3121748,
+   "size": 40,
+   "parent": "NiParticleModifier",
+   "create": 1264448,
+   "alloc_size": 40,
+   "getrtti": [
+    1263808
+   ],
+   "vtable": 2791700,
+   "vtable_len": 15,
+   "ctor": 1263728
+  },
+  "NiParticleMeshes": {
+   "name": "NiParticleMeshes",
+   "rtti": 3119424,
+   "size": 256,
+   "parent": "NiRotatingParticles",
+   "create": 1143104,
+   "alloc_size": 256,
+   "getrtti": [
+    1142576
+   ],
+   "vtable": 2784704,
+   "vtable_len": 47,
+   "ctor_inlined": true
+  },
+  "NiParticleMeshesData": {
+   "name": "NiParticleMeshesData",
+   "rtti": 3119260,
+   "size": 76,
+   "parent": "NiRotatingParticlesData",
+   "create": 1137568,
+   "alloc_size": 76,
+   "getrtti": [
+    1136736
+   ],
+   "vtable": 2784280,
+   "vtable_len": 16,
+   "ctor": 1136752
+  },
+  "NiParticleModifier": {
+   "name": "NiParticleModifier",
+   "rtti": 3208744,
+   "size": 16,
+   "parent": "NiObject",
+   "getrtti": [
+    1204880
+   ],
+   "vtable": 2789708,
+   "vtable_len": 15,
+   "ctor": 1204768
+  },
+  "NiParticleRotation": {
+   "name": "NiParticleRotation",
+   "rtti": 3121796,
+   "size": 36,
+   "parent": "NiParticleModifier",
+   "create": 1265728,
+   "alloc_size": 36,
+   "getrtti": [
+    1264944
+   ],
+   "vtable": 2791780,
+   "vtable_len": 15,
+   "ctor_inlined": true
+  },
+  "NiParticleSystemController": {
+   "name": "NiParticleSystemController",
+   "rtti": 3121976,
+   "size": 212,
+   "parent": "NiTimeController",
+   "create": 1278720,
+   "alloc_size": 212,
+   "getrtti": [
+    1274864
+   ],
+   "vtable": 2792072,
+   "vtable_len": 22,
+   "ctor": 1274400
+  },
+  "NiParticles": {
+   "name": "NiParticles",
+   "rtti": 3118504,
+   "size": 240,
+   "parent": "NiGeometry",
+   "create": 1111872,
+   "alloc_size": 240,
+   "getrtti": [
+    1112080
+   ],
+   "vtable": 2781504,
+   "vtable_len": 47,
+   "ctor": 1111824
+  },
+  "NiParticlesData": {
+   "name": "NiParticlesData",
+   "rtti": 3118468,
+   "size": 64,
+   "parent": "NiGeometryData",
+   "create": 1110576,
+   "alloc_size": 64,
+   "getrtti": [
+    1110832
+   ],
+   "vtable": 2781384,
+   "vtable_len": 16,
+   "ctor": 1110400
+  },
+  "NiPathController": {
+   "name": "NiPathController",
+   "rtti": 3121868,
+   "size": 100,
+   "parent": "NiTimeController",
+   "create": 1270912,
+   "alloc_size": 100,
+   "getrtti": [
+    1267088
+   ],
+   "vtable": 2791864,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiPixelData": {
+   "name": "NiPixelData",
+   "rtti": 3118752,
+   "size": 76,
+   "parent": "NiObject",
+   "create": 1119392,
+   "alloc_size": 76,
+   "getrtti": [
+    1118336
+   ],
+   "vtable": 2782228,
+   "vtable_len": 11,
+   "ctor": 1118192
+  },
+  "NiPlanarCollider": {
+   "name": "NiPlanarCollider",
+   "rtti": 3121900,
+   "size": 100,
+   "parent": "NiParticleCollider",
+   "create": 1273232,
+   "alloc_size": 100,
+   "getrtti": [
+    1273120
+   ],
+   "vtable": 2791968,
+   "vtable_len": 16,
+   "ctor": 1272912
+  },
+  "NiPointLight": {
+   "name": "NiPointLight",
+   "rtti": 3119480,
+   "size": 288,
+   "parent": "NiLight",
+   "create": 1143664,
+   "alloc_size": 288,
+   "getrtti": [
+    785424
+   ],
+   "vtable": 2764536,
+   "vtable_len": 41,
+   "ctor_inlined": true
+  },
+  "NiPortal": {
+   "name": "NiPortal",
+   "rtti": 3205884,
+   "size": 240,
+   "parent": "NiAVObject",
+   "create": 1321712,
+   "alloc_size": 240,
+   "getrtti": [
+    1321424
+   ],
+   "vtable": 2794120,
+   "vtable_len": 40,
+   "ctor": 1321440
+  },
+  "NiPosData": {
+   "name": "NiPosData",
+   "rtti": 3121396,
+   "size": 20,
+   "parent": "NiObject",
+   "create": 1251088,
+   "alloc_size": 20,
+   "getrtti": [
+    1250864
+   ],
+   "vtable": 2791060,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiProperty": {
+   "name": "NiProperty",
+   "rtti": 3117060,
+   "size": 24,
+   "parent": "NiObjectNET"
+  },
+  "NiRenderedTexture": {
+   "name": "NiRenderedTexture",
+   "rtti": 3204992,
+   "size": 52,
+   "parent": "NiTexture",
+   "getrtti": [
+    1310656
+   ],
+   "vtable": 2793136,
+   "vtable_len": 13
+  },
+  "NiRenderer": {
+   "name": "NiRenderer",
+   "rtti": 3205264,
+   "size": 20,
+   "parent": "NiObject",
+   "getrtti": [
+    1312240
+   ],
+   "vtable": 2793200,
+   "vtable_len": 72
+  },
+  "NiRendererSpecificProperty": {
+   "name": "NiRendererSpecificProperty",
+   "rtti": 3119504,
+   "size": 28,
+   "parent": "NiProperty",
+   "create": 1144608,
+   "alloc_size": 28,
+   "getrtti": [
+    1144368
+   ],
+   "vtable": 2784980,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiRollController": {
+   "name": "NiRollController",
+   "rtti": 3122020,
+   "size": 64,
+   "parent": "NiFloatController",
+   "create": 1285456,
+   "alloc_size": 64,
+   "getrtti": [
+    1285104
+   ],
+   "vtable": 2792192,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiRoom": {
+   "name": "NiRoom",
+   "rtti": 3120232,
+   "size": 352,
+   "parent": "NiNode",
+   "create": 1175520,
+   "alloc_size": 352,
+   "getrtti": [
+    1175504
+   ],
+   "vtable": 2788328,
+   "vtable_len": 45,
+   "ctor": 1175216
+  },
+  "NiRoomGroup": {
+   "name": "NiRoomGroup",
+   "rtti": 3120276,
+   "size": 240,
+   "parent": "NiNode",
+   "create": 1177296,
+   "alloc_size": 240,
+   "getrtti": [
+    1177136
+   ],
+   "vtable": 2788520,
+   "vtable_len": 45,
+   "ctor": 1177008
+  },
+  "NiRotatingParticles": {
+   "name": "NiRotatingParticles",
+   "rtti": 3119208,
+   "size": 240,
+   "parent": "NiParticles",
+   "create": 1135760,
+   "alloc_size": 240,
+   "getrtti": [
+    1135856
+   ],
+   "vtable": 2784064,
+   "vtable_len": 47,
+   "ctor": 1135712
+  },
+  "NiRotatingParticlesData": {
+   "name": "NiRotatingParticlesData",
+   "rtti": 3119160,
+   "size": 68,
+   "parent": "NiParticlesData",
+   "create": 1134880,
+   "alloc_size": 68,
+   "getrtti": [
+    1134992
+   ],
+   "vtable": 2783976,
+   "vtable_len": 16,
+   "ctor_inlined": true
+  },
+  "NiScreenPolygon": {
+   "name": "NiScreenPolygon",
+   "rtti": 3117504,
+   "size": 36,
+   "parent": "NiObject",
+   "create": 1076128,
+   "alloc_size": 36,
+   "getrtti": [
+    1075792
+   ],
+   "vtable": 2779268,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiScreenTexture": {
+   "name": "NiScreenTexture",
+   "rtti": 3118128,
+   "size": 32,
+   "parent": "NiObject",
+   "create": 1094560,
+   "alloc_size": 32,
+   "getrtti": [
+    1093664
+   ],
+   "vtable": 2780512,
+   "vtable_len": 11,
+   "ctor": 1094464
+  },
+  "NiSequence": {
+   "name": "NiSequence",
+   "rtti": 3121284,
+   "size": 320,
+   "parent": "NiObject",
+   "create": 1241136,
+   "alloc_size": 320,
+   "getrtti": [
+    1238336
+   ],
+   "vtable": 2790692,
+   "vtable_len": 11,
+   "ctor": 1237776
+  },
+  "NiSequenceStreamHelper": {
+   "name": "NiSequenceStreamHelper",
+   "rtti": 3122040,
+   "size": 20,
+   "parent": "NiObjectNET",
+   "create": 1285680,
+   "alloc_size": 20,
+   "getrtti": [
+    1285664
+   ],
+   "vtable": 2792300,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiShadeProperty": {
+   "name": "NiShadeProperty",
+   "rtti": 3119532,
+   "size": 24,
+   "parent": "NiProperty",
+   "create": 1145280,
+   "alloc_size": 24,
+   "getrtti": [
+    229344
+   ],
+   "vtable": 2710164,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiSkinData": {
+   "name": "NiSkinData",
+   "rtti": 3118204,
+   "size": 96,
+   "parent": "NiObject",
+   "create": 1104016,
+   "alloc_size": 96,
+   "getrtti": [
+    1103856
+   ],
+   "vtable": 2780652,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiSkinInstance": {
+   "name": "NiSkinInstance",
+   "rtti": 3118236,
+   "size": 24,
+   "parent": "NiObject",
+   "create": 1105424,
+   "alloc_size": 24,
+   "getrtti": [
+    1105376
+   ],
+   "vtable": 2780740,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiSkinPartition": {
+   "name": "NiSkinPartition",
+   "rtti": 3118176,
+   "size": 16,
+   "parent": "NiObject",
+   "create": 1096720,
+   "alloc_size": 16,
+   "getrtti": [
+    1097344
+   ],
+   "vtable": 2780576,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiSortAdjustNode": {
+   "name": "NiSortAdjustNode",
+   "rtti": 3119568,
+   "size": 240,
+   "parent": "NiNode",
+   "create": 1146064,
+   "alloc_size": 240,
+   "getrtti": [
+    1145632
+   ],
+   "vtable": 2785080,
+   "vtable_len": 45,
+   "ctor": 1145520
+  },
+  "NiSourceTexture": {
+   "name": "NiSourceTexture",
+   "rtti": 3119628,
+   "size": 64,
+   "parent": "NiTexture",
+   "create": 1148608,
+   "alloc_size": 64,
+   "getrtti": [
+    1148176
+   ],
+   "vtable": 2785332,
+   "vtable_len": 15,
+   "ctor": 1148064
+  },
+  "NiSpecularProperty": {
+   "name": "NiSpecularProperty",
+   "rtti": 3119648,
+   "size": 24,
+   "parent": "NiProperty",
+   "create": 1150208,
+   "alloc_size": 24,
+   "getrtti": [
+    1149920
+   ],
+   "vtable": 2785424,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiSphericalCollider": {
+   "name": "NiSphericalCollider",
+   "rtti": 3122072,
+   "size": 60,
+   "parent": "NiParticleCollider",
+   "create": 1286944,
+   "alloc_size": 60,
+   "getrtti": [
+    1286736
+   ],
+   "vtable": 2792368,
+   "vtable_len": 16,
+   "ctor_inlined": true
+  },
+  "NiSpotLight": {
+   "name": "NiSpotLight",
+   "rtti": 3119688,
+   "size": 320,
+   "parent": "NiPointLight",
+   "create": 1150848,
+   "alloc_size": 320,
+   "getrtti": [
+    1150672
+   ],
+   "vtable": 2785496,
+   "vtable_len": 41,
+   "ctor": 1150576
+  },
+  "NiStencilProperty": {
+   "name": "NiStencilProperty",
+   "rtti": 3119700,
+   "size": 56,
+   "parent": "NiProperty",
+   "create": 1152528,
+   "alloc_size": 56,
+   "getrtti": [
+    158624
+   ],
+   "vtable": 2705732,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiStringExtraData": {
+   "name": "NiStringExtraData",
+   "rtti": 3119736,
+   "size": 24,
+   "parent": "NiExtraData",
+   "create": 1153952,
+   "alloc_size": 24,
+   "getrtti": [
+    1153808
+   ],
+   "vtable": 2786172,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiSwitchNode": {
+   "name": "NiSwitchNode",
+   "rtti": 3118976,
+   "size": 272,
+   "parent": "NiNode",
+   "create": 1128416,
+   "alloc_size": 272,
+   "getrtti": [
+    1126352
+   ],
+   "vtable": 2783136,
+   "vtable_len": 45,
+   "ctor": 1126192
+  },
+  "NiTextKeyExtraData": {
+   "name": "NiTextKeyExtraData",
+   "rtti": 3121184,
+   "size": 28,
+   "parent": "NiExtraData",
+   "create": 1220736,
+   "alloc_size": 28,
+   "getrtti": [
+    1220496
+   ],
+   "vtable": 2790496,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiTexture": {
+   "name": "NiTexture",
+   "rtti": 3207048,
+   "size": 44,
+   "parent": "NiObjectNET",
+   "getrtti": [
+    1147888
+   ],
+   "vtable": 2785280,
+   "vtable_len": 13
+  },
+  "NiTextureEffect": {
+   "name": "NiTextureEffect",
+   "rtti": 3119752,
+   "size": 416,
+   "parent": "NiDynamicEffect",
+   "create": 1155328,
+   "alloc_size": 416,
+   "getrtti": [
+    1154912
+   ],
+   "vtable": 2786440,
+   "vtable_len": 41,
+   "ctor": 1154672
+  },
+  "NiTexturingProperty": {
+   "name": "NiTexturingProperty",
+   "rtti": 3118092,
+   "size": 60,
+   "parent": "NiProperty",
+   "create": 1089872,
+   "alloc_size": 60,
+   "getrtti": [
+    1089216
+   ],
+   "vtable": 2780108,
+   "vtable_len": 13,
+   "ctor": 1088816
+  },
+  "NiTimeController": {
+   "name": "NiTimeController",
+   "rtti": 3205516,
+   "size": 56,
+   "parent": "NiUDSTimeController",
+   "getrtti": [
+    1315264
+   ],
+   "vtable": 2793552,
+   "vtable_len": 21,
+   "ctor": 1314624
+  },
+  "NiTriBasedGeom": {
+   "name": "NiTriBasedGeom",
+   "rtti": 3206040,
+   "size": 224,
+   "parent": "NiGeometry",
+   "getrtti": [
+    1332416
+   ],
+   "vtable": 2794648,
+   "vtable_len": 49,
+   "ctor": 1332320
+  },
+  "NiTriBasedGeomData": {
+   "name": "NiTriBasedGeomData",
+   "rtti": 3207024,
+   "size": 56,
+   "parent": "NiGeometryData",
+   "getrtti": [
+    1383968
+   ],
+   "vtable": 2796736,
+   "vtable_len": 18,
+   "ctor": 1383824
+  },
+  "NiTriShape": {
+   "name": "NiTriShape",
+   "rtti": 3119344,
+   "size": 224,
+   "parent": "NiTriBasedGeom",
+   "create": 1139968,
+   "alloc_size": 224,
+   "getrtti": [
+    1140064
+   ],
+   "vtable": 2784480,
+   "vtable_len": 50,
+   "ctor_inlined": true
+  },
+  "NiTriShapeData": {
+   "name": "NiTriShapeData",
+   "rtti": 3119284,
+   "size": 76,
+   "parent": "NiTriBasedGeomData",
+   "create": 1138336,
+   "alloc_size": 76,
+   "getrtti": [
+    1138544
+   ],
+   "vtable": 2784360,
+   "vtable_len": 18,
+   "ctor": 1138048
+  },
+  "NiTriShapeDynamicData": {
+   "name": "NiTriShapeDynamicData",
+   "rtti": 3119856,
+   "size": 80,
+   "parent": "NiTriShapeData",
+   "create": 1159488,
+   "alloc_size": 80,
+   "getrtti": [
+    1159696
+   ],
+   "vtable": 2787040,
+   "vtable_len": 18,
+   "ctor_inlined": true
+  },
+  "NiTriStrip": {
+   "name": "NiTriStrip",
+   "rtti": 3119908,
+   "size": 224,
+   "parent": "NiTriBasedGeom",
+   "create": 1161440,
+   "alloc_size": 224,
+   "getrtti": [
+    1161536
+   ],
+   "vtable": 2787256,
+   "vtable_len": 49,
+   "ctor_inlined": true
+  },
+  "NiTriStripData": {
+   "name": "NiTriStripData",
+   "rtti": 3119872,
+   "size": 60,
+   "parent": "NiTriBasedGeomData",
+   "create": 1160176,
+   "alloc_size": 60,
+   "getrtti": [
+    1160304
+   ],
+   "vtable": 2787168,
+   "vtable_len": 18,
+   "ctor_inlined": true
+  },
+  "NiTriStrips": {
+   "name": "NiTriStrips",
+   "rtti": 3120012,
+   "size": 224,
+   "parent": "NiTriBasedGeom",
+   "create": 1163776,
+   "alloc_size": 224,
+   "getrtti": [
+    1163952
+   ],
+   "vtable": 2787608,
+   "vtable_len": 49,
+   "ctor_inlined": true
+  },
+  "NiTriStripsData": {
+   "name": "NiTriStripsData",
+   "rtti": 3119964,
+   "size": 68,
+   "parent": "NiTriBasedGeomData",
+   "create": 1162704,
+   "alloc_size": 68,
+   "getrtti": [
+    1162848
+   ],
+   "vtable": 2787472,
+   "vtable_len": 18,
+   "ctor_inlined": true
+  },
+  "NiTriangles": {
+   "name": "NiTriangles",
+   "rtti": 3119808,
+   "size": 224,
+   "parent": "NiTriBasedGeom",
+   "create": 1158784,
+   "alloc_size": 224,
+   "getrtti": [
+    1158880
+   ],
+   "vtable": 2786816,
+   "vtable_len": 49,
+   "ctor_inlined": true
+  },
+  "NiTrianglesData": {
+   "name": "NiTrianglesData",
+   "rtti": 3119772,
+   "size": 60,
+   "parent": "NiTriBasedGeomData",
+   "create": 1157840,
+   "alloc_size": 60,
+   "getrtti": [
+    1158096
+   ],
+   "vtable": 2786728,
+   "vtable_len": 18,
+   "ctor_inlined": true
+  },
+  "NiUDSFileObject": {
+   "name": "NiUDSFileObject",
+   "rtti": 3120340,
+   "size": 208,
+   "parent": "NiAVObject",
+   "create": 1178512,
+   "alloc_size": 208,
+   "getrtti": [
+    1178688
+   ],
+   "vtable": 2788720,
+   "vtable_len": 40,
+   "ctor_inlined": true
+  },
+  "NiUDSKFController": {
+   "name": "NiUDSKFController",
+   "rtti": 3205588,
+   "size": 48,
+   "parent": "NiUDSTimeController",
+   "create": 81328,
+   "alloc_size": null,
+   "ctor": null,
+   "ctor_inlined": true
+  },
+  "NiUDSNode": {
+   "name": "NiUDSNode",
+   "rtti": 3206276,
+   "size": 192,
+   "parent": "NiAVObject",
+   "create": 1334816,
+   "alloc_size": 192,
+   "getrtti": [
+    1334944
+   ],
+   "vtable": 2795128,
+   "vtable_len": 40,
+   "ctor_inlined": true
+  },
+  "NiUDSObject": {
+   "name": "NiUDSObject",
+   "rtti": 3206548,
+   "size": 20,
+   "parent": "NiObjectNET",
+   "create": 1335088,
+   "alloc_size": 20,
+   "getrtti": [
+    1335200
+   ],
+   "vtable": 2795300,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiUDSTimeController": {
+   "name": "NiUDSTimeController",
+   "rtti": 3204488,
+   "size": 20,
+   "parent": "NiObject",
+   "getrtti": [
+    1305856
+   ],
+   "vtable": 2792960,
+   "vtable_len": 18
+  },
+  "NiUVController": {
+   "name": "NiUVController",
+   "rtti": 3121080,
+   "size": 112,
+   "parent": "NiKeyframeController",
+   "create": 1216192,
+   "alloc_size": 112,
+   "getrtti": [
+    1214704
+   ],
+   "vtable": 2790216,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiUVData": {
+   "name": "NiUVData",
+   "rtti": 3121024,
+   "size": 56,
+   "parent": "NiObject",
+   "create": 1211200,
+   "alloc_size": 56,
+   "getrtti": [
+    1211344
+   ],
+   "vtable": 2790072,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiVertWeightsExtraData": {
+   "name": "NiVertWeightsExtraData",
+   "rtti": 3120076,
+   "size": 28,
+   "parent": "NiExtraData",
+   "create": 1165984,
+   "alloc_size": 28,
+   "getrtti": [
+    1165792
+   ],
+   "vtable": 2787828,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiVertexColorProperty": {
+   "name": "NiVertexColorProperty",
+   "rtti": 3117216,
+   "size": 32,
+   "parent": "NiProperty",
+   "create": 1054096,
+   "alloc_size": 32,
+   "getrtti": [
+    72256
+   ],
+   "vtable": 2701872,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiVisController": {
+   "name": "NiVisController",
+   "rtti": 3121144,
+   "size": 76,
+   "parent": "NiKeyframeController",
+   "create": 1219824,
+   "alloc_size": 76,
+   "getrtti": [
+    1219280
+   ],
+   "vtable": 2790392,
+   "vtable_len": 21,
+   "ctor_inlined": true
+  },
+  "NiVisData": {
+   "name": "NiVisData",
+   "rtti": 3121120,
+   "size": 16,
+   "parent": "NiObject",
+   "create": 1218048,
+   "alloc_size": 16,
+   "getrtti": [
+    1218176
+   ],
+   "vtable": 2790312,
+   "vtable_len": 11,
+   "ctor_inlined": true
+  },
+  "NiWall": {
+   "name": "NiWall",
+   "rtti": 3120156,
+   "size": 256,
+   "parent": "NiNode",
+   "create": 1168560,
+   "alloc_size": 256,
+   "getrtti": [
+    1168272
+   ],
+   "vtable": 2788136,
+   "vtable_len": 45,
+   "ctor": 1168176
+  },
+  "NiWireframeProperty": {
+   "name": "NiWireframeProperty",
+   "rtti": 3120104,
+   "size": 24,
+   "parent": "NiProperty",
+   "create": 1166880,
+   "alloc_size": 24,
+   "getrtti": [
+    1166528
+   ],
+   "vtable": 2787892,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "NiXBoxRenderer": {
+   "name": "NiXBoxRenderer",
+   "rtti": 3206656,
+   "size": 1744,
+   "parent": "NiRenderer",
+   "getrtti": [
+    1355920
+   ],
+   "vtable": 2795456,
+   "vtable_len": 75
+  },
+  "NiZBufferProperty": {
+   "name": "NiZBufferProperty",
+   "rtti": 3120124,
+   "size": 28,
+   "parent": "NiProperty",
+   "create": 1167536,
+   "alloc_size": 28,
+   "getrtti": [
+    259200
+   ],
+   "vtable": 2714592,
+   "vtable_len": 13,
+   "ctor_inlined": true
+  },
+  "PhysicController": {
+   "name": "PhysicController",
+   "rtti": 3000668,
+   "size": 112,
+   "parent": "NiTimeController",
+   "getrtti": [
+    214512
+   ],
+   "vtable": 2709680,
+   "vtable_len": 22
+  }
+ },
+ "tu_count": 407,
+ "tu_sizes": [
+  98,
+  59,
+  72,
+  69,
+  69,
+  69,
+  69,
+  69,
+  72,
+  69,
+  69,
+  69,
+  69,
+  59,
+  69,
+  69,
+  69,
+  69,
+  59,
+  69,
+  95,
+  69,
+  69,
+  69,
+  69,
+  59,
+  59,
+  59,
+  59,
+  95,
+  98,
+  72,
+  96,
+  96,
+  96,
+  96,
+  96,
+  96,
+  96,
+  96,
+  99,
+  98,
+  96,
+  96,
+  96,
+  95,
+  96,
+  97,
+  59,
+  95,
+  59,
+  96,
+  96,
+  96,
+  96,
+  63,
+  63,
+  63,
+  96,
+  96,
+  63,
+  63,
+  63,
+  96,
+  95,
+  96,
+  96,
+  96,
+  96,
+  96,
+  63,
+  96,
+  60,
+  63,
+  95,
+  63,
+  95,
+  63,
+  95,
+  63,
+  63,
+  96,
+  63,
+  63,
+  96,
+  63,
+  96,
+  63,
+  96,
+  96,
+  95,
+  60,
+  63,
+  95,
+  96,
+  95,
+  96,
+  95,
+  95,
+  95,
+  96,
+  95,
+  95,
+  95,
+  95,
+  95,
+  96,
+  95,
+  95,
+  95,
+  95,
+  95,
+  96,
+  96,
+  96,
+  95,
+  95,
+  95,
+  95,
+  95,
+  95,
+  96,
+  95,
+  95,
+  95,
+  95,
+  95,
+  95,
+  95,
+  96,
+  95,
+  95,
+  96,
+  96,
+  95,
+  96,
+  63,
+  63,
+  96,
+  94,
+  59,
+  63,
+  63,
+  59,
+  59,
+  59,
+  59,
+  59,
+  59,
+  59,
+  59,
+  59,
+  60,
+  60,
+  60,
+  60,
+  60,
+  60,
+  60,
+  69,
+  96,
+  59,
+  96,
+  72,
+  69,
+  69,
+  96,
+  60,
+  59,
+  60,
+  96,
+  96,
+  96,
+  96,
+  96,
+  60,
+  59,
+  59,
+  96,
+  96,
+  97,
+  99,
+  95,
+  63,
+  95,
+  101,
+  59,
+  72,
+  95,
+  92,
+  98,
+  92,
+  95,
+  95,
+  60,
+  59,
+  60,
+  60,
+  59,
+  60,
+  60,
+  59,
+  59,
+  59,
+  96,
+  69,
+  69,
+  69,
+  72,
+  69,
+  69,
+  69,
+  72,
+  69,
+  69,
+  69,
+  69,
+  72,
+  72,
+  72,
+  69,
+  59,
+  69,
+  69,
+  96,
+  60,
+  96,
+  60,
+  60,
+  96,
+  95,
+  98,
+  96,
+  59,
+  96,
+  95,
+  95,
+  63,
+  60,
+  96,
+  96,
+  63,
+  64,
+  63,
+  63,
+  63,
+  63,
+  95,
+  60,
+  60,
+  60,
+  96,
+  63,
+  96,
+  59,
+  60,
+  1,
+  1,
+  17,
+  2,
+  11,
+  2,
+  2,
+  13,
+  2,
+  1,
+  1,
+  5,
+  8,
+  3,
+  3,
+  5,
+  11,
+  12,
+  14,
+  3,
+  13,
+  7,
+  15,
+  13,
+  3,
+  4,
+  12,
+  3,
+  2,
+  2,
+  12,
+  13,
+  13,
+  4,
+  15,
+  6,
+  19,
+  19,
+  2,
+  2,
+  2,
+  12,
+  4,
+  2,
+  3,
+  2,
+  2,
+  4,
+  16,
+  14,
+  19,
+  2,
+  2,
+  2,
+  3,
+  15,
+  15,
+  61,
+  4,
+  8,
+  4,
+  6,
+  11,
+  5,
+  10,
+  6,
+  2,
+  17,
+  15,
+  3,
+  3,
+  4,
+  10,
+  11,
+  10,
+  13,
+  11,
+  4,
+  10,
+  15,
+  3,
+  2,
+  11,
+  16,
+  61,
+  2,
+  59,
+  59,
+  1,
+  1,
+  2,
+  2,
+  5,
+  60,
+  15,
+  2,
+  1,
+  11,
+  5,
+  3,
+  3,
+  1,
+  60,
+  60,
+  28,
+  2,
+  3,
+  13,
+  5,
+  2,
+  4,
+  12,
+  3,
+  6,
+  1,
+  7,
+  9,
+  9,
+  61,
+  9,
+  7,
+  8,
+  4,
+  13,
+  8,
+  11,
+  8,
+  4,
+  6,
+  7,
+  7,
+  7,
+  6,
+  7,
+  4,
+  7,
+  6,
+  7,
+  4,
+  4,
+  4,
+  2,
+  9,
+  10,
+  4,
+  10,
+  10,
+  10,
+  4,
+  4,
+  4
+ ],
+ "other_stubs": 2413
+}

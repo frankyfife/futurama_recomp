@@ -1,0 +1,143 @@
+00246e7d DSOUND::IDirectSound_Release                       [DSOUND] sites=2
+     call @000cbc7f in 000cbc30 FUN_000cbc30
+     call @00264e26 in 00264962 FUN_00264962
+00246e93 DSOUND::IDirectSoundBuffer_Release                 [DSOUND] sites=1
+     call @000cc0f2 in 000cc030 FUN_000cc030
+00246ea9 DSOUND::DirectSoundUseFullHRTF                     [DSOUND] sites=1
+     call @000ccd64 in 000ccd00 FUN_000ccd00
+00247911 DSOUND::IDirectSound_DownloadEffectsImage          [DSOUND] sites=1
+     call @000cbf67 in 000cbeb0 FUN_000cbeb0
+00247938 DSOUND::IDirectSound_SynchPlayback                 [DSOUND] sites=1
+     call @00264e1b in 00264962 FUN_00264962
+00247950 DSOUND::IDirectSoundBuffer_SetVolume               [DSOUND] sites=1
+     call @000cc91d in NO-GHIDRA-FUNCTION
+0024796c DSOUND::IDirectSoundBuffer_SetMixBins              [DSOUND] sites=2
+     call @000cc35a in 000cc150 FUN_000cc150
+     call @000cc9d3 in NO-GHIDRA-FUNCTION
+00247988 DSOUND::IDirectSoundBuffer_Play                    [DSOUND] sites=4
+     call @000cc3db in 000cc390 FUN_000cc390
+     call @000cc45d in 000cc410 FUN_000cc410
+     call @000cc548 in 000cc4b0 FUN_000cc4b0
+     call @000cc72e in NO-GHIDRA-FUNCTION
+002479ac DSOUND::IDirectSoundBuffer_Stop                    [DSOUND] sites=1
+     call @000cb575 in 000cb540 FUN_000cb540
+002479c4 DSOUND::IDirectSoundBuffer_GetStatus               [DSOUND] sites=2
+     call @000cc0bf in 000cc030 FUN_000cc030
+     call @000cca27 in NO-GHIDRA-FUNCTION
+002479e0 DSOUND::IDirectSoundStream_SetVolume               [DSOUND] sites=2
+     call @000cc8c4 in NO-GHIDRA-FUNCTION
+     call @000ee471 in 000ee220 FUN_000ee220
+002479e5 DSOUND::IDirectSoundStream_SetMixBins              [DSOUND] sites=2
+     call @000cc32c in 000cc150 FUN_000cc150
+     call @000cc9c0 in NO-GHIDRA-FUNCTION
+002479ea DSOUND::IDirectSoundStream_Pause                   [DSOUND] sites=6
+     call @000cb563 in 000cb540 FUN_000cb540
+     call @000cc3b9 in 000cc390 FUN_000cc390
+     call @000cc43a in 000cc410 FUN_000cc410
+     call @000cc500 in 000cc4b0 FUN_000cc4b0
+     call @000cc711 in NO-GHIDRA-FUNCTION
+     call @00264a81 in 00264962 FUN_00264962
+002479ef DSOUND::IDirectSoundStream_FlushEx                 [DSOUND] sites=1
+     call @002646a4 in 00264677 FUN_00264677
+00247a07 DSOUND::DirectSoundDoWork                          [DSOUND] sites=3
+     call @000cbe9a in 000cbcb0 FUN_000cbcb0
+     call @002646da in 00264677 FUN_00264677
+     call @00264ed9 in 00264962 FUN_00264962
+00248380 DSOUND::IDirectSound_CommitDeferredSettings        [DSOUND] sites=1
+     call @000cbe95 in 000cbcb0 FUN_000cbcb0
+00248398 DSOUND::IDirectSoundBuffer_SetFrequency            [DSOUND] sites=1
+     call @000cc910 in NO-GHIDRA-FUNCTION
+002483b4 DSOUND::IDirectSoundBuffer_SetMaxDistance          [DSOUND] sites=2
+     call @000cc6ce in NO-GHIDRA-FUNCTION
+     call @000cc83e in NO-GHIDRA-FUNCTION
+002483d8 DSOUND::IDirectSoundBuffer_SetMinDistance          [DSOUND] sites=2
+     call @000cc6b9 in NO-GHIDRA-FUNCTION
+     call @000cc829 in NO-GHIDRA-FUNCTION
+002483fc DSOUND::IDirectSoundBuffer_SetPosition             [DSOUND] sites=2
+     call @000cc6df in NO-GHIDRA-FUNCTION
+     call @000cc7f7 in NO-GHIDRA-FUNCTION
+00248431 DSOUND::IDirectSoundBuffer_SetVelocity             [DSOUND] sites=2
+     call @000cc6fc in NO-GHIDRA-FUNCTION
+     call @000cc814 in NO-GHIDRA-FUNCTION
+00248466 DSOUND::IDirectSoundBuffer_SetRolloffCurve         [DSOUND] sites=1
+     call @000cc36d in 000cc150 FUN_000cc150
+0024848a DSOUND::IDirectSoundBuffer_SetI3DL2Source          [DSOUND] sites=1
+     call @000cca0e in NO-GHIDRA-FUNCTION
+002484aa DSOUND::IDirectSoundStream_SetFrequency            [DSOUND] sites=1
+     call @000cc8ba in NO-GHIDRA-FUNCTION
+002484af DSOUND::IDirectSoundStream_SetMaxDistance          [DSOUND] sites=1
+     call @000cc7e9 in NO-GHIDRA-FUNCTION
+002484c7 DSOUND::IDirectSoundStream_SetMinDistance          [DSOUND] sites=1
+     call @000cc7d7 in NO-GHIDRA-FUNCTION
+002484df DSOUND::IDirectSoundStream_SetPosition             [DSOUND] sites=1
+     call @000cc7ab in NO-GHIDRA-FUNCTION
+00248508 DSOUND::IDirectSoundStream_SetVelocity             [DSOUND] sites=1
+     call @000cc7c5 in NO-GHIDRA-FUNCTION
+00248531 DSOUND::IDirectSoundStream_SetRolloffCurve         [DSOUND] sites=1
+     call @000cc33c in 000cc150 FUN_000cc150
+00248d60 DSOUND::IDirectSound_SetDistanceFactor             [DSOUND] sites=1
+     call @000ccd98 in 000ccd00 FUN_000ccd00
+00248d84 DSOUND::IDirectSound_SetDopplerFactor              [DSOUND] sites=1
+     call @000ccd73 in 000ccd00 FUN_000ccd00
+00248da8 DSOUND::IDirectSound_SetOrientation                [DSOUND] sites=1
+     call @000cbe85 in 000cbcb0 FUN_000cbcb0
+00248df2 DSOUND::IDirectSound_SetPosition                   [DSOUND] sites=2
+     call @000cbe42 in 000cbcb0 FUN_000cbcb0
+     call @000ccdb8 in 000ccd00 FUN_000ccd00
+00248e27 DSOUND::IDirectSound_SetRolloffFactor              [DSOUND] sites=1
+     call @000ccda7 in 000ccd00 FUN_000ccd00
+00248e4b DSOUND::IDirectSound_SetVelocity                   [DSOUND] sites=1
+     call @000cbe5c in 000cbcb0 FUN_000cbcb0
+00248e80 DSOUND::IDirectSound_SetI3DL2Listener              [DSOUND] sites=6
+     call @000cbfbb in NO-GHIDRA-FUNCTION
+     call @000cbfce in NO-GHIDRA-FUNCTION
+     call @000cbfe1 in NO-GHIDRA-FUNCTION
+     call @000cbff4 in NO-GHIDRA-FUNCTION
+     call @000cc007 in NO-GHIDRA-FUNCTION
+     call @000ccdc7 in 000ccd00 FUN_000ccd00
+00248ea0 DSOUND::IDirectSoundBuffer_SetBufferData           [DSOUND] sites=3
+     call @000cb597 in 000cb580 FUN_000cb580
+     call @000cc06f in 000cc030 FUN_000cc030
+     call @000cc2af in 000cc150 FUN_000cc150
+0024935c DSOUND::DirectSoundCreate                          [DSOUND] sites=2
+     call @000ccd41 in 000ccd00 FUN_000ccd00
+     call @00264e0b in 00264962 FUN_00264962
+002493a3 DSOUND::DirectSoundCreateBuffer                    [DSOUND] sites=1
+     call @000cc296 in 000cc150 FUN_000cc150
+002493fa DSOUND::DirectSoundCreateStream                    [DSOUND] sites=2
+     call @000cc1c3 in 000cc150 FUN_000cc150
+     call @002648f1 in 002647c6 FUN_002647c6
+0024aebe FUN_0024aebe                                       [DSOUND] sites=1
+     jmp @000f9cc0 in NO-GHIDRA-FUNCTION
+00264360 FUN_00264360                                       [XMV] sites=1
+     call @000ee35c in 000ee220 FUN_000ee220
+00264677 FUN_00264677                                       [XMV] sites=1
+     call @000ee11f in 000ee080 FUN_000ee080
+00264759 FUN_00264759                                       [XMV] sites=1
+     call @000ee389 in 000ee220 FUN_000ee220
+002647c6 FUN_002647c6                                       [XMV] sites=1
+     call @000ee412 in 000ee220 FUN_000ee220
+00264943 FUN_00264943                                       [XMV] sites=1
+     call @000ee424 in 000ee220 FUN_000ee220
+00264962 FUN_00264962                                       [XMV] sites=1
+     call @000ededb in 000ede90 FUN_000ede90
+00264fdf FUN_00264fdf                                       [XMV] sites=1
+     call @000edfb7 in 000ede90 FUN_000ede90
+0028ce5c XAPILIB::XInputOpen                                [XPP] sites=2
+     call @0009c1e9 in 0009c140 FUN_0009c140
+     call @0009c383 in 0009c2a0 FUN_0009c2a0
+0028ceb2 XAPILIB::XInputClose                               [XPP] sites=3
+     call @0009c197 in 0009c140 FUN_0009c140
+     call @0009c1c9 in 0009c140 FUN_0009c140
+     call @0009c363 in 0009c2a0 FUN_0009c2a0
+0028cebe XAPILIB::XInputGetState                            [XPP] sites=1
+     call @0009c3e6 in NO-GHIDRA-FUNCTION
+0028cf2a XAPILIB::XInputSetState                            [XPP] sites=1
+     call @0009c28c in 0009c220 FUN_0009c220
+0028cfe1 XAPILIB::XInitDevices                              [XPP] sites=1
+     call @0009c2d3 in 0009c2a0 FUN_0009c2a0
+0028cfe6 XAPILIB::XGetDevices                               [XPP] sites=2
+     call @0009c328 in 0009c2a0 FUN_0009c2a0
+     call @0009c334 in 0009c2a0 FUN_0009c2a0
+0028d008 XAPILIB::XGetDeviceChanges                         [XPP] sites=1
+     call @0009c15d in 0009c140 FUN_0009c140

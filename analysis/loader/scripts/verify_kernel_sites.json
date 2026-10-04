@@ -1,0 +1,6396 @@
+{
+ "stubs": {
+  "0f8463": 54,
+  "0f9cc6": 17,
+  "0f9ccc": 27,
+  "0f9cd2": 28,
+  "0f9cd8": 29,
+  "0f9cde": 72,
+  "0f9ce4": 98,
+  "170aae": 105,
+  "170ab4": 109,
+  "2417b0": 54
+ },
+ "sites": {
+  "12": [
+   [
+    "call_mem",
+    "0f3e5c"
+   ],
+   [
+    "call_reg",
+    "0f3e9e"
+   ],
+   [
+    "call_reg",
+    "0f3eb8"
+   ],
+   [
+    "call_mem",
+    "0f4057"
+   ],
+   [
+    "call_mem",
+    "0f49c3"
+   ],
+   [
+    "call_reg",
+    "0f4b2d"
+   ],
+   [
+    "call_reg",
+    "0f4b53"
+   ],
+   [
+    "call_reg",
+    "0f4b88"
+   ],
+   [
+    "call_mem",
+    "0f50e3"
+   ],
+   [
+    "call_mem",
+    "0f511c"
+   ],
+   [
+    "call_mem",
+    "0f593c"
+   ]
+  ],
+  "11": [
+   [
+    "call_mem",
+    "0f3ecb"
+   ],
+   [
+    "call_mem",
+    "0f4bef"
+   ],
+   [
+    "call_mem",
+    "0f4d0e"
+   ],
+   [
+    "call_mem",
+    "0f513d"
+   ],
+   [
+    "call_mem",
+    "0f5c3c"
+   ],
+   [
+    "call_mem",
+    "0f5e22"
+   ]
+  ],
+  "13": [
+   [
+    "call_mem",
+    "0f4210"
+   ],
+   [
+    "call_mem",
+    "0f427f"
+   ],
+   [
+    "call_mem",
+    "0f435c"
+   ],
+   [
+    "call_mem",
+    "0f43e0"
+   ],
+   [
+    "call_mem",
+    "0f4644"
+   ],
+   [
+    "call_mem",
+    "0f4855"
+   ],
+   [
+    "call_mem",
+    "0f605c"
+   ]
+  ],
+  "14": [
+   [
+    "call_mem",
+    "0f5224"
+   ],
+   [
+    "call_mem",
+    "16fd08"
+   ]
+  ],
+  "10": [
+   [
+    "call_mem",
+    "0f5318"
+   ],
+   [
+    "call_mem",
+    "0f5ae8"
+   ],
+   [
+    "call_mem",
+    "0f5cf0"
+   ],
+   [
+    "call_mem",
+    "0f98be"
+   ],
+   [
+    "call_mem",
+    "0f995c"
+   ],
+   [
+    "call_mem",
+    "16c380"
+   ],
+   [
+    "call_mem",
+    "16c3a3"
+   ],
+   [
+    "call_mem",
+    "16cd5d"
+   ],
+   [
+    "call_mem",
+    "16ec9f"
+   ],
+   [
+    "call_mem",
+    "16f762"
+   ],
+   [
+    "call_mem",
+    "16f810"
+   ],
+   [
+    "call_mem",
+    "246e21"
+   ]
+  ],
+  "9": [
+   [
+    "call_mem",
+    "0f58c8"
+   ],
+   [
+    "call_mem",
+    "0f5a7c"
+   ],
+   [
+    "call_mem",
+    "0f5c21"
+   ],
+   [
+    "call_mem",
+    "0f5c70"
+   ],
+   [
+    "call_mem",
+    "0f63bc"
+   ],
+   [
+    "call_mem",
+    "0f98e1"
+   ],
+   [
+    "call_mem",
+    "0f9994"
+   ],
+   [
+    "call_mem",
+    "16c3d2"
+   ],
+   [
+    "call_mem",
+    "16c3f5"
+   ],
+   [
+    "call_mem",
+    "16ebf6"
+   ],
+   [
+    "call_mem",
+    "16f78a"
+   ],
+   [
+    "call_mem",
+    "16f81d"
+   ],
+   [
+    "call_mem",
+    "246eca"
+   ],
+   [
+    "call_mem",
+    "246f75"
+   ],
+   [
+    "call_mem",
+    "246f96"
+   ],
+   [
+    "call_mem",
+    "246ffa"
+   ],
+   [
+    "call_mem",
+    "247032"
+   ],
+   [
+    "call_mem",
+    "247076"
+   ],
+   [
+    "call_mem",
+    "247330"
+   ],
+   [
+    "call_mem",
+    "247352"
+   ],
+   [
+    "call_mem",
+    "24737a"
+   ],
+   [
+    "call_mem",
+    "2473a3"
+   ],
+   [
+    "call_mem",
+    "2473cb"
+   ],
+   [
+    "call_mem",
+    "2473f2"
+   ],
+   [
+    "call_mem",
+    "24741a"
+   ],
+   [
+    "call_mem",
+    "247443"
+   ],
+   [
+    "call_mem",
+    "2474ab"
+   ],
+   [
+    "call_mem",
+    "2474cc"
+   ],
+   [
+    "call_mem",
+    "2474f3"
+   ],
+   [
+    "call_mem",
+    "247519"
+   ],
+   [
+    "call_mem",
+    "247541"
+   ],
+   [
+    "call_mem",
+    "247581"
+   ],
+   [
+    "call_mem",
+    "2475a8"
+   ],
+   [
+    "call_mem",
+    "2475cd"
+   ],
+   [
+    "call_mem",
+    "2475f5"
+   ],
+   [
+    "call_mem",
+    "247619"
+   ],
+   [
+    "call_mem",
+    "247640"
+   ],
+   [
+    "call_mem",
+    "247669"
+   ],
+   [
+    "call_mem",
+    "247695"
+   ],
+   [
+    "call_mem",
+    "2476de"
+   ],
+   [
+    "call_mem",
+    "247708"
+   ],
+   [
+    "call_mem",
+    "247731"
+   ],
+   [
+    "call_mem",
+    "24775c"
+   ],
+   [
+    "call_mem",
+    "24779a"
+   ],
+   [
+    "call_mem",
+    "2477ec"
+   ],
+   [
+    "call_mem",
+    "247812"
+   ],
+   [
+    "call_mem",
+    "24783a"
+   ],
+   [
+    "call_mem",
+    "247860"
+   ],
+   [
+    "call_mem",
+    "247888"
+   ],
+   [
+    "call_mem",
+    "2478b2"
+   ],
+   [
+    "call_mem",
+    "2478da"
+   ],
+   [
+    "call_mem",
+    "247904"
+   ],
+   [
+    "call_mem",
+    "247a29"
+   ],
+   [
+    "call_mem",
+    "247a6c"
+   ],
+   [
+    "call_mem",
+    "247abb"
+   ],
+   [
+    "call_mem",
+    "247ef5"
+   ],
+   [
+    "call_mem",
+    "247f1b"
+   ],
+   [
+    "call_mem",
+    "247f43"
+   ],
+   [
+    "call_mem",
+    "247f71"
+   ],
+   [
+    "call_mem",
+    "247f99"
+   ],
+   [
+    "call_mem",
+    "247fc7"
+   ],
+   [
+    "call_mem",
+    "247ff2"
+   ],
+   [
+    "call_mem",
+    "24802d"
+   ],
+   [
+    "call_mem",
+    "248059"
+   ],
+   [
+    "call_mem",
+    "248094"
+   ],
+   [
+    "call_mem",
+    "2480bd"
+   ],
+   [
+    "call_mem",
+    "2480eb"
+   ],
+   [
+    "call_mem",
+    "248113"
+   ],
+   [
+    "call_mem",
+    "24813d"
+   ],
+   [
+    "call_mem",
+    "248165"
+   ],
+   [
+    "call_mem",
+    "24818f"
+   ],
+   [
+    "call_mem",
+    "2481b7"
+   ],
+   [
+    "call_mem",
+    "2481e9"
+   ],
+   [
+    "call_mem",
+    "248211"
+   ],
+   [
+    "call_mem",
+    "248243"
+   ],
+   [
+    "call_mem",
+    "24826e"
+   ],
+   [
+    "call_mem",
+    "2482ad"
+   ],
+   [
+    "call_mem",
+    "2482d9"
+   ],
+   [
+    "call_mem",
+    "248318"
+   ],
+   [
+    "call_mem",
+    "248341"
+   ],
+   [
+    "call_mem",
+    "248373"
+   ],
+   [
+    "call_mem",
+    "2485e4"
+   ],
+   [
+    "call_mem",
+    "24867d"
+   ],
+   [
+    "call_mem",
+    "2486a6"
+   ],
+   [
+    "call_mem",
+    "2486e1"
+   ],
+   [
+    "call_mem",
+    "248708"
+   ],
+   [
+    "call_mem",
+    "248743"
+   ],
+   [
+    "call_mem",
+    "24876a"
+   ],
+   [
+    "call_mem",
+    "2487a5"
+   ],
+   [
+    "call_mem",
+    "2487cf"
+   ],
+   [
+    "call_mem",
+    "248836"
+   ],
+   [
+    "call_mem",
+    "248861"
+   ],
+   [
+    "call_mem",
+    "2488ae"
+   ],
+   [
+    "call_mem",
+    "2488d9"
+   ],
+   [
+    "call_mem",
+    "248924"
+   ],
+   [
+    "call_mem",
+    "24894e"
+   ],
+   [
+    "call_mem",
+    "248a1e"
+   ],
+   [
+    "call_mem",
+    "248be4"
+   ],
+   [
+    "call_mem",
+    "248c4a"
+   ],
+   [
+    "call_mem",
+    "248edd"
+   ],
+   [
+    "call_mem",
+    "248f43"
+   ],
+   [
+    "call_mem",
+    "249015"
+   ],
+   [
+    "call_mem",
+    "2490ce"
+   ],
+   [
+    "call_mem",
+    "24911c"
+   ],
+   [
+    "call_mem",
+    "24918d"
+   ],
+   [
+    "call_mem",
+    "249395"
+   ],
+   [
+    "call_mem",
+    "2493eb"
+   ],
+   [
+    "call_mem",
+    "249442"
+   ]
+  ],
+  "16": [
+   [
+    "call_mem",
+    "0f5a10"
+   ],
+   [
+    "call_mem",
+    "0f6303"
+   ],
+   [
+    "call_mem",
+    "0f9938"
+   ]
+  ],
+  "20": [
+   [
+    "call_mem",
+    "0f6497"
+   ]
+  ],
+  "21": [
+   [
+    "call_mem",
+    "0f64e9"
+   ],
+   [
+    "call_mem",
+    "28ce51"
+   ],
+   [
+    "call_mem",
+    "292d46"
+   ]
+  ],
+  "23": [
+   [
+    "call_mem",
+    "0f6962"
+   ],
+   [
+    "call_mem",
+    "0f8d61"
+   ],
+   [
+    "call_mem",
+    "0f961e"
+   ],
+   [
+    "call_mem",
+    "24aa4b"
+   ],
+   [
+    "call_mem",
+    "24af40"
+   ],
+   [
+    "call_mem",
+    "24c996"
+   ],
+   [
+    "call_mem",
+    "24d2d6"
+   ],
+   [
+    "call_mem",
+    "28f39b"
+   ],
+   [
+    "call_mem",
+    "28f6d5"
+   ]
+  ],
+  "22": [
+   [
+    "call_mem",
+    "0f6975"
+   ],
+   [
+    "call_reg",
+    "0f73a3"
+   ],
+   [
+    "call_reg",
+    "0f73c4"
+   ],
+   [
+    "call_mem",
+    "0f749b"
+   ],
+   [
+    "call_mem",
+    "0f7571"
+   ],
+   [
+    "call_mem",
+    "0f79d0"
+   ],
+   [
+    "call_mem",
+    "0f7af7"
+   ],
+   [
+    "call_mem",
+    "0f7b2b"
+   ],
+   [
+    "call_mem",
+    "0f7bea"
+   ],
+   [
+    "call_mem",
+    "0f867d"
+   ],
+   [
+    "call_mem",
+    "0f87ed"
+   ],
+   [
+    "call_mem",
+    "0f880c"
+   ],
+   [
+    "call_reg",
+    "0f8865"
+   ],
+   [
+    "call_reg",
+    "0f887a"
+   ],
+   [
+    "call_mem",
+    "0f8d76"
+   ],
+   [
+    "call_mem",
+    "241cd1"
+   ]
+  ],
+  "3": [
+   [
+    "call_mem",
+    "0f6ac8"
+   ],
+   [
+    "call_mem",
+    "0f7745"
+   ],
+   [
+    "call_reg",
+    "0f78bf"
+   ],
+   [
+    "call_mem",
+    "0f7b79"
+   ],
+   [
+    "call_mem",
+    "0f7c1f"
+   ],
+   [
+    "call_mem",
+    "0f7c6a"
+   ],
+   [
+    "call_reg",
+    "0f7ff3"
+   ],
+   [
+    "call_reg",
+    "0f8000"
+   ],
+   [
+    "call_mem",
+    "0f808e"
+   ],
+   [
+    "call_mem",
+    "0f812d"
+   ],
+   [
+    "call_mem",
+    "0f85b7"
+   ],
+   [
+    "call_mem",
+    "0f8623"
+   ],
+   [
+    "call_mem",
+    "0f875d"
+   ],
+   [
+    "call_mem",
+    "0f8897"
+   ],
+   [
+    "call_mem",
+    "0f8973"
+   ],
+   [
+    "call_mem",
+    "0f8b8d"
+   ],
+   [
+    "call_mem",
+    "0f8d00"
+   ],
+   [
+    "call_mem",
+    "0f8df6"
+   ],
+   [
+    "call_reg",
+    "0f9ba4"
+   ],
+   [
+    "call_mem",
+    "28c10a"
+   ]
+  ],
+  "25": [
+   [
+    "call_mem",
+    "0f6b09"
+   ],
+   [
+    "call_mem",
+    "0f7802"
+   ],
+   [
+    "call_mem",
+    "0f7959"
+   ],
+   [
+    "call_mem",
+    "0f85f2"
+   ],
+   [
+    "call_mem",
+    "0f8bbd"
+   ],
+   [
+    "call_mem",
+    "0f8c80"
+   ],
+   [
+    "call_mem",
+    "0f8d3d"
+   ],
+   [
+    "call_mem",
+    "0f8e26"
+   ],
+   [
+    "call_mem",
+    "241fb9"
+   ],
+   [
+    "call_mem",
+    "24215d"
+   ]
+  ],
+  "24": [
+   [
+    "call_mem",
+    "0f6b17"
+   ],
+   [
+    "call_mem",
+    "0f6cae"
+   ],
+   [
+    "call_mem",
+    "0f6eae"
+   ],
+   [
+    "call_mem",
+    "0f82d9"
+   ],
+   [
+    "call_mem",
+    "0f8ad8"
+   ]
+  ],
+  "26": [
+   [
+    "call_mem",
+    "0f717b"
+   ],
+   [
+    "call_mem",
+    "0f791b"
+   ],
+   [
+    "call_mem",
+    "0f7968"
+   ],
+   [
+    "call_reg",
+    "0f7b12"
+   ],
+   [
+    "call_mem",
+    "0f7bf5"
+   ],
+   [
+    "call_mem",
+    "0f7cdf"
+   ],
+   [
+    "call_mem",
+    "0f7f6e"
+   ],
+   [
+    "call_mem",
+    "0f8100"
+   ],
+   [
+    "call_mem",
+    "0f819f"
+   ],
+   [
+    "call_mem",
+    "0f83ae"
+   ],
+   [
+    "call_mem",
+    "0f85ff"
+   ],
+   [
+    "call_mem",
+    "0f8688"
+   ],
+   [
+    "call_mem",
+    "0f8817"
+   ],
+   [
+    "call_mem",
+    "0f88e8"
+   ],
+   [
+    "call_mem",
+    "0f8a3c"
+   ],
+   [
+    "call_mem",
+    "0f8b38"
+   ],
+   [
+    "call_mem",
+    "0f8c26"
+   ],
+   [
+    "call_mem",
+    "0f8c90"
+   ],
+   [
+    "call_mem",
+    "0f8ef5"
+   ],
+   [
+    "call_mem",
+    "0f8f50"
+   ],
+   [
+    "call_mem",
+    "0f92a2"
+   ],
+   [
+    "call_mem",
+    "0f94db"
+   ],
+   [
+    "call_mem",
+    "0f9517"
+   ],
+   [
+    "call_mem",
+    "0f95b2"
+   ],
+   [
+    "call_mem",
+    "0f95d4"
+   ],
+   [
+    "call_mem",
+    "0f9762"
+   ],
+   [
+    "call_mem",
+    "241cde"
+   ],
+   [
+    "call_mem",
+    "242122"
+   ]
+  ],
+  "34": [
+   [
+    "call_mem",
+    "0f71e4"
+   ],
+   [
+    "call_mem",
+    "0f7229"
+   ],
+   [
+    "call_mem",
+    "0f7630"
+   ],
+   [
+    "call_mem",
+    "0f7a04"
+   ],
+   [
+    "call_mem",
+    "0f7dc3"
+   ],
+   [
+    "call_mem",
+    "24192b"
+   ]
+  ],
+  "33": [
+   [
+    "call_mem",
+    "0f723b"
+   ],
+   [
+    "call_mem",
+    "0f731c"
+   ]
+  ],
+  "35": [
+   [
+    "call_mem",
+    "0f72d1"
+   ],
+   [
+    "call_mem",
+    "0f730a"
+   ],
+   [
+    "call_mem",
+    "0f7681"
+   ],
+   [
+    "call_mem",
+    "0f7a2c"
+   ],
+   [
+    "call_mem",
+    "0f7f63"
+   ],
+   [
+    "call_mem",
+    "0f8c13"
+   ],
+   [
+    "call_mem",
+    "0f8e94"
+   ],
+   [
+    "call_mem",
+    "0f8ee9"
+   ],
+   [
+    "call_mem",
+    "0f9646"
+   ],
+   [
+    "call_mem",
+    "0f96d6"
+   ],
+   [
+    "call_mem",
+    "0f9724"
+   ],
+   [
+    "call_mem",
+    "241b95"
+   ]
+  ],
+  "36": [
+   [
+    "call_mem",
+    "0f736d"
+   ],
+   [
+    "call_mem",
+    "0f7418"
+   ],
+   [
+    "call_mem",
+    "0f743e"
+   ],
+   [
+    "call_mem",
+    "0f74f9"
+   ],
+   [
+    "call_mem",
+    "0f7524"
+   ],
+   [
+    "call_mem",
+    "0f75da"
+   ],
+   [
+    "call_mem",
+    "0f790b"
+   ],
+   [
+    "call_mem",
+    "0f8bda"
+   ],
+   [
+    "call_mem",
+    "0f8e48"
+   ]
+  ],
+  "38": [
+   [
+    "call_mem",
+    "0f75aa"
+   ]
+  ],
+  "44": [
+   [
+    "call_mem",
+    "0f7894"
+   ]
+  ],
+  "43": [
+   [
+    "call_mem",
+    "0f78d6"
+   ],
+   [
+    "call_mem",
+    "0f7bab"
+   ],
+   [
+    "call_mem",
+    "0f7c9c"
+   ],
+   [
+    "call_mem",
+    "0f7d8e"
+   ],
+   [
+    "call_mem",
+    "0f80c0"
+   ],
+   [
+    "call_mem",
+    "0f815f"
+   ],
+   [
+    "call_mem",
+    "0f8655"
+   ],
+   [
+    "call_mem",
+    "0f87a2"
+   ],
+   [
+    "call_mem",
+    "0f88c8"
+   ],
+   [
+    "call_mem",
+    "0f8a03"
+   ],
+   [
+    "call_mem",
+    "0f8b12"
+   ],
+   [
+    "call_mem",
+    "0f9157"
+   ],
+   [
+    "call_mem",
+    "0f949a"
+   ]
+  ],
+  "42": [
+   [
+    "call_mem",
+    "0f78e7"
+   ],
+   [
+    "call_mem",
+    "0f7972"
+   ],
+   [
+    "call_mem",
+    "0f7b03"
+   ]
+  ],
+  "45": [
+   [
+    "call_mem",
+    "0f7c41"
+   ]
+  ],
+  "37": [
+   [
+    "call_mem",
+    "0f7cd4"
+   ],
+   [
+    "call_mem",
+    "0f80f5"
+   ],
+   [
+    "call_mem",
+    "0f8194"
+   ],
+   [
+    "call_mem",
+    "0f8b2d"
+   ]
+  ],
+  "48": [
+   [
+    "call_mem",
+    "0f8058"
+   ],
+   [
+    "call_mem",
+    "0f8f62"
+   ],
+   [
+    "call_mem",
+    "0f9351"
+   ]
+  ],
+  "52": [
+   [
+    "call_mem",
+    "0f81cf"
+   ],
+   [
+    "call_mem",
+    "28cc27"
+   ]
+  ],
+  "51": [
+   [
+    "call_mem",
+    "0f81f6"
+   ],
+   [
+    "call_mem",
+    "24077a"
+   ]
+  ],
+  "55": [
+   [
+    "call_mem",
+    "0f82d2"
+   ],
+   [
+    "call_mem",
+    "0f9028"
+   ]
+  ],
+  "50": [
+   [
+    "call_mem",
+    "0f837d"
+   ]
+  ],
+  "49": [
+   [
+    "call_mem",
+    "0f83a3"
+   ]
+  ],
+  "56": [
+   [
+    "call_mem",
+    "0f8449"
+   ],
+   [
+    "call_mem",
+    "237144"
+   ],
+   [
+    "call_mem",
+    "238b57"
+   ],
+   [
+    "call_mem",
+    "239a40"
+   ],
+   [
+    "call_mem",
+    "239b2f"
+   ],
+   [
+    "call_mem",
+    "239c0c"
+   ],
+   [
+    "call_mem",
+    "239d37"
+   ],
+   [
+    "call_mem",
+    "23a483"
+   ],
+   [
+    "call_mem",
+    "23a56f"
+   ],
+   [
+    "call_mem",
+    "23cf2a"
+   ],
+   [
+    "call_mem",
+    "2417a6"
+   ],
+   [
+    "call_mem",
+    "2494c1"
+   ]
+  ],
+  "46": [
+   [
+    "call_mem",
+    "0f8731"
+   ],
+   [
+    "call_mem",
+    "0f8a2d"
+   ],
+   [
+    "call_mem",
+    "0f8a94"
+   ]
+  ],
+  "74": [
+   [
+    "call_mem",
+    "0f92d7"
+   ],
+   [
+    "call_mem",
+    "23c959"
+   ],
+   [
+    "call_mem",
+    "23ce46"
+   ],
+   [
+    "call_mem",
+    "24add8"
+   ],
+   [
+    "call_mem",
+    "24b164"
+   ],
+   [
+    "call_mem",
+    "250aa5"
+   ],
+   [
+    "call_mem",
+    "250bb4"
+   ],
+   [
+    "call_mem",
+    "28ca90"
+   ]
+  ],
+  "54": [
+   [
+    "call_stub",
+    "0ee14a"
+   ],
+   [
+    "call_stub",
+    "0ee157"
+   ],
+   [
+    "call_mem",
+    "0f9462"
+   ],
+   [
+    "call_stub",
+    "161259"
+   ],
+   [
+    "call_stub",
+    "17085c"
+   ],
+   [
+    "call_mem",
+    "2372ce"
+   ],
+   [
+    "call_mem",
+    "2372f0"
+   ],
+   [
+    "call_mem",
+    "23731b"
+   ],
+   [
+    "call_mem",
+    "238bfb"
+   ],
+   [
+    "call_reg",
+    "239780"
+   ],
+   [
+    "call_reg",
+    "23979e"
+   ],
+   [
+    "call_reg",
+    "2397b1"
+   ],
+   [
+    "call_reg",
+    "23a3c7"
+   ],
+   [
+    "call_reg",
+    "23a3da"
+   ],
+   [
+    "call_mem",
+    "240781"
+   ],
+   [
+    "call_stub",
+    "241d0e"
+   ],
+   [
+    "tail_jmp",
+    "249511"
+   ]
+  ],
+  "40": [
+   [
+    "call_mem",
+    "0f9759"
+   ]
+  ],
+  "59": [
+   [
+    "call_mem",
+    "0f988e"
+   ],
+   [
+    "call_mem",
+    "28eaf7"
+   ]
+  ],
+  "76": [
+   [
+    "call_mem",
+    "0f9a6b"
+   ]
+  ],
+  "77": [
+   [
+    "call_mem",
+    "0f9aab"
+   ]
+  ],
+  "60": [
+   [
+    "call_mem",
+    "0f9b01"
+   ],
+   [
+    "call_mem",
+    "24aa1c"
+   ],
+   [
+    "call_mem",
+    "24aa97"
+   ],
+   [
+    "call_mem",
+    "24afe1"
+   ],
+   [
+    "call_mem",
+    "28d2a0"
+   ],
+   [
+    "call_mem",
+    "28f40a"
+   ],
+   [
+    "call_mem",
+    "28f431"
+   ],
+   [
+    "call_mem",
+    "28f480"
+   ],
+   [
+    "call_mem",
+    "28f4ab"
+   ],
+   [
+    "call_mem",
+    "28f70f"
+   ],
+   [
+    "call_mem",
+    "290136"
+   ],
+   [
+    "call_mem",
+    "2902a9"
+   ],
+   [
+    "call_mem",
+    "29046a"
+   ],
+   [
+    "call_mem",
+    "29052b"
+   ],
+   [
+    "call_mem",
+    "290779"
+   ],
+   [
+    "call_mem",
+    "290f5a"
+   ],
+   [
+    "call_mem",
+    "291b61"
+   ]
+  ],
+  "78": [
+   [
+    "call_mem",
+    "0f9b11"
+   ]
+  ],
+  "7": [
+   [
+    "call_mem",
+    "0f9b2c"
+   ],
+   [
+    "call_mem",
+    "23c8a4"
+   ],
+   [
+    "call_reg",
+    "24b0e6"
+   ],
+   [
+    "call_reg",
+    "24b104"
+   ],
+   [
+    "call_mem",
+    "250b3c"
+   ],
+   [
+    "call_mem",
+    "28c8cc"
+   ],
+   [
+    "call_mem",
+    "28c98a"
+   ],
+   [
+    "call_mem",
+    "28cb41"
+   ],
+   [
+    "call_mem",
+    "28e012"
+   ]
+  ],
+  "6": [
+   [
+    "call_mem",
+    "0f9b39"
+   ],
+   [
+    "call_mem",
+    "24b0f1"
+   ],
+   [
+    "call_mem",
+    "28c3a8"
+   ],
+   [
+    "call_mem",
+    "28c8d7"
+   ],
+   [
+    "call_mem",
+    "28cb08"
+   ],
+   [
+    "call_mem",
+    "28cb2e"
+   ]
+  ],
+  "84": [
+   [
+    "call_mem",
+    "0f9bcc"
+   ]
+  ],
+  "85": [
+   [
+    "call_mem",
+    "0f9bfb"
+   ]
+  ],
+  "86": [
+   [
+    "call_mem",
+    "0f9c1a"
+   ]
+  ],
+  "4": [
+   [
+    "call_mem",
+    "0f9c75"
+   ],
+   [
+    "call_mem",
+    "23ba48"
+   ],
+   [
+    "call_mem",
+    "23bea3"
+   ],
+   [
+    "call_mem",
+    "28d1da"
+   ],
+   [
+    "call_mem",
+    "28d496"
+   ],
+   [
+    "call_mem",
+    "28d670"
+   ],
+   [
+    "call_mem",
+    "28e08c"
+   ]
+  ],
+  "1": [
+   [
+    "call_mem",
+    "0f9c86"
+   ],
+   [
+    "call_mem",
+    "28c9a0"
+   ],
+   [
+    "call_mem",
+    "28cbaa"
+   ],
+   [
+    "call_mem",
+    "28cec2"
+   ],
+   [
+    "call_mem",
+    "28cfe7"
+   ],
+   [
+    "call_mem",
+    "28d024"
+   ],
+   [
+    "call_mem",
+    "28d932"
+   ],
+   [
+    "call_mem",
+    "28d9ce"
+   ],
+   [
+    "call_mem",
+    "28dcba"
+   ],
+   [
+    "call_mem",
+    "28de44"
+   ],
+   [
+    "call_mem",
+    "28e744"
+   ],
+   [
+    "call_mem",
+    "28f2b3"
+   ],
+   [
+    "call_mem",
+    "290795"
+   ],
+   [
+    "call_mem",
+    "2907e3"
+   ],
+   [
+    "call_mem",
+    "290b3b"
+   ],
+   [
+    "call_mem",
+    "290be6"
+   ],
+   [
+    "call_mem",
+    "290c50"
+   ],
+   [
+    "call_mem",
+    "292910"
+   ],
+   [
+    "call_mem",
+    "292ab3"
+   ],
+   [
+    "call_mem",
+    "292b8f"
+   ],
+   [
+    "call_reg",
+    "292cfa"
+   ],
+   [
+    "call_mem",
+    "292e09"
+   ],
+   [
+    "call_mem",
+    "2934c1"
+   ]
+  ],
+  "0": [
+   [
+    "call_mem",
+    "0f9c9c"
+   ],
+   [
+    "call_mem",
+    "246d6e"
+   ],
+   [
+    "call_mem",
+    "28ca38"
+   ],
+   [
+    "call_mem",
+    "28cbbe"
+   ],
+   [
+    "call_mem",
+    "28cf1d"
+   ],
+   [
+    "call_mem",
+    "28cffc"
+   ],
+   [
+    "call_mem",
+    "28d05b"
+   ],
+   [
+    "call_mem",
+    "28d982"
+   ],
+   [
+    "call_mem",
+    "28d99b"
+   ],
+   [
+    "call_mem",
+    "28dae0"
+   ],
+   [
+    "call_mem",
+    "28de31"
+   ],
+   [
+    "call_mem",
+    "28decd"
+   ],
+   [
+    "call_mem",
+    "28e77e"
+   ],
+   [
+    "call_mem",
+    "28f2d4"
+   ],
+   [
+    "call_mem",
+    "28f2f3"
+   ],
+   [
+    "tail_jmp",
+    "2907b9"
+   ],
+   [
+    "call_mem",
+    "29093a"
+   ],
+   [
+    "call_mem",
+    "290b1a"
+   ],
+   [
+    "call_mem",
+    "290bcd"
+   ],
+   [
+    "call_mem",
+    "290c32"
+   ],
+   [
+    "call_mem",
+    "290c87"
+   ],
+   [
+    "call_mem",
+    "292a9c"
+   ],
+   [
+    "call_mem",
+    "292adc"
+   ],
+   [
+    "call_mem",
+    "292cc4"
+   ],
+   [
+    "call_mem",
+    "292d2d"
+   ],
+   [
+    "call_mem",
+    "292dde"
+   ],
+   [
+    "call_mem",
+    "292e3e"
+   ],
+   [
+    "call_mem",
+    "29351f"
+   ]
+  ],
+  "5": [
+   [
+    "call_mem",
+    "0f9cb4"
+   ],
+   [
+    "call_mem",
+    "2344dd"
+   ],
+   [
+    "call_reg",
+    "239119"
+   ],
+   [
+    "call_reg",
+    "28d714"
+   ],
+   [
+    "call_reg",
+    "28d72d"
+   ],
+   [
+    "call_mem",
+    "28d990"
+   ],
+   [
+    "call_mem",
+    "28e535"
+   ]
+  ],
+  "106": [
+   [
+    "call_mem",
+    "1692de"
+   ],
+   [
+    "call_mem",
+    "16936c"
+   ],
+   [
+    "call_mem",
+    "169d93"
+   ],
+   [
+    "call_mem",
+    "169fbe"
+   ],
+   [
+    "call_mem",
+    "1708a9"
+   ]
+  ],
+  "107": [
+   [
+    "call_mem",
+    "1708da"
+   ]
+  ],
+  "108": [
+   [
+    "call_mem",
+    "170946"
+   ]
+  ],
+  "93": [
+   [
+    "call_mem",
+    "234518"
+   ],
+   [
+    "call_mem",
+    "234571"
+   ],
+   [
+    "call_mem",
+    "2396bd"
+   ],
+   [
+    "call_mem",
+    "23b093"
+   ],
+   [
+    "call_mem",
+    "23ccd0"
+   ],
+   [
+    "call_reg",
+    "24071a"
+   ]
+  ],
+  "92": [
+   [
+    "call_mem",
+    "2396a5"
+   ],
+   [
+    "call_mem",
+    "23ccc0"
+   ],
+   [
+    "call_mem",
+    "240764"
+   ]
+  ],
+  "90": [
+   [
+    "call_mem",
+    "23b893"
+   ],
+   [
+    "call_mem",
+    "24b03a"
+   ],
+   [
+    "call_mem",
+    "24c895"
+   ],
+   [
+    "call_mem",
+    "250986"
+   ],
+   [
+    "call_mem",
+    "292179"
+   ]
+  ],
+  "79": [
+   [
+    "call_mem",
+    "23c915"
+   ],
+   [
+    "call_mem",
+    "24b10d"
+   ],
+   [
+    "call_mem",
+    "250b49"
+   ],
+   [
+    "call_mem",
+    "28c919"
+   ]
+  ],
+  "82": [
+   [
+    "call_mem",
+    "23c92c"
+   ],
+   [
+    "call_mem",
+    "24b128"
+   ],
+   [
+    "call_mem",
+    "250b63"
+   ],
+   [
+    "call_mem",
+    "28ca5e"
+   ]
+  ],
+  "81": [
+   [
+    "call_mem",
+    "23c933"
+   ],
+   [
+    "call_mem",
+    "24b12f"
+   ],
+   [
+    "call_mem",
+    "250b6a"
+   ],
+   [
+    "call_mem",
+    "28ca65"
+   ]
+  ],
+  "97": [
+   [
+    "call_mem",
+    "23ce50"
+   ],
+   [
+    "call_mem",
+    "24ad80"
+   ],
+   [
+    "call_mem",
+    "250a7c"
+   ]
+  ],
+  "99": [
+   [
+    "call_mem",
+    "23e7f0"
+   ]
+  ],
+  "94": [
+   [
+    "call_mem",
+    "2406ef"
+   ]
+  ],
+  "57": [
+   [
+    "call_mem",
+    "240771"
+   ],
+   [
+    "call_mem",
+    "2494ce"
+   ],
+   [
+    "call_mem",
+    "249503"
+   ]
+  ],
+  "95": [
+   [
+    "call_mem",
+    "240788"
+   ]
+  ],
+  "80": [
+   [
+    "call_mem",
+    "246d56"
+   ],
+   [
+    "call_mem",
+    "290b00"
+   ]
+  ],
+  "100": [
+   [
+    "call_mem",
+    "246d98"
+   ]
+  ],
+  "101": [
+   [
+    "call_mem",
+    "246db6"
+   ]
+  ],
+  "69": [
+   [
+    "call_mem",
+    "24945a"
+   ],
+   [
+    "call_mem",
+    "28eee3"
+   ],
+   [
+    "call_mem",
+    "28f2fe"
+   ]
+  ],
+  "102": [
+   [
+    "call_mem",
+    "249467"
+   ],
+   [
+    "call_mem",
+    "24949c"
+   ]
+  ],
+  "68": [
+   [
+    "tail_jmp",
+    "2494aa"
+   ],
+   [
+    "call_mem",
+    "28e9f3"
+   ]
+  ],
+  "83": [
+   [
+    "call_mem",
+    "24a780"
+   ],
+   [
+    "call_mem",
+    "24fe8e"
+   ],
+   [
+    "call_mem",
+    "250234"
+   ],
+   [
+    "call_mem",
+    "250259"
+   ],
+   [
+    "call_mem",
+    "250399"
+   ],
+   [
+    "call_mem",
+    "2503e9"
+   ],
+   [
+    "call_mem",
+    "28c9b4"
+   ]
+  ],
+  "61": [
+   [
+    "call_mem",
+    "24a9ef"
+   ],
+   [
+    "call_mem",
+    "24ad94"
+   ],
+   [
+    "call_mem",
+    "28d73e"
+   ],
+   [
+    "call_mem",
+    "28d868"
+   ],
+   [
+    "call_mem",
+    "28dbb1"
+   ],
+   [
+    "call_mem",
+    "28f90f"
+   ],
+   [
+    "call_mem",
+    "28fb36"
+   ],
+   [
+    "call_mem",
+    "28fc15"
+   ],
+   [
+    "call_mem",
+    "28fe5a"
+   ],
+   [
+    "call_mem",
+    "2900be"
+   ],
+   [
+    "call_mem",
+    "2901c2"
+   ],
+   [
+    "call_mem",
+    "2905b7"
+   ],
+   [
+    "call_mem",
+    "290dbd"
+   ],
+   [
+    "call_mem",
+    "290dde"
+   ],
+   [
+    "call_mem",
+    "290f11"
+   ],
+   [
+    "call_mem",
+    "290f98"
+   ],
+   [
+    "call_mem",
+    "2910ee"
+   ],
+   [
+    "call_mem",
+    "291421"
+   ],
+   [
+    "call_mem",
+    "291776"
+   ],
+   [
+    "call_mem",
+    "291812"
+   ],
+   [
+    "call_mem",
+    "29189d"
+   ],
+   [
+    "call_mem",
+    "291c12"
+   ]
+  ],
+  "103": [
+   [
+    "call_mem",
+    "24a9fc"
+   ],
+   [
+    "call_reg",
+    "24adad"
+   ],
+   [
+    "call_reg",
+    "24adbf"
+   ],
+   [
+    "call_mem",
+    "250a93"
+   ]
+  ],
+  "19": [
+   [
+    "call_mem",
+    "24b21c"
+   ],
+   [
+    "call_mem",
+    "24dced"
+   ],
+   [
+    "call_mem",
+    "24dd46"
+   ]
+  ],
+  "89": [
+   [
+    "call_mem",
+    "24b6b0"
+   ],
+   [
+    "call_mem",
+    "24be78"
+   ],
+   [
+    "call_mem",
+    "24ef5d"
+   ],
+   [
+    "call_mem",
+    "24efc0"
+   ],
+   [
+    "call_mem",
+    "24f419"
+   ],
+   [
+    "call_reg",
+    "24f5c8"
+   ],
+   [
+    "call_reg",
+    "24f61e"
+   ],
+   [
+    "call_mem",
+    "28cc33"
+   ],
+   [
+    "call_mem",
+    "2922e9"
+   ],
+   [
+    "call_mem",
+    "292c4a"
+   ],
+   [
+    "call_mem",
+    "29310c"
+   ]
+  ],
+  "88": [
+   [
+    "call_mem",
+    "24ef6f"
+   ],
+   [
+    "call_mem",
+    "24f5e8"
+   ],
+   [
+    "call_mem",
+    "24fd14"
+   ],
+   [
+    "call_mem",
+    "24fd5a"
+   ],
+   [
+    "call_mem",
+    "24fdf0"
+   ],
+   [
+    "call_mem",
+    "2507dd"
+   ],
+   [
+    "call_mem",
+    "28cc3a"
+   ],
+   [
+    "call_mem",
+    "292c53"
+   ],
+   [
+    "call_mem",
+    "292c67"
+   ],
+   [
+    "call_mem",
+    "292fdf"
+   ]
+  ],
+  "104": [
+   [
+    "call_mem",
+    "2509b6"
+   ]
+  ],
+  "2": [
+   [
+    "call_mem",
+    "28c13d"
+   ]
+  ],
+  "62": [
+   [
+    "tail_jmp",
+    "28d67a"
+   ]
+  ],
+  "63": [
+   [
+    "call_mem",
+    "28da0d"
+   ]
+  ],
+  "66": [
+   [
+    "call_mem",
+    "28e762"
+   ],
+   [
+    "call_mem",
+    "28e7bb"
+   ],
+   [
+    "call_mem",
+    "28e9fe"
+   ],
+   [
+    "call_mem",
+    "28ec33"
+   ],
+   [
+    "call_mem",
+    "28ee18"
+   ],
+   [
+    "call_mem",
+    "28ef5a"
+   ],
+   [
+    "call_mem",
+    "28f090"
+   ],
+   [
+    "call_mem",
+    "28f136"
+   ],
+   [
+    "call_mem",
+    "28f25f"
+   ]
+  ],
+  "65": [
+   [
+    "call_mem",
+    "28e775"
+   ]
+  ],
+  "67": [
+   [
+    "call_mem",
+    "28e7c3"
+   ],
+   [
+    "call_mem",
+    "28ea06"
+   ],
+   [
+    "call_mem",
+    "28ec40"
+   ],
+   [
+    "call_mem",
+    "28ee25"
+   ],
+   [
+    "call_mem",
+    "28ef62"
+   ],
+   [
+    "call_mem",
+    "28f098"
+   ],
+   [
+    "call_mem",
+    "28f13e"
+   ],
+   [
+    "call_mem",
+    "28f266"
+   ]
+  ],
+  "58": [
+   [
+    "call_reg",
+    "0f98a1"
+   ],
+   [
+    "call_reg",
+    "0f98af"
+   ],
+   [
+    "call_mem",
+    "28eb24"
+   ],
+   [
+    "call_mem",
+    "28eb42"
+   ]
+  ],
+  "71": [
+   [
+    "call_mem",
+    "28f24a"
+   ]
+  ],
+  "70": [
+   [
+    "call_mem",
+    "28f290"
+   ]
+  ],
+  "91": [
+   [
+    "call_mem",
+    "292b28"
+   ],
+   [
+    "call_mem",
+    "292b41"
+   ],
+   [
+    "call_reg",
+    "292f07"
+   ],
+   [
+    "call_reg",
+    "292f1c"
+   ]
+  ],
+  "15": [
+   [
+    "call_reg",
+    "0f504d"
+   ],
+   [
+    "call_reg",
+    "0f5097"
+   ]
+  ],
+  "41": [
+   [
+    "call_reg",
+    "0f91cf"
+   ],
+   [
+    "call_reg",
+    "0f94d0"
+   ]
+  ],
+  "96": [
+   [
+    "call_reg",
+    "23c9c3"
+   ],
+   [
+    "call_reg",
+    "23c9d5"
+   ]
+  ],
+  "17": [
+   [
+    "call_stub",
+    "0f6453"
+   ],
+   [
+    "call_stub",
+    "0f856a"
+   ],
+   [
+    "call_stub",
+    "0f8ad2"
+   ],
+   [
+    "call_stub",
+    "0f9c51"
+   ],
+   [
+    "call_stub",
+    "1707b3"
+   ]
+  ],
+  "28": [
+   [
+    "call_stub",
+    "0f6f71"
+   ],
+   [
+    "call_stub",
+    "0f6fda"
+   ],
+   [
+    "call_stub",
+    "0f9065"
+   ]
+  ],
+  "27": [
+   [
+    "call_stub",
+    "0f6f7f"
+   ],
+   [
+    "call_stub",
+    "0f6fe6"
+   ],
+   [
+    "call_stub",
+    "0f7055"
+   ],
+   [
+    "call_stub",
+    "0f70fc"
+   ],
+   [
+    "call_stub",
+    "0f9074"
+   ],
+   [
+    "call_stub",
+    "0f9084"
+   ]
+  ],
+  "29": [
+   [
+    "call_stub",
+    "0f6fd4"
+   ],
+   [
+    "call_stub",
+    "0f6fef"
+   ],
+   [
+    "call_stub",
+    "0f9091"
+   ]
+  ],
+  "72": [
+   [
+    "call_stub",
+    "0f90cb"
+   ]
+  ],
+  "105": [
+   [
+    "call_stub",
+    "166949"
+   ],
+   [
+    "call_stub",
+    "166c67"
+   ]
+  ],
+  "109": [
+   [
+    "jmp_stub",
+    "1709c4"
+   ]
+  ],
+  "98": [
+   [
+    "call_stub",
+    "23e627"
+   ]
+  ]
+ },
+ "refs": [
+  {
+   "va": "0f3e5c",
+   "slot": 12,
+   "kind": "call_mem",
+   "text": "0f3e5c ff1590352900           call dword ptr [0x293590]"
+  },
+  {
+   "va": "0f3e7e",
+   "slot": 12,
+   "kind": "mov_reg",
+   "text": "0f3e7e 8b3d90352900           mov edi, dword ptr [0x293590]"
+  },
+  {
+   "va": "0f3ecb",
+   "slot": 11,
+   "kind": "call_mem",
+   "text": "0f3ecb ff158c352900           call dword ptr [0x29358c]"
+  },
+  {
+   "va": "0f4057",
+   "slot": 12,
+   "kind": "call_mem",
+   "text": "0f4057 ff1590352900           call dword ptr [0x293590]"
+  },
+  {
+   "va": "0f4210",
+   "slot": 13,
+   "kind": "call_mem",
+   "text": "0f4210 ff1594352900           call dword ptr [0x293594]"
+  },
+  {
+   "va": "0f427f",
+   "slot": 13,
+   "kind": "call_mem",
+   "text": "0f427f ff1594352900           call dword ptr [0x293594]"
+  },
+  {
+   "va": "0f435c",
+   "slot": 13,
+   "kind": "call_mem",
+   "text": "0f435c ff1594352900           call dword ptr [0x293594]"
+  },
+  {
+   "va": "0f43e0",
+   "slot": 13,
+   "kind": "call_mem",
+   "text": "0f43e0 ff1594352900           call dword ptr [0x293594]"
+  },
+  {
+   "va": "0f4644",
+   "slot": 13,
+   "kind": "call_mem",
+   "text": "0f4644 ff1594352900           call dword ptr [0x293594]"
+  },
+  {
+   "va": "0f4855",
+   "slot": 13,
+   "kind": "call_mem",
+   "text": "0f4855 ff1594352900           call dword ptr [0x293594]"
+  },
+  {
+   "va": "0f49c3",
+   "slot": 12,
+   "kind": "call_mem",
+   "text": "0f49c3 ff1590352900           call dword ptr [0x293590]"
+  },
+  {
+   "va": "0f4b15",
+   "slot": 12,
+   "kind": "mov_reg",
+   "text": "0f4b15 8b3590352900           mov esi, dword ptr [0x293590]"
+  },
+  {
+   "va": "0f4bef",
+   "slot": 11,
+   "kind": "call_mem",
+   "text": "0f4bef ff158c352900           call dword ptr [0x29358c]"
+  },
+  {
+   "va": "0f4d0e",
+   "slot": 11,
+   "kind": "call_mem",
+   "text": "0f4d0e ff158c352900           call dword ptr [0x29358c]"
+  },
+  {
+   "va": "0f5047",
+   "slot": 15,
+   "kind": "mov_reg",
+   "text": "0f5047 8b359c352900           mov esi, dword ptr [0x29359c]"
+  },
+  {
+   "va": "0f50e3",
+   "slot": 12,
+   "kind": "call_mem",
+   "text": "0f50e3 ff1590352900           call dword ptr [0x293590]"
+  },
+  {
+   "va": "0f511c",
+   "slot": 12,
+   "kind": "call_mem",
+   "text": "0f511c ff1590352900           call dword ptr [0x293590]"
+  },
+  {
+   "va": "0f513d",
+   "slot": 11,
+   "kind": "call_mem",
+   "text": "0f513d ff158c352900           call dword ptr [0x29358c]"
+  },
+  {
+   "va": "0f5224",
+   "slot": 14,
+   "kind": "call_mem",
+   "text": "0f5224 ff1598352900           call dword ptr [0x293598]"
+  },
+  {
+   "va": "0f5318",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "0f5318 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "0f58c8",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "0f58c8 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "0f593c",
+   "slot": 12,
+   "kind": "call_mem",
+   "text": "0f593c ff1590352900           call dword ptr [0x293590]"
+  },
+  {
+   "va": "0f5a10",
+   "slot": 16,
+   "kind": "call_mem",
+   "text": "0f5a10 ff15a0352900           call dword ptr [0x2935a0]"
+  },
+  {
+   "va": "0f5a7c",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "0f5a7c ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "0f5ae8",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "0f5ae8 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "0f5c21",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "0f5c21 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "0f5c3c",
+   "slot": 11,
+   "kind": "call_mem",
+   "text": "0f5c3c ff158c352900           call dword ptr [0x29358c]"
+  },
+  {
+   "va": "0f5c70",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "0f5c70 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "0f5cf0",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "0f5cf0 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "0f5e22",
+   "slot": 11,
+   "kind": "call_mem",
+   "text": "0f5e22 ff158c352900           call dword ptr [0x29358c]"
+  },
+  {
+   "va": "0f605c",
+   "slot": 13,
+   "kind": "call_mem",
+   "text": "0f605c ff1594352900           call dword ptr [0x293594]"
+  },
+  {
+   "va": "0f6303",
+   "slot": 16,
+   "kind": "call_mem",
+   "text": "0f6303 ff15a0352900           call dword ptr [0x2935a0]"
+  },
+  {
+   "va": "0f63bc",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "0f63bc ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "0f6497",
+   "slot": 20,
+   "kind": "call_mem",
+   "text": "0f6497 ff15b0352900           call dword ptr [0x2935b0]"
+  },
+  {
+   "va": "0f64e9",
+   "slot": 21,
+   "kind": "call_mem",
+   "text": "0f64e9 ff15b4352900           call dword ptr [0x2935b4]"
+  },
+  {
+   "va": "0f6962",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "0f6962 ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "0f6975",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f6975 ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f6ac8",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f6ac8 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f6b09",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f6b09 ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f6b17",
+   "slot": 24,
+   "kind": "call_mem",
+   "text": "0f6b17 ff15c0352900           call dword ptr [0x2935c0]"
+  },
+  {
+   "va": "0f6cae",
+   "slot": 24,
+   "kind": "call_mem",
+   "text": "0f6cae ff15c0352900           call dword ptr [0x2935c0]"
+  },
+  {
+   "va": "0f6eae",
+   "slot": 24,
+   "kind": "call_mem",
+   "text": "0f6eae ff15c0352900           call dword ptr [0x2935c0]"
+  },
+  {
+   "va": "0f7004",
+   "slot": 30,
+   "kind": "mov_reg",
+   "text": "0f7004 8b35d8352900           mov esi, dword ptr [0x2935d8]"
+  },
+  {
+   "va": "0f70c6",
+   "slot": 32,
+   "kind": "other:add",
+   "text": "0f70c6 0305e0352900           add eax, dword ptr [0x2935e0]"
+  },
+  {
+   "va": "0f70ce",
+   "slot": 31,
+   "kind": "mov_reg",
+   "text": "0f70ce a1dc352900             mov eax, dword ptr [0x2935dc]"
+  },
+  {
+   "va": "0f717b",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f717b ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f71e4",
+   "slot": 34,
+   "kind": "call_mem",
+   "text": "0f71e4 ff15e8352900           call dword ptr [0x2935e8]"
+  },
+  {
+   "va": "0f7229",
+   "slot": 34,
+   "kind": "call_mem",
+   "text": "0f7229 ff15e8352900           call dword ptr [0x2935e8]"
+  },
+  {
+   "va": "0f723b",
+   "slot": 33,
+   "kind": "call_mem",
+   "text": "0f723b ff15e4352900           call dword ptr [0x2935e4]"
+  },
+  {
+   "va": "0f72d1",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f72d1 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f730a",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f730a ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f731c",
+   "slot": 33,
+   "kind": "call_mem",
+   "text": "0f731c ff15e4352900           call dword ptr [0x2935e4]"
+  },
+  {
+   "va": "0f736d",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f736d ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f7385",
+   "slot": 22,
+   "kind": "mov_reg",
+   "text": "0f7385 8b35b8352900           mov esi, dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f7418",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f7418 ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f743e",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f743e ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f749b",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f749b ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f74f9",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f74f9 ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f7524",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f7524 ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f7571",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f7571 ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f75aa",
+   "slot": 38,
+   "kind": "call_mem",
+   "text": "0f75aa ff15f8352900           call dword ptr [0x2935f8]"
+  },
+  {
+   "va": "0f75da",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f75da ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f7625",
+   "slot": 39,
+   "kind": "push_mem",
+   "text": "0f7625 ff35fc352900           push dword ptr [0x2935fc]"
+  },
+  {
+   "va": "0f7630",
+   "slot": 34,
+   "kind": "call_mem",
+   "text": "0f7630 ff15e8352900           call dword ptr [0x2935e8]"
+  },
+  {
+   "va": "0f7676",
+   "slot": 39,
+   "kind": "push_mem",
+   "text": "0f7676 ff35fc352900           push dword ptr [0x2935fc]"
+  },
+  {
+   "va": "0f7681",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f7681 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f7745",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f7745 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f7802",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f7802 ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f7894",
+   "slot": 44,
+   "kind": "call_mem",
+   "text": "0f7894 ff1510362900           call dword ptr [0x293610]"
+  },
+  {
+   "va": "0f78b5",
+   "slot": 3,
+   "kind": "mov_reg",
+   "text": "0f78b5 8b356c352900           mov esi, dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f78d6",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f78d6 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f78e7",
+   "slot": 42,
+   "kind": "call_mem",
+   "text": "0f78e7 ff1508362900           call dword ptr [0x293608]"
+  },
+  {
+   "va": "0f790b",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f790b ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f791b",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f791b ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f7959",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f7959 ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f7968",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f7968 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f7972",
+   "slot": 42,
+   "kind": "call_mem",
+   "text": "0f7972 ff1508362900           call dword ptr [0x293608]"
+  },
+  {
+   "va": "0f79d0",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f79d0 ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f7a04",
+   "slot": 34,
+   "kind": "call_mem",
+   "text": "0f7a04 ff15e8352900           call dword ptr [0x2935e8]"
+  },
+  {
+   "va": "0f7a2c",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f7a2c ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f7af7",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f7af7 ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f7b03",
+   "slot": 42,
+   "kind": "call_mem",
+   "text": "0f7b03 ff1508362900           call dword ptr [0x293608]"
+  },
+  {
+   "va": "0f7b0c",
+   "slot": 26,
+   "kind": "mov_reg",
+   "text": "0f7b0c 8b1dc8352900           mov ebx, dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f7b2b",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f7b2b ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f7b79",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f7b79 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f7bab",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f7bab ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f7bea",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f7bea ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f7bf5",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f7bf5 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f7c1f",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f7c1f ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f7c41",
+   "slot": 45,
+   "kind": "call_mem",
+   "text": "0f7c41 ff1514362900           call dword ptr [0x293614]"
+  },
+  {
+   "va": "0f7c6a",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f7c6a ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f7c9c",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f7c9c ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f7cd4",
+   "slot": 37,
+   "kind": "call_mem",
+   "text": "0f7cd4 ff15f4352900           call dword ptr [0x2935f4]"
+  },
+  {
+   "va": "0f7cdf",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f7cdf ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f7d8e",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f7d8e ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f7dc3",
+   "slot": 34,
+   "kind": "call_mem",
+   "text": "0f7dc3 ff15e8352900           call dword ptr [0x2935e8]"
+  },
+  {
+   "va": "0f7dd4",
+   "slot": 47,
+   "kind": "mov_reg",
+   "text": "0f7dd4 a11c362900             mov eax, dword ptr [0x29361c]"
+  },
+  {
+   "va": "0f7e2b",
+   "slot": 47,
+   "kind": "mov_reg",
+   "text": "0f7e2b a11c362900             mov eax, dword ptr [0x29361c]"
+  },
+  {
+   "va": "0f7f63",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f7f63 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f7f6e",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f7f6e ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f7fdf",
+   "slot": 3,
+   "kind": "mov_reg",
+   "text": "0f7fdf 8b3d6c352900           mov edi, dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f8058",
+   "slot": 48,
+   "kind": "call_mem",
+   "text": "0f8058 ff1520362900           call dword ptr [0x293620]"
+  },
+  {
+   "va": "0f808e",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f808e ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f80c0",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f80c0 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f80f5",
+   "slot": 37,
+   "kind": "call_mem",
+   "text": "0f80f5 ff15f4352900           call dword ptr [0x2935f4]"
+  },
+  {
+   "va": "0f8100",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8100 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f812d",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f812d ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f815f",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f815f ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f8194",
+   "slot": 37,
+   "kind": "call_mem",
+   "text": "0f8194 ff15f4352900           call dword ptr [0x2935f4]"
+  },
+  {
+   "va": "0f819f",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f819f ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f81be",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f81be a134362900             mov eax, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f81cf",
+   "slot": 52,
+   "kind": "call_mem",
+   "text": "0f81cf ff1530362900           call dword ptr [0x293630]"
+  },
+  {
+   "va": "0f81d5",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f81d5 8b0d34362900           mov ecx, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f81dd",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f81dd a134362900             mov eax, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f81f6",
+   "slot": 51,
+   "kind": "call_mem",
+   "text": "0f81f6 ff152c362900           call dword ptr [0x29362c]"
+  },
+  {
+   "va": "0f8208",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f8208 a134362900             mov eax, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f821f",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f821f a134362900             mov eax, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f8231",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f8231 8b0d34362900           mov ecx, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f823e",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f823e a134362900             mov eax, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f82d2",
+   "slot": 55,
+   "kind": "call_mem",
+   "text": "0f82d2 ff153c362900           call dword ptr [0x29363c]"
+  },
+  {
+   "va": "0f82d9",
+   "slot": 24,
+   "kind": "call_mem",
+   "text": "0f82d9 ff15c0352900           call dword ptr [0x2935c0]"
+  },
+  {
+   "va": "0f837d",
+   "slot": 50,
+   "kind": "call_mem",
+   "text": "0f837d ff1528362900           call dword ptr [0x293628]"
+  },
+  {
+   "va": "0f83a3",
+   "slot": 49,
+   "kind": "call_mem",
+   "text": "0f83a3 ff1524362900           call dword ptr [0x293624]"
+  },
+  {
+   "va": "0f83ae",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f83ae ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8449",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "0f8449 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "0f8463",
+   "slot": 54,
+   "kind": "jmp_mem",
+   "text": "0f8463 ff2538362900           jmp dword ptr [0x293638]"
+  },
+  {
+   "va": "0f85b7",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f85b7 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f85f2",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f85f2 ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f85ff",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f85ff ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8623",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f8623 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f8655",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f8655 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f867d",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f867d ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f8688",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8688 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8731",
+   "slot": 46,
+   "kind": "call_mem",
+   "text": "0f8731 ff1518362900           call dword ptr [0x293618]"
+  },
+  {
+   "va": "0f875d",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f875d ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f87a2",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f87a2 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f87ed",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f87ed ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f880c",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f880c ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f8817",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8817 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8843",
+   "slot": 22,
+   "kind": "mov_reg",
+   "text": "0f8843 8b35b8352900           mov esi, dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f8897",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f8897 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f88c8",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f88c8 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f88e8",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f88e8 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8973",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f8973 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f8a03",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f8a03 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f8a2d",
+   "slot": 46,
+   "kind": "call_mem",
+   "text": "0f8a2d ff1518362900           call dword ptr [0x293618]"
+  },
+  {
+   "va": "0f8a3c",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8a3c ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8a94",
+   "slot": 46,
+   "kind": "call_mem",
+   "text": "0f8a94 ff1518362900           call dword ptr [0x293618]"
+  },
+  {
+   "va": "0f8ad8",
+   "slot": 24,
+   "kind": "call_mem",
+   "text": "0f8ad8 ff15c0352900           call dword ptr [0x2935c0]"
+  },
+  {
+   "va": "0f8b12",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f8b12 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f8b2d",
+   "slot": 37,
+   "kind": "call_mem",
+   "text": "0f8b2d ff15f4352900           call dword ptr [0x2935f4]"
+  },
+  {
+   "va": "0f8b38",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8b38 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8b8d",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f8b8d ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f8bbd",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f8bbd ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f8bda",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f8bda ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f8c13",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f8c13 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f8c26",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8c26 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8c80",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f8c80 ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f8c90",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8c90 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8d00",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f8d00 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f8d3d",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f8d3d ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f8d61",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "0f8d61 ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "0f8d76",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "0f8d76 ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "0f8df6",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "0f8df6 ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f8e26",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "0f8e26 ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "0f8e48",
+   "slot": 36,
+   "kind": "call_mem",
+   "text": "0f8e48 ff15f0352900           call dword ptr [0x2935f0]"
+  },
+  {
+   "va": "0f8e94",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f8e94 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f8ee9",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f8ee9 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f8ef5",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8ef5 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8f50",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f8f50 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f8f62",
+   "slot": 48,
+   "kind": "call_mem",
+   "text": "0f8f62 ff1520362900           call dword ptr [0x293620]"
+  },
+  {
+   "va": "0f9028",
+   "slot": 55,
+   "kind": "call_mem",
+   "text": "0f9028 ff153c362900           call dword ptr [0x29363c]"
+  },
+  {
+   "va": "0f90be",
+   "slot": 73,
+   "kind": "push_mem",
+   "text": "0f90be ff3584362900           push dword ptr [0x293684]"
+  },
+  {
+   "va": "0f9157",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f9157 ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f916c",
+   "slot": 41,
+   "kind": "mov_reg",
+   "text": "0f916c 8b3504362900           mov esi, dword ptr [0x293604]"
+  },
+  {
+   "va": "0f92a2",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f92a2 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f92d7",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "0f92d7 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "0f933d",
+   "slot": 64,
+   "kind": "mov_reg",
+   "text": "0f933d a160362900             mov eax, dword ptr [0x293660]"
+  },
+  {
+   "va": "0f9351",
+   "slot": 48,
+   "kind": "call_mem",
+   "text": "0f9351 ff1520362900           call dword ptr [0x293620]"
+  },
+  {
+   "va": "0f9409",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f9409 a134362900             mov eax, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f9459",
+   "slot": 53,
+   "kind": "mov_reg",
+   "text": "0f9459 a134362900             mov eax, dword ptr [0x293634]"
+  },
+  {
+   "va": "0f9462",
+   "slot": 54,
+   "kind": "call_mem",
+   "text": "0f9462 ff1538362900           call dword ptr [0x293638]"
+  },
+  {
+   "va": "0f949a",
+   "slot": 43,
+   "kind": "call_mem",
+   "text": "0f949a ff150c362900           call dword ptr [0x29360c]"
+  },
+  {
+   "va": "0f94b3",
+   "slot": 41,
+   "kind": "mov_reg",
+   "text": "0f94b3 8b3504362900           mov esi, dword ptr [0x293604]"
+  },
+  {
+   "va": "0f94db",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f94db ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f9517",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f9517 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f95b2",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f95b2 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f95d4",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f95d4 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f961e",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "0f961e ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "0f9646",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f9646 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f96d6",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f96d6 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f9724",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "0f9724 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "0f9759",
+   "slot": 40,
+   "kind": "call_mem",
+   "text": "0f9759 ff1500362900           call dword ptr [0x293600]"
+  },
+  {
+   "va": "0f9762",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "0f9762 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "0f9804",
+   "slot": 64,
+   "kind": "mov_reg",
+   "text": "0f9804 a160362900             mov eax, dword ptr [0x293660]"
+  },
+  {
+   "va": "0f980b",
+   "slot": 75,
+   "kind": "mov_reg",
+   "text": "0f980b 8b0d8c362900           mov ecx, dword ptr [0x29368c]"
+  },
+  {
+   "va": "0f988e",
+   "slot": 59,
+   "kind": "call_mem",
+   "text": "0f988e ff154c362900           call dword ptr [0x29364c]"
+  },
+  {
+   "va": "0f9894",
+   "slot": 58,
+   "kind": "mov_reg",
+   "text": "0f9894 8b3d48362900           mov edi, dword ptr [0x293648]"
+  },
+  {
+   "va": "0f98be",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "0f98be ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "0f98e1",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "0f98e1 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "0f9938",
+   "slot": 16,
+   "kind": "call_mem",
+   "text": "0f9938 ff15a0352900           call dword ptr [0x2935a0]"
+  },
+  {
+   "va": "0f995c",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "0f995c ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "0f9994",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "0f9994 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "0f9a6b",
+   "slot": 76,
+   "kind": "call_mem",
+   "text": "0f9a6b ff1590362900           call dword ptr [0x293690]"
+  },
+  {
+   "va": "0f9aab",
+   "slot": 77,
+   "kind": "call_mem",
+   "text": "0f9aab ff1594362900           call dword ptr [0x293694]"
+  },
+  {
+   "va": "0f9b01",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "0f9b01 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "0f9b11",
+   "slot": 78,
+   "kind": "call_mem",
+   "text": "0f9b11 ff1598362900           call dword ptr [0x293698]"
+  },
+  {
+   "va": "0f9b2c",
+   "slot": 7,
+   "kind": "call_mem",
+   "text": "0f9b2c ff157c352900           call dword ptr [0x29357c]"
+  },
+  {
+   "va": "0f9b39",
+   "slot": 6,
+   "kind": "call_mem",
+   "text": "0f9b39 ff1578352900           call dword ptr [0x293578]"
+  },
+  {
+   "va": "0f9b3f",
+   "slot": 64,
+   "kind": "mov_reg",
+   "text": "0f9b3f a160362900             mov eax, dword ptr [0x293660]"
+  },
+  {
+   "va": "0f9b95",
+   "slot": 3,
+   "kind": "mov_reg",
+   "text": "0f9b95 8b1d6c352900           mov ebx, dword ptr [0x29356c]"
+  },
+  {
+   "va": "0f9bcc",
+   "slot": 84,
+   "kind": "call_mem",
+   "text": "0f9bcc ff15b0362900           call dword ptr [0x2936b0]"
+  },
+  {
+   "va": "0f9bfb",
+   "slot": 85,
+   "kind": "call_mem",
+   "text": "0f9bfb ff15b4362900           call dword ptr [0x2936b4]"
+  },
+  {
+   "va": "0f9c1a",
+   "slot": 86,
+   "kind": "call_mem",
+   "text": "0f9c1a ff15b8362900           call dword ptr [0x2936b8]"
+  },
+  {
+   "va": "0f9c63",
+   "slot": 87,
+   "kind": "mov_reg",
+   "text": "0f9c63 a1bc362900             mov eax, dword ptr [0x2936bc]"
+  },
+  {
+   "va": "0f9c75",
+   "slot": 4,
+   "kind": "call_mem",
+   "text": "0f9c75 ff1570352900           call dword ptr [0x293570]"
+  },
+  {
+   "va": "0f9c80",
+   "slot": 87,
+   "kind": "mov_reg",
+   "text": "0f9c80 8b35bc362900           mov esi, dword ptr [0x2936bc]"
+  },
+  {
+   "va": "0f9c86",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "0f9c86 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "0f9c9c",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "0f9c9c ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "0f9cb4",
+   "slot": 5,
+   "kind": "call_mem",
+   "text": "0f9cb4 ff1574352900           call dword ptr [0x293574]"
+  },
+  {
+   "va": "0f9cc6",
+   "slot": 17,
+   "kind": "jmp_mem",
+   "text": "0f9cc6 ff25a4352900           jmp dword ptr [0x2935a4]"
+  },
+  {
+   "va": "0f9ccc",
+   "slot": 27,
+   "kind": "jmp_mem",
+   "text": "0f9ccc ff25cc352900           jmp dword ptr [0x2935cc]"
+  },
+  {
+   "va": "0f9cd2",
+   "slot": 28,
+   "kind": "jmp_mem",
+   "text": "0f9cd2 ff25d0352900           jmp dword ptr [0x2935d0]"
+  },
+  {
+   "va": "0f9cd8",
+   "slot": 29,
+   "kind": "jmp_mem",
+   "text": "0f9cd8 ff25d4352900           jmp dword ptr [0x2935d4]"
+  },
+  {
+   "va": "0f9cde",
+   "slot": 72,
+   "kind": "jmp_mem",
+   "text": "0f9cde ff2580362900           jmp dword ptr [0x293680]"
+  },
+  {
+   "va": "0f9ce4",
+   "slot": 98,
+   "kind": "jmp_mem",
+   "text": "0f9ce4 ff25e8362900           jmp dword ptr [0x2936e8]"
+  },
+  {
+   "va": "1692de",
+   "slot": 106,
+   "kind": "call_mem",
+   "text": "1692de ff1508372900           call dword ptr [0x293708]"
+  },
+  {
+   "va": "16936c",
+   "slot": 106,
+   "kind": "call_mem",
+   "text": "16936c ff1508372900           call dword ptr [0x293708]"
+  },
+  {
+   "va": "169d93",
+   "slot": 106,
+   "kind": "call_mem",
+   "text": "169d93 ff1508372900           call dword ptr [0x293708]"
+  },
+  {
+   "va": "169fbe",
+   "slot": 106,
+   "kind": "call_mem",
+   "text": "169fbe ff1508372900           call dword ptr [0x293708]"
+  },
+  {
+   "va": "16c380",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "16c380 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "16c3a3",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "16c3a3 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "16c3d2",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "16c3d2 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "16c3f5",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "16c3f5 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "16cd5d",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "16cd5d ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "16ebf6",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "16ebf6 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "16ec9f",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "16ec9f ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "16f762",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "16f762 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "16f78a",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "16f78a ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "16f810",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "16f810 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "16f81d",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "16f81d ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "16fd08",
+   "slot": 14,
+   "kind": "call_mem",
+   "text": "16fd08 ff1598352900           call dword ptr [0x293598]"
+  },
+  {
+   "va": "1708a9",
+   "slot": 106,
+   "kind": "call_mem",
+   "text": "1708a9 ff1508372900           call dword ptr [0x293708]"
+  },
+  {
+   "va": "1708da",
+   "slot": 107,
+   "kind": "call_mem",
+   "text": "1708da ff150c372900           call dword ptr [0x29370c]"
+  },
+  {
+   "va": "170946",
+   "slot": 108,
+   "kind": "call_mem",
+   "text": "170946 ff1510372900           call dword ptr [0x293710]"
+  },
+  {
+   "va": "170aa5",
+   "slot": 110,
+   "kind": "mov_reg",
+   "text": "170aa5 a118372900             mov eax, dword ptr [0x293718]"
+  },
+  {
+   "va": "170aae",
+   "slot": 105,
+   "kind": "jmp_mem",
+   "text": "170aae ff2504372900           jmp dword ptr [0x293704]"
+  },
+  {
+   "va": "170ab4",
+   "slot": 109,
+   "kind": "jmp_mem",
+   "text": "170ab4 ff2514372900           jmp dword ptr [0x293714]"
+  },
+  {
+   "va": "2344dd",
+   "slot": 5,
+   "kind": "call_mem",
+   "text": "2344dd ff1574352900           call dword ptr [0x293574]"
+  },
+  {
+   "va": "234518",
+   "slot": 93,
+   "kind": "call_mem",
+   "text": "234518 ff15d4362900           call dword ptr [0x2936d4]"
+  },
+  {
+   "va": "234571",
+   "slot": 93,
+   "kind": "call_mem",
+   "text": "234571 ff15d4362900           call dword ptr [0x2936d4]"
+  },
+  {
+   "va": "237144",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "237144 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "2372ce",
+   "slot": 54,
+   "kind": "call_mem",
+   "text": "2372ce ff1538362900           call dword ptr [0x293638]"
+  },
+  {
+   "va": "2372f0",
+   "slot": 54,
+   "kind": "call_mem",
+   "text": "2372f0 ff1538362900           call dword ptr [0x293638]"
+  },
+  {
+   "va": "23731b",
+   "slot": 54,
+   "kind": "call_mem",
+   "text": "23731b ff1538362900           call dword ptr [0x293638]"
+  },
+  {
+   "va": "238b57",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "238b57 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "238bfb",
+   "slot": 54,
+   "kind": "call_mem",
+   "text": "238bfb ff1538362900           call dword ptr [0x293638]"
+  },
+  {
+   "va": "239101",
+   "slot": 5,
+   "kind": "mov_reg",
+   "text": "239101 8b3d74352900           mov edi, dword ptr [0x293574]"
+  },
+  {
+   "va": "2396a5",
+   "slot": 92,
+   "kind": "call_mem",
+   "text": "2396a5 ff15d0362900           call dword ptr [0x2936d0]"
+  },
+  {
+   "va": "2396bd",
+   "slot": 93,
+   "kind": "call_mem",
+   "text": "2396bd ff15d4362900           call dword ptr [0x2936d4]"
+  },
+  {
+   "va": "239769",
+   "slot": 54,
+   "kind": "mov_reg",
+   "text": "239769 8b3d38362900           mov edi, dword ptr [0x293638]"
+  },
+  {
+   "va": "239a40",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "239a40 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "239b2f",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "239b2f ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "239c0c",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "239c0c ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "239d37",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "239d37 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "23a3af",
+   "slot": 54,
+   "kind": "mov_reg",
+   "text": "23a3af 8b2d38362900           mov ebp, dword ptr [0x293638]"
+  },
+  {
+   "va": "23a483",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "23a483 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "23a56f",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "23a56f ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "23b093",
+   "slot": 93,
+   "kind": "call_mem",
+   "text": "23b093 ff15d4362900           call dword ptr [0x2936d4]"
+  },
+  {
+   "va": "23b893",
+   "slot": 90,
+   "kind": "call_mem",
+   "text": "23b893 ff15c8362900           call dword ptr [0x2936c8]"
+  },
+  {
+   "va": "23ba48",
+   "slot": 4,
+   "kind": "call_mem",
+   "text": "23ba48 ff1570352900           call dword ptr [0x293570]"
+  },
+  {
+   "va": "23bea3",
+   "slot": 4,
+   "kind": "call_mem",
+   "text": "23bea3 ff1570352900           call dword ptr [0x293570]"
+  },
+  {
+   "va": "23c846",
+   "slot": 64,
+   "kind": "mov_reg",
+   "text": "23c846 8b1560362900           mov edx, dword ptr [0x293660]"
+  },
+  {
+   "va": "23c8a4",
+   "slot": 7,
+   "kind": "call_mem",
+   "text": "23c8a4 ff157c352900           call dword ptr [0x29357c]"
+  },
+  {
+   "va": "23c915",
+   "slot": 79,
+   "kind": "call_mem",
+   "text": "23c915 ff159c362900           call dword ptr [0x29369c]"
+  },
+  {
+   "va": "23c92c",
+   "slot": 82,
+   "kind": "call_mem",
+   "text": "23c92c ff15a8362900           call dword ptr [0x2936a8]"
+  },
+  {
+   "va": "23c933",
+   "slot": 81,
+   "kind": "call_mem",
+   "text": "23c933 ff15a4362900           call dword ptr [0x2936a4]"
+  },
+  {
+   "va": "23c959",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "23c959 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "23c9a9",
+   "slot": 96,
+   "kind": "mov_reg",
+   "text": "23c9a9 8b3de0362900           mov edi, dword ptr [0x2936e0]"
+  },
+  {
+   "va": "23ccc0",
+   "slot": 92,
+   "kind": "call_mem",
+   "text": "23ccc0 ff15d0362900           call dword ptr [0x2936d0]"
+  },
+  {
+   "va": "23ccd0",
+   "slot": 93,
+   "kind": "call_mem",
+   "text": "23ccd0 ff15d4362900           call dword ptr [0x2936d4]"
+  },
+  {
+   "va": "23ce46",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "23ce46 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "23ce50",
+   "slot": 97,
+   "kind": "call_mem",
+   "text": "23ce50 ff15e4362900           call dword ptr [0x2936e4]"
+  },
+  {
+   "va": "23cf2a",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "23cf2a ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "23e7f0",
+   "slot": 99,
+   "kind": "call_mem",
+   "text": "23e7f0 ff15ec362900           call dword ptr [0x2936ec]"
+  },
+  {
+   "va": "2406ef",
+   "slot": 94,
+   "kind": "call_mem",
+   "text": "2406ef ff15d8362900           call dword ptr [0x2936d8]"
+  },
+  {
+   "va": "240705",
+   "slot": 93,
+   "kind": "mov_reg",
+   "text": "240705 8b1dd4362900           mov ebx, dword ptr [0x2936d4]"
+  },
+  {
+   "va": "240764",
+   "slot": 92,
+   "kind": "call_mem",
+   "text": "240764 ff15d0362900           call dword ptr [0x2936d0]"
+  },
+  {
+   "va": "240771",
+   "slot": 57,
+   "kind": "call_mem",
+   "text": "240771 ff1544362900           call dword ptr [0x293644]"
+  },
+  {
+   "va": "24077a",
+   "slot": 51,
+   "kind": "call_mem",
+   "text": "24077a ff152c362900           call dword ptr [0x29362c]"
+  },
+  {
+   "va": "240781",
+   "slot": 54,
+   "kind": "call_mem",
+   "text": "240781 ff1538362900           call dword ptr [0x293638]"
+  },
+  {
+   "va": "240788",
+   "slot": 95,
+   "kind": "call_mem",
+   "text": "240788 ff15dc362900           call dword ptr [0x2936dc]"
+  },
+  {
+   "va": "2417a6",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "2417a6 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "2417b0",
+   "slot": 54,
+   "kind": "jmp_mem",
+   "text": "2417b0 ff2538362900           jmp dword ptr [0x293638]"
+  },
+  {
+   "va": "24192b",
+   "slot": 34,
+   "kind": "call_mem",
+   "text": "24192b ff15e8352900           call dword ptr [0x2935e8]"
+  },
+  {
+   "va": "241b95",
+   "slot": 35,
+   "kind": "call_mem",
+   "text": "241b95 ff15ec352900           call dword ptr [0x2935ec]"
+  },
+  {
+   "va": "241cd1",
+   "slot": 22,
+   "kind": "call_mem",
+   "text": "241cd1 ff15b8352900           call dword ptr [0x2935b8]"
+  },
+  {
+   "va": "241cde",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "241cde ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "241fb9",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "241fb9 ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "242122",
+   "slot": 26,
+   "kind": "call_mem",
+   "text": "242122 ff15c8352900           call dword ptr [0x2935c8]"
+  },
+  {
+   "va": "24215d",
+   "slot": 25,
+   "kind": "call_mem",
+   "text": "24215d ff15c4352900           call dword ptr [0x2935c4]"
+  },
+  {
+   "va": "246d56",
+   "slot": 80,
+   "kind": "call_mem",
+   "text": "246d56 ff15a0362900           call dword ptr [0x2936a0]"
+  },
+  {
+   "va": "246d6e",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "246d6e ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "246d98",
+   "slot": 100,
+   "kind": "call_mem",
+   "text": "246d98 ff15f0362900           call dword ptr [0x2936f0]"
+  },
+  {
+   "va": "246db6",
+   "slot": 101,
+   "kind": "call_mem",
+   "text": "246db6 ff15f4362900           call dword ptr [0x2936f4]"
+  },
+  {
+   "va": "246e21",
+   "slot": 10,
+   "kind": "call_mem",
+   "text": "246e21 ff1588352900           call dword ptr [0x293588]"
+  },
+  {
+   "va": "246eca",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "246eca ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "246f75",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "246f75 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "246f96",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "246f96 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "246ffa",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "246ffa ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247032",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247032 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247076",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247076 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247330",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247330 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247352",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247352 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24737a",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24737a ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2473a3",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2473a3 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2473cb",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2473cb ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2473f2",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2473f2 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24741a",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24741a ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247443",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247443 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2474ab",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2474ab ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2474cc",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2474cc ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2474f3",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2474f3 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247519",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247519 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247541",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247541 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247581",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247581 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2475a8",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2475a8 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2475cd",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2475cd ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2475f5",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2475f5 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247619",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247619 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247640",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247640 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247669",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247669 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247695",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247695 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2476de",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2476de ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247708",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247708 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247731",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247731 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24775c",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24775c ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24779a",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24779a ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2477ec",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2477ec ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247812",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247812 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24783a",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24783a ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247860",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247860 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247888",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247888 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2478b2",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2478b2 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2478da",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2478da ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247904",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247904 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247a29",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247a29 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247a6c",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247a6c ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247abb",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247abb ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247ef5",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247ef5 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247f1b",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247f1b ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247f43",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247f43 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247f71",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247f71 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247f99",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247f99 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247fc7",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247fc7 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "247ff2",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "247ff2 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24802d",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24802d ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248059",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248059 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248094",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248094 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2480bd",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2480bd ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2480eb",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2480eb ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248113",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248113 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24813d",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24813d ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248165",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248165 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24818f",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24818f ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2481b7",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2481b7 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2481e9",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2481e9 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248211",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248211 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248243",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248243 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24826e",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24826e ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2482ad",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2482ad ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2482d9",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2482d9 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248318",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248318 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248341",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248341 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248373",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248373 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2485e4",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2485e4 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24867d",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24867d ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2486a6",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2486a6 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2486e1",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2486e1 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248708",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248708 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248743",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248743 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24876a",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24876a ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2487a5",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2487a5 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2487cf",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2487cf ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248836",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248836 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248861",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248861 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2488ae",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2488ae ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2488d9",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2488d9 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248924",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248924 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24894e",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24894e ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248a1e",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248a1e ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248be4",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248be4 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248c4a",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248c4a ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248edd",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248edd ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "248f43",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "248f43 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "249015",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "249015 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2490ce",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2490ce ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24911c",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24911c ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24918d",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "24918d ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "249395",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "249395 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "2493eb",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "2493eb ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "249442",
+   "slot": 9,
+   "kind": "call_mem",
+   "text": "249442 ff1584352900           call dword ptr [0x293584]"
+  },
+  {
+   "va": "24945a",
+   "slot": 69,
+   "kind": "call_mem",
+   "text": "24945a ff1574362900           call dword ptr [0x293674]"
+  },
+  {
+   "va": "249467",
+   "slot": 102,
+   "kind": "call_mem",
+   "text": "249467 ff15f8362900           call dword ptr [0x2936f8]"
+  },
+  {
+   "va": "24949c",
+   "slot": 102,
+   "kind": "call_mem",
+   "text": "24949c ff15f8362900           call dword ptr [0x2936f8]"
+  },
+  {
+   "va": "2494aa",
+   "slot": 68,
+   "kind": "jmp_mem",
+   "text": "2494aa ff2570362900           jmp dword ptr [0x293670]"
+  },
+  {
+   "va": "2494c1",
+   "slot": 56,
+   "kind": "call_mem",
+   "text": "2494c1 ff1540362900           call dword ptr [0x293640]"
+  },
+  {
+   "va": "2494ce",
+   "slot": 57,
+   "kind": "call_mem",
+   "text": "2494ce ff1544362900           call dword ptr [0x293644]"
+  },
+  {
+   "va": "249503",
+   "slot": 57,
+   "kind": "call_mem",
+   "text": "249503 ff1544362900           call dword ptr [0x293644]"
+  },
+  {
+   "va": "249511",
+   "slot": 54,
+   "kind": "jmp_mem",
+   "text": "249511 ff2538362900           jmp dword ptr [0x293638]"
+  },
+  {
+   "va": "24a780",
+   "slot": 83,
+   "kind": "call_mem",
+   "text": "24a780 ff15ac362900           call dword ptr [0x2936ac]"
+  },
+  {
+   "va": "24a9ef",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "24a9ef ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "24a9fc",
+   "slot": 103,
+   "kind": "call_mem",
+   "text": "24a9fc ff15fc362900           call dword ptr [0x2936fc]"
+  },
+  {
+   "va": "24aa1c",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "24aa1c ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "24aa4b",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "24aa4b ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "24aa97",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "24aa97 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "24ad80",
+   "slot": 97,
+   "kind": "call_mem",
+   "text": "24ad80 ff15e4362900           call dword ptr [0x2936e4]"
+  },
+  {
+   "va": "24ad94",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "24ad94 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "24ad9a",
+   "slot": 103,
+   "kind": "mov_reg",
+   "text": "24ad9a 8b2dfc362900           mov ebp, dword ptr [0x2936fc]"
+  },
+  {
+   "va": "24add8",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "24add8 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "24ae1a",
+   "slot": 104,
+   "kind": "mov_reg",
+   "text": "24ae1a 8b3d00372900           mov edi, dword ptr [0x293700]"
+  },
+  {
+   "va": "24af40",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "24af40 ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "24afe1",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "24afe1 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "24b03a",
+   "slot": 90,
+   "kind": "call_mem",
+   "text": "24b03a ff15c8362900           call dword ptr [0x2936c8]"
+  },
+  {
+   "va": "24b0d3",
+   "slot": 7,
+   "kind": "mov_reg",
+   "text": "24b0d3 8b3d7c352900           mov edi, dword ptr [0x29357c]"
+  },
+  {
+   "va": "24b0f1",
+   "slot": 6,
+   "kind": "call_mem",
+   "text": "24b0f1 ff1578352900           call dword ptr [0x293578]"
+  },
+  {
+   "va": "24b10d",
+   "slot": 79,
+   "kind": "call_mem",
+   "text": "24b10d ff159c362900           call dword ptr [0x29369c]"
+  },
+  {
+   "va": "24b128",
+   "slot": 82,
+   "kind": "call_mem",
+   "text": "24b128 ff15a8362900           call dword ptr [0x2936a8]"
+  },
+  {
+   "va": "24b12f",
+   "slot": 81,
+   "kind": "call_mem",
+   "text": "24b12f ff15a4362900           call dword ptr [0x2936a4]"
+  },
+  {
+   "va": "24b164",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "24b164 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "24b21c",
+   "slot": 19,
+   "kind": "call_mem",
+   "text": "24b21c ff15ac352900           call dword ptr [0x2935ac]"
+  },
+  {
+   "va": "24b6b0",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "24b6b0 ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "24be78",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "24be78 ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "24c895",
+   "slot": 90,
+   "kind": "call_mem",
+   "text": "24c895 ff15c8362900           call dword ptr [0x2936c8]"
+  },
+  {
+   "va": "24c996",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "24c996 ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "24d2d6",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "24d2d6 ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "24dced",
+   "slot": 19,
+   "kind": "call_mem",
+   "text": "24dced ff15ac352900           call dword ptr [0x2935ac]"
+  },
+  {
+   "va": "24dd46",
+   "slot": 19,
+   "kind": "call_mem",
+   "text": "24dd46 ff15ac352900           call dword ptr [0x2935ac]"
+  },
+  {
+   "va": "24ef5d",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "24ef5d ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "24ef6f",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "24ef6f ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "24efc0",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "24efc0 ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "24f419",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "24f419 ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "24f5bc",
+   "slot": 89,
+   "kind": "mov_reg",
+   "text": "24f5bc 8b3dc4362900           mov edi, dword ptr [0x2936c4]"
+  },
+  {
+   "va": "24f5e8",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "24f5e8 ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "24fd14",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "24fd14 ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "24fd5a",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "24fd5a ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "24fdf0",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "24fdf0 ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "24fe8e",
+   "slot": 83,
+   "kind": "call_mem",
+   "text": "24fe8e ff15ac362900           call dword ptr [0x2936ac]"
+  },
+  {
+   "va": "250234",
+   "slot": 83,
+   "kind": "call_mem",
+   "text": "250234 ff15ac362900           call dword ptr [0x2936ac]"
+  },
+  {
+   "va": "250259",
+   "slot": 83,
+   "kind": "call_mem",
+   "text": "250259 ff15ac362900           call dword ptr [0x2936ac]"
+  },
+  {
+   "va": "250399",
+   "slot": 83,
+   "kind": "call_mem",
+   "text": "250399 ff15ac362900           call dword ptr [0x2936ac]"
+  },
+  {
+   "va": "2503e9",
+   "slot": 83,
+   "kind": "call_mem",
+   "text": "2503e9 ff15ac362900           call dword ptr [0x2936ac]"
+  },
+  {
+   "va": "2507dd",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "2507dd ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "250986",
+   "slot": 90,
+   "kind": "call_mem",
+   "text": "250986 ff15c8362900           call dword ptr [0x2936c8]"
+  },
+  {
+   "va": "2509b6",
+   "slot": 104,
+   "kind": "call_mem",
+   "text": "2509b6 ff1500372900           call dword ptr [0x293700]"
+  },
+  {
+   "va": "250a7c",
+   "slot": 97,
+   "kind": "call_mem",
+   "text": "250a7c ff15e4362900           call dword ptr [0x2936e4]"
+  },
+  {
+   "va": "250a93",
+   "slot": 103,
+   "kind": "call_mem",
+   "text": "250a93 ff15fc362900           call dword ptr [0x2936fc]"
+  },
+  {
+   "va": "250aa5",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "250aa5 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "250b3c",
+   "slot": 7,
+   "kind": "call_mem",
+   "text": "250b3c ff157c352900           call dword ptr [0x29357c]"
+  },
+  {
+   "va": "250b49",
+   "slot": 79,
+   "kind": "call_mem",
+   "text": "250b49 ff159c362900           call dword ptr [0x29369c]"
+  },
+  {
+   "va": "250b63",
+   "slot": 82,
+   "kind": "call_mem",
+   "text": "250b63 ff15a8362900           call dword ptr [0x2936a8]"
+  },
+  {
+   "va": "250b6a",
+   "slot": 81,
+   "kind": "call_mem",
+   "text": "250b6a ff15a4362900           call dword ptr [0x2936a4]"
+  },
+  {
+   "va": "250bb4",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "250bb4 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "28c10a",
+   "slot": 3,
+   "kind": "call_mem",
+   "text": "28c10a ff156c352900           call dword ptr [0x29356c]"
+  },
+  {
+   "va": "28c13d",
+   "slot": 2,
+   "kind": "call_mem",
+   "text": "28c13d ff1568352900           call dword ptr [0x293568]"
+  },
+  {
+   "va": "28c3a8",
+   "slot": 6,
+   "kind": "call_mem",
+   "text": "28c3a8 ff1578352900           call dword ptr [0x293578]"
+  },
+  {
+   "va": "28c8cc",
+   "slot": 7,
+   "kind": "call_mem",
+   "text": "28c8cc ff157c352900           call dword ptr [0x29357c]"
+  },
+  {
+   "va": "28c8d7",
+   "slot": 6,
+   "kind": "call_mem",
+   "text": "28c8d7 ff1578352900           call dword ptr [0x293578]"
+  },
+  {
+   "va": "28c8f6",
+   "slot": 64,
+   "kind": "mov_reg",
+   "text": "28c8f6 a160362900             mov eax, dword ptr [0x293660]"
+  },
+  {
+   "va": "28c919",
+   "slot": 79,
+   "kind": "call_mem",
+   "text": "28c919 ff159c362900           call dword ptr [0x29369c]"
+  },
+  {
+   "va": "28c98a",
+   "slot": 7,
+   "kind": "call_mem",
+   "text": "28c98a ff157c352900           call dword ptr [0x29357c]"
+  },
+  {
+   "va": "28c9a0",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28c9a0 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28c9b4",
+   "slot": 83,
+   "kind": "call_mem",
+   "text": "28c9b4 ff15ac362900           call dword ptr [0x2936ac]"
+  },
+  {
+   "va": "28c9e8",
+   "slot": 64,
+   "kind": "mov_reg",
+   "text": "28c9e8 a160362900             mov eax, dword ptr [0x293660]"
+  },
+  {
+   "va": "28ca38",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28ca38 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28ca5e",
+   "slot": 82,
+   "kind": "call_mem",
+   "text": "28ca5e ff15a8362900           call dword ptr [0x2936a8]"
+  },
+  {
+   "va": "28ca65",
+   "slot": 81,
+   "kind": "call_mem",
+   "text": "28ca65 ff15a4362900           call dword ptr [0x2936a4]"
+  },
+  {
+   "va": "28ca90",
+   "slot": 74,
+   "kind": "call_mem",
+   "text": "28ca90 ff1588362900           call dword ptr [0x293688]"
+  },
+  {
+   "va": "28cb08",
+   "slot": 6,
+   "kind": "call_mem",
+   "text": "28cb08 ff1578352900           call dword ptr [0x293578]"
+  },
+  {
+   "va": "28cb2e",
+   "slot": 6,
+   "kind": "call_mem",
+   "text": "28cb2e ff1578352900           call dword ptr [0x293578]"
+  },
+  {
+   "va": "28cb41",
+   "slot": 7,
+   "kind": "call_mem",
+   "text": "28cb41 ff157c352900           call dword ptr [0x29357c]"
+  },
+  {
+   "va": "28cbaa",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28cbaa ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28cbbe",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28cbbe ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28cc27",
+   "slot": 52,
+   "kind": "call_mem",
+   "text": "28cc27 ff1530362900           call dword ptr [0x293630]"
+  },
+  {
+   "va": "28cc33",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "28cc33 ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "28cc3a",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "28cc3a ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "28ce51",
+   "slot": 21,
+   "kind": "call_mem",
+   "text": "28ce51 ff15b4352900           call dword ptr [0x2935b4]"
+  },
+  {
+   "va": "28cec2",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28cec2 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28cf1d",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28cf1d ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28cfe7",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28cfe7 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28cffc",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28cffc ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28d024",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28d024 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28d05b",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28d05b ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28d1da",
+   "slot": 4,
+   "kind": "call_mem",
+   "text": "28d1da ff1570352900           call dword ptr [0x293570]"
+  },
+  {
+   "va": "28d254",
+   "slot": 8,
+   "kind": "mov_reg",
+   "text": "28d254 a180352900             mov eax, dword ptr [0x293580]"
+  },
+  {
+   "va": "28d2a0",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "28d2a0 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "28d496",
+   "slot": 4,
+   "kind": "call_mem",
+   "text": "28d496 ff1570352900           call dword ptr [0x293570]"
+  },
+  {
+   "va": "28d670",
+   "slot": 4,
+   "kind": "call_mem",
+   "text": "28d670 ff1570352900           call dword ptr [0x293570]"
+  },
+  {
+   "va": "28d67a",
+   "slot": 62,
+   "kind": "jmp_mem",
+   "text": "28d67a ff2558362900           jmp dword ptr [0x293658]"
+  },
+  {
+   "va": "28d6f5",
+   "slot": 5,
+   "kind": "mov_reg",
+   "text": "28d6f5 8b3574352900           mov esi, dword ptr [0x293574]"
+  },
+  {
+   "va": "28d73e",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "28d73e ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "28d868",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "28d868 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "28d932",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28d932 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28d982",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28d982 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28d990",
+   "slot": 5,
+   "kind": "call_mem",
+   "text": "28d990 ff1574352900           call dword ptr [0x293574]"
+  },
+  {
+   "va": "28d99b",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28d99b ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28d9ce",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28d9ce ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28da06",
+   "slot": 18,
+   "kind": "push_mem",
+   "text": "28da06 ff35a8352900           push dword ptr [0x2935a8]"
+  },
+  {
+   "va": "28da0d",
+   "slot": 63,
+   "kind": "call_mem",
+   "text": "28da0d ff155c362900           call dword ptr [0x29365c]"
+  },
+  {
+   "va": "28dae0",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28dae0 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28dbb1",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "28dbb1 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "28dcba",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28dcba ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28de31",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28de31 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28de44",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28de44 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28decd",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28decd ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28e012",
+   "slot": 7,
+   "kind": "call_mem",
+   "text": "28e012 ff157c352900           call dword ptr [0x29357c]"
+  },
+  {
+   "va": "28e08c",
+   "slot": 4,
+   "kind": "call_mem",
+   "text": "28e08c ff1570352900           call dword ptr [0x293570]"
+  },
+  {
+   "va": "28e535",
+   "slot": 5,
+   "kind": "call_mem",
+   "text": "28e535 ff1574352900           call dword ptr [0x293574]"
+  },
+  {
+   "va": "28e5af",
+   "slot": 64,
+   "kind": "mov_reg",
+   "text": "28e5af 8b1560362900           mov edx, dword ptr [0x293660]"
+  },
+  {
+   "va": "28e744",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28e744 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28e762",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28e762 ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28e775",
+   "slot": 65,
+   "kind": "call_mem",
+   "text": "28e775 ff1564362900           call dword ptr [0x293664]"
+  },
+  {
+   "va": "28e77e",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28e77e ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28e7bb",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28e7bb ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28e7c3",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28e7c3 ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28e9f3",
+   "slot": 68,
+   "kind": "call_mem",
+   "text": "28e9f3 ff1570362900           call dword ptr [0x293670]"
+  },
+  {
+   "va": "28e9fe",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28e9fe ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28ea06",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28ea06 ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28eaf7",
+   "slot": 59,
+   "kind": "call_mem",
+   "text": "28eaf7 ff154c362900           call dword ptr [0x29364c]"
+  },
+  {
+   "va": "28eb24",
+   "slot": 58,
+   "kind": "call_mem",
+   "text": "28eb24 ff1548362900           call dword ptr [0x293648]"
+  },
+  {
+   "va": "28eb42",
+   "slot": 58,
+   "kind": "call_mem",
+   "text": "28eb42 ff1548362900           call dword ptr [0x293648]"
+  },
+  {
+   "va": "28ec33",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28ec33 ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28ec40",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28ec40 ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28ee18",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28ee18 ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28ee25",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28ee25 ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28eee3",
+   "slot": 69,
+   "kind": "call_mem",
+   "text": "28eee3 ff1574362900           call dword ptr [0x293674]"
+  },
+  {
+   "va": "28ef5a",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28ef5a ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28ef62",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28ef62 ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28f090",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28f090 ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28f098",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28f098 ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28f136",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28f136 ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28f13e",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28f13e ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28f24a",
+   "slot": 71,
+   "kind": "call_mem",
+   "text": "28f24a ff157c362900           call dword ptr [0x29367c]"
+  },
+  {
+   "va": "28f25f",
+   "slot": 66,
+   "kind": "call_mem",
+   "text": "28f25f ff1568362900           call dword ptr [0x293668]"
+  },
+  {
+   "va": "28f266",
+   "slot": 67,
+   "kind": "call_mem",
+   "text": "28f266 ff156c362900           call dword ptr [0x29366c]"
+  },
+  {
+   "va": "28f290",
+   "slot": 70,
+   "kind": "call_mem",
+   "text": "28f290 ff1578362900           call dword ptr [0x293678]"
+  },
+  {
+   "va": "28f2b3",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "28f2b3 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "28f2d4",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28f2d4 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28f2f3",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "28f2f3 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "28f2fe",
+   "slot": 69,
+   "kind": "call_mem",
+   "text": "28f2fe ff1574362900           call dword ptr [0x293674]"
+  },
+  {
+   "va": "28f39b",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "28f39b ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "28f40a",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "28f40a ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "28f431",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "28f431 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "28f480",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "28f480 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "28f4ab",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "28f4ab ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "28f6d5",
+   "slot": 23,
+   "kind": "call_mem",
+   "text": "28f6d5 ff15bc352900           call dword ptr [0x2935bc]"
+  },
+  {
+   "va": "28f70f",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "28f70f ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "28f90f",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "28f90f ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "28fb36",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "28fb36 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "28fc15",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "28fc15 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "28fe5a",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "28fe5a ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "2900be",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "2900be ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "290136",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "290136 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "2901c2",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "2901c2 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "2902a9",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "2902a9 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "29046a",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "29046a ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "29052b",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "29052b ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "2905b7",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "2905b7 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "290779",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "290779 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "290795",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "290795 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "2907b9",
+   "slot": 0,
+   "kind": "jmp_mem",
+   "text": "2907b9 ff2560352900           jmp dword ptr [0x293560]"
+  },
+  {
+   "va": "2907e3",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "2907e3 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "29093a",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "29093a ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "290b00",
+   "slot": 80,
+   "kind": "call_mem",
+   "text": "290b00 ff15a0362900           call dword ptr [0x2936a0]"
+  },
+  {
+   "va": "290b1a",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "290b1a ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "290b3b",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "290b3b ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "290bcd",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "290bcd ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "290be6",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "290be6 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "290c32",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "290c32 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "290c50",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "290c50 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "290c87",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "290c87 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "290dbd",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "290dbd ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "290dde",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "290dde ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "290f11",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "290f11 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "290f5a",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "290f5a ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "290f98",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "290f98 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "2910ee",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "2910ee ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "291421",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "291421 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "291776",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "291776 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "291812",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "291812 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "29189d",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "29189d ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "291b61",
+   "slot": 60,
+   "kind": "call_mem",
+   "text": "291b61 ff1550362900           call dword ptr [0x293650]"
+  },
+  {
+   "va": "291c12",
+   "slot": 61,
+   "kind": "call_mem",
+   "text": "291c12 ff1554362900           call dword ptr [0x293654]"
+  },
+  {
+   "va": "292179",
+   "slot": 90,
+   "kind": "call_mem",
+   "text": "292179 ff15c8362900           call dword ptr [0x2936c8]"
+  },
+  {
+   "va": "2922e9",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "2922e9 ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "292910",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "292910 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "292a9c",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "292a9c ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "292ab3",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "292ab3 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "292adc",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "292adc ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "292b28",
+   "slot": 91,
+   "kind": "call_mem",
+   "text": "292b28 ff15cc362900           call dword ptr [0x2936cc]"
+  },
+  {
+   "va": "292b41",
+   "slot": 91,
+   "kind": "call_mem",
+   "text": "292b41 ff15cc362900           call dword ptr [0x2936cc]"
+  },
+  {
+   "va": "292b8f",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "292b8f ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "292c4a",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "292c4a ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "292c53",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "292c53 ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "292c67",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "292c67 ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "292cc4",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "292cc4 ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "292ce7",
+   "slot": 1,
+   "kind": "mov_reg",
+   "text": "292ce7 8b1d64352900           mov ebx, dword ptr [0x293564]"
+  },
+  {
+   "va": "292d2d",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "292d2d ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "292d46",
+   "slot": 21,
+   "kind": "call_mem",
+   "text": "292d46 ff15b4352900           call dword ptr [0x2935b4]"
+  },
+  {
+   "va": "292dde",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "292dde ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "292e09",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "292e09 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "292e3e",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "292e3e ff1560352900           call dword ptr [0x293560]"
+  },
+  {
+   "va": "292efc",
+   "slot": 91,
+   "kind": "mov_reg",
+   "text": "292efc 8b3dcc362900           mov edi, dword ptr [0x2936cc]"
+  },
+  {
+   "va": "292fdf",
+   "slot": 88,
+   "kind": "call_mem",
+   "text": "292fdf ff15c0362900           call dword ptr [0x2936c0]"
+  },
+  {
+   "va": "29310c",
+   "slot": 89,
+   "kind": "call_mem",
+   "text": "29310c ff15c4362900           call dword ptr [0x2936c4]"
+  },
+  {
+   "va": "2934c1",
+   "slot": 1,
+   "kind": "call_mem",
+   "text": "2934c1 ff1564352900           call dword ptr [0x293564]"
+  },
+  {
+   "va": "29351f",
+   "slot": 0,
+   "kind": "call_mem",
+   "text": "29351f ff1560352900           call dword ptr [0x293560]"
+  }
+ ]
+}

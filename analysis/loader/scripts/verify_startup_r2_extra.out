@@ -1,0 +1,173 @@
+0x2D674C: 2 code refs; first: [('0xa2756', 'FUN_000a26a0(0xA26A0)'), ('0xa2d25', 'FUN_000a2c20(0xA2C20)')]
+0x2D6748: 280 code refs; first: [('0x12f66', 'FUN_00012e40(0x12E40)'), ('0x1307d', 'FUN_00013060(0x13060)'), ('0x13092', 'FUN_00013060(0x13060)'), ('0x19cb4', 'FUN_00019c80(0x19C80)')]
+0x2D6744: 3 code refs; first: [('0xa2760', 'FUN_000a26a0(0xA26A0)'), ('0xa2d80', 'FUN_000a2c20(0xA2C20)'), ('0xe4aa2', 'FUN_000e4aa0(0xE4AA0)')]
+0x2E7A58: 3 code refs; first: [('0xa2750', 'FUN_000a26a0(0xA26A0)'), ('0xa2d5b', 'FUN_000a2c20(0xA2C20)'), ('0xa2d68', 'FUN_000a2c20(0xA2C20)')]
+0x2E7A5C: 4 code refs; first: [('0xa26f5', 'FUN_000a26a0(0xA26A0)'), ('0xa272c', 'FUN_000a26a0(0xA26A0)'), ('0xa2d3c', 'FUN_000a2c20(0xA2C20)'), ('0xa2d48', 'FUN_000a2c20(0xA2C20)')]
+0x2E7A60: 2 code refs; first: [('0xa26df', 'FUN_000a26a0(0xA26A0)'), ('0xa2726', 'FUN_000a26a0(0xA26A0)')]
+0x2E7B6C: 2 code refs; first: [('0xa26eb', 'FUN_000a26a0(0xA26A0)'), ('0xa271c', 'FUN_000a26a0(0xA26A0)')]
+0x2E7B68: 2 code refs; first: [('0xa26ff', 'FUN_000a26a0(0xA26A0)'), ('0xa273c', 'FUN_000a26a0(0xA26A0)')]
+    _DAT_002e7a60 = 0x42700000;
+    _DAT_002d6744 = 0x42700000;
+    DAT_002d6748 = 0x3c888889;
+    _DAT_002e7b6c = 0x42700000;
+    DAT_002e7a5c = 0x3c888889;
+    _DAT_002e7b68 = 0x3d064b8a;
+    _DAT_002e7b70 = 0x4353544e;
+    DAT_002e7b74 = 0;
+    _DAT_002e7b6c = 0x42480000;
+    _DAT_002e7a60 = 0x42480000;
+    DAT_002e7a5c = 0x3ca3d70a;
+    _DAT_002d6744 = 0x42480000;
+    DAT_002d6748 = 0x3ca3d70a;
+    _DAT_002e7b68 = 0x3d214285;
+    _DAT_002e7b70 = 0x4c4150;
+  DAT_002d674c = 1;
+  DAT_002e7a58 = DAT_002d6748;
+  DAT_002f9020 = 1;
+0002B65B: 8b0d847b2e00             mov ecx, dword ptr [0x2e7b84]
+0002B661: 8b81e8000000             mov eax, dword ptr [ecx + 0xe8]
+0002B667: 85c0                     test eax, eax
+0002B669: 680000c040               push 0x40c00000
+0002B66E: 680000c040               push 0x40c00000
+0002B673: 7507                     jne 0x2b67c
+0002B675: 68c8522900               push 0x2952c8
+0002B67A: eb05                     jmp 0x2b681
+0002B67C: 68ac522900               push 0x2952ac
+0002B681: e86ae60a00               call 0xd9cf0  ; FUN_000d9cf0
+0002B686: 8bc8                     mov ecx, eax
+0002B688: e8d3e60a00               call 0xd9d60  ; FUN_000d9d60
+0002B68D: 8bce                     mov ecx, esi
+0002B68F: 50                       push eax
+0002B690: e8cbfcffff               call 0x2b360  ; FUN_0002b360
+0002B695: a18cad2d00               mov eax, dword ptr [0x2dad8c]
+0002B69A: 40                       inc eax
+--
+0002B814: 8b0d847b2e00             mov ecx, dword ptr [0x2e7b84]
+0002B81A: 8b81e8000000             mov eax, dword ptr [ecx + 0xe8]
+0002B820: 85c0                     test eax, eax
+0002B822: 680000a040               push 0x40a00000
+0002B827: 8bce                     mov ecx, esi
+0002B829: 680000c03f               push 0x3fc00000
+0002B82E: 751e                     jne 0x2b84e
+0002B830: 686c522900               push 0x29526c
+0002B835: e826fbffff               call 0x2b360  ; FUN_0002b360
+0002B83A: 85c0                     test eax, eax
+0002B83C: 0f856e010000             jne 0x2b9b0
+0002B842: c7462c08000000           mov dword ptr [esi + 0x2c], 8
+0002B849: e962010000               jmp 0x2b9b0
+0002B84E: 6848522900               push 0x295248
+--
+0x29526c images\english\NI_Splash_PAL.nif ['0x2b831']
+0x295248 images\english\NI_Splash_NTSC.nif ['0x2b84f']
+0x2952ac images\%s\legal-NTSC.nif ['0x2b67d', '0x2b756']
+0x2952c8 images\%s\legal.nif ['0x2b676', '0x2b729']
+['  undefined4 *puVar8;', '  undefined4 *puVar9;', '  uint local_8;', '  ', '  iVar6 = *(int *)(param_1 + 0x1c);', '  if (iVar6 == 0) {', '    return (undefined4 *)0x0;', '  }']
+000A37B0: 53                       push ebx
+000A37B1: 8bd9                     mov ebx, ecx
+000A37B3: 8b4314                   mov eax, dword ptr [ebx + 0x14]
+000A37B6: 8b4c240c                 mov ecx, dword ptr [esp + 0xc]
+000A37BA: 56                       push esi
+000A37BB: 57                       push edi
+000A37BC: 8bf0                     mov esi, eax
+000A37BE: 8d51ff                   lea edx, [ecx - 1]
+000A37C1: 33ff                     xor edi, edi
+000A37C3: 85d6                     test esi, edx
+000A37C5: 7430                     je 0xa37f7
+000A37C7: 8d51ff                   lea edx, [ecx - 1]
+000A37CA: f7d2                     not edx
+000A37CC: 03f1                     add esi, ecx
+000A37CE: 23f2                     and esi, edx
+000A37D0: 8bd6                     mov edx, esi
+000A37D2: 2bd0                     sub edx, eax
+000A37D4: 83ea04                   sub edx, 4
+000A37D7: 83fa08                   cmp edx, 8
+000A37DA: 7302                     jae 0xa37de
+000A37DC: 03f1                     add esi, ecx
+000A37DE: 8bf8                     mov edi, eax
+000A37E0: 8b4ffc                   mov ecx, dword ptr [edi - 4]
+000A37E3: 8bc6                     mov eax, esi
+000A37E5: 2bc7                     sub eax, edi
+000A37E7: 83e804                   sub eax, 4
+000A37EA: 83e101                   and ecx, 1
+000A37ED: 0bc1                     or eax, ecx
+000A37EF: 0d00000080               or eax, 0x80000000
+000A37F4: 8947fc                   mov dword ptr [edi - 4], eax
+000A37F7: 8b542410                 mov edx, dword ptr [esp + 0x10]
+000A37FB: 8b4b18                   mov ecx, dword ptr [ebx + 0x18]
+000A37FE: 8d441613                 lea eax, [esi + edx + 0x13]
+000A3802: 83e0f0                   and eax, 0xfffffff0
+000A3805: 3bc1                     cmp eax, ecx
+000A3807: 7608                     jbe 0xa3811
+000A3809: 5f                       pop edi
+000A380A: 5e                       pop esi
+000A380B: 33c0                     xor eax, eax
+000A380D: 5b                       pop ebx
+000A380E: c20800                   ret 8
+000A3811: 894314                   mov dword ptr [ebx + 0x14], eax
+000A3814: 8b46fc                   mov eax, dword ptr [esi - 4]
+000A3817: 25ffffff7f               and eax, 0x7fffffff
+000A381C: 8946fc                   mov dword ptr [esi - 4], eax
+000A381F: 8b4b14                   mov ecx, dword ptr [ebx + 0x14]
+000A3822: 2bce                     sub ecx, esi
+000A3824: 83e904                   sub ecx, 4
+000A3827: 2501000080               and eax, 0x80000001
+000A382C: 0bc1                     or eax, ecx
+000A382E: 85ff                     test edi, edi
+000F9013: 8d8500f4ffff             lea eax, [ebp - 0xc00]
+000F9019: 50                       push eax
+000F901A: 6a00                     push 0
+000F901C: e8c2f2ffff               call 0xf82e3  ; XAPILIB::XLaunchNewImageA
+000F9021: 5f                       pop edi
+000F9022: c9                       leave 
+000F9023: c20c00                   ret 0xc
+000F9026: 6a04                     push 4
+000F9028: ff153c362900             call dword ptr [0x29363c]  ; slot 55 ord 49 HalReturnToFirmware
+000F902E: cc                       int3 
+000F9362: 8bc3                     mov eax, ebx
+000F9364: 8bcb                     mov ecx, ebx
+000F9366: ff75fc                   push dword ptr [ebp - 4]
+000F9369: 51                       push ecx
+000F936A: 50                       push eax
+000F936B: e85afcffff               call 0xf8fca  ; XAPILIB::XapiBootToDash
+000F9370: 5f                       pop edi
+000F9371: 5e                       pop esi
+000F9372: 5b                       pop ebx
+000F9373: c9                       leave 
+000F9374: c3                       ret 
+000D26BE push 1
+000D26C0 xor ebx, ebx
+000D26C2 push ebx
+000D26C3 push 0x4b
+000D26C5 push 0x14000002
+000D26CA push 1
+000D26CC push 2
+000D26CE push 0x1e0
+000D26D3 push 0x280
+000D26D8 mov esi, ecx
+['  else if (uVar1 == 0xa00) {', '    uVar1 = 0x2233;', '    goto LAB_00146222;', '  }', '  uVar1 = 0x11;', 'LAB_00146222:', '  param_1 = param_1 & 0xf0000;', '  if (param_1 < 0x30001) {', '    if (param_1 == 0x30000) {', '      return uVar1 | 0x30000;', '    }', '    if (param_1 == 0x10000) {', '      return uVar1 | 0x10000;', '    }', '    if (param_1 == 0x20000) {', '      return uVar1 | 0x20000;', '    }', '  }', '  else if (param_1 == 0x40000) {', '    uVar1 = uVar1 | 0x40000;', '  }', '  return uVar1;', '}', '', '']
+// ==== FUNC 00146260 FUN_00146260 size=55 ====
+
+undefined4 FUN_00146260(uint param_1)
+
+{
+  switch(param_1 & 0xf0) {
+  default:
+    return 1;
+  case 0x20:
+    return 2;
+  case 0x40:
+    return 3;
+  case 0x80:
+    return 4;
+  }
+}
+
+
+
+0x2b440 ['FUN_0002c320(param_2);']
+0x22650 ['FUN_0002c320("Frontend");']
+0x2ba80 ['FUN_0002c320("Attract");']
+0x2a1f0 ['FUN_0002c320(&DAT_002940cc);']
+0x2bf50 ['FUN_0002c320("Death");']
+0xd37c0 ['FUN_0002c320("Intermission");']
+0x2940CC = Ingame

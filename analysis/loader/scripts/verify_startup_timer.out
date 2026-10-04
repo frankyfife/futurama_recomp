@@ -1,0 +1,108 @@
+000f641b: 8b4c2404               mov ecx, dword ptr [esp + 4]
+000f641f: 0f31                   rdtsc 
+000f6421: 8901                   mov dword ptr [ecx], eax
+000f6423: 895104                 mov dword ptr [ecx + 4], edx
+000f6426: 33c0                   xor eax, eax
+000f6428: 40                     inc eax
+000f6429: c20400                 ret 4
+000f642c: 8b442404               mov eax, dword ptr [esp + 4]
+000f6430: 83600400               and dword ptr [eax + 4], 0
+000f6434: c70055c7b52b           mov dword ptr [eax], 0x2bb5c755
+000f643a: 33c0                   xor eax, eax
+000f643c: 40                     inc eax
+XAPILIB::QueryPerformanceCounter [('0xd2bcd', 'call', 'd2b90 FUN_000d2b90'), ('0x241a12', 'call', '-'), ('0x241a61', 'call', '-'), ('0x241b45', 'call', '-'), ('0x26478b', 'call', '264775 FUN_00264775'), ('0x264dde', 'call', '264962 FUN_00264962'), ('0x264ffa', 'call', '264fdf FUN_00264fdf')] abs: [('.XTLID', '0x31a0ec')]
+XAPILIB::QueryPerformanceFrequency [('0xd2bb1', 'call', 'd2b90 FUN_000d2b90'), ('0x241b4e', 'call', '-'), ('0x241d4e', 'call', '241c40 FUN_00241c40'), ('0x26440a', 'call', '264360 FUN_00264360')] abs: [('.XTLID', '0x31a0f4')]
+rdtsc (0f 31) sites in code sections:
+  000f641f .text   f641b XAPILIB::QueryPerformanceCounter VALID
+  0023b780 D3D     23b780 FUN_0023b780 VALID
+  00260bdf DSOUND  <no func> (unverified/likely data)
+  00274509 XMV     <no func> (unverified/likely data)
+// ==== FUNC 000d2b10 FUN_000d2b10 size=29 ====
+
+undefined8 * __fastcall FUN_000d2b10(undefined8 *param_1)
+
+{
+  undefined8 uVar1;
+  
+  uVar1 = FUN_00167080();
+  *param_1 = uVar1;
+  return param_1;
+}
+
+
+
+// ==== FUNC 000d2b30 FUN_000d2b30 size=30 ====
+
+void __thiscall FUN_000d2b30(uint *param_1,int *param_2,uint *param_3)
+
+{
+  uint uVar1;
+  uint uVar2;
+  uint uVar3;
+  uint uVar4;
+  
+  uVar1 = *param_1;
+  uVar2 = param_1[1];
+  uVar3 = *param_3;
+  uVar4 = param_3[1];
+  *param_2 = uVar1 - *param_3;
+  param_2[1] = (uVar2 - uVar4) - (uint)(uVar1 < uVar3);
+  return;
+}
+
+
+
+// ==== FUNC 000d2b50 FUN_000d2b50 size=40 ====
+
+void __thiscall FUN_000d2b50(uint *param_1,int *param_2)
+
+{
+  uint uVar1;
+  undefined8 uVar2;
+  
+  uVar2 = FUN_00167080();
+  uVar1 = *param_1;
+  param_2[1] = (param_1[1] - (int)((ulonglong)uVar2 >> 0x20)) - (uint)(uVar1 < (uint)uVar2);
+  *param_2 = uVar1 - (uint)uVar2;
+  return;
+}
+
+
+
+// ==== FUNC 000d2b80 FUN_000d2b80 size=9 ====
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+float10 __fastcall FUN_000d2b80(longlong *param_1)
+
+{
+  return (float10)*param_1 * (float10)_DAT_002eb450;
+}
+
+
+
+// ==== FUNC 000d2b90 FUN_000d2b90 size=87 ====
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+void FUN_000d2b90(undefined4 *param_1)
+
+{
+  undefined4 local_8;
+  undefined4 local_4;
+  
+  local_8 = 0;
+  local_4 = 0;
+  if (DAT_002eb448 == 0 && DAT_002eb44c == 0) {
+    XAPILIB::QueryPerformanceFrequency(&DAT_002eb448);
+    _DAT_002eb450 = 1.0 / (float)CONCAT44(DAT_002eb44c,DAT_002eb448);
+  }
+  XAPILIB::QueryPerformanceCounter(&local_8);
+  *param_1 = local_8;
+  param_1[1] = local_4;
+  return;
+}
+
+
+
+[0x2EB450] refs: [('.text', '0xd2b84', 'FUN_000d2b80'), ('.text', '0xd2bc4', 'FUN_000d2b90')]

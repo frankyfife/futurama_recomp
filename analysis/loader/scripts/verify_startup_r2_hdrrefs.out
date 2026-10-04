@@ -1,0 +1,18 @@
+0x10000 (hdr+0x0): ['D3D8::CDevice_KickOff(0x238DF0)', 'D3D8::D3DDevice_CreateTexture2(0x2370D0)', 'FUN_000f3e12(0xF3E12)', 'FUN_000f4ea8(0xF4EA8)', 'FUN_000f6544(0xF6544)', 'FUN_000f786b(0xF786B)', 'FUN_001692a2(0x1692A2)', 'FUN_00238da0(0x238DA0)', 'FUN_00238ed0(0x238ED0)', 'FUN_0023ef0d(0x23EF0D)', 'FUN_00250029(0x250029)', 'FUN_00264962(0x264962)', 'FUN_0026c30d(0x26C30D)']
+0x10001 (hdr+0x1): ['FUN_0023dea0(0x23DEA0)']
+0x10024 (hdr+0x24): ['FUN_0023c9ef(0x23C9EF)', 'FUN_0023cbdd(0x23CBDD)']
+0x10108 (hdr+0x108): ['entry(0xF84DD)']
+0x10118 (hdr+0x118): ['FUN_000f902f(0xF902F)', 'FUN_000f90e6(0xF90E6)', 'XAPILIB::XCalculateSignatureBegin(0xF7163)', 'XAPILIB::XCalculateSignatureBeginEx(0xF706F)', 'XAPILIB::XLaunchNewImageA(0xF82E3)', 'XAPILIB::XapiBootToDash(0xF8FCA)', 'XAPILIB::XapiInitProcess(0xF92C0)', 'XAPILIB::XapiSelectCachePartition(0xF7D51)', 'entry(0xF84DD)']
+0x1011C (hdr+0x11C): ['FUN_000f9b8e(0xF9B8E)']
+0x10120 (hdr+0x120): ['FUN_000f9b8e(0xF9B8E)']
+0x10124 (hdr+0x124): ['XAPILIB::XMountUtilityDrive(0xF7F7C)', 'XAPILIB::XapiInitProcess(0xF92C0)']
+0x10130 (hdr+0x130): ['XAPILIB::CreateFiber(0x1708B0)', 'XAPILIB::CreateThread(0xF9A72)']
+0x10134 (hdr+0x134): ['XAPILIB::XapiInitProcess(0xF92C0)']
+0x10138 (hdr+0x138): ['XAPILIB::XapiInitProcess(0xF92C0)']
+0x105B8 (hdr+0x5B8): ['FUN_0023ef0d(0x23EF0D)']
+
+0x2344c0 D3D8::D3DDevice_BlockUntilVerticalBlank callers: [('0x2406d8', 'FUN_00240690(0x240690)')]
+
+DisplayFrame 0x146460 callers in callgraph: []
+ClearBuffer 0x146490 callers in callgraph: []
+abs refs to 0x146460: [('.rdata', '0x2aa800')]

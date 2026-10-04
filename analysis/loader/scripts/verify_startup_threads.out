@@ -1,0 +1,26 @@
+imported ordinals: [1, 2, 3, 4, 5, 8, 15, 16, 17, 23, 24, 40, 44, 46, 47, 49, 65, 67, 74, 81, 83, 87, 95, 97, 98, 99, 100, 107, 109, 113, 119, 128, 129, 137, 139, 142, 145, 149, 151, 153, 159, 160, 161, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 175, 176, 178, 179, 180, 182, 184, 187, 190, 196, 198, 199, 200, 202, 203, 207, 210, 211, 215, 217, 218, 219, 225, 226, 232, 233, 234, 236, 246, 250, 255, 258, 269, 277, 279, 289, 291, 294, 301, 302, 312, 322, 323, 324, 325, 327, 328, 335, 336, 337, 344, 354, 355, 356, 357, 358, 359, 360]
+ord 143 imported: False 
+ord 148 imported: False 
+ord 254 imported: False 
+ord 255 imported: True slot 77
+ord 258 imported: True slot 76
+ord 126 imported: False 
+ord 127 imported: False 
+ord 156 imported: False 
+ord 189 imported: False 
+ord 99 imported: True slot 21
+ord 234 imported: True slot 20
+ord 233 imported: True slot 33
+PsCreateSystemThreadEx call sites: ['0xf9aab'] other refs: []
+CreateThread raw E8/E9: [('0xf8531', 'call')]
+CreateThread abs refs (all sections): [('.XTLID', '0x31a22c')]
+abs refs to 0xf8469: [('.text', '0xf8529')]
+abs refs to 0xf99da: [('.text', '0xf9a85')]
+  func 000f98b5    56 XAPILIB::XapiCallThreadNotifyRoutines
+  func 000f9955    73 XAPILIB::XRegisterThreadNotifyRoutine
+  func 000f9a72   110 XAPILIB::CreateThread
+  func 000f9ae0    13 XAPILIB::GetCurrentThreadId
+  func 001708b0   140 XAPILIB::CreateFiber
+  func 0017093c    19 XAPILIB::DeleteFiber
+  func 0017094f    63 XAPILIB::SwitchToFiber
+  func 0017098e    54 XAPILIB::ConvertThreadToFiber

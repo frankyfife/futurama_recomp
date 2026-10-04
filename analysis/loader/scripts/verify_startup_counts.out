@@ -1,0 +1,39 @@
+000a4900 FUN_000a4900                   callgraph callers  976 | raw E8/E9 sites 2011 (in 1128 functions)
+000a48e0 FUN_000a48e0                   callgraph callers    6 | raw E8/E9 sites    6 (in 6 functions)
+000a3880 FUN_000a3880                   callgraph callers  949 | raw E8/E9 sites 2696 (in 2215 functions)
+0016a083 _malloc                        callgraph callers   11 | raw E8/E9 sites   12 (in 12 functions)
+0016a030 FUN_0016a030                   callgraph callers    1 | raw E8/E9 sites    1 (in 1 functions)
+000a4520 FUN_000a4520                   callgraph callers    7 | raw E8/E9 sites   10 (in 7 functions)
+000f63e0 XAPILIB::LocalAlloc            callgraph callers   14 | raw E8/E9 sites   14 (in 14 functions)
+dt [0x2d6748] code refs: 280  fps [0x2d6744]: 3  fixed flag [0x2d674c]: [('0xa2756', 'FUN_000a26a0'), ('0xa2d25', 'FUN_000a2c20')]
+0016a083: ff3538023100           push dword ptr [0x310238]
+0016a089: ff742408               push dword ptr [esp + 8]
+0016a08d: e8c5ffffff             call 0x16a057  ; __nh_malloc
+0016a092: 59                     pop ecx
+0016a093: 59                     pop ecx
+0016a094: c3                     ret 
+// ==== FUNC 0016a030 FUN_0016a030 size=39 ====
+
+void FUN_0016a030(uint param_1)
+
+{
+  undefined4 uVar1;
+  undefined4 uVar2;
+  
+  if (param_1 == 0) {
+    param_1 = 1;
+  }
+  if (DAT_003104c0 != 1) {
+    param_1 = param_1 + 0xf & 0xfffffff0;
+  }
+  uVar2 = 0;
+  uVar1 = FUN_000f63da(0,param_1);
+  FUN_000f52cc(uVar1,uVar2,param_1);
+  return;
+}
+
+
+
+ord 277 sites 12: {'f52cc FUN_000f52cc': 1, 'f5a83 FUN_000f5a83': 1, 'f5c77 FUN_000f5c77': 1, 'f98b5 XAPILIB::XapiCallThreadNotifyRoutines': 1, 'f9955 XAPILIB::XRegisterThreadNotifyRoutine': 1, '16c358 __lock_file': 1, '16c387 __lock_file2': 1, '16cc7f __getstream': 1, '16ec79 FUN_0016ec79': 1, '16f6fc FUN_0016f6fc': 1, '16f791 FUN_0016f791': 1, '246e0d DSOUND::DirectSoundEnterCriticalSection': 1} other refs []
+ord 294 sites 108: {'f52cc FUN_000f52cc': 1, 'f5a70 FUN_000f5a70': 1, 'f5a83 FUN_000f5a83': 1, 'f5c64 FUN_000f5c64': 1, 'f63ad FUN_000f63ad': 1, 'f98b5 XAPILIB::XapiCallThreadNotifyRoutines': 1, 'f9955 XAPILIB::XRegisterThreadNotifyRoutine': 1, '16c3aa __unlock_file': 1, '16c3d9 __unlock_file2': 1, '16ebeb FUN_0016ebeb': 1, '16f76f __unlock_fhandle': 1, '16f791 FUN_0016f791': 1, '246ea9 DSOUND::DirectSoundUseFullHRTF': 1, '<nofunc 246f75>': 1, '<nofunc 246f96>': 1, '246fdc DSOUND::CDirectSound_DownloadEffectsImage': 2, '24704f DSOUND::CDirectSound_DoWork': 1, '<nofunc 247330>': 1, '<nofunc 247352>': 1, '24735f DSOUND::CDirectSoundBuffer_Play': 2, '2473b0 DSOUND::CDirectSoundBuffer_Stop': 2, '2473ff DSOUND::CDirectSoundBuffer_GetStatus': 2, '<nofunc 2474ab>': 1, '<nofunc 2474cc>': 1, '<nofunc 2474f3>': 1, '<nofunc 247519>': 1, '<nofunc 247541>': 1, '<nofunc 247581>': 1, '<nofunc 2475a8>': 1, '<nofunc 2475cd>': 1, '<nofunc 2475f5>': 1, '<nofunc 247619>': 1, '<nofunc 247640>': 1, '<nofunc 247669>': 1, '247676 DSOUND::CDirectSoundStream_Process': 2, '2476ed DSOUND::CDirectSoundStream_Pause': 2, '24773e DSOUND::CDirectSoundStream_FlushEx': 2, '2477d1 DSOUND::CDirectSoundBuffer_SetVolume': 2, '24781f DSOUND::CDirectSoundBuffer_SetMixBins': 2, '24786d DSOUND::CDirectSoundStream_SetVolume': 2, '2478bf DSOUND::CDirectSoundStream_SetMixBins': 2, '247a07 DSOUND::DirectSoundDoWork': 1, '247a4b DSOUND::CDirectSound_CommitDeferredSettings': 2, '247eda DSOUND::CDirectSoundBuffer_SetFrequency': 2, '247f28 DSOUND::CDirectSoundBuffer_SetMaxDistance': 2, '247f7e DSOUND::CDirectSoundBuffer_SetMinDistance': 2, '247fd4 DSOUND::CDirectSoundBuffer_SetPosition': 2, '24803b DSOUND::CDirectSoundBuffer_SetVelocity': 2, '2480a2 DSOUND::CDirectSoundBuffer_SetRolloffCurve': 2, '2480f8 DSOUND::CDirectSoundBuffer_SetI3DL2Source': 2, '24814a DSOUND::CDirectSoundStream_SetFrequency': 2, '24819c DSOUND::CDirectSoundStream_SetMaxDistance': 2, '2481f6 DSOUND::CDirectSoundStream_SetMinDistance': 2, '248250 DSOUND::CDirectSoundStream_SetPosition': 2, '2482bb DSOUND::CDirectSoundStream_SetVelocity': 2, '248326 DSOUND::CDirectSoundStream_SetRolloffCurve': 2, '2485c2 FUN_002485c2': 2, '24868b DSOUND::CDirectSound_SetDistanceFactor': 2, '2486ed DSOUND::CDirectSound_SetDopplerFactor': 2, '24874f DSOUND::CDirectSound_SetRolloffFactor': 2, '2487b1 DSOUND::CDirectSound_SetOrientation': 2, '248843 DSOUND::CDirectSound_SetPosition': 2, '2488bb DSOUND::CDirectSound_SetVelocity': 2, '248931 DSOUND::CDirectSound_SetI3DL2Listener': 2, '248baa DSOUND::CDirectSoundBuffer_SetBufferData': 2, '248ec0 DSOUND::CDirectSound_CreateSoundStream': 2, '248ff6 FUN_00248ff6': 2, '2490ff DSOUND::CDirectSound_CreateSoundBuffer': 2, '24935c DSOUND::DirectSoundCreate': 1, '2493a3 DSOUND::DirectSoundCreateBuffer': 1, '2493fa DSOUND::DirectSoundCreateStream': 1} other refs []
+ord 291 sites 2: {'f4ea8 FUN_000f4ea8': 1, '16fd04 FUN_0016fd04': 1} other refs []

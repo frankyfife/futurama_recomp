@@ -1,0 +1,21 @@
+=== ord 166 slot 56
+  000f8449 f8420 XAPILIB::XPhysicalAlloc                 args(1st..): ['ecx', 'edx', 'eax', 'dword ptr [ebp + 0x10]', 'dword ptr [ebp + 0x14]'] | next: mov esi, eax
+  00237144 2370d0 D3D8::D3DDevice_CreateTexture2         args(1st..): ['edi', '0', '0x7ffffff', '0x80', '0x404'] | next: test eax, eax
+  00238b57 238b40 FUN_00238b40                           args(1st..): ['eax', '0', '0x7ffffff', '0', '0x404'] | next: test eax, eax
+  00239a40 2397c0 D3D8::CDevice_InitializeFrameBuffers   args(1st..): ['ebp', '0', '0x7ffffff', '0x4000', '0x404'] | next: mov edi, eax
+  00239b2f 2397c0 D3D8::CDevice_InitializeFrameBuffers   args(1st..): ['ecx', '0', '0x7ffffff', '0x4000', '0x404'] | next: mov esi, eax
+  00239c0c 2397c0 D3D8::CDevice_InitializeFrameBuffers   args(1st..): ['esi', '0', '0x7ffffff', '0x4000', '0x404'] | next: mov ebp, eax
+  00239d37 239d20 FUN_00239d20                           args(1st..): ['0x60', '0', '0x7ffffff', '0', '4'] | next: mov ecx, dword ptr [esp]
+  0023a483 23a460 D3D8::D3DDevice_CreateVertexBuffer2    args(1st..): ['eax', '0', '0x7ffffff', '0', '0x404'] | next: test eax, eax
+  0023a56f 23a540 D3D8::D3DDevice_CreatePalette2         args(1st..): ['eax', '0', '0x7ffffff', '0', '0x404'] | next: test eax, eax
+  0023cf2a 23cee0 D3D8::D3D_CreateStandAloneSurface      args(1st..): ['edi', '0', '0x7ffffff', '0x40', '0x404'] | next: test eax, eax
+  002417a6 241790 D3D8::D3D_AllocContiguousMemory        args(1st..): ['ecx', '0', '0x7ffffff', 'eax', '0x404'] | next: ret 8
+  002494c1 2494b0 FUN_002494b0                           args(1st..): ['dword ptr [esp + 0x18]', '0', '-1', 'dword ptr [esp + 0x10]', 'dword ptr [esp + 0x10]'] | next: mov esi, eax
+=== ord 165 slot 52
+  000f81cf f81bb FUN_000f81bb                            args(1st..): ['esi'] | next: mov ecx, dword ptr [0x293634]
+  0028cc27 28cbc9 FUN_0028cbc9                           args(1st..): ['edi'] | next: push 0
+XPhysicalAlloc: [(1016864, 67, 'XAPILIB::XPhysicalAlloc')]
+  000ee395 call ee220 FUN_000ee220                       args: ['edi', '-1', '0', '4'] | next: push 4
+  000ee3a4 call ee220 FUN_000ee220                       args: ['edi', '-1', '0', '4'] | next: mov edx, dword ptr [esi + 0x2c]
+  0017080c call 1707e2 XAPILIB::XMemAlloc                args: ['dword ptr [esp + 0x14]', '-1', 'eax', 'dword ptr [eax*4 + 0x2d9384]'] | next: mov edx, eax
+  00241efd call 241c40 FUN_00241c40                      args: ['esi', '-1', '0x4000', '4'] | next: cmp eax, edi

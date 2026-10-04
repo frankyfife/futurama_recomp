@@ -1,0 +1,36 @@
+# build output and test runs
+build/
+run/
+out/
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json
+__pycache__/
+*.pyc
+
+# game data never goes into the repository (design 5.2, R20)
+*.iso
+*.xbe
+*.xiso
+
+# --- added at repo creation (2026-10-04): derived data and anything taken from the disc ---
+# Ghidra project (contains the imported program); rebuild with tools/build_ghidra.py
+ghidra/
+# files extracted from the user's disc images (XBE, scripts, icons, strings); regenerate with tools/xdvdfs.py / futimg.py
+orig/
+# decompiled code and game strings exported from Ghidra; regenerate with ghidra_scripts/ExportAll.java
+analysis/retail_eu_export/decomp/
+analysis/retail_eu_export/strings.tsv
+# media samples cut from the disc
+analysis/loader/samples/
+# scratch output and logs
+analysis/_tmp*
+*.log
+# binaries from probes and local builds
+*.exe
+*.dll
+*.obj
+*.pdb
+*.ilk
+*.exp

@@ -1,0 +1,3 @@
+# generated files (tools/gen) are never reformatted
+src/host/gen/*
+src/host/kernel/gen/*

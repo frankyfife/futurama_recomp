@@ -1,0 +1,426 @@
+
+==== ExQueryNonVolatileSetting: 1st argument (index) per site
+  0f6453 XAPILIB::XGetLanguage                    args=['7', 'eax', 'eax', '4', '0']
+  0f856a XAPILIB::XGetGameRegion                  args=['0x104', 'eax', 'eax', '4', '0']
+  0f8ad2 XAPILIB::XQueryValue                     args=['dword ptr [ebp + 8]', 'dword ptr [ebp + 0xc]', 'dword ptr [ebp + 0x10]', 'dword ptr [ebp + 0x14]', 'dword ptr [ebp + 0x18]']
+  0f9c51 XAPILIB::XGetParentalControlSetting      args=['0xa', 'eax', 'eax', '4', '0']
+  1707b3 XAPILIB::XGetAudioFlags                  args=['9', 'eax', 'eax', '4', '0']
+
+==== NtAllocateVirtualMemory: 5th argument (Protect)
+  0f3e5c FUN_000f3e12                     protect=4  all=['eax', 'ebx', 'eax', 'eax', '4']
+  0f3e9e FUN_000f3e12                     protect=4  all=['eax', 'ebx', 'eax', '0x2000', '4']
+  0f3eb8 FUN_000f3e12                     protect=4  all=['eax', 'ebx', 'eax', 'eax', '4']
+  0f4057 FUN_000f3fe6                     protect=4  all=['eax', '0', 'ebx', '0x1000', '4']
+  0f49c3 FUN_000f4959                     protect=4  all=['eax', '0', 'eax', 'ebx', '4']
+  0f4b2d FUN_000f4a77                     protect=4  all=['eax', '0', 'eax', 'ebx', '4']
+  0f4b53 FUN_000f4a77                     protect=4  all=['eax', '0', 'eax', 'ebx', '4']
+  0f4b88 FUN_000f4a77                     protect=4  all=['eax', '0', 'eax', '0x1000', '4']
+  0f50e3 FUN_000f4ea8                     protect=4  all=['eax', 'esi', 'eax', '0x2000', '4']
+  0f511c FUN_000f4ea8                     protect=4  all=['eax', '0', 'eax', '0x1000', '4']
+  0f593c FUN_000f52cc                     protect=4  all=['eax', '0', 'eax', 'eax', '4']
+
+==== MmAllocateContiguousMemoryEx: args (Size, Lowest, Highest, Alignment, Protect)
+  0f8449 XAPI   XAPILIB::XPhysicalAlloc              ['ecx', 'edx', 'eax', 'dword ptr [ebp + 0x10]', 'dword ptr [ebp + 0x14]']
+  237144 D3D    D3D8::D3DDevice_CreateTexture2       ['edi', '0', '0x7ffffff', '0x80', '0x404']
+  238b57 D3D    FUN_00238b40                         ['eax', '0', '0x7ffffff', '0', '0x404']
+  239a40 D3D    D3D8::CDevice_InitializeFrameBuffers ['ebp', '0', '0x7ffffff', '0x4000', '0x404']
+  239b2f D3D    D3D8::CDevice_InitializeFrameBuffers ['ecx', '0', '0x7ffffff', '0x4000', '0x404']
+  239c0c D3D    D3D8::CDevice_InitializeFrameBuffers ['esi', '0', '0x7ffffff', '0x4000', '0x404']
+  239d37 D3D    FUN_00239d20                         ['0x60', '0', '0x7ffffff', '0', '4']
+  23a483 D3D    D3D8::D3DDevice_CreateVertexBuffer2  ['eax', '0', '0x7ffffff', '0', '0x404']
+  23a56f D3D    D3D8::D3DDevice_CreatePalette2       ['eax', '0', '0x7ffffff', '0', '0x404']
+  23cf2a D3D    D3D8::D3D_CreateStandAloneSurface    ['edi', '0', '0x7ffffff', '0x40', '0x404']
+  2417a6 D3D    D3D8::D3D_AllocContiguousMemory      ['ecx', '0', '0x7ffffff', 'eax', '0x404']
+  2494c1 DSOUND FUN_002494b0                         ['dword ptr [esp + 0x18]', '0', '-1', 'dword ptr [esp + 0x10]', 'dword ptr [esp + 0x10]']
+
+==== HalReturnToFirmware: pushed args (arg1 first)
+  0f82d2 XAPI   FUN_000f829c                             ['2']
+  0f9028 XAPI   XAPILIB::XapiBootToDash                  ['4']
+
+==== KeBugCheck: pushed args (arg1 first)
+  1692de LIBC   FUN_001692d0                             ['0xa']
+  16936c LIBC   <no func>                                ['0xa']
+  169d93 LIBC   <no func>                                ['0xc0000144']
+  169fbe LIBC   FUN_00169f1b                             ['0']
+  1708a9 XAPI   <no func>                                ['0']
+
+==== HalGetInterruptVector: pushed args (arg1 first)
+  23c915 D3D    D3D8::CMiniport_InitHardware             ['3', 'eax']
+  24b10d DSOUND FUN_0024b09e                             ['5', 'eax']
+  250b49 DSOUND FUN_00250ae4                             ['6', 'eax']
+  28c919 XPP    FUN_0028c8f0                             ['1', 'eax']
+
+==== AvSendTVEncoderOption: pushed args (arg1 first)
+  234518 D3D    D3D8::D3DDevice_SetFlickerFilter         ['eax', '0xb', 'esi', '0']
+  234571 D3D    D3D8::D3DDevice_SetSoftDisplayFilter     ['edx', '0xe', 'esi', '0']
+  2396bd D3D    D3D8::CDevice_FreeFrameBuffers           ['eax', '9', '1', 'ebp']
+  23b093 D3D    D3D8::CMiniport_GetDisplayCapabilities   ['eax', '6', 'eax', '0x2444b8']
+  23ccd0 D3D    FUN_0023cc9f                             ['esi', '9', '1', 'ebx']
+  24071a D3D    FUN_00240690                             ['ecx', '0xb', 'ebp', 'ebp']
+  240735 D3D    FUN_00240690                             ['eax', '0xf', 'ebp', 'edx']
+  240797 D3D    FUN_00240690                             ['edx', '9', 'ebp', 'ebp']
+
+==== NtQueryVolumeInformationFile: pushed args (arg1 first)
+  0f7cd4 XAPI   FUN_000f7c5d                             ['dword ptr [ebp + 8]', 'eax', 'eax', '0x18', '3']
+  0f80f5 XAPI   FUN_000f8081                             ['dword ptr [ebp + 8]', 'eax', 'eax', '0x18', '3']
+  0f8194 XAPI   FUN_000f8120                             ['dword ptr [ebp + 8]', 'eax', 'eax', '0x18', '3']
+  0f8b2d XAPI   FUN_000f8ae2                             ['dword ptr [ebp + 8]', 'eax', 'eax', '0x18', '3']
+
+==== NtQueryInformationFile: pushed args (arg1 first)
+  0f736d XAPI   XAPILIB::SetEndOfFile                    ['dword ptr [ebp + 8]', 'eax', 'eax', '8', '0xe']
+  0f7418 XAPI   XAPILIB::SetFilePointer                  ['dword ptr [ebp + 8]', 'eax', 'eax', '0x38', '0x22']
+  0f743e XAPI   XAPILIB::SetFilePointer                  ['dword ptr [ebp + 8]', 'eax', 'eax', '8', '0xe']
+  0f74f9 XAPI   XAPILIB::SetFilePointerEx                ['dword ptr [ebp + 8]', 'eax', 'eax', '0x38', '0x22']
+  0f7524 XAPI   XAPILIB::SetFilePointerEx                ['dword ptr [ebp + 8]', 'eax', 'eax', '8', '0xe']
+  0f75da XAPI   XAPILIB::GetFileSizeEx                   ['dword ptr [ebp + 8]', 'eax', 'eax', '0x38', '0x22']
+  0f790b XAPI   FUN_000f786b                             ['dword ptr [ebp + 0x50]', 'eax', 'eax', '0x38', '0x22']
+  0f8bda XAPI   FUN_000f8b5a                             ['dword ptr [ebp + 0xc]', 'eax', 'eax', '0x38', '0x22']
+  0f8e48 XAPI   XAPILIB::XapiMapLetterToDirectory        ['dword ptr [ebp + 0x14]', 'eax', 'eax', '0x38', '0x22']
+
+==== NtSetInformationFile: pushed args (arg1 first)
+  0f6975 XAPI   FUN_000f692b                             ['esi', 'eax', 'eax', '0x28', '4']
+  0f73a3 XAPI   XAPILIB::SetEndOfFile                    ['dword ptr [ebp + 8]', 'eax', 'eax', '8', '0x14']
+  0f73c4 XAPI   XAPILIB::SetEndOfFile                    ['dword ptr [ebp + 8]', 'eax', 'eax', '8', '0x13']
+  0f749b XAPI   XAPILIB::SetFilePointer                  ['dword ptr [ebp + 8]', 'eax', 'eax', '8', '0xe']
+  0f7571 XAPI   XAPILIB::SetFilePointerEx                ['dword ptr [ebp + 8]', 'eax', 'eax', '8', '0xe']
+  0f79d0 XAPI   FUN_000f786b                             ['dword ptr [ebp + 0x54]', 'eax', 'eax', '8', '0x14']
+  0f7af7 XAPI   FUN_000f786b                             ['dword ptr [ebp + 0x54]', 'eax', 'eax', '0x28', '4']
+  0f7b2b XAPI   FUN_000f786b                             ['dword ptr [ebp + 0x54]', 'eax', 'eax', '1', '0xd']
+  0f7bea XAPI   FUN_000f7b6c                             ['dword ptr [ebp + 8]', 'eax', 'eax', '0x28', '4']
+  0f867d XAPI   FUN_000f8616                             ['dword ptr [ebp - 4]', 'eax', 'eax', '1', '0xd']
+  0f87ed XAPI   FUN_000f8709                             ['dword ptr [ebp - 4]', 'eax', 'eax', '0x28', '4']
+  0f880c XAPI   FUN_000f8709                             ['dword ptr [ebp - 4]', 'eax', 'eax', '1', '0xd']
+  0f8865 XAPI   FUN_000f8709                             ['dword ptr [ebp + 8]', 'eax', 'eax', '0x28', '4']
+  0f887a XAPI   FUN_000f8709                             ['dword ptr [ebp + 8]', 'eax', 'eax', '1', '0xd']
+  0f8d76 XAPI   XAPILIB::XapiMapLetterToDirectory        ['dword ptr [ebp - 4]', 'eax', 'eax', '0x28', '4']
+  241cd1 D3D    FUN_00241c40                             ['eax', '0x246cc8', 'ecx', '1', '0xd']
+
+==== NtQueryDirectoryFile: pushed args (arg1 first)
+  0f8731 XAPI   FUN_000f8709                             ['dword ptr [ebp + 8]', 'ebx', 'ebx', 'ebx', 'eax', 'esi', '0x146', '1', 'ebx', 'dword ptr [ebp - 8]']
+  0f8a2d XAPI   FUN_000f8961                             ['dword ptr [ebp + 8]', 'edi', 'edi', 'edi', 'eax', 'eax', '0x148', '1', 'eax', 'edi']
+  0f8a94 XAPI   FUN_000f8a6e                             ['dword ptr [ebp + 8]', 'esi', 'esi', 'esi', 'eax', 'eax', '0x148', '1', 'esi', 'esi']
+
+==== NtFsControlFile: pushed args (arg1 first)
+  0f9759 XAPI   FUN_000f946d                             ['dword ptr [ebp - 4]', 'edi', 'edi', 'edi', 'eax', '0x90020', 'edi', 'edi', 'edi', 'edi']
+
+==== NtDeviceIoControlFile: pushed args (arg1 first)
+  0f91cf XAPI   FUN_000f90e6                             ['dword ptr [ebp - 0xc]', 'ebx', 'ebx', 'ebx', 'eax', '0x4d014', 'eax', '0x2c', 'ebx', 'ebx']
+  0f9278 XAPI   FUN_000f90e6                             ['dword ptr [ebp - 0xc]', 'ebx', 'ebx', 'ebx', 'eax', '0x4d014', 'eax', '0x2c', 'ebx', 'ebx']
+  0f94d0 XAPI   FUN_000f946d                             ['dword ptr [ebp - 4]', 'edi', 'edi', 'edi', 'eax', '0x70000', 'edi', 'edi', 'eax', '0x18']
+  0f950c XAPI   FUN_000f946d                             ['dword ptr [ebp - 4]', 'edi', 'edi', 'edi', 'eax', '0x74004', 'edi', 'edi', 'eax', '0x20']
+
+==== KeSetTimer: pushed args (arg1 first)
+  0f9b01 XAPI   XAPILIB::XAutoPowerDownResetTimer        ['0x310360', 'eax', 'ecx', '0x310340']
+  24aa1c DSOUND FUN_0024a9c6                             ['edi', 'dword ptr [eax + 0x18]', 'dword ptr [eax + 0x1c]', 'ecx']
+  24aa97 DSOUND FUN_0024aa28                             ['ebx', 'dword ptr [esi + 0x18]', 'dword ptr [esi + 0x1c]', 'eax']
+  24afe1 DSOUND FUN_0024af20                             ['edi', 'dword ptr [esi + 0x18]', 'dword ptr [esi + 0x1c]', 'eax']
+  28d2a0 XPP    FUN_0028d28c                             ['0x2f3be0', 'eax', 'ecx', '0x2f3c08']
+  28f40a XPP    FUN_0028f352                             ['0x2f3c80', 'eax', 'ecx', '0x2f3c64']
+  28f431 XPP    FUN_0028f416                             ['0x2f3c80', 'eax', 'ecx', '0x2f3c64']
+  28f480 XPP    FUN_0028f438                             ['0x2f3c80', 'eax', 'ecx', '0x2f3c64']
+  28f4ab XPP    <no func>                                ['0x2f3c80', 'eax', 'ecx', '0x2f3c64']
+  28f70f XPP    FUN_0028f66b                             ['0x2f3c80', 'dword ptr [eax + 0x18]', 'dword ptr [eax + 0x1c]', '0x2f3c64']
+  290136 XPP    FUN_002900aa                             ['eax', 'eax', 'ecx', 'edx']
+  2902a9 XPP    FUN_00290234                             ['eax', 'eax', 'edx', 'ecx']
+  29046a XPP    FUN_002903ba                             ['eax', 'eax', 'ecx', 'edx']
+  29052b XPP    FUN_002904e8                             ['eax', 'eax', 'ecx', 'edx']
+  290779 XPP    <no func>                                ['eax', 'eax', 'ecx', 'edx']
+  290f5a XPP    FUN_00290f01                             ['esi', 'eax', 'ecx', '0x2f3db0']
+  291b61 XPP    FUN_00291b1f                             ['eax', 'ecx', 'edx', 'esi']
+
+==== MmSetAddressProtect: pushed args (arg1 first)
+  0f98a1 XAPI   FUN_000f9804                             ['esi', '4', '4']
+  0f98af XAPI   FUN_000f9804                             ['esi', '4', 'ebx']
+  28eb24 XPP    FUN_0028eaa7                             ['edi', '0x20', 'esi']
+  28eb42 XPP    FUN_0028eaa7                             ['edi', '0x20', 'ebx']
+
+==== HalRegisterShutdownNotification: pushed args (arg1 first)
+  0f92d7 XAPI   XAPILIB::XapiInitProcess                 ['0x2d7530', 'ebx']
+  23c959 D3D    D3D8::CMiniport_InitHardware             ['eax', 'ebx']
+  23ce46 D3D    FUN_0023cc9f                             ['eax', 'ebx']
+  24add8 DSOUND FUN_0024ad5a                             ['edi', 'ebx']
+  24b164 DSOUND FUN_0024b09e                             ['eax', '1']
+  250aa5 DSOUND FUN_00250a59                             ['esi', 'ebx']
+  250bb4 DSOUND FUN_00250ae4                             ['eax', '1']
+  28ca90 XPP    FUN_0028c932                             ['ecx', 'edx']
+
+==== MmPersistContiguousMemory: pushed args (arg1 first)
+  0f81f6 XAPI   FUN_000f81bb                             ['eax', 'esi', '1']
+  24077a D3D    FUN_00240690                             ['esi', 'eax', 'ebp']
+
+==== NtWaitForSingleObjectEx: pushed args (arg1 first)
+  0f6497 XAPI   XAPILIB::WaitForSingleObjectEx           ['dword ptr [ebp + 8]', '1', 'dword ptr [ebp + 0x10]', 'esi']
+
+==== KeDelayExecutionThread: pushed args (arg1 first)
+  0f64e9 XAPI   XAPILIB::SleepEx                         ['1', 'dword ptr [ebp + 0xc]', 'esi']
+  28ce51 XPP    FUN_0028cdfa                             ['0', '0', 'eax']
+  292d46 XPP    FUN_00292cdc                             ['0', '0', 'eax']
+
+==== NtWaitForSingleObject: pushed args (arg1 first)
+  0f723b XAPI   XAPILIB::ReadFile                        ['dword ptr [ebp + 8]', 'ebx', 'ebx']
+  0f731c XAPI   XAPILIB::WriteFile                       ['dword ptr [ebp + 8]', 'ebx', 'ebx']
+
+==== MmCreateKernelStack: pushed args (arg1 first)
+  1708da XAPI   XAPILIB::CreateFiber                     ['esi', 'edi']
+
+==== KeWaitForSingleObject: pushed args (arg1 first)
+  0f9cb4 XAPI   <no func>                                ['0x2d7540', 'eax', '1', 'eax', 'eax']
+  2344dd D3D    D3D8::D3DDevice_BlockUntilVerticalBlank  ['eax', '6', '1', '0', '0']
+  239119 D3D    D3D8::D3D_BlockOnTime                    ['esi', '6', '1', '0', '0']
+  28d714 XPP    FUN_0028d6e9                             ['dword ptr [ebp + 8]', 'edi', 'edi', 'edi', 'eax']
+  28d72d XPP    FUN_0028d6e9                             ['dword ptr [ebp + 8]', 'edi', 'edi', 'edi', 'edi']
+  28d990 XPP    XAPILIB::XID_fCloseDevice                ['eax', 'ebx', 'ebx', 'ebx', 'ebx']
+  28e535 XPP    FUN_0028e45d                             ['eax', 'ebx', 'ebx', 'ebx', 'ebx']
+
+==== QueryPerformanceCounter/Frequency, rdtsc and 0x2BB5C755
+  0f641b 8b4c2404               mov ecx, dword ptr [esp + 4]
+  0f641f 0f31                   rdtsc 
+  0f6421 8901                   mov dword ptr [ecx], eax
+  0f6423 895104                 mov dword ptr [ecx + 4], edx
+  0f6426 33c0                   xor eax, eax
+  0f6428 40                     inc eax
+  0f6429 c20400                 ret 4
+  0f642c 8b442404               mov eax, dword ptr [esp + 4]
+  0f6430 83600400               and dword ptr [eax + 4], 0
+  0f6434 c70055c7b52b           mov dword ptr [eax], 0x2bb5c755
+  constant 0x2BB5C755 at 0f6436 (.text)
+  0F 31 byte pairs in code: 4
+  rdtsc (confirmed by linear sweep of Ghidra func) 0f641f .text XAPILIB::QueryPerformanceCounter
+  rdtsc (confirmed by linear sweep of Ghidra func) 23b780 D3D FUN_0023b780
+  0F31 outside Ghidra func 260bdf DSOUND: 260bdf 0f31                   rdtsc 
+  0F31 outside Ghidra func 274509 XMV: 274509 0f31                   rdtsc 
+
+==== fs: accesses (byte-scan for 0x64 prefix, decode, only [disp] without base/index)
+fs:[0x-6f6f3d00]: 18 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x0]: 5176 hits (5141 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'.text': 5140, 'DSOUND': 1}
+fs:[0x4]: 11 hits (11 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'.text': 11}
+    0f6e6b 648b0d04000000         mov ecx, dword ptr fs:[4]  [XAPILIB::GetLastError]
+    0f6e8e 648b0d04000000         mov ecx, dword ptr fs:[4]  [XAPILIB::SetLastError]
+    0f8495 648b3d04000000         mov edi, dword ptr fs:[4]  [<no func>]
+    13f443 648b0d04000000         mov ecx, dword ptr fs:[4]  [FUN_0013f250]
+    13f5d5 648b3d04000000         mov edi, dword ptr fs:[4]  [FUN_0013f590]
+    1692f7 648b0d04000000         mov ecx, dword ptr fs:[4]  [FUN_001692d0]
+    169383 648b0d04000000         mov ecx, dword ptr fs:[4]  [<no func>]
+    16948f 648b0d04000000         mov ecx, dword ptr fs:[4]  [FUN_00169467]
+    170880 648b0d04000000         mov ecx, dword ptr fs:[4]  [<no func>]
+    170955 648b0d04000000         mov ecx, dword ptr fs:[4]  [XAPILIB::SwitchToFiber]
+    170993 648b0d04000000         mov ecx, dword ptr fs:[4]  [XAPILIB::ConvertThreadToFiber]
+fs:[0x20]: 8 hits (8 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'.text': 7, 'D3D': 1}
+    0f5a41 64a120000000           mov eax, dword ptr fs:[0x20]  [FUN_000f52cc]
+    0f5ab8 64a120000000           mov eax, dword ptr fs:[0x20]  [FUN_000f5a83]
+    0f634f 64a120000000           mov eax, dword ptr fs:[0x20]  [FUN_000f5c77]
+    0f6384 64a120000000           mov eax, dword ptr fs:[0x20]  [<no func>]
+    0f82b9 64a120000000           mov eax, dword ptr fs:[0x20]  [FUN_000f829c]
+    0f8473 64a120000000           mov eax, dword ptr fs:[0x20]  [<no func>]
+    0f999e 64a120000000           mov eax, dword ptr fs:[0x20]  [XAPILIB::UnhandledExceptionFilter]
+    23a1e5 64a120000000           mov eax, dword ptr fs:[0x20]  [FUN_00239d20]
+fs:[0x24]: 8 hits (8 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'.text': 5, 'DSOUND': 3}
+    0f6e54 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [XAPILIB::GetLastError]
+    0f6e7c 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [XAPILIB::SetLastError]
+    0f9ab7 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [XAPILIB::CreateThread]
+    1692d0 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [FUN_001692d0]
+    16935e 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [<no func>]
+    246d37 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [FUN_00246d30]
+    246e0d 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [DSOUND::DirectSoundEnterCriticalSection]
+    24ba50 640fb60524000000       movzx eax, byte ptr fs:[0x24]  [DSOUND::CMcpxStream_Flush]
+fs:[0x28]: 9 hits (9 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'.text': 9}
+    0f6e60 64a128000000           mov eax, dword ptr fs:[0x28]  [XAPILIB::GetLastError]
+    0f6e88 64a128000000           mov eax, dword ptr fs:[0x28]  [XAPILIB::SetLastError]
+    0f848f 64a128000000           mov eax, dword ptr fs:[0x28]  [<no func>]
+    0f99ea 64a128000000           mov eax, dword ptr fs:[0x28]  [<no func>]
+    0f9ac3 64a128000000           mov eax, dword ptr fs:[0x28]  [XAPILIB::CreateThread]
+    0f9ae0 64a128000000           mov eax, dword ptr fs:[0x28]  [XAPILIB::GetCurrentThreadId]
+    1692e6 64a128000000           mov eax, dword ptr fs:[0x28]  [FUN_001692d0]
+    169372 64a128000000           mov eax, dword ptr fs:[0x28]  [<no func>]
+    1709a9 64a128000000           mov eax, dword ptr fs:[0x28]  [XAPILIB::ConvertThreadToFiber]
+fs:[0x58]: 2 hits (2 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'DSOUND': 2}
+    246d7a 64a158000000           mov eax, dword ptr fs:[0x58]  [FUN_00246d7a]
+    246d9f 64a158000000           mov eax, dword ptr fs:[0x58]  [FUN_00246d9f]
+fs:[0x2939f8]: 3 hits (1 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'.text': 1}
+    0ab34f 64d905f8392900         fld dword ptr fs:[0x2939f8]  [<no func>]
+fs:[0x293a00]: 5 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x293a18]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x293b50]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x29ba38]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2d67e0]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2d7740]: 2 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2d7744]: 2 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2d7748]: 2 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2d7750]: 2 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2d775c]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2d7b54]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2dabc4]: 3 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2dd5f4]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2de09c]: 2 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2e0b4c]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2f08b0]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x24448b00]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x2484c700]: 1 hits (1 excluding those not on a linear-sweep boundary of their Ghidra function); sections {'.text': 1}
+    01dac8 64200d00c78424         and byte ptr fs:[0x2484c700], cl  [<no func>]
+fs:[0x38a1ffff]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x3ae8002f]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x448bfffc]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x90c3002d]: 4 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x90c3002e]: 4 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0x90c3002f]: 4 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0xc4830000]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+fs:[0xe850002f]: 1 hits (0 excluding those not on a linear-sweep boundary of their Ghidra function); sections {}
+
+==== dereference offsets following 'mov reg, fs:[0x20|0x28]'
+    fs:[0x20] -> 0f5a47 8b8050020000           mov eax, dword ptr [eax + 0x250]   (FUN_000f52cc)
+    fs:[0x20] -> 0f5abe 8b8050020000           mov eax, dword ptr [eax + 0x250]   (FUN_000f5a83)
+    fs:[0x20] -> 0f6355 8b8050020000           mov eax, dword ptr [eax + 0x250]   (FUN_000f5c77)
+    fs:[0x20] -> 0f638a 8b8050020000           mov eax, dword ptr [eax + 0x250]   (<no func>)
+    fs:[0x20] -> 0f82bf 8b8050020000           mov eax, dword ptr [eax + 0x250]   (FUN_000f829c)
+    fs:[0x20] -> 0f8479 8b8050020000           mov eax, dword ptr [eax + 0x250]   (<no func>)
+    fs:[0x20] -> 0f99a4 8b8050020000           mov eax, dword ptr [eax + 0x250]   (XAPILIB::UnhandledExceptionFilter)
+    fs:[0x20] -> 23a1eb 8b8050020000           mov eax, dword ptr [eax + 0x250]   (FUN_00239d20)
+  fs:[0x20] offsets: {'0x250': 8}
+    fs:[0x28] -> 0f84a5 2b5028                 sub edx, dword ptr [eax + 0x28]   (<no func>)
+    fs:[0x28] -> 0f99f3 8b5028                 mov edx, dword ptr [eax + 0x28]   (<no func>)
+    fs:[0x28] -> 0f9ac9 83782800               cmp dword ptr [eax + 0x28], 0   (XAPILIB::CreateThread)
+    fs:[0x28] -> 0f9ae6 8b802c010000           mov eax, dword ptr [eax + 0x12c]   (XAPILIB::GetCurrentThreadId)
+    fs:[0x28] -> 1692ec 83782800               cmp dword ptr [eax + 0x28], 0   (FUN_001692d0)
+    fs:[0x28] -> 169378 83782800               cmp dword ptr [eax + 0x28], 0   (<no func>)
+    fs:[0x28] -> 1709af 8b401c                 mov eax, dword ptr [eax + 0x1c]   (XAPILIB::ConvertThreadToFiber)
+  fs:[0x28] offsets: {'0x28': 5, '0x12c': 1, '0x1c': 1}
+
+==== callgraph: callers of ReadFileEx/WriteFileEx/CreateFiber/SwitchToFiber/ConvertThreadToFiber/DeleteFiber
+  000e0b00 FUN_000e0b00                             -> XAPILIB::WriteFileEx
+  0013f1a0 FUN_0013f1a0                             -> XAPILIB::SwitchToFiber
+  0013f250 FUN_0013f250                             -> XAPILIB::CreateFiber
+  0013f250 FUN_0013f250                             -> XAPILIB::ConvertThreadToFiber
+  0013f590 FUN_0013f590                             -> XAPILIB::DeleteFiber
+  0013f590 FUN_0013f590                             -> XAPILIB::SwitchToFiber
+  0013f660 FUN_0013f660                             -> XAPILIB::ReadFileEx
+
+==== indexed accesses [esi*4+0x293608] with bounds check
+  14790b b5d0                   mov ch, 0xd0
+  14790d 46                     inc esi
+  14790e 2400                   and al, 0
+  147910 5f                     pop edi
+  147911 5e                     pop esi
+  147912 c20c00                 ret 0xc
+  147915 81fe88000000           cmp esi, 0x88
+  14791b 7d1f                   jge 0x14793c
+  14791d 8b0cb508362900         mov ecx, dword ptr [esi*4 + 0x293608]
+  in FUN_001478c0
+  0x293608 + 0x88*4 = 293828 (thunk table ends at 0x29371c)
+  23581f b5d0                   mov ch, 0xd0
+  235821 46                     inc esi
+  235822 2400                   and al, 0
+  235824 5f                     pop edi
+  235825 5e                     pop esi
+  235826 c20800                 ret 8
+  235829 81fe88000000           cmp esi, 0x88
+  23582f 7d1c                   jge 0x23584d
+  235831 8b04b508362900         mov eax, dword ptr [esi*4 + 0x293608]
+  in D3D8::D3DDevice_SetRenderStateNotInline
+  0x293608 + 0x88*4 = 293828 (thunk table ends at 0x29371c)
+
+==== data export accesses
+  28da06 ff35a8352900           push dword ptr [0x2935a8]   [FUN_0028d9bf]
+  0f7004 8b35d8352900           mov esi, dword ptr [0x2935d8]   [FUN_000f6ffa]
+  0f70c6 0305e0352900           add eax, dword ptr [0x2935e0]   [XAPILIB::XCalculateSignatureBeginEx]
+  0f70ce a1dc352900             mov eax, dword ptr [0x2935dc]   [XAPILIB::XCalculateSignatureBeginEx]
+  0f7dd4 a11c362900             mov eax, dword ptr [0x29361c]   [XAPILIB::XapiSelectCachePartition]
+  0f7e2b a11c362900             mov eax, dword ptr [0x29361c]   [XAPILIB::XapiSelectCachePartition]
+  0f81be a134362900             mov eax, dword ptr [0x293634]   [FUN_000f81bb]
+  0f9459 a134362900             mov eax, dword ptr [0x293634]   [XAPILIB::XapiInitProcess]
+  0f945e 832000                 and dword ptr [eax], 0   [XAPILIB::XapiInitProcess]
+  0f933d a160362900             mov eax, dword ptr [0x293660]   [XAPILIB::XapiInitProcess]
+  0f9342 f60008                 test byte ptr [eax], 8   [XAPILIB::XapiInitProcess]
+  23c846 8b1560362900           mov edx, dword ptr [0x293660]   [FUN_0023c846]
+  23c84c f6420102               test byte ptr [edx + 1], 2   [FUN_0023c846]
+  28c8f6 a160362900             mov eax, dword ptr [0x293660]   [FUN_0028c8f0]
+  28c8fb 807805a1               cmp byte ptr [eax + 5], 0xa1   [FUN_0028c8f0]
+  0f90be ff3584362900           push dword ptr [0x293684]   [FUN_000f902f]
+  170aa5 a118372900             mov eax, dword ptr [0x293718]   [XAPILIB::XGetAVPack]
+  28d254 a180352900             mov eax, dword ptr [0x293580]   [FUN_0028d254]
+  0f9c63 a1bc362900             mov eax, dword ptr [0x2936bc]   [<no func>]
+  0f9c80 8b35bc362900           mov esi, dword ptr [0x2936bc]   [<no func>]
+
+==== XboxHardwareInfo: all uses (mov reg,[0x293660] then next 3 insns)
+  a160362900             mov eax, dword ptr [0x293660] | f60008                 test byte ptr [eax], 8 | 752e                   jne 0xf9375  [XAPI XAPILIB::XapiInitProcess]
+  a160362900             mov eax, dword ptr [0x293660] | 8b00                   mov eax, dword ptr [eax] | 8b0d8c362900           mov ecx, dword ptr [0x29368c]  [XAPI FUN_000f9804]
+  a160362900             mov eax, dword ptr [0x293660] | 83258803310000         and dword ptr [0x310388], 0 | 83258c03310000         and dword ptr [0x31038c], 0  [XAPI FUN_000f9b1a]
+  8b1560362900           mov edx, dword ptr [0x293660] | f6420102               test byte ptr [edx + 1], 2 | 8b01                   mov eax, dword ptr [ecx]  [D3D FUN_0023c846]
+  a160362900             mov eax, dword ptr [0x293660] | 807805a1               cmp byte ptr [eax + 5], 0xa1 | 742f                   je 0x28c930  [XPP FUN_0028c8f0]
+  a160362900             mov eax, dword ptr [0x293660] | f60001                 test byte ptr [eax], 1 | 7543                   jne 0x28ca35  [XPP FUN_0028c932]
+  8b1560362900           mov edx, dword ptr [0x293660] | 6a05                   push 5 | 58                     pop eax  [XPP FUN_0028e58c]
+
+==== IoInvalidDeviceRequest stores in FUN_0028d254
+  28d254 a180352900             mov eax, dword ptr [0x293580]
+  28d259 a304c02800             mov dword ptr [0x28c004], eax
+  28d25e a308c02800             mov dword ptr [0x28c008], eax
+  28d263 a314c02800             mov dword ptr [0x28c014], eax
+  28d268 a318c02800             mov dword ptr [0x28c018], eax
+  28d26d a31cc02800             mov dword ptr [0x28c01c], eax
+  28d272 a320c02800             mov dword ptr [0x28c020], eax
+  28d277 a324c02800             mov dword ptr [0x28c024], eax
+  28d27c a328c02800             mov dword ptr [0x28c028], eax
+  28d281 a334c02800             mov dword ptr [0x28c034], eax
+  28d286 a338c02800             mov dword ptr [0x28c038], eax
+
+==== HalRegisterShutdownNotification record 0x2D7530
+  dwords: ['000f9c7f', '80000000', '00000000', '00000000']
+
+==== LaunchDataPage uses
+  a134362900             mov eax, dword ptr [0x293634] | 833800                 cmp dword ptr [eax], 0  [FUN_000f81bb]
+  8b0d34362900           mov ecx, dword ptr [0x293634] | 8901                   mov dword ptr [ecx], eax  [FUN_000f81bb]
+  a134362900             mov eax, dword ptr [0x293634] | 8b00                   mov eax, dword ptr [eax]  [FUN_000f81bb]
+  a134362900             mov eax, dword ptr [0x293634] | 53                     push ebx  [FUN_000f81bb]
+  a134362900             mov eax, dword ptr [0x293634] | 8b08                   mov ecx, dword ptr [eax]  [FUN_000f81bb]
+  8b0d34362900           mov ecx, dword ptr [0x293634] | 8b09                   mov ecx, dword ptr [ecx]  [FUN_000f81bb]
+  a134362900             mov eax, dword ptr [0x293634] | 8b38                   mov edi, dword ptr [eax]  [FUN_000f81bb]
+  a134362900             mov eax, dword ptr [0x293634] | 85c0                   test eax, eax  [XAPILIB::XapiInitProcess]
+  a134362900             mov eax, dword ptr [0x293634] | 832000                 and dword ptr [eax], 0  [XAPILIB::XapiInitProcess]
+
+==== registers used for 'call reg' sites (from kernel_raw.json of the analysed agent)
+  Counter({'reg:edi': 19, 'reg:esi': 17, 'reg:ebx': 9, 'reg:ebp': 4})
+
+==== XBE header fields read via absolute address 0x10000..0x10200
+  0f7071 8b3518010100           mov esi, dword ptr [0x10118]  [XAPI XAPILIB::XCalculateSignatureBeginEx]
+  0f7163 a118010100             mov eax, dword ptr [0x10118]  [XAPI XAPILIB::XCalculateSignatureBegin]
+  0f7d5a a118010100             mov eax, dword ptr [0x10118]  [XAPI XAPILIB::XapiSelectCachePartition]
+  0f7fb9 8b0d24010100           mov ecx, dword ptr [0x10124]  [XAPI XAPILIB::XMountUtilityDrive]
+  0f8342 a118010100             mov eax, dword ptr [0x10118]  [XAPI XAPILIB::XLaunchNewImageA]
+  0f83f8 a118010100             mov eax, dword ptr [0x10118]  [XAPI XAPILIB::XLaunchNewImageA]
+  0f84dd 8b0d18010100           mov ecx, dword ptr [0x10118]  [XAPI entry]
+  0f84e3 a108010100             mov eax, dword ptr [0x10108]  [XAPI entry]
+  0f8fd3 a118010100             mov eax, dword ptr [0x10118]  [XAPI XAPILIB::XapiBootToDash]
+  0f903a a118010100             mov eax, dword ptr [0x10118]  [XAPI FUN_000f902f]
+  0f90ef a118010100             mov eax, dword ptr [0x10118]  [XAPI FUN_000f90e6]
+  0f9109 a118010100             mov eax, dword ptr [0x10118]  [XAPI FUN_000f90e6]
+  0f92f8 ff3538010100           push dword ptr [0x10138]  [XAPI XAPILIB::XapiInitProcess]
+  0f92fe ff3534010100           push dword ptr [0x10134]  [XAPI XAPILIB::XapiInitProcess]
+  0f9326 f6052401010008         test byte ptr [0x10124], 8  [XAPI XAPILIB::XapiInitProcess]
+  0f9375 f6052401010018         test byte ptr [0x10124], 0x18  [XAPI XAPILIB::XapiInitProcess]
+  0f937e a118010100             mov eax, dword ptr [0x10118]  [XAPI XAPILIB::XapiInitProcess]
+  0f9387 a118010100             mov eax, dword ptr [0x10118]  [XAPI XAPILIB::XapiInitProcess]
+  0f93b3 f6052401010008         test byte ptr [0x10124], 8  [XAPI XAPILIB::XapiInitProcess]
+  0f93bc 841d24010100           test byte ptr [0x10124], bl  [XAPI XAPILIB::XapiInitProcess]
+  0f93c4 a124010100             mov eax, dword ptr [0x10124]  [XAPI XAPILIB::XapiInitProcess]
+  0f93e2 8b0d18010100           mov ecx, dword ptr [0x10118]  [XAPI XAPILIB::XapiInitProcess]
+  0f93f0 8b1518010100           mov edx, dword ptr [0x10118]  [XAPI XAPILIB::XapiInitProcess]
+  0f9a7c a130010100             mov eax, dword ptr [0x10130]  [XAPI XAPILIB::CreateThread]
+  0f9ba6 8b351c010100           mov esi, dword ptr [0x1011c]  [XAPI FUN_000f9b8e]
+  0f9bac 8b3d20010100           mov edi, dword ptr [0x10120]  [XAPI FUN_000f9b8e]
+  1708bc a130010100             mov eax, dword ptr [0x10130]  [XAPI XAPILIB::CreateFiber]
+  fields: {'0x10118': 14, '0x10124': 6, '0x10108': 1, '0x10138': 1, '0x10134': 1, '0x10130': 2, '0x1011c': 1, '0x10120': 1}
+
+==== imm32 constants 0x80010000..0x8001FFFF (kernel image header) in code
+  02c3c2 0885c0c70180           or byte ptr [ebp - 0x7ffe3840], al  [GAME FUN_0002c3c0]
+  0a93a2 118bd5240180           adc dword ptr [ebx - 0x7ffedb2b], ecx  [GAME FUN_000a91b0]
+  16a43b f644410180             test byte ptr [ecx + eax*2 + 1], 0x80  [LIBC FUN_0016a23c]
+  16bc73 f644410180             test byte ptr [ecx + eax*2 + 1], 0x80  [LIBC FUN_0016b701]
+  16c20b f644410180             test byte ptr [ecx + eax*2 + 1], 0x80  [LIBC FUN_0016b701]
+  16d0f0 f6444e0180             test byte ptr [esi + ecx*2 + 1], 0x80  [LIBC FUN_0016ce28]
+  24c8d1 0180663d0180           add dword ptr [eax - 0x7ffec29a], eax  [DSOUND FUN_0024c8a1]
+  24c9a2 0180663d0180           add dword ptr [eax - 0x7ffec29a], eax  [DSOUND FUN_0024c98a]
+  26cab6 0501050180             add eax, 0x80010501  [XMV <no func>]
+  26d43c 6801280180             push 0x80012801  [XMV <no func>]
+  28c486 808b01c6400180         or byte ptr [ebx + 0x140c601], 0x80  [XPP FUN_0028c42e]
+  28e3da 0380c6460180           add eax, dword ptr [eax - 0x7ffeb93a]  [XPP FUN_0028e38c]
+
+==== functions named *TickCount* / *SystemTime* in functions.tsv

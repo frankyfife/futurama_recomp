@@ -1,0 +1,70 @@
+000f9783: a1fc852d00             mov eax, dword ptr [0x2d85fc]
+000f9788: 85c0                   test eax, eax
+000f978a: 7402                   je 0xf978e
+000f978c: ffd0                   call eax
+000f978e: 56                     push esi
+000f978f: 57                     push edi
+000f9790: b8345b2d00             mov eax, 0x2d5b34
+000f9795: bf485b2d00             mov edi, 0x2d5b48
+000f979a: 3bc7                   cmp eax, edi
+000f979c: 8bf0                   mov esi, eax
+000f979e: 7314                   jae 0xf97b4
+000f97a0: 8b06                   mov eax, dword ptr [esi]
+000f97a2: 85c0                   test eax, eax
+000f97a4: 7407                   je 0xf97ad
+000f97a6: 83f8ff                 cmp eax, -1
+000f97a9: 7402                   je 0xf97ad
+000f97ab: ffd0                   call eax
+000f97ad: 83c604                 add esi, 4
+000f97b0: 3bf7                   cmp esi, edi
+000f97b2: 72ec                   jb 0xf97a0
+000f97b4: bef0de2b00             mov esi, 0x2bdef0
+000f97b9: 8bc6                   mov eax, esi
+000f97bb: bf305b2d00             mov edi, 0x2d5b30
+000f97c0: 3bc7                   cmp eax, edi
+000f97c2: 7314                   jae 0xf97d8
+000f97c4: 8b06                   mov eax, dword ptr [esi]
+000f97c6: 85c0                   test eax, eax
+000f97c8: 7407                   je 0xf97d1
+000f97ca: 83f8ff                 cmp eax, -1
+000f97cd: 7402                   je 0xf97d1
+000f97cf: ffd0                   call eax
+000f97d1: 83c604                 add esi, 4
+000f97d4: 3bf7                   cmp esi, edi
+000f97d6: 72ec                   jb 0xf97c4
+000f97d8: 5f                     pop edi
+000f97d9: 5e                     pop esi
+000f97da: c3                     ret 
+---- _rtinit
+000f97db: 56                     push esi
+000f97dc: 57                     push edi
+000f97dd: b8e0de2b00             mov eax, 0x2bdee0
+000f97e2: bfecde2b00             mov edi, 0x2bdeec
+000f97e7: 3bc7                   cmp eax, edi
+000f97e9: 8bf0                   mov esi, eax
+000f97eb: 7314                   jae 0xf9801
+000f97ed: 8b06                   mov eax, dword ptr [esi]
+000f97ef: 85c0                   test eax, eax
+000f97f1: 7407                   je 0xf97fa
+000f97f3: 83f8ff                 cmp eax, -1
+000f97f6: 7402                   je 0xf97fa
+000f97f8: ffd0                   call eax
+000f97fa: 83c604                 add esi, 4
+000f97fd: 3bf7                   cmp esi, edi
+000f97ff: 72ec                   jb 0xf97ed
+000f9801: 5f                     pop edi
+000f9802: 5e                     pop esi
+000f9803: c3                     ret 
+rtinit entries 3 nonzero 2 distinct 2 first ['0x0', '0x169467', '0x16edea'] last ['0x0', '0x169467', '0x16edea']
+C entries 5 nonzero 4 distinct 4 first ['0x0', '0x166ee2', '0x16c29b', '0x16ddb0'] last ['0x16c29b', '0x16ddb0', '0x16ed64']
+C++ entries 24336 nonzero 24335 distinct 24335 first ['0x0', '0x17e010', '0x17e030', '0x17e050'] last ['0x233820', '0x233840', '0x233860']
+C++ initializers calling RegisterLoader 0x1087d0 directly (first 0x40 bytes): 21791
+initializers in 0x17e010..0x233880: 24329  outside: 6
+0017e010: a1c0772d00             mov eax, dword ptr [0x2d77c0]
+0017e015: 6880961000             push 0x109680
+0017e01a: 50                     push eax
+0017e01b: e8b0a7f8ff             call 0x1087d0  ; FUN_001087d0
+0017e020: 83c408                 add esp, 8
+0017e023: a3f8942d00             mov dword ptr [0x2d94f8], eax
+0017e028: c3                     ret 
+['0x2bdef0', '0x2bdef4', '0x2bdef8', '0x2bdefc'] ['0x0', '0x17e010', '0x17e030', '0x17e050']

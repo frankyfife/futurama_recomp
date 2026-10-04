@@ -1,0 +1,60 @@
+address	section	name	callconv	sites_game	sites_xmv	callers	host_impl
+00246e7d	DSOUND	DSOUND::IDirectSound_Release	stdcall ret 4	1	1	000cbc30,00264962	refcount only; never tear down the device (singleton)
+00246e93	DSOUND	DSOUND::IDirectSoundBuffer_Release	stdcall ret 4	1	0	000cc030	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+00246ea9	DSOUND	DSOUND::DirectSoundUseFullHRTF	stdcall ret 0	1	0	000ccd00	X3DAudio (deferred: apply on CommitDeferredSettings)
+00247911	DSOUND	DSOUND::IDirectSound_DownloadEffectsImage	stdcall ret 20	1	0	000cbeb0	stub (S_OK); game ignores HRESULT and desc and frees the image right after; XBOX\dsstdfx.bin must still be openable or the 3D init is skipped
+00247938	DSOUND	DSOUND::IDirectSound_SynchPlayback	stdcall ret 4	0	1	00264962	no-op while XMV is replaced; with original XMV: start all streams paused via Pause(2)
+00247950	DSOUND	DSOUND::IDirectSoundBuffer_SetVolume	stdcall ret 8	1	0	nofunc@000cc91d	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+0024796c	DSOUND	DSOUND::IDirectSoundBuffer_SetMixBins	stdcall ret 8	2	0	000cc150,nofunc@000cc9d3	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+00247988	DSOUND	DSOUND::IDirectSoundBuffer_Play	stdcall ret 16	4	0	000cc390,000cc410,000cc4b0,nofunc@000cc72e	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+002479ac	DSOUND	DSOUND::IDirectSoundBuffer_Stop	stdcall ret 4	1	0	000cb540	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+002479c4	DSOUND	DSOUND::IDirectSoundBuffer_GetStatus	stdcall ret 8	2	0	000cc030,nofunc@000cca27	bit0 PLAYING; must report 0 right after Stop/SetBufferData(0,0) (destructor 0xcc030 spins otherwise)
+002479e0	DSOUND	DSOUND::IDirectSoundStream_SetVolume	stdcall jmp->DSOUND::CDirectSoundStream_SetVolume ret 8	2	0	000ee220,nofunc@000cc8c4	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+002479e5	DSOUND	DSOUND::IDirectSoundStream_SetMixBins	stdcall jmp->DSOUND::CDirectSoundStream_SetMixBins ret 8	2	0	000cc150,nofunc@000cc9c0	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+002479ea	DSOUND	DSOUND::IDirectSoundStream_Pause	stdcall jmp->DSOUND::CDirectSoundStream_Pause ret 8	5	1	000cb540,000cc390,000cc410,000cc4b0,00264962,nofunc@000cc711	0=run, 1=pause, 2=wait for SynchPlayback (original XMV only)
+002479ef	DSOUND	DSOUND::IDirectSoundStream_FlushEx	stdcall ret 16	0	1	00264677	drop queue, complete packets, GetStatus must drop 0x10000 (XMV close spins otherwise)
+00247a07	DSOUND	DSOUND::DirectSoundDoWork	stdcall ret 0	1	2	000cbcb0,00264677,00264962	no-op / pump host audio
+00248380	DSOUND	DSOUND::IDirectSound_CommitDeferredSettings	stdcall ret 4	1	0	000cbcb0	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248398	DSOUND	DSOUND::IDirectSoundBuffer_SetFrequency	stdcall ret 8	1	0	nofunc@000cc910	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+002483b4	DSOUND	DSOUND::IDirectSoundBuffer_SetMaxDistance	stdcall ret 12	2	0	nofunc@000cc6ce,nofunc@000cc83e	X3DAudio (deferred: apply on CommitDeferredSettings)
+002483d8	DSOUND	DSOUND::IDirectSoundBuffer_SetMinDistance	stdcall ret 12	2	0	nofunc@000cc6b9,nofunc@000cc829	X3DAudio (deferred: apply on CommitDeferredSettings)
+002483fc	DSOUND	DSOUND::IDirectSoundBuffer_SetPosition	stdcall ret 20	2	0	nofunc@000cc6df,nofunc@000cc7f7	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248431	DSOUND	DSOUND::IDirectSoundBuffer_SetVelocity	stdcall ret 20	2	0	nofunc@000cc6fc,nofunc@000cc814	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248466	DSOUND	DSOUND::IDirectSoundBuffer_SetRolloffCurve	stdcall ret 16	1	0	000cc150	X3DAudio (deferred: apply on CommitDeferredSettings)
+0024848a	DSOUND	DSOUND::IDirectSoundBuffer_SetI3DL2Source	stdcall ret 12	1	0	nofunc@000cca0e	XAudio2 reverb submix (XAUDIO2FX_I3DL2_PARAMETERS + ReverbConvertI3DL2ToNative)
+002484aa	DSOUND	DSOUND::IDirectSoundStream_SetFrequency	stdcall jmp->DSOUND::CDirectSoundStream_SetFrequency ret 8	1	0	nofunc@000cc8ba	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+002484af	DSOUND	DSOUND::IDirectSoundStream_SetMaxDistance	stdcall ret 12	1	0	nofunc@000cc7e9	X3DAudio (deferred: apply on CommitDeferredSettings)
+002484c7	DSOUND	DSOUND::IDirectSoundStream_SetMinDistance	stdcall ret 12	1	0	nofunc@000cc7d7	X3DAudio (deferred: apply on CommitDeferredSettings)
+002484df	DSOUND	DSOUND::IDirectSoundStream_SetPosition	stdcall ret 20	1	0	nofunc@000cc7ab	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248508	DSOUND	DSOUND::IDirectSoundStream_SetVelocity	stdcall ret 20	1	0	nofunc@000cc7c5	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248531	DSOUND	DSOUND::IDirectSoundStream_SetRolloffCurve	stdcall jmp->DSOUND::CDirectSoundStream_SetRolloffCurve ret 16	1	0	000cc150	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248d60	DSOUND	DSOUND::IDirectSound_SetDistanceFactor	stdcall ret 12	1	0	000ccd00	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248d84	DSOUND	DSOUND::IDirectSound_SetDopplerFactor	stdcall ret 12	1	0	000ccd00	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248da8	DSOUND	DSOUND::IDirectSound_SetOrientation	stdcall ret 32	1	0	000cbcb0	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248df2	DSOUND	DSOUND::IDirectSound_SetPosition	stdcall ret 20	2	0	000cbcb0,000ccd00	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248e27	DSOUND	DSOUND::IDirectSound_SetRolloffFactor	stdcall ret 12	1	0	000ccd00	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248e4b	DSOUND	DSOUND::IDirectSound_SetVelocity	stdcall ret 20	1	0	000cbcb0	X3DAudio (deferred: apply on CommitDeferredSettings)
+00248e80	DSOUND	DSOUND::IDirectSound_SetI3DL2Listener	stdcall ret 12	6	0	000ccd00,nofunc@000cbfbb,nofunc@000cbfce,nofunc@000cbfe1,nofunc@000cbff4,nofunc@000cc007	XAudio2 reverb submix (XAUDIO2FX_I3DL2_PARAMETERS + ReverbConvertI3DL2ToNative)
+00248ea0	DSOUND	DSOUND::IDirectSoundBuffer_SetBufferData	stdcall ret 12	3	0	000cb580,000cc030,000cc150	XAudio2 source voice (PCM, Xbox ADPCM decoded on host)
+0024935c	DSOUND	DSOUND::DirectSoundCreate	stdcall ret 12	1	1	000ccd00,00264962	XAudio2 engine + mastering voice; singleton with refcount (XMV calls Create/Release per sync)
+002493a3	DSOUND	DSOUND::DirectSoundCreateBuffer	stdcall ret 8	1	0	000cc150	XAudio2 source voice; for ADPCM (lpwfx=SoundData+0x59) ignore nAvgBytesPerSec (game computes 36*ch*ch/64)
+002493fa	DSOUND	DSOUND::DirectSoundCreateStream	stdcall ret 8	1	1	000cc150,002647c6	XAudio2 source voice + packet queue (max 10); lpwfx=SoundData+0x34 (raw fmt, cbSize forced 0x12): PCM16 music AND Xbox ADPCM (localized speech via 0xd88d6 bStream=1, 19.2 s packets) -> decode ADPCM per packet; returned object needs vtable at +0 (see vtbl rows)
+00264360	XMV	XMVDecoder_CreateDecoderForPackets?	stdcall ret 24	1	0	000ee220	ffmpeg/libav (xmv demuxer, wmv2 + adpcm_ima_xbox), frames into game D3D surface (YUY2), audio via host DSOUND stream
+00264677	XMV	XMVDecoder_CloseDecoder?	stdcall ret 4	1	0	000ee080	ffmpeg/libav (xmv demuxer, wmv2 + adpcm_ima_xbox), frames into game D3D surface (YUY2), audio via host DSOUND stream
+00264759	XMV	XMVDecoder_GetVideoDescriptor?	stdcall ret 8	1	0	000ee220	ffmpeg/libav (xmv demuxer, wmv2 + adpcm_ima_xbox), frames into game D3D surface (YUY2), audio via host DSOUND stream
+002647c6	XMV	XMVDecoder_EnableAudioStream?	stdcall ret 20	1	0	000ee220	ffmpeg/libav (xmv demuxer, wmv2 + adpcm_ima_xbox), frames into game D3D surface (YUY2), audio via host DSOUND stream
+00264943	XMV	XMVDecoder_GetAudioStream? (AddRef'd IDirectSoundStream*)	stdcall ret 12	1	0	000ee220	ffmpeg/libav (xmv demuxer, wmv2 + adpcm_ima_xbox), frames into game D3D surface (YUY2), audio via host DSOUND stream
+00264962	XMV	XMVDecoder_GetNextFrame?	stdcall ret 16	1	0	000ede90	ffmpeg/libav (xmv demuxer, wmv2 + adpcm_ima_xbox), frames into game D3D surface (YUY2), audio via host DSOUND stream
+00264fdf	XMV	XMVDecoder_GetPlaybackTimeMs?	stdcall ret 4	1	0	000ede90	ffmpeg/libav (xmv demuxer, wmv2 + adpcm_ima_xbox), frames into game D3D surface (YUY2), audio via host DSOUND stream
+0028ce5c	XPP	XAPILIB::XInputOpen	stdcall ret 16	2	0	0009c140,0009c2a0	XInput (XInputGetState/SetState) or SDL3 Gamepad; port bitmask bookkeeping
+0028ceb2	XPP	XAPILIB::XInputClose	stdcall ret 4	3	0	0009c140,0009c2a0	XInput (XInputGetState/SetState) or SDL3 Gamepad; port bitmask bookkeeping
+0028cebe	XPP	XAPILIB::XInputGetState	stdcall ret 8	1	0	nofunc@0009c3e6	XInput (XInputGetState/SetState) or SDL3 Gamepad; port bitmask bookkeeping
+0028cf2a	XPP	XAPILIB::XInputSetState	stdcall ret 8	1	0	0009c220	XInput/SDL rumble; never leave feedback.dwStatus at 0x3E5 (game only sends when != 0x3E5)
+0028cfe1	XPP	XAPILIB::XInitDevices	stdcall jmp->XAPILIB::XInitDevices ret 8	1	0	0009c2a0	XInput (XInputGetState/SetState) or SDL3 Gamepad; port bitmask bookkeeping
+0028cfe6	XPP	XAPILIB::XGetDevices	stdcall ret 4	2	0	0009c2a0	XInput (XInputGetState/SetState) or SDL3 Gamepad; port bitmask bookkeeping
+0028d008	XPP	XAPILIB::XGetDeviceChanges	stdcall ret 12	1	0	0009c140	XInput (XInputGetState/SetState) or SDL3 Gamepad; port bitmask bookkeeping
+vtbl+0x0	DSOUND	XMediaObject::AddRef (IDirectSoundStream vtable 0x2a5f5c)	stdcall(this on stack)	-	-	XMV 00264943, 002647c6 (if ppStream)	host stream object must expose same vtable layout
+vtbl+0x4	DSOUND	XMediaObject::Release (IDirectSoundStream vtable 0x2a5f5c)	stdcall(this on stack)	-	-	game 000ee220 (0xee47d), game 000cc030 (0xcc107), XMV 00264677/002647c6	host stream object must expose same vtable layout
+vtbl+0xc	DSOUND	XMediaObject::GetStatus (IDirectSoundStream vtable 0x2a5f5c)	stdcall(this on stack)	-	-	XMV 00264677 (tests 0x10000)	host stream object must expose same vtable layout
+vtbl+0x10	DSOUND	XMediaObject::Process (IDirectSoundStream vtable 0x2a5f5c)	stdcall(this on stack)	-	-	game 000cb6b7, XMV 00264962	host stream object must expose same vtable layout; Process must set *pdwStatus=0x8000000A (E_PENDING) synchronously and 0 on completion (game only polls, 0xcb5d4; original does the same in FUN_0024b1c4 @0x24b1d9)
+vtbl+0x14	DSOUND	XMediaObject::Discontinuity (IDirectSoundStream vtable 0x2a5f5c)	stdcall(this on stack)	-	-	XMV 00264962	host stream object must expose same vtable layout

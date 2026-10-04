@@ -1,0 +1,4 @@
+sounds/button.wav                tag=0x69 ch=1 rate=22050 blockalign=36 bits=4 fmtlen=20 data=4176 | ffmpeg codec=adpcm_ima_xbox samples=7424 | expected(64/blk)=7424
+sounds/misc12.wav                tag=0x1 ch=1 rate=11025 blockalign=1 bits=8 fmtlen=16 data=34075 | ffmpeg codec=pcm_u8 samples=34075 | expected(64/blk)=34075
+sounds/footsteps/gravel1.wav     tag=0x69 ch=1 rate=44100 blockalign=36 bits=4 fmtlen=20 data=7308 | ffmpeg codec=adpcm_ima_xbox samples=12992 | expected(64/blk)=12992
+sounds/theme22.wav               tag=0x69 ch=2 rate=22050 blockalign=72 bits=4 fmtlen=20 data=676584 | ffmpeg codec=adpcm_ima_xbox samples=601408 | expected(64/blk)=601408

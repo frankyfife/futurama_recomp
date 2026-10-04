@@ -1,0 +1,111 @@
+=== ord 24 slot 17 (0x2935a4)
+  ref 000f9cc8 in f9cc6 xboxkrnl.exe::ExQueryNonVolatileSetting
+     000f9cae push eax
+     000f9caf push 0x2d7540
+     000f9cb4 call dword ptr [0x293574]
+     000f9cba ret 4
+     000f9cbd sub ecx, 8
+     000f9cc0 jmp 0x24aebe
+     000f9cc5 int3 
+     000f9cc6 jmp dword ptr [0x2935a4]
+     000f9ccc jmp dword ptr [0x2935cc]
+=== ord 95 slot 106 (0x293708)
+  ref 001692e0 in 1692d0 FUN_001692d0
+     001692dd or bh, bh
+     001692df adc eax, 0x293708
+     001692e4 push esi
+  ref 0016936e in <no func>
+     0016936b or bh, bh
+     0016936d adc eax, 0x293708
+     00169372 mov eax, dword ptr fs:[0x28]
+  ref 00169d95 in <no func>
+     00169d81 jmp 0x169d8a
+     00169d83 xor eax, eax
+     00169d85 inc eax
+     00169d86 ret 
+     00169d87 mov esp, dword ptr [ebp - 0x18]
+     00169d8a or dword ptr [ebp - 4], 0xffffffff
+     00169d8e push 0xc0000144
+     00169d93 call dword ptr [0x293708]
+     00169d99 int3 
+  ref 00169fc0 in 169f1b FUN_00169f1b
+     00169fbd add bh, bh
+     00169fbf adc eax, 0x293708
+     00169fc4 ret 
+  ref 001708ab in <no func>
+     001708a8 add bh, bh
+     001708aa adc eax, 0x293708
+     001708af int3 
+=== ord 302 slot 16 (0x2935a0)
+  ref 000f5a12 in f52cc FUN_000f52cc
+     000f5a01 inc ebp
+     000f5a02 fmul qword ptr [ecx - 0x1737b]
+     000f5a08 dec dword ptr [ebp - 0x1877b]
+     000f5a0e call dword ptr [eax - 1]
+     000f5a11 adc eax, 0x2935a0
+     000f5a16 xor esi, esi
+  ref 000f6305 in f5c77 FUN_000f5c77
+     000f62f4 inc ebp
+     000f62f5 fmul dword ptr [ecx - 0x11f7b]
+     000f62fb dec dword ptr [ebp - 0x1337b]
+     000f6301 call dword ptr [eax - 1]
+     000f6304 adc eax, 0x2935a0
+     000f6309 jmp 0xf6326
+  ref 000f993a in f98ed XAPILIB::RaiseException
+     000f9933 add byte ptr [ebp - 0xaf4fbb], cl
+     000f9939 adc eax, 0x2935a0
+     000f993e pop esi
+=== ord 49 slot 55 (0x29363c)
+  ref 000f82d4 in f829c FUN_000f829c
+     000f82cc add bh, bh
+     000f82ce push eax
+     000f82cf adc al, 0x6a
+     000f82d1 add bh, bh
+     000f82d3 adc eax, 0x29363c
+     000f82d8 push eax
+  ref 000f902a in f8fca XAPILIB::XapiBootToDash
+     000f9027 add al, 0xff
+     000f9029 adc eax, 0x29363c
+     000f902e int3 
+=== ord 233 slot 33 (0x2935e4)
+  ref 000f723d in f7195 XAPILIB::ReadFile
+     000f723a or bh, bh
+     000f723c adc eax, 0x2935e4
+     000f7241 cmp eax, ebx
+  ref 000f731e in f7282 XAPILIB::WriteFile
+     000f731b or bh, bh
+     000f731d adc eax, 0x2935e4
+     000f7322 cmp eax, ebx
+=== ord 234 slot 20 (0x2935b0)
+  ref 000f6499 in f647a XAPILIB::WaitForSingleObjectEx
+     000f6496 or bh, bh
+     000f6498 adc eax, 0x2935b0
+     000f649d test eax, eax
+=== ord 99 slot 21 (0x2935b4)
+  ref 000f64eb in f64be XAPILIB::SleepEx
+     000f64dd add byte ptr [eax], al
+     000f64df or byte ptr [ebp - 0xa9078b], 0x75
+     000f64e6 or al, 0x6a
+     000f64e8 add edi, edi
+     000f64ea adc eax, 0x2935b4
+     000f64ef cmp dword ptr [ebp + 0xc], 0
+  ref 0028ce53 in 28cdfa FUN_0028cdfa
+     0028ce3b mov dword ptr [eax + 4], ecx
+     0028ce3e or dword ptr [ebp - 4], 0xffffffff
+     0028ce42 lea eax, [ebp - 8]
+     0028ce45 push eax
+     0028ce46 push 0
+     0028ce48 push 0
+     0028ce4a mov dword ptr [ebp - 8], 0xfffcf2c0
+     0028ce51 call dword ptr [0x2935b4]
+     0028ce57 pop esi
+  ref 00292d48 in 292cdc FUN_00292cdc
+     00292d2d call dword ptr [0x293560]
+     00292d33 or dword ptr [ebp - 0x14], 0xffffffff
+     00292d37 lea eax, [ebp - 0x18]
+     00292d3a push eax
+     00292d3b push 0
+     00292d3d push 0
+     00292d3f mov dword ptr [ebp - 0x18], 0xffffd8f0
+     00292d46 call dword ptr [0x2935b4]
+     00292d4c call ebx

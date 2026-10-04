@@ -1,0 +1,28 @@
+﻿SizeOfHeaders      = 0x968  (header VA 0x10000..0x10968)
+Certificate        = 0x10180
+Sections           = 10 at 0x1036c..0x1059c
+Signature bytes    = 0x10004..0x10103 (RSA, 256 bytes)
+Byte at 0x1003C    = 3ce26961 (inside signature -> usable as e_lfanew)
+Free in page 0x10000: 0x10968..0x10fff = 0x698 bytes
+
+Header references from code (Ghidra bodies, capstone; MEM = absolute memory operand):
+  IMM 0x10000:  38x  e.g. 0x99216, 0xf3e94, 0xf5063, 0xf6565, 0xf77d0, 0xf787d  ['add eax, 0x10000', 'cmp dword ptr [ebp - 0x64], 0x10000', 'cmp eax, 0x10000']
+  IMM 0x10001:   1x  e.g. 0x23df1a  ['mov esi, 0x10001']
+  IMM 0x105b8:   1x  e.g. 0x23f2b2  ['mov esi, 0x105b8']
+  MEM 0x10108:   1x  e.g. 0xf84e3  ['mov eax, dword ptr [0x10108]']
+  MEM 0x10118:  14x  e.g. 0xf7071, 0xf7163, 0xf7d5a, 0xf8342, 0xf83f8, 0xf84dd  ['mov eax, dword ptr [0x10118]', 'mov ecx, dword ptr [0x10118]', 'mov edx, dword ptr [0x10118]']
+  MEM 0x1011c:   1x  e.g. 0xf9ba6  ['mov esi, dword ptr [0x1011c]']
+  MEM 0x10120:   1x  e.g. 0xf9bac  ['mov edi, dword ptr [0x10120]']
+  MEM 0x10124:   6x  e.g. 0xf7fb9, 0xf9326, 0xf9375, 0xf93b3, 0xf93bc, 0xf93c4  ['mov eax, dword ptr [0x10124]', 'mov ecx, dword ptr [0x10124]', 'test byte ptr [0x10124], 0x18']
+  MEM 0x10130:   2x  e.g. 0xf9a7c, 0x1708bc  ['mov eax, dword ptr [0x10130]']
+  MEM 0x10134:   1x  e.g. 0xf92fe  ['push dword ptr [0x10134]']
+  MEM 0x10138:   1x  e.g. 0xf92f8  ['push dword ptr [0x10138]']
+  lowest MEM-referenced header VA: 0x10108
+
+Superset scan (any decode start) for absolute MEM operands into 0x10000..0x10107:
+  0x71735: shl dword ptr [0x10000], 0x2b
+  0xf84e9: rol dword ptr [0x10000], 0x3b
+
+Raw dwords in code sections with value in 0x10000..0x10107: 941 unaligned candidates (byte noise; only decoded MEM operands above count)
+
+Probe launcher: e_lfanew=0xd8, sections=2, SizeOfOptionalHeader=0xe0, NT headers+section table = 0xd8..0x220 (0x148 bytes), SizeOfHeaders=0x400

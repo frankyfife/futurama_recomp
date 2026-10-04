@@ -1,0 +1,5 @@
+address	size	name	evidence
+0x000F8469	0x74	XapiMainThreadStub	startup.md 1 (main thread routine passed to CreateThread by entry; ends with ret 4 at 0xF84DA); cpu.md 2.3 (fs sites 0xF8473/0xF848F/0xF8495)
+0x000F99DA	0x98	XapiThreadStartup	cpu.md 2.2 (SystemRoutine of PsCreateSystemThreadEx; int3 after PsTerminateSystemThread at 0xF9A71)
+0x000CC5E0	0x483	SoundVoice_Update	avi.md 2.4.5 / Verifikation 2 (vtable 0x2A3B18 slot 11, 22 DSOUND call sites, last ret at 0xCCA62)
+0x0013F1D0	0x46	NiUDSStream_ReadCompletion	files.md 2.4 (ReadFileEx completion routine, ret 0xC at 0x13F213); startup.md Verifikation 11

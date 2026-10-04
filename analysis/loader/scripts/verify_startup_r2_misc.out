@@ -1,0 +1,286 @@
+== XapiThreadStartup 0xF99DA
+000F99DA: 6a18                     push 0x18
+000F99DC: 68d05e2a00               push 0x2a5ed0
+000F99E1: e8e2e30600               call 0x167dc8  ; __SEH_prolog
+000F99E6: 8365fc00                 and dword ptr [ebp - 4], 0
+000F99EA: 64a128000000             mov eax, dword ptr fs:[0x28]
+000F99F0: 8945e4                   mov dword ptr [ebp - 0x1c], eax
+000F99F3: 8b5028                   mov edx, dword ptr [eax + 0x28]
+000F99F6: 83c204                   add edx, 4
+000F99F9: 8955e0                   mov dword ptr [ebp - 0x20], edx
+000F99FC: 8952fc                   mov dword ptr [edx - 4], edx
+000F99FF: 8b1d305d2a00             mov ebx, dword ptr [0x2a5d30]
+000F9A05: 8b352c5d2a00             mov esi, dword ptr [0x2a5d2c]
+000F9A0B: 2bde                     sub ebx, esi
+000F9A0D: 895ddc                   mov dword ptr [ebp - 0x24], ebx
+000F9A10: 8bcb                     mov ecx, ebx
+000F9A12: 8bfa                     mov edi, edx
+000F9A14: 8bc1                     mov eax, ecx
+000F9A16: c1e902                   shr ecx, 2
+000F9A19: f3a5                     rep movsd dword ptr es:[edi], dword ptr [esi]
+000F9A1B: 8bc8                     mov ecx, eax
+000F9A1D: 83e103                   and ecx, 3
+000F9A20: f3a4                     rep movsb byte ptr es:[edi], byte ptr [esi]
+000F9A22: 8b0d3c5d2a00             mov ecx, dword ptr [0x2a5d3c]
+000F9A28: 85c9                     test ecx, ecx
+000F9A2A: 7413                     je 0xf9a3f
+000F9A2C: 33c0                     xor eax, eax
+000F9A2E: 8d3c13                   lea edi, [ebx + edx]
+000F9A31: 8bd1                     mov edx, ecx
+000F9A33: c1e902                   shr ecx, 2
+000F9A36: f3ab                     rep stosd dword ptr es:[edi], eax
+000F9A38: 8bca                     mov ecx, edx
+000F9A3A: 83e103                   and ecx, 3
+000F9A3D: f3aa                     rep stosb byte ptr es:[edi], al
+000F9A3F: 6a01                     push 1
+000F9A41: e86ffeffff               call 0xf98b5  ; XAPILIB::XapiCallThreadNotifyRoutines
+000F9A46: ff750c                   push dword ptr [ebp + 0xc]
+000F9A49: ff5508                   call dword ptr [ebp + 8]
+000F9A4C: 8945d8                   mov dword ptr [ebp - 0x28], eax
+000F9A4F: 6a00                     push 0
+000F9A51: e85ffeffff               call 0xf98b5  ; XAPILIB::XapiCallThreadNotifyRoutines
+000F9A56: eb0c                     jmp 0xf9a64
+000F9A58: ff75ec                   push dword ptr [ebp - 0x14]
+000F9A5B: e83effffff               call 0xf999e  ; XAPILIB::UnhandledExceptionFilter
+000F9A60: c3                       ret 
+000F9A61: 8b65e8                   mov esp, dword ptr [ebp - 0x18]
+000F9A64: 834dfcff                 or dword ptr [ebp - 4], 0xffffffff
+000F9A68: ff75d8                   push dword ptr [ebp - 0x28]
+000F9A6B: ff1590362900             call dword ptr [0x293690]  ; slot 76 ord 258 ?
+000F9A71: cc                       int3 
+
+== ExQueryNonVolatileSetting stub 0xF9CC6 callers with ValueIndex (last push before call)
+   0xF6453 XAPILIB::XGetLanguage(0xF6440)  first-arg push: 7
+   0xF856A XAPILIB::XGetGameRegion(0xF8554)  first-arg push: 0x104
+   0xF8AD2 XAPILIB::XQueryValue(0xF8AC0)  first-arg push: dword ptr [ebp + 8]
+   0xF9C51 XAPILIB::XGetParentalControlSetting(0xF9C3E)  first-arg push: 0xa
+   0x1707B3 XAPILIB::XGetAudioFlags(0x1707A0)  first-arg push: 9
+   direct thunk calls to ord 24: ['0xf9cc6'] []
+
+== doexit 0x169F1B / _exit 0x169FC5 / _amsg_exit 0x1692B4 / _cexit / exit
+   0x169F1B FUN_00169f1b raw callers [('0x169fce', 'FUN_00169fc5(0x169FC5)')] abs []
+   0x169FC5 FUN_00169fc5 raw callers [] abs [('.data', '0x2d86ac')]
+   0x1692B4 FUN_001692b4 raw callers [('0x1668b8', 'NiUDSTimeController::vf14(0x1668B6)'), ('0x169347', 'FUN_001692d0(0x1692D0)'), ('0x16e9bc', 'FUN_0016e9ba(0x16E9BA)'), ('0x16ec97', 'FUN_0016ec79(0x16EC79)')] abs []
+   [0x2D86AC] = 0x169fc5
+00169FB0: 5e                       pop esi
+00169FB1: 7409                     je 0x169fbc
+00169FB3: 6a08                     push 8
+00169FB5: e8314c0000               call 0x16ebeb  ; FUN_0016ebeb
+00169FBA: 59                       pop ecx
+00169FBB: c3                       ret 
+00169FBC: 6a00                     push 0
+00169FBE: ff1508372900             call dword ptr [0x293708]  ; slot 106 ord 95 KeBugCheck
+00169FC4: c3                       ret 
+00169FC5: 53                       push ebx
+00169FC6: 6a01                     push 1
+00169FC8: ff74240c                 push dword ptr [esp + 0xc]
+00169FCC: 33db                     xor ebx, ebx
+
+== sync imports
+   ord 189 (NtCreateEvent, Vermutung Name) not imported
+   ord 233 slot 33 ghidra=NtWaitForSingleObject: 2 sites; ['XAPILIB::ReadFile(0xF7195)[.text]', 'XAPILIB::WriteFile(0xF7282)[.text]']; other []
+   ord 234 slot 20 ghidra=NtWaitForSingleObjectEx: 1 sites; ['XAPILIB::WaitForSingleObjectEx(0xF647A)[.text]']; other []
+   ord 159 slot 5 ghidra=KeWaitForSingleObject: 4 sites; ['<keine Ghidra-Funktion>[.text]', 'D3D8::D3DDevice_BlockUntilVerticalBlank(0x2344C0)[D3D]', 'FUN_0028e45d(0x28E45D)[XPP]', 'XAPILIB::XID_fCloseDevice(0x28D928)[XPP]']; other ['0x239103', '0x28d6f7']
+   ord 277 slot 10 ghidra=RtlEnterCriticalSection: 12 sites; ['DSOUND::DirectSoundEnterCriticalSection(0x246E0D)[DSOUND]', 'FUN_000f52cc(0xF52CC)[.text]', 'FUN_000f5a83(0xF5A83)[.text]', 'FUN_000f5c77(0xF5C77)[.text]', 'FUN_0016ec79(0x16EC79)[.text]', 'FUN_0016f6fc(0x16F6FC)[.text]', 'FUN_0016f791(0x16F791)[.text]', 'XAPILIB::XRegisterThreadNotifyRoutine(0xF9955)[.text]', 'XAPILIB::XapiCallThreadNotifyRoutines(0xF98B5)[.text]', '__getstream(0x16CC7F)[.text]', '__lock_file(0x16C358)[.text]', '__lock_file2(0x16C387)[.text]']; other []
+   ord 294 slot 9 ghidra=RtlLeaveCriticalSection: 108 sites; ['<keine Ghidra-Funktion>[DSOUND]', 'DSOUND::CDirectSoundBuffer_GetStatus(0x2473FF)[DSOUND]', 'DSOUND::CDirectSoundBuffer_Play(0x24735F)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetBufferData(0x248BAA)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetFrequency(0x247EDA)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetI3DL2Source(0x2480F8)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetMaxDistance(0x247F28)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetMinDistance(0x247F7E)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetMixBins(0x24781F)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetPosition(0x247FD4)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetRolloffCurve(0x2480A2)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetVelocity(0x24803B)[DSOUND]', 'DSOUND::CDirectSoundBuffer_SetVolume(0x2477D1)[DSOUND]', 'DSOUND::CDirectSoundBuffer_Stop(0x2473B0)[DSOUND]', 'DSOUND::CDirectSoundStream_FlushEx(0x24773E)[DSOUND]', 'DSOUND::CDirectSoundStream_Pause(0x2476ED)[DSOUND]', 'DSOUND::CDirectSoundStream_Process(0x247676)[DSOUND]', 'DSOUND::CDirectSoundStream_SetFrequency(0x24814A)[DSOUND]', 'DSOUND::CDirectSoundStream_SetMaxDistance(0x24819C)[DSOUND]', 'DSOUND::CDirectSoundStream_SetMinDistance(0x2481F6)[DSOUND]', 'DSOUND::CDirectSoundStream_SetMixBins(0x2478BF)[DSOUND]', 'DSOUND::CDirectSoundStream_SetPosition(0x248250)[DSOUND]', 'DSOUND::CDirectSoundStream_SetRolloffCurve(0x248326)[DSOUND]', 'DSOUND::CDirectSoundStream_SetVelocity(0x2482BB)[DSOUND]', 'DSOUND::CDirectSoundStream_SetVolume(0x24786D)[DSOUND]', 'DSOUND::CDirectSound_CommitDeferredSettings(0x247A4B)[DSOUND]', 'DSOUND::CDirectSound_CreateSoundBuffer(0x2490FF)[DSOUND]', 'DSOUND::CDirectSound_CreateSoundStream(0x248EC0)[DSOUND]', 'DSOUND::CDirectSound_DoWork(0x24704F)[DSOUND]', 'DSOUND::CDirectSound_DownloadEffectsImage(0x246FDC)[DSOUND]', 'DSOUND::CDirectSound_SetDistanceFactor(0x24868B)[DSOUND]', 'DSOUND::CDirectSound_SetDopplerFactor(0x2486ED)[DSOUND]', 'DSOUND::CDirectSound_SetI3DL2Listener(0x248931)[DSOUND]', 'DSOUND::CDirectSound_SetOrientation(0x2487B1)[DSOUND]', 'DSOUND::CDirectSound_SetPosition(0x248843)[DSOUND]', 'DSOUND::CDirectSound_SetRolloffFactor(0x24874F)[DSOUND]', 'DSOUND::CDirectSound_SetVelocity(0x2488BB)[DSOUND]', 'DSOUND::DirectSoundCreate(0x24935C)[DSOUND]', 'DSOUND::DirectSoundCreateBuffer(0x2493A3)[DSOUND]', 'DSOUND::DirectSoundCreateStream(0x2493FA)[DSOUND]', 'DSOUND::DirectSoundDoWork(0x247A07)[DSOUND]', 'DSOUND::DirectSoundUseFullHRTF(0x246EA9)[DSOUND]', 'FUN_000f52cc(0xF52CC)[.text]', 'FUN_000f5a70(0xF5A70)[.text]', 'FUN_000f5a83(0xF5A83)[.text]', 'FUN_000f5c64(0xF5C64)[.text]', 'FUN_000f63ad(0xF63AD)[.text]', 'FUN_0016ebeb(0x16EBEB)[.text]', 'FUN_0016f791(0x16F791)[.text]', 'FUN_002485c2(0x2485C2)[DSOUND]', 'FUN_00248ff6(0x248FF6)[DSOUND]', 'XAPILIB::XRegisterThreadNotifyRoutine(0xF9955)[.text]', 'XAPILIB::XapiCallThreadNotifyRoutines(0xF98B5)[.text]', '__unlock_fhandle(0x16F76F)[.text]', '__unlock_file(0x16C3AA)[.text]', '__unlock_file2(0x16C3D9)[.text]']; other []
+   ord 291 slot 14 ghidra=RtlInitializeCriticalSection: 2 sites; ['FUN_000f4ea8(0xF4EA8)[.text]', 'FUN_0016fd04(0x16FD04)[.text]']; other []
+   ord 99 slot 21 ghidra=KeDelayExecutionThread: 3 sites; ['FUN_0028cdfa(0x28CDFA)[XPP]', 'FUN_00292cdc(0x292CDC)[XPP]', 'XAPILIB::SleepEx(0xF64BE)[.text]']; other []
+   ord 192 (NtCreateSemaphore, Vermutung Name) not imported
+   ord 113 slot 6 ghidra=KeInitializeTimerEx: 6 sites; ['<keine Ghidra-Funktion>[XPP]', 'FUN_000f9b1a(0xF9B1A)[.text]', 'FUN_0024b09e(0x24B09E)[DSOUND]', 'FUN_0028c1a8(0x28C1A8)[XPP]', 'FUN_0028c841(0x28C841)[XPP]', 'FUN_0028cb19(0x28CB19)[XPP]']; other []
+   ord 149 slot 60 ghidra=KeSetTimer: 17 sites; ['<keine Ghidra-Funktion>[XPP]', 'FUN_0024a9c6(0x24A9C6)[DSOUND]', 'FUN_0024aa28(0x24AA28)[DSOUND]', 'FUN_0024af20(0x24AF20)[DSOUND]', 'FUN_0028d28c(0x28D28C)[XPP]', 'FUN_0028f352(0x28F352)[XPP]', 'FUN_0028f416(0x28F416)[XPP]', 'FUN_0028f438(0x28F438)[XPP]', 'FUN_0028f66b(0x28F66B)[XPP]', 'FUN_002900aa(0x2900AA)[XPP]', 'FUN_00290234(0x290234)[XPP]', 'FUN_002903ba(0x2903BA)[XPP]', 'FUN_002904e8(0x2904E8)[XPP]', 'FUN_00290f01(0x290F01)[XPP]', 'FUN_00291b1f(0x291B1F)[XPP]', 'XAPILIB::XAutoPowerDownResetTimer(0xF9AED)[.text]']; other []
+   ord 107 slot 7 ghidra=KeInitializeDpc: 8 sites; ['<keine Ghidra-Funktion>[XPP]', 'D3D8::CMiniport_InitHardware(0x23C88D)[D3D]', 'FUN_000f9b1a(0xF9B1A)[.text]', 'FUN_00250ae4(0x250AE4)[DSOUND]', 'FUN_0028c841(0x28C841)[XPP]', 'FUN_0028c932(0x28C932)[XPP]', 'FUN_0028cb19(0x28CB19)[XPP]']; other ['0x24b0d5']
+   ord 145 slot 4 ghidra=KeSetEvent: 7 sites; ['<keine Ghidra-Funktion>[.text]', '<keine Ghidra-Funktion>[XPP]', 'FUN_0023b980(0x23B980)[D3D]', 'FUN_0023bd00(0x23BD00)[D3D]', 'FUN_0028d133(0x28D133)[XPP]', 'FUN_0028d3f0(0x28D3F0)[XPP]', 'FUN_0028d656(0x28D656)[XPP]']; other []
+
+== LocalAlloc 0xF63E0 callers
+   0xF6D7C XAPILIB::XFindFirstSaveGame(0xF6CBA) [.text]
+   0xF707C XAPILIB::XCalculateSignatureBeginEx(0xF706F) [.text]
+   0xF95C6 FUN_000f946d(0xF946D) [.text]
+   0x170844 XAPILIB::XMemAlloc(0x1707E2) [.text]
+   0x234CB6 D3D8::D3DDevice_SetLight(0x234C80) [D3D]
+   0x237127 D3D8::D3DDevice_CreateTexture2(0x2370D0) [D3D]
+   0x237BA2 D3D8::D3DDevice_CreateVertexShader(0x237B50) [D3D]
+   0x238BD3 FUN_00238b40(0x238B40) [D3D]
+   0x23A42A D3D8::D3DDevice_CreateIndexBuffer2(0x23A420) [D3D]
+   0x23A465 D3D8::D3DDevice_CreateVertexBuffer2(0x23A460) [D3D]
+   0x23A545 D3D8::D3DDevice_CreatePalette2(0x23A540) [D3D]
+   0x23CE65 FUN_0023ce60(0x23CE60) [D3D]
+   0x23CF10 D3D8::D3D_CreateStandAloneSurface(0x23CEE0) [D3D]
+   0x241527 D3D8::D3DDevice_CreatePixelShader(0x241520) [D3D]
+== HeapAlloc-like FUN_000f52cc raw callers
+   0xA4934 FUN_000a4920(0xA4920) [.text]
+   0xF6220 FUN_000f5c77(0xF5C77) [.text]
+   0xF63F5 XAPILIB::LocalAlloc(0xF63E0) [.text]
+   0x16A051 FUN_0016a030(0x16A030) [.text]
+   0x16ECD5 FUN_0016eca7(0x16ECA7) [.text]
+
+== FUN_0013f7b0 (read size clamp)
+0013F7B0: 8a5134                   mov dl, byte ptr [ecx + 0x34]
+0013F7B3: 83ec08                   sub esp, 8
+0013F7B6: 84d2                     test dl, dl
+0013F7B8: 56                       push esi
+0013F7B9: 8b713c                   mov esi, dword ptr [ecx + 0x3c]
+0013F7BC: 57                       push edi
+0013F7BD: 8bc6                     mov eax, esi
+0013F7BF: 7405                     je 0x13f7c6
+0013F7C1: c1e802                   shr eax, 2
+0013F7C4: eb02                     jmp 0x13f7c8
+0013F7C6: d1e8                     shr eax, 1
+0013F7C8: 84d2                     test dl, dl
+0013F7CA: 7418                     je 0x13f7e4
+0013F7CC: 81fe00000200             cmp esi, 0x20000
+0013F7D2: 720a                     jb 0x13f7de
+0013F7D4: c744240800000200         mov dword ptr [esp + 8], 0x20000  ; FUN_00020000
+0013F7DC: eb0f                     jmp 0x13f7ed
+0013F7DE: 8bd6                     mov edx, esi
+0013F7E0: d1ea                     shr edx, 1
+0013F7E2: eb05                     jmp 0x13f7e9
+0013F7E4: 8bd6                     mov edx, esi
+0013F7E6: c1ea02                   shr edx, 2
+0013F7E9: 89542408                 mov dword ptr [esp + 8], edx
+0013F7ED: 8b5140                   mov edx, dword ptr [ecx + 0x40]
+0013F7F0: 8b795c                   mov edi, dword ptr [ecx + 0x5c]
+0013F7F3: 3bfa                     cmp edi, edx
+0013F7F5: 8954240c                 mov dword ptr [esp + 0xc], edx
+0013F7F9: 7208                     jb 0x13f803
+0013F7FB: 5f                       pop edi
+0013F7FC: 33c0                     xor eax, eax
+0013F7FE: 5e                       pop esi
+0013F7FF: 83c408                   add esp, 8
+0013F802: c3                       ret 
+0013F803: 8b4958                   mov ecx, dword ptr [ecx + 0x58]
+0013F806: 8bd1                     mov edx, ecx
+0013F808: 2bd7                     sub edx, edi
+0013F80A: 55                       push ebp
+0013F80B: 8d2c32                   lea ebp, [edx + esi]
+0013F80E: 3be8                     cmp ebp, eax
+0013F810: 7309                     jae 0x13f81b
+0013F812: 5d                       pop ebp
+0013F813: 5f                       pop edi
+0013F814: 33c0                     xor eax, eax
+0013F816: 5e                       pop esi
+0013F817: 83c408                   add esp, 8
+0013F81A: c3                       ret 
+0013F81B: 33d2                     xor edx, edx
+0013F81D: 8bc1                     mov eax, ecx
+0013F81F: f7f6                     div esi
+0013F821: 53                       push ebx
+0013F822: 8bc7                     mov eax, edi
+0013F824: 8bda                     mov ebx, edx
+0013F826: 33d2                     xor edx, edx
+0013F828: f7f6                     div esi
+0013F82A: 3bf9                     cmp edi, ecx
+0013F82C: 720a                     jb 0x13f838
+0013F82E: 3bd3                     cmp edx, ebx
+
+== full thunk table (slot ord ghidra-name)
+     0 161 KfLowerIrql
+     1 129 KeRaiseIrqlToDpcLevel
+     2  65 IoCreateDevice
+     3 289 RtlInitAnsiString
+     4 145 KeSetEvent
+     5 159 KeWaitForSingleObject
+     6 113 KeInitializeTimerEx
+     7 107 KeInitializeDpc
+     8  74 -
+     9 294 RtlLeaveCriticalSection
+    10 277 RtlEnterCriticalSection
+    11 199 NtFreeVirtualMemory
+    12 184 NtAllocateVirtualMemory
+    13 269 RtlCompareMemoryUlong
+    14 291 RtlInitializeCriticalSection
+    15 217 NtQueryVirtualMemory
+    16 302 RtlRaiseException
+    17  24 -
+    18  16 -
+    19 225 NtSetEvent
+    20 234 NtWaitForSingleObjectEx
+    21  99 KeDelayExecutionThread
+    22 226 NtSetInformationFile
+    23 128 KeQuerySystemTime
+    24 301 RtlNtStatusToDosError
+    25 190 NtCreateFile
+    26 187 NtClose
+    27 336 -
+    28 335 -
+    29 337 -
+    30 323 -
+    31 325 -
+    32 354 -
+    33 233 NtWaitForSingleObject
+    34 219 NtReadFile
+    35 236 NtWriteFile
+    36 211 NtQueryInformationFile
+    37 218 NtQueryVolumeInformationFile
+    38 198 NtFlushBuffersFile
+    39 232 -
+    40 200 NtFsControlFile
+    41 196 NtDeviceIoControlFile
+    42 172 MmFreeSystemMemory
+    43 202 NtOpenFile
+    44 167 MmAllocateSystemMemory
+    45 210 NtQueryFullAttributesFile
+    46 207 NtQueryDirectoryFile
+    47  40 -
+    48  67 IoCreateSymbolicLink
+    49 215 NtQuerySymbolicLinkObject
+    50 203 NtOpenSymbolicLinkObject
+    51 178 MmPersistContiguousMemory
+    52 165 MmAllocateContiguousMemory
+    53 164 -
+    54 171 MmFreeContiguousMemory
+    55  49 HalReturnToFirmware
+    56 166 MmAllocateContiguousMemoryEx
+    57 180 MmQueryAllocationSize
+    58 182 MmSetAddressProtect
+    59 179 MmQueryAddressProtect
+    60 149 KeSetTimer
+    61  97 KeCancelTimer
+    62 250 -
+    63 246 ObReferenceObjectByHandle
+    64 322 -
+    65  83 IoStartPacket
+    66  87 IofCompleteRequest
+    67  81 IoStartNextPacket
+    68  17 ExFreePool
+    69  15 ExAllocatePoolWithTag
+    70 359 IoMarkIrpMustComplete
+    71 358 HalIsResetOrShutdownPending
+    72 344 -
+    73 355 -
+    74  47 HalRegisterShutdownNotification
+    75 324 -
+    76 258 -
+    77 255 PsCreateSystemThreadEx
+    78 360 -
+    79  44 HalGetInterruptVector
+    80 160 KfRaiseIrql
+    81  98 KeConnectInterrupt
+    82 109 KeInitializeInterrupt
+    83 151 KeStallExecutionProcessor
+    84 279 RtlEqualString
+    85 327 XeLoadSection
+    86 328 XeUnloadSection
+    87 357 -
+    88 173 MmGetPhysicalAddress
+    89 175 MmLockUnlockBufferPages
+    90 119 KeInsertQueueDpc
+    91 176 MmLockUnlockPhysicalPage
+    92   1 AvGetSavedDataAddress
+    93   2 AvSendTVEncoderOption
+    94   3 AvSetDisplayMode
+    95   4 AvSetSavedDataAddress
+    96  46 HalReadWritePCISpace
+    97 100 KeDisconnectInterrupt
+    98   8 -
+    99 168 MmClaimGpuInstanceMemory
+   100 142 KeSaveFloatingPointState
+   101 139 KeRestoreFloatingPointState
+   102  23 ExQueryPoolBlockSize
+   103 137 KeRemoveQueueDpc
+   104 153 KeSynchronizeExecution
+   105 312 -
+   106  95 KeBugCheck
+   107 169 MmCreateKernelStack
+   108 170 MmDeleteKernelStack
+   109   5 -
+   110 356 -

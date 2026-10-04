@@ -1,0 +1,15 @@
+ord 107 KeInitializeDpc          (ghidra KeInitializeDpc) call sites per section {'.text': 1, 'D3D': 1, 'DSOUND': 1, 'XPP': 5} ; other refs (mov reg,[slot] etc.) {'DSOUND': 1}
+ord 113 KeInitializeTimerEx      (ghidra KeInitializeTimerEx) call sites per section {'.text': 1, 'DSOUND': 1, 'XPP': 4} ; other refs (mov reg,[slot] etc.) {}
+ord 149 KeSetTimer               (ghidra KeSetTimer) call sites per section {'.text': 1, 'DSOUND': 3, 'XPP': 13} ; other refs (mov reg,[slot] etc.) {}
+ord  97 KeCancelTimer            (ghidra KeCancelTimer) call sites per section {'DSOUND': 2, 'XPP': 20} ; other refs (mov reg,[slot] etc.) {}
+ord 129 KeRaiseIrqlToDpcLevel    (ghidra KeRaiseIrqlToDpcLevel) call sites per section {'.text': 1, 'XPP': 21} ; other refs (mov reg,[slot] etc.) {'XPP': 1}
+ord 161 KfLowerIrql              (ghidra KfLowerIrql) call sites per section {'.text': 1, 'DSOUND': 1, 'XPP': 26} ; other refs (mov reg,[slot] etc.) {}
+ord 160 KfRaiseIrql              (ghidra KfRaiseIrql) call sites per section {'DSOUND': 1, 'XPP': 1} ; other refs (mov reg,[slot] etc.) {}
+ord 145 KeSetEvent               (ghidra KeSetEvent) call sites per section {'.text': 1, 'D3D': 2, 'XPP': 4} ; other refs (mov reg,[slot] etc.) {}
+ord 159 KeWaitForSingleObject    (ghidra KeWaitForSingleObject) call sites per section {'.text': 1, 'D3D': 1, 'XPP': 2} ; other refs (mov reg,[slot] etc.) {'D3D': 1, 'XPP': 1}
+ord 119 KeInsertQueueDpc         (ghidra KeInsertQueueDpc) call sites per section {'D3D': 1, 'DSOUND': 3, 'XPP': 1} ; other refs (mov reg,[slot] etc.) {}
+ord  98 KeConnectInterrupt       (ghidra KeConnectInterrupt) call sites per section {'D3D': 1, 'DSOUND': 2, 'XPP': 1} ; other refs (mov reg,[slot] etc.) {}
+ord 109 KeInitializeInterrupt    (ghidra KeInitializeInterrupt) call sites per section {'D3D': 1, 'DSOUND': 2, 'XPP': 1} ; other refs (mov reg,[slot] etc.) {}
+ord  44 HalGetInterruptVector    (ghidra HalGetInterruptVector) call sites per section {'D3D': 1, 'DSOUND': 2, 'XPP': 1} ; other refs (mov reg,[slot] etc.) {}
+ord 153 KeSynchronizeExecution   (ghidra KeSynchronizeExecution) call sites per section {'DSOUND': 1} ; other refs (mov reg,[slot] etc.) {'DSOUND': 1}
+ord 225 NtSetEvent               (ghidra NtSetEvent) call sites per section {'DSOUND': 3} ; other refs (mov reg,[slot] etc.) {}

@@ -1,0 +1,35 @@
+fs:[0]  4850 accesses in 1419 functions
+fs:[4]  8 accesses in 8 functions
+     FUN_0013f250@13f250                                          1
+     FUN_0013f590@13f590                                          1
+     FUN_001692d0@1692d0                                          1
+     FUN_00169467@169467                                          1
+     XAPILIB::ConvertThreadToFiber@17098e                         1
+     XAPILIB::GetLastError@f6e54                                  1
+     XAPILIB::SetLastError@f6e7c                                  1
+     XAPILIB::SwitchToFiber@17094f                                1
+fs:[0x20]  6 accesses in 6 functions
+     FUN_000f52cc@f52cc                                           1
+     FUN_000f5a83@f5a83                                           1
+     FUN_000f5c77@f5c77                                           1
+     FUN_000f829c@f829c                                           1
+     FUN_00239d20@239d20                                          1
+     XAPILIB::UnhandledExceptionFilter@f999e                      1
+fs:[0x24]  7 accesses in 7 functions
+     DSOUND::CMcpxStream_Flush@24ba46                             1
+     DSOUND::DirectSoundEnterCriticalSection@246e0d               1
+     FUN_001692d0@1692d0                                          1
+     FUN_00246d30@246d30                                          1
+     XAPILIB::CreateThread@f9a72                                  1
+     XAPILIB::GetLastError@f6e54                                  1
+     XAPILIB::SetLastError@f6e7c                                  1
+fs:[0x28]  6 accesses in 6 functions
+     FUN_001692d0@1692d0                                          1
+     XAPILIB::ConvertThreadToFiber@17098e                         1
+     XAPILIB::CreateThread@f9a72                                  1
+     XAPILIB::GetCurrentThreadId@f9ae0                            1
+     XAPILIB::GetLastError@f6e54                                  1
+     XAPILIB::SetLastError@f6e7c                                  1
+fs:[0x58]  2 accesses in 2 functions
+     FUN_00246d7a@246d7a                                          1
+     FUN_00246d9f@246d9f                                          1

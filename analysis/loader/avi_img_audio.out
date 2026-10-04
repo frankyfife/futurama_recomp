@@ -1,0 +1,14 @@
+img archives: [('/FutPAL02.img', 287900703), ('/FutPAL04.img', 65127064), ('/SysPAL.img', 7742704), ('/FutPAL03.img', 155787088), ('/FutPAL00.img', 603480112), ('/FutPAL01.img', 32596776)]
+special entries:
+   ('/FutPAL00.img', 'dsstdfx.bin', 25256)
+   ('/FutPAL03.img', 'sounds/soundlookup.nif', 10014)
+wav files: 2982
+  ('XboxADPCM', 1, 22050, 4)               count= 2837 bytes=  70113120 e.g. sounds/button.wav
+  ('XboxADPCM', 1, 44100, 4)               count=   79 bytes=   1843140 e.g. sounds/footsteps/gravel1.wav
+  ('PCM', 2, 22050, 16)                    count=   36 bytes= 351846608 e.g. 01 - front-end-shorted.wav
+  ('XboxADPCM', 2, 22050, 4)               count=   18 bytes=   2599200 e.g. sounds/theme22.wav
+  ('XboxADPCM', 2, 48000, 4)               count=    5 bytes=   3832872 e.g. sounds/localized/english/lev 2 st dial#2.wav
+  ('XboxADPCM', 1, 48000, 4)               count=    4 bytes=    511248 e.g. sounds/reanimator.wav
+  ('PCM', 1, 22050, 16)                    count=    1 bytes=   8339500 e.g. 03 - sewers.wav
+  ('PCM', 1, 11025, 8)                     count=    1 bytes=     34196 e.g. sounds/misc12.wav
+  ('PCM', 2, 44100, 16)                    count=    1 bytes=  38342700 e.g. sounds/level1/sewers.wav

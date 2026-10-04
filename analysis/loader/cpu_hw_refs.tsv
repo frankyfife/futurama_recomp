@@ -1,0 +1,333 @@
+addr	bytes	ins	kind	value	cls	rel	func	section	inside	code	lib
+000a37ef	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a37b0	.text	True	code	game/unknown
+000a3c1e	81cf00000080	or edi, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a3b10	.text	True	code	game/unknown
+000a3dee	81ca00000080	or edx, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a3ce0	.text	True	code	game/unknown
+000a3f44	81ca00000080	or edx, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a3eb0	.text	True	code	game/unknown
+000a4145	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a4020	.text	True	code	game/unknown
+000a4259	81cf00000080	or edi, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a4020	.text	True	code	game/unknown
+000a43c5	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a42a0	.text	True	code	game/unknown
+000a44e2	81cf00000080	or edi, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_000a42a0	.text	True	code	game/unknown
+000f984d	058f830380	add eax, 0x8003838f	imm	8003838f	phys window 0x80000000 / kernel	kernel-imm	FUN_000f9804	.text	True	code	XAPILIB
+000f985d	05cd980380	add eax, 0x800398cd	imm	800398cd	phys window 0x80000000 / kernel	kernel-imm	FUN_000f9804	.text	True	code	XAPILIB
+000f9868	2588ab0280	and eax, 0x8002ab88	imm	8002ab88	phys window 0x80000000 / kernel	kernel-imm	FUN_000f9804	.text	True	code	XAPILIB
+000f9878	0549970380	add eax, 0x80039749	imm	80039749	phys window 0x80000000 / kernel	kernel-imm	FUN_000f9804	.text	True	code	XAPILIB
+002372c8	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	D3D8::D3D_DestroyResource	D3D	True	code	D3D
+00237314	81ca00000080	or edx, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	D3D8::D3D_DestroyResource	D3D	True	code	D3D
+00238c1d	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_00238c10	D3D	True	code	D3D
+00238c3a	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_00238c10	D3D	True	code	D3D
+002390ce	81cb00000080	or ebx, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	D3D8::D3D_BlockOnTime	D3D	True	code	D3D
+00239186	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	D3D8::D3D_MakeRequestedSpace_8	D3D	True	code	D3D
+002391a7	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	D3D8::D3D_MakeRequestedSpace_8	D3D	True	code	D3D
+0023a0da	891500000080	mov dword ptr [0x80000000], edx	disp	80000000	phys window 0x80000000 / kernel	mem-access	FUN_00239d20	D3D	True	code	D3D
+0023a122	c70500000080efbeadde	mov dword ptr [0x80000000], 0xdeadbeef	disp	80000000	phys window 0x80000000 / kernel	mem-access	FUN_00239d20	D3D	True	code	D3D
+0023a4f2	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	D3D8::D3DVertexBuffer_Lock2	D3D	True	code	D3D
+0023a5b5	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	D3D8::D3DPalette_Lock2	D3D	True	code	D3D
+0023ab7c	81ce00000080	or esi, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_0023ab60	D3D	True	code	D3D
+0023ade8	81c9000000f0	or ecx, 0xf0000000	imm	f0000000	phys alias 0xF0000000 (WC/tiled)	phys-or	D3D8::Lock2DSurface	D3D	True	code	D3D
+0023b80c	ec	in al, dx	port	000080c0	ioport MCPX ACPI-I/O +0xC0	ioport	FUN_0023b790	D3D	True	code	D3D
+0023b9fd	ec	in al, dx	port	000080c0	ioport MCPX ACPI-I/O +0xC0	ioport	FUN_0023b980	D3D	True	code	D3D
+0023bcbb	8b354c0140fd	mov esi, dword ptr [0xfd40014c]	disp	fd40014c	NV2A GPU MMIO	mem-access	FUN_0023bcb0	D3D	False	code	D3D
+0023be54	0d00000080	or eax, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_0023bd00	D3D	True	code	D3D
+0023bf1c	8b354c0140fd	mov esi, dword ptr [0xfd40014c]	disp	fd40014c	NV2A GPU MMIO	mem-access	FUN_0023bd00	D3D	True	code	D3D
+0023c0d0	8b3d4c0140fd	mov edi, dword ptr [0xfd40014c]	disp	fd40014c	NV2A GPU MMIO	mem-access	FUN_0023c040	D3D	True	code	D3D
+0023c39a	c701000000fd	mov dword ptr [ecx], 0xfd000000	imm	fd000000	NV2A GPU MMIO	mmio-imm	FUN_0023c39a	D3D	True	code	D3D
+0023c3a0	a1041800fd	mov eax, dword ptr [0xfd001804]	disp	fd001804	NV2A GPU MMIO	mem-access	FUN_0023c39a	D3D	True	code	D3D
+0023c3a8	a3041800fd	mov dword ptr [0xfd001804], eax	disp	fd001804	NV2A GPU MMIO	mem-access	FUN_0023c39a	D3D	True	code	D3D
+0023c3af	c705400160fd00000000	mov dword ptr [0xfd600140], 0	disp	fd600140	NV2A GPU MMIO	mem-access	FUN_0023c39a	D3D	True	code	D3D
+0023c3b9	c705409100fd00000000	mov dword ptr [0xfd009140], 0	disp	fd009140	NV2A GPU MMIO	mem-access	FUN_0023c39a	D3D	True	code	D3D
+0023c9b9	ee	out dx, al	port	000080c0	ioport MCPX ACPI-I/O +0xC0	ioport	D3D8::CMiniport_InitHardware	D3D	True	code	D3D
+0023cba6	81cf00000080	or edi, 0x80000000	imm	80000000	phys window 0x80000000 / kernel	phys-or	FUN_0023c9ef	D3D	True	code	D3D
+0024a1f9	814710006083fe	add dword ptr [edi + 0x10], 0xfe836000	imm	fe836000	APU MMIO	mmio-imm	FUN_0024a0f2	DSOUND	True	code	DSOUND
+0024a75d	a3241380fe	mov dword ptr [0xfe801324], eax	disp	fe801324	APU MMIO	mem-access	FUN_0024a731	DSOUND	True	code	DSOUND
+0024a76b	a3341380fe	mov dword ptr [0xfe801334], eax	disp	fe801334	APU MMIO	mem-access	FUN_0024a731	DSOUND	True	code	DSOUND
+0024a870	c705fcff85fe01000000	mov dword ptr [0xfe85fffc], 1	disp	fe85fffc	APU MMIO	mem-access	FUN_0024a839	DSOUND	True	code	DSOUND
+0024ab50	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024ab3f	DSOUND	True	code	DSOUND
+0024ab66	a3800282fe	mov dword ptr [0xfe820280], eax	disp	fe820280	APU MMIO	mem-access	FUN_0024ab3f	DSOUND	True	code	DSOUND
+0024ab8a	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	DSOUND::CMcpxAPU_SetMixBinHeadroom	DSOUND	True	code	DSOUND
+0024aba5	890c85000282fe	mov dword ptr [eax*4 - 0x17dfe00], ecx	disp	fe820200	APU MMIO	mem-access	DSOUND::CMcpxAPU_SetMixBinHeadroom	DSOUND	True	code	DSOUND
+0024acbf	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	DSOUND::CMcpxAPU_SynchPlayback	DSOUND	True	code	DSOUND
+0024acd5	a3f80282fe	mov dword ptr [0xfe8202f8], eax	disp	fe8202f8	APU MMIO	mem-access	DSOUND::CMcpxAPU_SynchPlayback	DSOUND	True	code	DSOUND
+0024acda	c705fc0282fe01000000	mov dword ptr [0xfe8202fc], 1	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxAPU_SynchPlayback	DSOUND	True	code	DSOUND
+0024ad01	a3400182fe	mov dword ptr [0xfe820140], eax	disp	fe820140	APU MMIO	mem-access	DSOUND::CMcpxAPU_SynchPlayback	DSOUND	True	code	DSOUND
+0024ad08	c705fc0282fe00000000	mov dword ptr [0xfe8202fc], 0	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxAPU_SynchPlayback	DSOUND	True	code	DSOUND
+0024aed9	a1001180fe	mov eax, dword ptr [0xfe801100]	disp	fe801100	APU MMIO	mem-access	FUN_0024aed9	DSOUND	True	code	DSOUND
+0024aeeb	8b0d001380fe	mov ecx, dword ptr [0xfe801300]	disp	fe801300	APU MMIO	mem-access	FUN_0024aed9	DSOUND	True	code	DSOUND
+0024aef1	8b35041380fe	mov esi, dword ptr [0xfe801304]	disp	fe801304	APU MMIO	mem-access	FUN_0024aed9	DSOUND	True	code	DSOUND
+0024aff7	8b1d001080fe	mov ebx, dword ptr [0xfe801000]	disp	fe801000	APU MMIO	mem-access	FUN_0024aff6	DSOUND	True	code	DSOUND
+0024b008	891d001080fe	mov dword ptr [0xfe801000], ebx	disp	fe801000	APU MMIO	mem-access	FUN_0024aff6	DSOUND	True	code	DSOUND
+0024b040	a1001080fe	mov eax, dword ptr [0xfe801000]	disp	fe801000	APU MMIO	mem-access	FUN_0024aff6	DSOUND	True	code	DSOUND
+0024b146	c705001080feffffffff	mov dword ptr [0xfe801000], 0xffffffff	disp	fe801000	APU MMIO	mem-access	FUN_0024b09e	DSOUND	True	code	DSOUND
+0024b511	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024b455	DSOUND	True	code	DSOUND
+0024b54f	890d900182fe	mov dword ptr [0xfe820190], ecx	disp	fe820190	APU MMIO	mem-access	FUN_0024b455	DSOUND	True	code	DSOUND
+0024b55b	890cd5000682fe	mov dword ptr [edx*8 - 0x17dfa00], ecx	disp	fe820600	APU MMIO	mem-access	FUN_0024b455	DSOUND	True	code	DSOUND
+0024b56b	8934d5040682fe	mov dword ptr [edx*8 - 0x17df9fc], esi	disp	fe820604	APU MMIO	mem-access	FUN_0024b455	DSOUND	True	code	DSOUND
+0024b5c4	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024b5b6	DSOUND	True	code	DSOUND
+0024b60e	a3f80282fe	mov dword ptr [0xfe8202f8], eax	disp	fe8202f8	APU MMIO	mem-access	FUN_0024b5b6	DSOUND	True	code	DSOUND
+0024b615	890d200382fe	mov dword ptr [0xfe820320], ecx	disp	fe820320	APU MMIO	mem-access	FUN_0024b5b6	DSOUND	True	code	DSOUND
+0024b61d	890d5c0382fe	mov dword ptr [0xfe82035c], ecx	disp	fe82035c	APU MMIO	mem-access	FUN_0024b5b6	DSOUND	True	code	DSOUND
+0024b9b6	8b1d100082fe	mov ebx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024b981	DSOUND	True	code	DSOUND
+0024b9df	a3f80282fe	mov dword ptr [0xfe8202f8], eax	disp	fe8202f8	APU MMIO	mem-access	FUN_0024b981	DSOUND	True	code	DSOUND
+0024b9e6	890d200382fe	mov dword ptr [0xfe820320], ecx	disp	fe820320	APU MMIO	mem-access	FUN_0024b981	DSOUND	True	code	DSOUND
+0024b9ee	890d5c0382fe	mov dword ptr [0xfe82035c], ecx	disp	fe82035c	APU MMIO	mem-access	FUN_0024b981	DSOUND	True	code	DSOUND
+0024c225	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024c15a	DSOUND	True	code	DSOUND
+0024c240	a3f80282fe	mov dword ptr [0xfe8202f8], eax	disp	fe8202f8	APU MMIO	mem-access	FUN_0024c15a	DSOUND	True	code	DSOUND
+0024c24f	a3040382fe	mov dword ptr [0xfe820304], eax	disp	fe820304	APU MMIO	mem-access	FUN_0024c15a	DSOUND	True	code	DSOUND
+0024c6d4	8bba000080fe	mov edi, dword ptr [edx - 0x1800000]	disp	fe800000	APU MMIO	mem-access	FUN_0024c6ba	DSOUND	True	code	DSOUND
+0024c6e9	8bbf000080fe	mov edi, dword ptr [edi - 0x1800000]	disp	fe800000	APU MMIO	mem-access	FUN_0024c6ba	DSOUND	True	code	DSOUND
+0024c6ef	8b80000080fe	mov eax, dword ptr [eax - 0x1800000]	disp	fe800000	APU MMIO	mem-access	FUN_0024c6ba	DSOUND	True	code	DSOUND
+0024c768	89ba000080fe	mov dword ptr [edx - 0x1800000], edi	disp	fe800000	APU MMIO	mem-access	FUN_0024c6ba	DSOUND	True	code	DSOUND
+0024c80a	8988000080fe	mov dword ptr [eax - 0x1800000], ecx	disp	fe800000	APU MMIO	mem-access	FUN_0024c6ba	DSOUND	True	code	DSOUND
+0024c82e	89b8000080fe	mov dword ptr [eax - 0x1800000], edi	disp	fe800000	APU MMIO	mem-access	FUN_0024c6ba	DSOUND	True	code	DSOUND
+0024c939	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024c906	DSOUND	True	code	DSOUND
+0024c954	890df80282fe	mov dword ptr [0xfe8202f8], ecx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024c906	DSOUND	True	code	DSOUND
+0024c965	890d040382fe	mov dword ptr [0xfe820304], ecx	disp	fe820304	APU MMIO	mem-access	FUN_0024c906	DSOUND	True	code	DSOUND
+0024c96e	890d2c0182fe	mov dword ptr [0xfe82012c], ecx	disp	fe82012c	APU MMIO	mem-access	FUN_0024c906	DSOUND	True	code	DSOUND
+0024ca74	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024c9e4	DSOUND	True	code	DSOUND
+0024ca94	891d400182fe	mov dword ptr [0xfe820140], ebx	disp	fe820140	APU MMIO	mem-access	FUN_0024c9e4	DSOUND	True	code	DSOUND
+0024cb1a	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024caca	DSOUND	True	code	DSOUND
+0024cb31	890d600182fe	mov dword ptr [0xfe820160], ecx	disp	fe820160	APU MMIO	mem-access	FUN_0024caca	DSOUND	True	code	DSOUND
+0024cb39	c745fc000482fe	mov dword ptr [ebp - 4], 0xfe820400	imm	fe820400	APU MMIO	mmio-imm	FUN_0024caca	DSOUND	True	code	DSOUND
+0024cb6b	817dfc3c0482fe	cmp dword ptr [ebp - 4], 0xfe82043c	imm	fe82043c	APU MMIO	mmio-imm	FUN_0024caca	DSOUND	True	code	DSOUND
+0024cbac	a33c0482fe	mov dword ptr [0xfe82043c], eax	disp	fe82043c	APU MMIO	mem-access	FUN_0024caca	DSOUND	True	code	DSOUND
+0024cbb5	a3f80282fe	mov dword ptr [0xfe8202f8], eax	disp	fe8202f8	APU MMIO	mem-access	FUN_0024caca	DSOUND	True	code	DSOUND
+0024cbc0	a31c0382fe	mov dword ptr [0xfe82031c], eax	disp	fe82031c	APU MMIO	mem-access	FUN_0024caca	DSOUND	True	code	DSOUND
+0024ccc4	8b35100082fe	mov esi, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetFilter	DSOUND	True	code	DSOUND
+0024ccdd	8935f80282fe	mov dword ptr [0xfe8202f8], esi	disp	fe8202f8	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetFilter	DSOUND	True	code	DSOUND
+0024cce3	8915fc0282fe	mov dword ptr [0xfe8202fc], edx	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetFilter	DSOUND	True	code	DSOUND
+0024ccec	8935180382fe	mov dword ptr [0xfe820318], esi	disp	fe820318	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetFilter	DSOUND	True	code	DSOUND
+0024ccf5	8935740382fe	mov dword ptr [0xfe820374], esi	disp	fe820374	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetFilter	DSOUND	True	code	DSOUND
+0024ccfe	8935780382fe	mov dword ptr [0xfe820378], esi	disp	fe820378	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetFilter	DSOUND	True	code	DSOUND
+0024cd04	c705fc0282fe00000000	mov dword ptr [0xfe8202fc], 0	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetFilter	DSOUND	True	code	DSOUND
+0024cd64	8b0d100082fe	mov ecx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024cd2a	DSOUND	True	code	DSOUND
+0024cd76	890df80282fe	mov dword ptr [0xfe8202f8], ecx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024cd2a	DSOUND	True	code	DSOUND
+0024cd7c	a3fc0282fe	mov dword ptr [0xfe8202fc], eax	disp	fe8202fc	APU MMIO	mem-access	FUN_0024cd2a	DSOUND	True	code	DSOUND
+0024cd9a	893dfc0282fe	mov dword ptr [0xfe8202fc], edi	disp	fe8202fc	APU MMIO	mem-access	FUN_0024cd2a	DSOUND	True	code	DSOUND
+0024ce71	8b0d100082fe	mov ecx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ce84	890df80282fe	mov dword ptr [0xfe8202f8], ecx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ce94	890d040382fe	mov dword ptr [0xfe820304], ecx	disp	fe820304	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ce9d	890d180382fe	mov dword ptr [0xfe820318], ecx	disp	fe820318	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cea6	890d080382fe	mov dword ptr [0xfe820308], ecx	disp	fe820308	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ceaf	890d0c0382fe	mov dword ptr [0xfe82030c], ecx	disp	fe82030c	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ceb8	890d100382fe	mov dword ptr [0xfe820310], ecx	disp	fe820310	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cec1	890d140382fe	mov dword ptr [0xfe820314], ecx	disp	fe820314	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ceca	890d500382fe	mov dword ptr [0xfe820350], ecx	disp	fe820350	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ced3	890d6c0382fe	mov dword ptr [0xfe82036c], ecx	disp	fe82036c	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cedc	890d700382fe	mov dword ptr [0xfe820370], ecx	disp	fe820370	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cee5	890d740382fe	mov dword ptr [0xfe820374], ecx	disp	fe820374	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024ceee	890d780382fe	mov dword ptr [0xfe820378], ecx	disp	fe820378	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cef7	890d000382fe	mov dword ptr [0xfe820300], ecx	disp	fe820300	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cf01	890d600382fe	mov dword ptr [0xfe820360], ecx	disp	fe820360	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cf0b	890d640382fe	mov dword ptr [0xfe820364], ecx	disp	fe820364	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cf15	890d680382fe	mov dword ptr [0xfe820368], ecx	disp	fe820368	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cf1e	890d7c0382fe	mov dword ptr [0xfe82037c], ecx	disp	fe82037c	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cf24	c7051c0382feffff0000	mov dword ptr [0xfe82031c], 0xffff	disp	fe82031c	APU MMIO	mem-access	FUN_0024cdea	DSOUND	True	code	DSOUND
+0024cfa9	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024cfc4	a3f80282fe	mov dword ptr [0xfe8202f8], eax	disp	fe8202f8	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024cfcc	c705fc0282fe01000000	mov dword ptr [0xfe8202fc], 1	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024cfd6	a3000382fe	mov dword ptr [0xfe820300], eax	disp	fe820300	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024cfe4	a3040382fe	mov dword ptr [0xfe820304], eax	disp	fe820304	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024cfed	a3600382fe	mov dword ptr [0xfe820360], eax	disp	fe820360	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024cff6	a3640382fe	mov dword ptr [0xfe820364], eax	disp	fe820364	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024cfff	a3680382fe	mov dword ptr [0xfe820368], eax	disp	fe820368	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024d004	c705fc0282fe00000000	mov dword ptr [0xfe8202fc], 0	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetMixBins	DSOUND	True	code	DSOUND
+0024d056	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetVolume	DSOUND	True	code	DSOUND
+0024d06f	8915f80282fe	mov dword ptr [0xfe8202f8], edx	disp	fe8202f8	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetVolume	DSOUND	True	code	DSOUND
+0024d079	c705fc0282fe01000000	mov dword ptr [0xfe8202fc], 1	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetVolume	DSOUND	True	code	DSOUND
+0024d083	8915600382fe	mov dword ptr [0xfe820360], edx	disp	fe820360	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetVolume	DSOUND	True	code	DSOUND
+0024d08d	8915640382fe	mov dword ptr [0xfe820364], edx	disp	fe820364	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetVolume	DSOUND	True	code	DSOUND
+0024d097	8915680382fe	mov dword ptr [0xfe820368], edx	disp	fe820368	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetVolume	DSOUND	True	code	DSOUND
+0024d09d	c705fc0282fe00000000	mov dword ptr [0xfe8202fc], 0	disp	fe8202fc	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetVolume	DSOUND	True	code	DSOUND
+0024d110	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetPitch	DSOUND	True	code	DSOUND
+0024d129	8915f80282fe	mov dword ptr [0xfe8202f8], edx	disp	fe8202f8	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetPitch	DSOUND	True	code	DSOUND
+0024d132	89157c0382fe	mov dword ptr [0xfe82037c], edx	disp	fe82037c	APU MMIO	mem-access	DSOUND::CMcpxVoiceClient_SetPitch	DSOUND	True	code	DSOUND
+0024d27f	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d21c	DSOUND	True	code	DSOUND
+0024d29a	890df80282fe	mov dword ptr [0xfe8202f8], ecx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024d21c	DSOUND	True	code	DSOUND
+0024d2ab	890d040382fe	mov dword ptr [0xfe820304], ecx	disp	fe820304	APU MMIO	mem-access	FUN_0024d21c	DSOUND	True	code	DSOUND
+0024d2b4	890d280182fe	mov dword ptr [0xfe820128], ecx	disp	fe820128	APU MMIO	mem-access	FUN_0024d21c	DSOUND	True	code	DSOUND
+0024d4a1	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4bc	a3f80282fe	mov dword ptr [0xfe8202f8], eax	disp	fe8202f8	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4c4	c705fc0282fe01000000	mov dword ptr [0xfe8202fc], 1	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4ce	a3000382fe	mov dword ptr [0xfe820300], eax	disp	fe820300	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4dc	a3040382fe	mov dword ptr [0xfe820304], eax	disp	fe820304	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4e5	a3600382fe	mov dword ptr [0xfe820360], eax	disp	fe820360	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4ee	a3640382fe	mov dword ptr [0xfe820364], eax	disp	fe820364	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4f7	a3680382fe	mov dword ptr [0xfe820368], eax	disp	fe820368	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d4ff	a37c0382fe	mov dword ptr [0xfe82037c], eax	disp	fe82037c	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d504	c705fc0282fe00000000	mov dword ptr [0xfe8202fc], 0	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d420	DSOUND	True	code	DSOUND
+0024d5f2	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d675	8b1d100082fe	mov ebx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d6a5	8915f80282fe	mov dword ptr [0xfe8202f8], edx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d6ab	c705fc0282fe01000000	mov dword ptr [0xfe8202fc], 1	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d6c3	8915040382fe	mov dword ptr [0xfe820304], edx	disp	fe820304	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d6cc	8915200182fe	mov dword ptr [0xfe820120], edx	disp	fe820120	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d6d3	a3240182fe	mov dword ptr [0xfe820124], eax	disp	fe820124	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d6dd	890d400182fe	mov dword ptr [0xfe820140], ecx	disp	fe820140	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d6e3	c705fc0282fe00000000	mov dword ptr [0xfe8202fc], 0	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d727	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d581	DSOUND	True	code	DSOUND
+0024d8c0	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d8e5	890df80282fe	mov dword ptr [0xfe8202f8], ecx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d8eb	c705fc0282fe01000000	mov dword ptr [0xfe8202fc], 1	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d900	890d040382fe	mov dword ptr [0xfe820304], ecx	disp	fe820304	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d90e	890da00382fe	mov dword ptr [0xfe8203a0], ecx	disp	fe8203a0	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d917	891ddc0382fe	mov dword ptr [0xfe8203dc], ebx	disp	fe8203dc	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d91d	890da40382fe	mov dword ptr [0xfe8203a4], ecx	disp	fe8203a4	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d92a	890dd80382fe	mov dword ptr [0xfe8203d8], ecx	disp	fe8203d8	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d933	890dfc0282fe	mov dword ptr [0xfe8202fc], ecx	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d822	DSOUND	True	code	DSOUND
+0024d993	8b15100082fe	mov edx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9b1	890df80282fe	mov dword ptr [0xfe8202f8], ecx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9b7	893dfc0282fe	mov dword ptr [0xfe8202fc], edi	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9c8	890d040382fe	mov dword ptr [0xfe820304], ecx	disp	fe820304	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9d2	890d600382fe	mov dword ptr [0xfe820360], ecx	disp	fe820360	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9dc	890d640382fe	mov dword ptr [0xfe820364], ecx	disp	fe820364	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9e6	890d680382fe	mov dword ptr [0xfe820368], ecx	disp	fe820368	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9f2	890da00382fe	mov dword ptr [0xfe8203a0], ecx	disp	fe8203a0	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024d9f8	c705dc0382fe20000000	mov dword ptr [0xfe8203dc], 0x20	disp	fe8203dc	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024da02	891da40382fe	mov dword ptr [0xfe8203a4], ebx	disp	fe8203a4	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024da08	891dfc0282fe	mov dword ptr [0xfe8202fc], ebx	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024da76	8b1d100082fe	mov ebx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024da8f	891df80282fe	mov dword ptr [0xfe8202f8], ebx	disp	fe8202f8	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024da95	893dfc0282fe	mov dword ptr [0xfe8202fc], edi	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024da9f	891d600382fe	mov dword ptr [0xfe820360], ebx	disp	fe820360	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024daa9	891d640382fe	mov dword ptr [0xfe820364], ebx	disp	fe820364	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024dab3	891d680382fe	mov dword ptr [0xfe820368], ebx	disp	fe820368	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024dab9	a3d80382fe	mov dword ptr [0xfe8203d8], eax	disp	fe8203d8	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024dabe	c705fc0282fe00000000	mov dword ptr [0xfe8202fc], 0	disp	fe8202fc	APU MMIO	mem-access	FUN_0024d963	DSOUND	True	code	DSOUND
+0024ef7f	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024ef45	DSOUND	True	code	DSOUND
+0024ef8c	893d040882fe	mov dword ptr [0xfe820804], edi	disp	fe820804	APU MMIO	mem-access	FUN_0024ef45	DSOUND	True	code	DSOUND
+0024ef95	8935080882fe	mov dword ptr [0xfe820808], esi	disp	fe820808	APU MMIO	mem-access	FUN_0024ef45	DSOUND	True	code	DSOUND
+0024f4c1	a3402080fe	mov dword ptr [0xfe802040], eax	disp	fe802040	APU MMIO	mem-access	FUN_0024f432	DSOUND	True	code	DSOUND
+0024f4cb	a3d42080fe	mov dword ptr [0xfe8020d4], eax	disp	fe8020d4	APU MMIO	mem-access	FUN_0024f432	DSOUND	True	code	DSOUND
+0024f4d2	a3482080fe	mov dword ptr [0xfe802048], eax	disp	fe802048	APU MMIO	mem-access	FUN_0024f432	DSOUND	True	code	DSOUND
+0024f4d9	a3dc2080fe	mov dword ptr [0xfe8020dc], eax	disp	fe8020dc	APU MMIO	mem-access	FUN_0024f432	DSOUND	True	code	DSOUND
+0024f52b	8915d42080fe	mov dword ptr [0xfe8020d4], edx	disp	fe8020d4	APU MMIO	mem-access	FUN_0024f4e5	DSOUND	True	code	DSOUND
+0024f60f	a3d42080fe	mov dword ptr [0xfe8020d4], eax	disp	fe8020d4	APU MMIO	mem-access	FUN_0024f55f	DSOUND	True	code	DSOUND
+0024f7ac	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f7e2	a32c2080fe	mov dword ptr [0xfe80202c], eax	disp	fe80202c	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f7ec	a3382080fe	mov dword ptr [0xfe802038], eax	disp	fe802038	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f7f6	a33c2080fe	mov dword ptr [0xfe80203c], eax	disp	fe80203c	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f800	a3302080fe	mov dword ptr [0xfe802030], eax	disp	fe802030	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f80a	a3342080fe	mov dword ptr [0xfe802034], eax	disp	fe802034	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f814	a35c1180fe	mov dword ptr [0xfe80115c], eax	disp	fe80115c	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f81e	a3a40282fe	mov dword ptr [0xfe8202a4], eax	disp	fe8202a4	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f823	a3b00282fe	mov dword ptr [0xfe8202b0], eax	disp	fe8202b0	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f828	a3a00282fe	mov dword ptr [0xfe8202a0], eax	disp	fe8202a0	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f82d	a3a80282fe	mov dword ptr [0xfe8202a8], eax	disp	fe8202a8	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f832	a3ac0282fe	mov dword ptr [0xfe8202ac], eax	disp	fe8202ac	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f837	c705040882feff070000	mov dword ptr [0xfe820804], 0x7ff	disp	fe820804	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f846	a3080882fe	mov dword ptr [0xfe820808], eax	disp	fe820808	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f875	8915c00282fe	mov dword ptr [0xfe8202c0], edx	disp	fe8202c0	APU MMIO	mem-access	FUN_0024f7ac	DSOUND	True	code	DSOUND
+0024f887	a3442080fe	mov dword ptr [0xfe802044], eax	disp	fe802044	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f890	893500ff83fe	mov dword ptr [0xfe83ff00], esi	disp	fe83ff00	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f896	893504ff83fe	mov dword ptr [0xfe83ff04], esi	disp	fe83ff04	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f8a5	a3d82080fe	mov dword ptr [0xfe8020d8], eax	disp	fe8020d8	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f8aa	a3481180fe	mov dword ptr [0xfe801148], eax	disp	fe801148	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f8b0	8935243080fe	mov dword ptr [0xfe803024], esi	disp	fe803024	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f8bb	893d283080fe	mov dword ptr [0xfe803028], edi	disp	fe803028	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f8d9	8b1d100082fe	mov ebx, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f8ee	8915001882fe	mov dword ptr [0xfe821800], edx	disp	fe821800	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f8f4	890d081882fe	mov dword ptr [0xfe821808], ecx	disp	fe821808	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f908	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f918	8935001082fe	mov dword ptr [0xfe821000], esi	disp	fe821000	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f91e	893d041082fe	mov dword ptr [0xfe821004], edi	disp	fe821004	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f955	893dfcff83fe	mov dword ptr [0xfe83fffc], edi	disp	fe83fffc	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f960	a310ff83fe	mov dword ptr [0xfe83ff10], eax	disp	fe83ff10	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f965	c70514ff83feff000000	mov dword ptr [0xfe83ff14], 0xff	disp	fe83ff14	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f96f	a1243080fe	mov eax, dword ptr [0xfe803024]	disp	fe803024	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f974	a32c3080fe	mov dword ptr [0xfe80302c], eax	disp	fe80302c	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f979	a1343080fe	mov eax, dword ptr [0xfe803034]	disp	fe803034	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f97e	a33c3080fe	mov dword ptr [0xfe80303c], eax	disp	fe80303c	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f983	a1443080fe	mov eax, dword ptr [0xfe803044]	disp	fe803044	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f988	a34c3080fe	mov dword ptr [0xfe80304c], eax	disp	fe80304c	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f98d	a1543080fe	mov eax, dword ptr [0xfe803054]	disp	fe803054	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f994	a35c3080fe	mov dword ptr [0xfe80305c], eax	disp	fe80305c	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f999	c705fcff83fe03000000	mov dword ptr [0xfe83fffc], 3	disp	fe83fffc	APU MMIO	mem-access	FUN_0024f87d	DSOUND	True	code	DSOUND
+0024f9b7	a3fcff85fe	mov dword ptr [0xfe85fffc], eax	disp	fe85fffc	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024f9f8	a34c2080fe	mov dword ptr [0xfe80204c], eax	disp	fe80204c	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024f9fd	891d00ff85fe	mov dword ptr [0xfe85ff00], ebx	disp	fe85ff00	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fa03	891d04ff85fe	mov dword ptr [0xfe85ff04], ebx	disp	fe85ff04	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fa12	a3e02080fe	mov dword ptr [0xfe8020e0], eax	disp	fe8020e0	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fa22	bf284080fe	mov edi, 0xfe804028	imm	fe804028	APU MMIO	mmio-imm	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fb00	891d5cff85fe	mov dword ptr [0xfe85ff5c], ebx	disp	fe85ff5c	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fb07	c70510ff85fe01000000	mov dword ptr [0xfe85ff10], 1	disp	fe85ff10	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fb12	c70514ff85feffffffff	mov dword ptr [0xfe85ff14], 0xffffffff	disp	fe85ff14	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fb1c	c705fcff85fe03000000	mov dword ptr [0xfe85fffc], 3	disp	fe85fffc	APU MMIO	mem-access	FUN_0024f9a6	DSOUND	True	code	DSOUND
+0024fbf3	a1041080fe	mov eax, dword ptr [0xfe801004]	disp	fe801004	APU MMIO	mem-access	FUN_0024fbe2	DSOUND	True	code	DSOUND
+0024fc07	890d041080fe	mov dword ptr [0xfe801004], ecx	disp	fe801004	APU MMIO	mem-access	FUN_0024fbe2	DSOUND	True	code	DSOUND
+0024fc2a	a1101580fe	mov eax, dword ptr [0xfe801510]	disp	fe801510	APU MMIO	mem-access	FUN_0024fc19	DSOUND	True	code	DSOUND
+0024fc3e	890d101580fe	mov dword ptr [0xfe801510], ecx	disp	fe801510	APU MMIO	mem-access	FUN_0024fc19	DSOUND	True	code	DSOUND
+0024fc67	8b0d001180fe	mov ecx, dword ptr [0xfe801100]	disp	fe801100	APU MMIO	mem-access	FUN_0024fc50	DSOUND	True	code	DSOUND
+0024fc99	890d001180fe	mov dword ptr [0xfe801100], ecx	disp	fe801100	APU MMIO	mem-access	FUN_0024fc50	DSOUND	True	code	DSOUND
+0024fcc2	8b0d002080fe	mov ecx, dword ptr [0xfe802000]	disp	fe802000	APU MMIO	mem-access	FUN_0024fcab	DSOUND	True	code	DSOUND
+0024fcfb	890d002080fe	mov dword ptr [0xfe802000], ecx	disp	fe802000	APU MMIO	mem-access	FUN_0024fcab	DSOUND	True	code	DSOUND
+0024fe21	a3082080fe	mov dword ptr [0xfe802008], eax	disp	fe802008	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe26	c7050c2080fe00000000	mov dword ptr [0xfe80200c], 0	disp	fe80200c	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe30	a3102080fe	mov dword ptr [0xfe802010], eax	disp	fe802010	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe39	890d142080fe	mov dword ptr [0xfe802014], ecx	disp	fe802014	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe40	a3182080fe	mov dword ptr [0xfe802018], eax	disp	fe802018	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe45	c7051c2080fe00000000	mov dword ptr [0xfe80201c], 0	disp	fe80201c	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe54	890d202080fe	mov dword ptr [0xfe802020], ecx	disp	fe802020	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe5f	a3242080fe	mov dword ptr [0xfe802024], eax	disp	fe802024	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe64	a3282080fe	mov dword ptr [0xfe802028], eax	disp	fe802028	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe69	890d2c4080fe	mov dword ptr [0xfe80402c], ecx	disp	fe80402c	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024fe6f	c7053c4080fe00380000	mov dword ptr [0xfe80403c], 0x3800	disp	fe80403c	APU MMIO	mem-access	FUN_0024fe00	DSOUND	True	code	DSOUND
+0024ff5e	c705041080fed8000000	mov dword ptr [0xfe801004], 0xd8	disp	fe801004	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ff68	c705001180fe88000000	mov dword ptr [0xfe801100], 0x88	disp	fe801100	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ff74	8915002080fe	mov dword ptr [0xfe802000], edx	disp	fe802000	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ff7a	8915001580fe	mov dword ptr [0xfe801500], edx	disp	fe801500	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ff80	c705041580fe00800000	mov dword ptr [0xfe801504], 0x8000	disp	fe801504	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ff8b	c705081580fe40008000	mov dword ptr [0xfe801508], 0x800040	disp	fe801508	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ff95	89150c1580fe	mov dword ptr [0xfe80150c], edx	disp	fe80150c	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffa2	c705041180feff000000	mov dword ptr [0xfe801104], 0xff	disp	fe801104	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffac	c705081180fe3f000000	mov dword ptr [0xfe801108], 0x3f	disp	fe801108	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffb6	c7051c1180fe7f000000	mov dword ptr [0xfe80111c], 0x7f	disp	fe80111c	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffc0	c705241180feff1f0000	mov dword ptr [0xfe801124], 0x1fff	disp	fe801124	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffca	c705381180feff070000	mov dword ptr [0xfe801138], 0x7ff	disp	fe801138	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffd4	c705581180fe20000000	mov dword ptr [0xfe801158], 0x20	disp	fe801158	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffde	89152c1180fe	mov dword ptr [0xfe80112c], edx	disp	fe80112c	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffe9	a3301180fe	mov dword ptr [0xfe801130], eax	disp	fe801130	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024ffee	8915401180fe	mov dword ptr [0xfe801140], edx	disp	fe801140	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024fff4	a3441180fe	mov dword ptr [0xfe801144], eax	disp	fe801144	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+0024fff9	8915501180fe	mov dword ptr [0xfe801150], edx	disp	fe801150	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+00250002	a3541180fe	mov dword ptr [0xfe801154], eax	disp	fe801154	APU MMIO	mem-access	FUN_0024ff5e	DSOUND	True	code	DSOUND
+002501d3	a1001180fe	mov eax, dword ptr [0xfe801100]	disp	fe801100	APU MMIO	mem-access	FUN_002501a9	DSOUND	True	code	DSOUND
+002501e7	a1002080fe	mov eax, dword ptr [0xfe802000]	disp	fe802000	APU MMIO	mem-access	FUN_002501a9	DSOUND	True	code	DSOUND
+002501fd	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_002501a9	DSOUND	True	code	DSOUND
+0025020a	89350c0182fe	mov dword ptr [0xfe82010c], esi	disp	fe82010c	APU MMIO	mem-access	FUN_002501a9	DSOUND	True	code	DSOUND
+00250227	c705040182fe02000000	mov dword ptr [0xfe820104], 2	disp	fe820104	APU MMIO	mem-access	FUN_002501a9	DSOUND	True	code	DSOUND
+00250261	a1100082fe	mov eax, dword ptr [0xfe820010]	disp	fe820010	APU MMIO	mem-access	FUN_002501a9	DSOUND	True	code	DSOUND
+0025026e	c7050c0182fe01000000	mov dword ptr [0xfe82010c], 1	disp	fe82010c	APU MMIO	mem-access	FUN_002501a9	DSOUND	True	code	DSOUND
+002502d8	a3542080fe	mov dword ptr [0xfe802054], eax	disp	fe802054	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+002502dd	a3602080fe	mov dword ptr [0xfe802060], eax	disp	fe802060	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+002502e2	a36c2080fe	mov dword ptr [0xfe80206c], eax	disp	fe80206c	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+002502e7	a3582080fe	mov dword ptr [0xfe802058], eax	disp	fe802058	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+002502ec	a3642080fe	mov dword ptr [0xfe802064], eax	disp	fe802064	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+002502f1	a3702080fe	mov dword ptr [0xfe802070], eax	disp	fe802070	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+002502f6	a35c2080fe	mov dword ptr [0xfe80205c], eax	disp	fe80205c	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+002502fb	a3682080fe	mov dword ptr [0xfe802068], eax	disp	fe802068	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+00250300	a3742080fe	mov dword ptr [0xfe802074], eax	disp	fe802074	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+00250305	c705fcff83fe00000000	mov dword ptr [0xfe83fffc], 0	disp	fe83fffc	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+00250312	c705fcff85fe01000000	mov dword ptr [0xfe85fffc], 1	disp	fe85fffc	APU MMIO	mem-access	FUN_002502a5	DSOUND	True	code	DSOUND
+0025039f	f6053401c0fe01	test byte ptr [0xfec00134], 1	disp	fec00134	AC97 MMIO	mem-access	FUN_00250384	DSOUND	True	code	DSOUND
+002503b1	a12c01c0fe	mov eax, dword ptr [0xfec0012c]	disp	fec0012c	AC97 MMIO	mem-access	FUN_002503b1	DSOUND	True	code	DSOUND
+002503c8	a32c01c0fe	mov dword ptr [0xfec0012c], eax	disp	fec0012c	AC97 MMIO	mem-access	FUN_002503b1	DSOUND	True	code	DSOUND
+002503d4	a32c01c0fe	mov dword ptr [0xfec0012c], eax	disp	fec0012c	AC97 MMIO	mem-access	FUN_002503b1	DSOUND	True	code	DSOUND
+002503ef	85353001c0fe	test dword ptr [0xfec00130], esi	disp	fec00130	AC97 MMIO	mem-access	FUN_002503b1	DSOUND	True	code	DSOUND
+00250427	66890c550000c0fe	mov word ptr [edx*2 - 0x1400000], cx	disp	fec00000	AC97 MMIO	mem-access	FUN_00250415	DSOUND	True	code	DSOUND
+00250467	80a00b01c0fe00	and byte ptr [eax - 0x13ffef5], 0	disp	fec0010b	AC97 MMIO	mem-access	FUN_0025044a	DSOUND	True	code	DSOUND
+002504d7	88980401c0fe	mov byte ptr [eax - 0x13ffefc], bl	disp	fec00104	AC97 MMIO	mem-access	FUN_00250479	DSOUND	True	code	DSOUND
+002504ec	88880501c0fe	mov byte ptr [eax - 0x13ffefb], cl	disp	fec00105	AC97 MMIO	mem-access	FUN_00250479	DSOUND	True	code	DSOUND
+00250528	a37c01c0fe	mov dword ptr [0xfec0017c], eax	disp	fec0017c	AC97 MMIO	mem-access	FUN_00250509	DSOUND	True	code	DSOUND
+00250559	6689820801c0fe	mov word ptr [edx - 0x13ffef8], ax	disp	fec00108	AC97 MMIO	mem-access	FUN_0025053a	DSOUND	True	code	DSOUND
+0025068c	c6800b01c0fe02	mov byte ptr [eax - 0x13ffef5], 2	disp	fec0010b	AC97 MMIO	mem-access	FUN_0025066f	DSOUND	True	code	DSOUND
+0025069c	8a880b01c0fe	mov cl, byte ptr [eax - 0x13ffef5]	disp	fec0010b	AC97 MMIO	mem-access	FUN_0025066f	DSOUND	True	code	DSOUND
+002506ac	89880001c0fe	mov dword ptr [eax - 0x13fff00], ecx	disp	fec00100	AC97 MMIO	mem-access	FUN_0025066f	DSOUND	True	code	DSOUND
+002506ba	a37c01c0fe	mov dword ptr [0xfec0017c], eax	disp	fec0017c	AC97 MMIO	mem-access	FUN_0025066f	DSOUND	True	code	DSOUND
+0025074c	f6800601c0fe01	test byte ptr [eax - 0x13ffefa], 1	disp	fec00106	AC97 MMIO	mem-access	FUN_0025072f	DSOUND	True	code	DSOUND
+00250778	c6800b01c0fe1d	mov byte ptr [eax - 0x13ffef5], 0x1d	disp	fec0010b	AC97 MMIO	mem-access	FUN_0025072f	DSOUND	True	code	DSOUND
+002508d9	8b0d3001c0fe	mov ecx, dword ptr [0xfec00130]	disp	fec00130	AC97 MMIO	mem-access	FUN_002508d0	DSOUND	True	code	DSOUND
+0025091e	0fb7920601c0fe	movzx edx, word ptr [edx - 0x13ffefa]	disp	fec00106	AC97 MMIO	mem-access	FUN_002508d0	DSOUND	True	code	DSOUND
+0025095b	6689900601c0fe	mov word ptr [eax - 0x13ffefa], dx	disp	fec00106	AC97 MMIO	mem-access	FUN_002508d0	DSOUND	True	code	DSOUND
+00250992	890d3001c0fe	mov dword ptr [0xfec00130], ecx	disp	fec00130	AC97 MMIO	mem-access	FUN_002508d0	DSOUND	True	code	DSOUND
+00250b23	c6810b01c0fe02	mov byte ptr [ecx - 0x13ffef5], 2	disp	fec0010b	AC97 MMIO	mem-access	FUN_00250ae4	DSOUND	True	code	DSOUND
+0028c912	c745ec0000d0fe	mov dword ptr [ebp - 0x14], 0xfed00000	imm	fed00000	USB OHCI MMIO	mmio-imm	FUN_0028c8f0	XPP	True	code	XPP
+002921d0	8b1d0c2080fe	mov ebx, dword ptr [0xfe80200c]	disp	fe80200c	APU MMIO	mem-access	FUN_002921b9	XPP	True	code	XPP

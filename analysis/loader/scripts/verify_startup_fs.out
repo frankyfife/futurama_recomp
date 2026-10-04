@@ -1,0 +1,104 @@
+fs:[0]  5140 accesses in 1420 functions/places
+fs:[eax]  15 accesses in 1 functions/places
+    000212fb  <nofunc>?                                     adc byte ptr fs:[eax], al
+    000289df  <nofunc>?                                     adc dword ptr fs:[eax], eax
+    0002902f  <nofunc>?                                     adc byte ptr fs:[eax], al
+    00029102  <nofunc>?                                     adc byte ptr fs:[eax], al
+    0007566a  <nofunc>?                                     add dword ptr fs:[eax], eax
+    000b6f11  <nofunc>?                                     or eax, dword ptr fs:[eax]
+    00178e59  <nofunc>?                                     sub ax, word ptr fs:[eax]
+    002431ec  <nofunc>?                                     cmp ah, byte ptr fs:[eax]
+    00263984  <nofunc>?                                     and byte ptr fs:[eax], al
+    0031168a  <nofunc>?                                     add byte ptr fs:[eax], al
+    00315ace  <nofunc>?                                     add byte ptr fs:[eax], al
+    003173ba  <nofunc>?                                     add byte ptr fs:[eax], al
+    003173ea  <nofunc>?                                     add byte ptr fs:[eax], al
+    003176ca  <nofunc>?                                     add byte ptr fs:[eax], al
+    0031770e  <nofunc>?                                     add byte ptr fs:[eax], al
+fs:[edx]  2 accesses in 1 functions/places
+    00023a10  <nofunc>?                                     cmp dword ptr fs:[edx], eax
+    000ea5ac  <nofunc>?                                     and byte ptr fs:[edx], ch
+fs:[ecx]  3 accesses in 1 functions/places
+    0004b0d9  <nofunc>?                                     rcl dword ptr fs:[ecx], cl
+    00271c0a  <nofunc>?                                     add byte ptr fs:[ecx], dh
+    0031442c  <nofunc>?                                     lds esp, ptr fs:[ecx]
+fs:[4]  11 accesses in 9 functions/places
+    000f6e6b  f6e54 XAPILIB::GetLastError                   mov ecx, dword ptr fs:[4]
+    000f6e8e  f6e7c XAPILIB::SetLastError                   mov ecx, dword ptr fs:[4]
+    000f8495  <nofunc>?                                     mov edi, dword ptr fs:[4]
+    0013f443  13f250 FUN_0013f250                           mov ecx, dword ptr fs:[4]
+    0013f5d5  13f590 FUN_0013f590                           mov edi, dword ptr fs:[4]
+    001692f7  1692d0 FUN_001692d0                           mov ecx, dword ptr fs:[4]
+    00169383  <nofunc>?                                     mov ecx, dword ptr fs:[4]
+    0016948f  169467 FUN_00169467                           mov ecx, dword ptr fs:[4]
+    00170880  <nofunc>?                                     mov ecx, dword ptr fs:[4]
+    00170955  17094f XAPILIB::SwitchToFiber                 mov ecx, dword ptr fs:[4]
+    00170993  17098e XAPILIB::ConvertThreadToFiber          mov ecx, dword ptr fs:[4]
+fs:[?]  34 accesses in 1 functions/places
+    0013ab60  <nofunc>?                                     fld dword ptr fs:[eax + 0x28]
+    00162db9  <nofunc>?                                     fld dword ptr fs:[eax + 0xb38]
+    00162f97  <nofunc>?                                     fld dword ptr fs:[eax + 0xb30]
+    00163125  <nofunc>?                                     fld dword ptr fs:[eax + 0x24]
+    00163245  <nofunc>?                                     fld dword ptr fs:[eax + 0x24]
+    00163365  <nofunc>?                                     fld dword ptr fs:[eax + 0x24]
+    00243214  <nofunc>?                                     and byte ptr fs:[ecx + 0x6e], ah
+    002437f2  <nofunc>?                                     and byte ptr fs:[ecx + ebp*2 + 0x6d], dh
+    002711ce  <nofunc>?                                     add byte ptr fs:[eax + eax + 0x64], ah
+    00271b00  <nofunc>?                                     add byte ptr fs:[edx + 3], ah
+    00271eba  <nofunc>?                                     add byte ptr fs:[ecx + 8], al
+    00271f4c  <nofunc>?                                     add dword ptr fs:[ebp + eax + 0x8710051], eax
+    002725dc  <nofunc>?                                     add byte ptr fs:[eax + eax - 0x80], dh
+    002726e0  <nofunc>?                                     add dword ptr fs:[edx - 0x5df75df8], esp
+    00275866  <nofunc>?                                     add esi, dword ptr fs:[ebx + eax - 0x7c]
+    00278e24  <nofunc>?                                     add dword ptr fs:[ecx + eax + 0x64], esp
+    00278e26  <nofunc>?                                     add dword ptr fs:[ecx + eax + 0x64], esp
+    0027d1ca  <nofunc>?                                     add byte ptr fs:[eax + eax + 0x64], ah
+    00284314  <nofunc>?                                     add esp, dword ptr fs:[ebx + eax + 0x74]
+    00285112  <nofunc>?                                     add dword ptr fs:[ecx + eax + 0x64], esp
+    0028997a  <nofunc>?                                     add byte ptr fs:[eax + eax + 0x64], ah
+    0029354a  <nofunc>?                                     cmp dword ptr fs:[edi + 0x43], ebx
+    00310cf2  <nofunc>?                                     add byte ptr fs:[edx + 1], ah
+    00310d1a  <nofunc>?                                     add byte ptr fs:[edx + 1], ah
+    00310d42  <nofunc>?                                     add byte ptr fs:[edx + 1], ah
+    00310d8a  <nofunc>?                                     add byte ptr fs:[edx + 1], ah
+    00310db6  <nofunc>?                                     add byte ptr fs:[edx + 1], ah
+    00310de2  <nofunc>?                                     add byte ptr fs:[edx + 1], ah
+    00310e0e  <nofunc>?                                     add byte ptr fs:[edx + 1], ah
+    003136ce  <nofunc>?                                     add byte ptr fs:[edx + 8], dh
+    003143e0  <nofunc>?                                     add byte ptr fs:[eax + eax], ah
+    003143f6  <nofunc>?                                     add byte ptr fs:[edx + 0xc], bh
+    003150d2  <nofunc>?                                     add byte ptr fs:[ebx + ecx], dh
+    00315406  <nofunc>?                                     add byte ptr fs:[ebx + ecx], dh
+fs:[ebx]  1 accesses in 1 functions/places
+    003156a6  <nofunc>?                                     add byte ptr fs:[ebx], bl
+fs:[0x20]  8 accesses in 7 functions/places
+    000f5a41  f52cc FUN_000f52cc                            mov eax, dword ptr fs:[0x20]
+    000f5ab8  f5a83 FUN_000f5a83                            mov eax, dword ptr fs:[0x20]
+    000f634f  f5c77 FUN_000f5c77                            mov eax, dword ptr fs:[0x20]
+    000f6384  <nofunc>?                                     mov eax, dword ptr fs:[0x20]
+    000f82b9  f829c FUN_000f829c                            mov eax, dword ptr fs:[0x20]
+    000f8473  <nofunc>?                                     mov eax, dword ptr fs:[0x20]
+    000f999e  f999e XAPILIB::UnhandledExceptionFilter       mov eax, dword ptr fs:[0x20]
+    0023a1e5  239d20 FUN_00239d20                           mov eax, dword ptr fs:[0x20]
+fs:[0x24]  8 accesses in 8 functions/places
+    000f6e54  f6e54 XAPILIB::GetLastError                   movzx eax, byte ptr fs:[0x24]
+    000f6e7c  f6e7c XAPILIB::SetLastError                   movzx eax, byte ptr fs:[0x24]
+    000f9ab7  f9a72 XAPILIB::CreateThread                   movzx eax, byte ptr fs:[0x24]
+    001692d0  1692d0 FUN_001692d0                           movzx eax, byte ptr fs:[0x24]
+    0016935e  <nofunc>?                                     movzx eax, byte ptr fs:[0x24]
+    00246d37  246d30 FUN_00246d30                           movzx eax, byte ptr fs:[0x24]
+    00246e0d  246e0d DSOUND::DirectSoundEnterCriticalSection movzx eax, byte ptr fs:[0x24]
+    0024ba50  24ba46 DSOUND::CMcpxStream_Flush              movzx eax, byte ptr fs:[0x24]
+fs:[0x28]  9 accesses in 7 functions/places
+    000f6e60  f6e54 XAPILIB::GetLastError                   mov eax, dword ptr fs:[0x28]
+    000f6e88  f6e7c XAPILIB::SetLastError                   mov eax, dword ptr fs:[0x28]
+    000f848f  <nofunc>?                                     mov eax, dword ptr fs:[0x28]
+    000f99ea  <nofunc>?                                     mov eax, dword ptr fs:[0x28]
+    000f9ac3  f9a72 XAPILIB::CreateThread                   mov eax, dword ptr fs:[0x28]
+    000f9ae0  f9ae0 XAPILIB::GetCurrentThreadId             mov eax, dword ptr fs:[0x28]
+    001692e6  1692d0 FUN_001692d0                           mov eax, dword ptr fs:[0x28]
+    00169372  <nofunc>?                                     mov eax, dword ptr fs:[0x28]
+    001709a9  17098e XAPILIB::ConvertThreadToFiber          mov eax, dword ptr fs:[0x28]
+fs:[0x58]  2 accesses in 2 functions/places
+    00246d7a  246d7a FUN_00246d7a                           mov eax, dword ptr fs:[0x58]
+    00246d9f  246d9f FUN_00246d9f                           mov eax, dword ptr fs:[0x58]

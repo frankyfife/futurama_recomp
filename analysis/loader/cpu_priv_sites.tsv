@@ -1,0 +1,98 @@
+addr	bytes	ins	func	section	inside	cls	lib
+000817bc	cc	int3	?(after FUN_00081750)	.text	False	code	game/unknown
+000f3e0b	cd2d	int 0x2d	XAPILIB::OutputDebugStringA	.text	True	code	XAPILIB
+000f3e0d	cc	int3	XAPILIB::OutputDebugStringA	.text	True	code	XAPILIB
+000f641f	0f31	rdtsc	XAPILIB::QueryPerformanceCounter	.text	True	code	XAPILIB
+000f902e	cc	int3	XAPILIB::XapiBootToDash	.text	True	code	XAPILIB
+000f98a3	fa	cli	FUN_000f9804	.text	True	code	XAPILIB
+000f98aa	fb	sti	FUN_000f9804	.text	True	code	XAPILIB
+000f9a71	cc	int3	?(after XAPILIB::UnhandledExceptionFilter)	.text	False	code	XAPILIB
+00150d79	0fa2	cpuid	FUN_00150d40	.text	True	code	game/unknown
+00150dc2	0fa2	cpuid	FUN_00150d40	.text	True	code	game/unknown
+00150e17	0fa2	cpuid	FUN_00150d40	.text	True	code	game/unknown
+00166d9f	cc	int3	?(after ?__ArrayUnwind@@YGXPAXIHP6EX0@Z@Z)	.text	False	code	LIBCMT
+00169d99	cc	int3	?(after FUN_00169d5e)	.text	False	code	LIBCMT
+001708af	cc	int3	?(after XAPILIB::XMemFree)	.text	False	code	XAPILIB
+00238dab	0faef8	sfence	FUN_00238da0	D3D	True	code	D3D
+00238e16	0faef8	sfence	D3D8::CDevice_KickOff	D3D	True	code	D3D
+00238ef6	0faef8	sfence	FUN_00238ed0	D3D	True	code	D3D
+0023a0e0	0f09	wbinvd	FUN_00239d20	D3D	True	code	D3D
+0023b780	0f31	rdtsc	FUN_0023b780	D3D	True	code	D3D
+0023b80c	ec	in al, dx	FUN_0023b790	D3D	True	code	D3D
+0023b9fd	ec	in al, dx	FUN_0023b980	D3D	True	code	D3D
+0023bcf3	cc	int3	?(after FUN_0023bcb0)	D3D	False	code	D3D
+0023bf4b	cc	int3	?(after FUN_0023bd00)	D3D	False	code	D3D
+0023c0f8	cc	int3	FUN_0023c040	D3D	True	code	D3D
+0023c9b9	ee	out dx, al	D3D8::CMiniport_InitHardware	D3D	True	code	D3D
+002412f1	0f18463c	prefetchnta byte ptr [esi + 0x3c]	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+002412f5	0f18465c	prefetchnta byte ptr [esi + 0x5c]	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+0024131c	0fe74f08	movntq qword ptr [edi + 8], mm1	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241320	0fe75710	movntq qword ptr [edi + 0x10], mm2	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241324	0fe75f18	movntq qword ptr [edi + 0x18], mm3	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241328	0fe76720	movntq qword ptr [edi + 0x20], mm4	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+0024132c	0fe76f28	movntq qword ptr [edi + 0x28], mm5	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241330	0fe77730	movntq qword ptr [edi + 0x30], mm6	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241334	0fe77f38	movntq qword ptr [edi + 0x38], mm7	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241340	0f184640	prefetchnta byte ptr [esi + 0x40]	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241344	0f184660	prefetchnta byte ptr [esi + 0x60]	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241369	0fe707	movntq qword ptr [edi], mm0	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+0024136c	0fe74f08	movntq qword ptr [edi + 8], mm1	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241370	0fe75710	movntq qword ptr [edi + 0x10], mm2	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241374	0fe75f18	movntq qword ptr [edi + 0x18], mm3	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241378	0fe76720	movntq qword ptr [edi + 0x20], mm4	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+0024137c	0fe76f28	movntq qword ptr [edi + 0x28], mm5	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241380	0fe77730	movntq qword ptr [edi + 0x30], mm6	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00241384	0fe77f38	movntq qword ptr [edi + 0x38], mm7	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+002413d9	0f77	emms	D3D8::D3DDevice_DrawIndexedVertices	D3D	True	code	D3D
+00265054	0f77	emms	FUN_00265042	XMV	True	code	XMV
+00265079	0f77	emms	FUN_00265057	XMV	True	code	XMV
+002650be	0f77	emms	FUN_0026507c	XMV	True	code	XMV
+00265108	0f77	emms	FUN_002650c1	XMV	True	code	XMV
+00265357	0f77	emms	FUN_00265202	XMV	True	code	XMV
+0026571f	0f77	emms	FUN_0026554a	XMV	True	code	XMV
+00265aff	0f77	emms	FUN_0026592a	XMV	True	code	XMV
+0026648d	0f77	emms	FUN_0026642d	XMV	True	code	XMV
+002665c9	0f77	emms	FUN_00266496	XMV	True	code	XMV
+00267a8a	0f77	emms	FUN_00267626	XMV	True	code	XMV
+00268109	0f77	emms	FUN_00267a93	XMV	True	code	XMV
+00268964	0f77	emms	FUN_0026879f	XMV	True	code	XMV
+00268acd	0f77	emms	FUN_0026896d	XMV	True	code	XMV
+00268fed	0f77	emms	FUN_00268d75	XMV	True	code	XMV
+00269365	0f77	emms	FUN_00268ff6	XMV	True	code	XMV
+002693cb	0f77	emms	FUN_0026936e	XMV	True	code	XMV
+00269441	0f77	emms	FUN_0026936e	XMV	True	code	XMV
+002694bc	0f77	emms	FUN_0026936e	XMV	True	code	XMV
+00269564	0f77	emms	FUN_0026936e	XMV	True	code	XMV
+002695ca	0f77	emms	FUN_0026956d	XMV	True	code	XMV
+00269633	0f77	emms	FUN_0026956d	XMV	True	code	XMV
+002696a1	0f77	emms	FUN_0026956d	XMV	True	code	XMV
+00269749	0f77	emms	FUN_0026956d	XMV	True	code	XMV
+0026982a	0f77	emms	FUN_00269752	XMV	True	code	XMV
+002698bf	0f77	emms	FUN_00269752	XMV	True	code	XMV
+00269976	0f77	emms	FUN_00269752	XMV	True	code	XMV
+00269b01	0f77	emms	FUN_00269752	XMV	True	code	XMV
+00269c2b	0f77	emms	FUN_00269752	XMV	True	code	XMV
+00269db6	0f77	emms	FUN_00269752	XMV	True	code	XMV
+00269e2a	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+00269ee2	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+00269f9d	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+0026a056	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+0026a12f	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+0026a2ec	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+0026a431	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+0026a5f3	0f77	emms	FUN_00269dbf	XMV	True	code	XMV
+0026a7fe	0f77	emms	FUN_0026a5fc	XMV	True	code	XMV
+0026a8ae	0f77	emms	FUN_0026a80a	XMV	True	code	XMV
+0026ad44	0f77	emms	FUN_0026ac48	XMV	True	code	XMV
+0026ad94	0f77	emms	FUN_0026ad5d	XMV	True	code	XMV
+0026ae57	0f77	emms	FUN_0026ad9b	XMV	True	code	XMV
+0026aeda	0f77	emms	FUN_0026ae60	XMV	True	code	XMV
+002921c5	fa	cli	FUN_002921b9	XPP	True	code	XPP
+002921d6	fb	sti	FUN_002921b9	XPP	True	code	XPP
+00168dc2	cc	int3	?(after FUN_00168db8)	.text	False	gap-codelike	LIBCMT
+00168dc3	cc	int3	?(after FUN_00168db8)	.text	False	gap-codelike	LIBCMT
+0016ab8e	cc	int3	?(after __trandisp2)	.text	False	gap-codelike	LIBCMT
+0016ab8f	cc	int3	?(after __trandisp2)	.text	False	gap-codelike	LIBCMT
+0016abe3	cc	int3	?(after __startOneArgErrorHandling)	.text	False	gap-codelike	LIBCMT
+0016d63e	cc	int3	?(after ___ascii_stricmp)	.text	False	gap-codelike	LIBCMT
+0016d63f	cc	int3	?(after ___ascii_stricmp)	.text	False	gap-codelike	LIBCMT
