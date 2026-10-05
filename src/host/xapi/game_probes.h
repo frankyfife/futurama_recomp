@@ -20,16 +20,16 @@
 namespace xapi {
 
 struct GameObserverStats {
-    std::uint32_t archivesMounted = 0;   // successful mounts (FUN_0013FE70 returned TRUE)
+    std::uint32_t archivesMounted = 0;  // successful mounts (FUN_0013FE70 returned TRUE)
     std::uint32_t archiveMountFailures = 0;
-    std::uint64_t archiveLookups = 0;    // FUN_0013FE10 calls with the archive search enabled
+    std::uint64_t archiveLookups = 0;  // FUN_0013FE10 calls with the archive search enabled
     std::uint64_t archiveHits = 0;
-    std::uint64_t frames = 0;            // CApp::Frame calls
-    std::uint32_t contextSwitches = 0;   // changes of CApp+0xBC seen after CApp::Frame
-    std::uint32_t discErrorCalls = 0;    // trap:Game::DiscErrorScreen (fatal unless disabled)
-    std::uint32_t language = 0;          // last XGetLanguage() result, 0 = never called
+    std::uint64_t frames = 0;           // CApp::Frame calls
+    std::uint32_t contextSwitches = 0;  // changes of CApp+0xBC seen after CApp::Frame
+    std::uint32_t discErrorCalls = 0;   // trap:Game::DiscErrorScreen (fatal unless disabled)
+    std::uint32_t language = 0;         // last XGetLanguage() result, 0 = never called
     std::uint32_t languageCalls = 0;
-    std::int32_t videoStandard = -1;     // CApp+0xE8 after Game::Init (0 PAL, 1 NTSC), -1 = not yet
+    std::int32_t videoStandard = -1;  // CApp+0xE8 after Game::Init (0 PAL, 1 NTSC), -1 = not yet
     bool gameInitDone = false;
 };
 

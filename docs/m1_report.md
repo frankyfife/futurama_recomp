@@ -168,7 +168,7 @@ Rückgabe der Stubs (seit Phase 5, Befund 1): Exporte mit NTSTATUS-Rückgabe lie
 
 ## 6. Abweichungen vom Design
 
-Die vollständige Tabelle steht in [`loader_design.md` Abschnitt 8](loader_design.md#8-abweichungen-in-m1). Die Entscheidungen E1–E12 gelten unverändert.
+Die vollständige Tabelle steht in [`loader_design.md` Abschnitt 8](loader_design.md#81-abweichungen-in-m1). Die Entscheidungen E1–E12 gelten unverändert.
 
 | # | Kurzfassung |
 |---|---|

@@ -24,11 +24,12 @@ int RunHost(const LauncherInfo* info) noexcept;
 [[noreturn]] void ExitHostProcess(int exitCode, const char* reason) noexcept;
 
 // Exit reporters (M2 integration): module statistics that belong into the log at every orderly
-// process end through ExitHostProcess (--frames limit, --stop-at, guest shutdown, watchdog), e.g. the
-// fiber switch and APC delivery counters of M2 exit criterion 5. They run on the exiting thread
-// before the "process exit" line, once, sorted by name (deterministic across builds and static
-// initialisation orders). A reporter must not throw, must not block on guest threads and must not
-// call ExitHostProcess. At most kMaxExitReporters; registering the same name twice keeps the first.
+// process end through ExitHostProcess (--frames limit, --stop-at, guest shutdown), e.g. the fiber
+// switch and APC delivery counters of M2 exit criterion 5. They run on the exiting thread before the
+// "process exit" line, once, sorted by name (deterministic across builds and static initialisation
+// orders). Not after a watchdog timeout (kExitWatchdog: a hung guest thread may hold a lock that a
+// reporter takes). A reporter must not throw, must not block on guest threads and must not call
+// ExitHostProcess. At most kMaxExitReporters; registering the same name twice keeps the first.
 // core::Fatal does not run them (it has the crash reporters of core/crash.h).
 using ExitReporter = void (*)() noexcept;
 inline constexpr int kMaxExitReporters = 16;

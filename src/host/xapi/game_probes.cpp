@@ -42,8 +42,8 @@ namespace xapi {
 namespace {
 
 constexpr std::uint32_t kMaxGuestName = 128;  // longest guest string copied into the log
-constexpr std::size_t kMaxArchives = 128;      // FutPAL00..99 + sysPAL/sysNTSC
-constexpr std::size_t kMaxContexts = 32;       // context list walk / history cap
+constexpr std::size_t kMaxArchives = 128;     // FutPAL00..99 + sysPAL/sysNTSC
+constexpr std::size_t kMaxContexts = 32;      // context list walk / history cap
 
 std::atomic<std::uint32_t> g_mounted{0};
 std::atomic<std::uint32_t> g_mountFailures{0};
@@ -78,7 +78,8 @@ std::string GuestString(guest::GuestAddr p, std::uint32_t max = kMaxGuestName) {
         return "(null)";
     }
     for (std::uint32_t i = 0; i < max; ++i) {
-        if (!guest::IsReadable(p + i, 1)) {
+        // One VirtualQuery per page (at the start and whenever the string crosses a page boundary).
+        if ((i == 0 || ((p + i) & 0xFFFu) == 0) && !guest::IsReadable(p + i, 1)) {
             out += "<unreadable>";
             break;
         }
@@ -184,7 +185,8 @@ std::uint32_t __cdecl ArchiveMountProbe(const char* name) noexcept {
             const guest::GuestAddr stream = ReadU32(entry);
             const guest::GuestAddr header = ReadU32(entry + 4);
             const std::uint32_t headerSize = ReadU32(header);
-            const std::uint32_t fileSize = ReadU32(stream + 0x40);  // NiUDSStream +0x40 file size (files.md 2.4)
+            // NiUDSStream +0x40 = file size (files.md 2.4).
+            const std::uint32_t fileSize = ReadU32(stream + 0x40);
             {
                 std::lock_guard<std::mutex> lock(g_lock);
                 auto& names = ArchiveNames();
@@ -196,15 +198,16 @@ std::uint32_t __cdecl ArchiveMountProbe(const char* name) noexcept {
                 }
             }
             g_mounted.fetch_add(1);
-            FUT_LOGI(Vfs, "archive: mounted %s as #%u (%u bytes, header 0x%X bytes, stream 0x%08X)", text.c_str(),
-                     index, fileSize, headerSize, stream);
-            core::trace::VfsLine("%-25s \"%s\" -> archive #%u (%u bytes, header 0x%X) : mounted", "archive mount",
-                                 text.c_str(), index, fileSize, headerSize);
+            FUT_LOGI(Vfs, "archive: mounted %s as #%u (%u bytes, header 0x%X bytes, stream 0x%08X)",
+                     text.c_str(), index, fileSize, headerSize, stream);
+            core::trace::VfsLine("%-25s \"%s\" -> archive #%u (%u bytes, header 0x%X) : mounted",
+                                 "archive mount", text.c_str(), index, fileSize, headerSize);
         } else {
             g_mountFailures.fetch_add(1);
             FUT_LOGI(Vfs, "archive: %s not mounted (FUN_0013FE70 -> %u; the game stops this mount loop here)",
                      text.c_str(), eax & 0xFF);
-            core::trace::VfsLine("%-25s \"%s\" : not mounted (see the open above)", "archive mount", text.c_str());
+            core::trace::VfsLine("%-25s \"%s\" : not mounted (see the open above)", "archive mount",
+                                 text.c_str());
         }
     } catch (...) {
     }
@@ -216,7 +219,8 @@ std::uint32_t __cdecl ArchiveMountProbe(const char* name) noexcept {
 // once while [0x2D7AE8] = 0 (during a mount). Only caller: NiUDSStream ctor 0x13F3B2 (&offset =
 // stream +0x4C, &size = +0x40), which opens "D:\" + name as a loose file when it gets 0
 // (files.md 2.4/3.3). Prologue A0 E8 7A 2D 00 = mov al,[0x2D7AE8] (absolute operand).
-std::uint32_t __cdecl ArchiveLookupProbe(const char* name, std::uint32_t* offset, std::uint32_t* size) noexcept {
+std::uint32_t __cdecl ArchiveLookupProbe(const char* name, std::uint32_t* offset,
+                                         std::uint32_t* size) noexcept {
     const bool enabled = guest::Read<std::uint8_t>(guest::kGameArchiveSearchVar) != 0;
     const std::uint32_t stream = core::CallGuest(Trampoline(guest::kGameArchiveLookup),
                                                  {guest::Addr(name), guest::Addr(offset), guest::Addr(size)});
@@ -234,7 +238,8 @@ std::uint32_t __cdecl ArchiveLookupProbe(const char* name, std::uint32_t* offset
             const std::uint32_t len = ReadU32(guest::Addr(size));
             core::trace::VfsLine("%-25s \"%s\" -> %s+0x%08X (%u bytes) : hit archive #%d", "archive lookup",
                                  text.c_str(), archive.c_str(), off, len, index);
-            FUT_LOGT(Vfs, "archive lookup \"%s\" -> %s+0x%08X (%u bytes)", text.c_str(), archive.c_str(), off, len);
+            FUT_LOGT(Vfs, "archive lookup \"%s\" -> %s+0x%08X (%u bytes)", text.c_str(), archive.c_str(), off,
+                     len);
         } else {
             core::trace::VfsLine("%-25s \"%s\" : not archived (loose file D:\\ follows)", "archive lookup",
                                  text.c_str());
@@ -264,16 +269,24 @@ std::uint32_t __fastcall GameInitProbe(std::uint32_t self, std::uint32_t /*edx*/
         std::memcpy(&fps, guest::Ptr<const void>(guest::kGameFpsVar), sizeof(fps));
         std::memcpy(&dt, guest::Ptr<const void>(guest::kGameFrameTimeVar), sizeof(dt));
         FUT_LOGI(Game, "game: Game::Init (0x%08X) -> %u (CApp 0x%08X)", guest::kGameInit, eax & 0xFF, self);
-        FUT_LOGI(Game, "game: video standard CApp+0xE8 = %u (%s; %.0f fps, fixed time step %.4f s, movie tag \"%s\")",
-                 standard, standard == 0 ? "PAL" : standard == 1 ? "NTSC" : "?", static_cast<double>(fps),
-                 static_cast<double>(dt), GuestString(guest::kGameMovieTagVar, 8).c_str());
+        FUT_LOGI(
+            Game,
+            "game: video standard CApp+0xE8 = %u (%s; %.0f fps, fixed time step %.4f s, movie tag \"%s\")",
+            standard,
+            standard == 0   ? "PAL"
+            : standard == 1 ? "NTSC"
+                            : "?",
+            static_cast<double>(fps), static_cast<double>(dt),
+            GuestString(guest::kGameMovieTagVar, 8).c_str());
         const guest::GuestAddr strings = ReadU32(guest::kGameStringManagerPtr);
         const std::string language =
-            strings != 0 ? GuestString(ReadU32(strings + guest::kStringManagerLanguageOffset), 32) : "(no string manager)";
+            strings != 0 ? GuestString(ReadU32(strings + guest::kStringManagerLanguageOffset), 32)
+                         : "(no string manager)";
         const std::uint32_t xlang = g_language.load();
-        FUT_LOGI(Game, "game: language \"%s\" (string manager 0x%08X; XGetLanguage() = %u %s)", language.c_str(),
-                 strings, xlang, XboxLanguageName(xlang));
-        FUT_LOGI(Game, "game: BUILD.TXT = \"%s\"", GuestString(guest::kGameBuildText, guest::kGameBuildTextSize).c_str());
+        FUT_LOGI(Game, "game: language \"%s\" (string manager 0x%08X; XGetLanguage() = %u %s)",
+                 language.c_str(), strings, xlang, XboxLanguageName(xlang));
+        FUT_LOGI(Game, "game: BUILD.TXT = \"%s\"",
+                 GuestString(guest::kGameBuildText, guest::kGameBuildTextSize).c_str());
         std::string archives;
         std::uint32_t archiveCount = 0;
         for (const std::string& n : MountedArchiveNames()) {
@@ -295,11 +308,13 @@ std::uint32_t __fastcall GameInitProbe(std::uint32_t self, std::uint32_t /*edx*/
             std::lock_guard<std::mutex> lock(g_lock);
             Contexts().push_back(currentName);
         }
-        FUT_LOGI(Game, "game: contexts %s; current \"%s\" (0x%08X)", contexts.c_str(), currentName.c_str(), current);
+        FUT_LOGI(Game, "game: contexts %s; current \"%s\" (0x%08X)", contexts.c_str(), currentName.c_str(),
+                 current);
         const guest::GuestAddr handler = ReadU32(guest::kGameDiscErrorHandlerVar);
         FUT_LOGI(Game, "game: disc error handler [0x%08X] = 0x%08X (vtable 0x%08X, vf0 0x%08X%s)",
                  guest::kGameDiscErrorHandlerVar, handler, ReadU32(handler), ReadU32(ReadU32(handler)),
-                 ReadU32(ReadU32(handler)) == guest::kGameDiscErrorScreen ? " = trap:Game::DiscErrorScreen" : "");
+                 ReadU32(ReadU32(handler)) == guest::kGameDiscErrorScreen ? " = trap:Game::DiscErrorScreen"
+                                                                          : "");
     } catch (...) {
     }
     return eax;
@@ -363,16 +378,20 @@ std::uint32_t __stdcall XGetLanguageProbe() noexcept {
 // never called. The trap logs TRAP + the stream and ends the process with core::Fatal (exit code 3);
 // `[hooks] disable = trap:Game::DiscErrorScreen` restores the original endless loop.
 // Not a Ghidra function: tools/gen/extra_function_starts.tsv (0xF2FD0, 0xD9 bytes).
-void __fastcall DiscErrorScreenTrap(std::uint32_t self, std::uint32_t /*edx*/, std::uint32_t stream) noexcept {
+void __fastcall DiscErrorScreenTrap(std::uint32_t self, std::uint32_t /*edx*/,
+                                    std::uint32_t stream) noexcept {
     g_discErrorCalls.fetch_add(1);
     const std::uint32_t handle = ReadU32(stream + 0x14);  // NiUDSStream layout (files.md 2.4)
     const std::uint32_t base = ReadU32(stream + 0x4C);
     const std::uint32_t pos = ReadU32(stream + 0x5C);
     const std::uint32_t fileSize = ReadU32(stream + 0x40);
     FUT_LOGE(Game,
-             "TRAP DiscErrorScreen @0x%08X from %s (handler 0x%08X, stream 0x%08X: handle 0x%X, archive base 0x%X, "
-             "position 0x%X, size 0x%X) - a disc read failed (ReadFileEx returned FALSE or completed with an error)",
-             guest::kGameDiscErrorScreen, Caller(_ReturnAddress()).c_str(), self, stream, handle, base, pos, fileSize);
+             "TRAP DiscErrorScreen @0x%08X from %s (handler 0x%08X, stream 0x%08X: handle 0x%X, archive base "
+             "0x%X, "
+             "position 0x%X, size 0x%X) - a disc read failed (ReadFileEx returned FALSE or completed with an "
+             "error)",
+             guest::kGameDiscErrorScreen, Caller(_ReturnAddress()).c_str(), self, stream, handle, base, pos,
+             fileSize);
     core::Fatal("disc error handler called (the original shows the disc error screen forever; M2 exit 5)");
 }
 
@@ -418,12 +437,15 @@ void LogGameSummary() noexcept {
             history += (history.empty() ? "" : " -> ") + c;
         }
         FUT_LOGI(Game,
-                 "game summary: %llu CApp::Frame calls, contexts %s (%u switches), video standard %d, XGetLanguage %u "
-                 "(%s, %u calls), archives %u mounted / %u not mounted, archive lookups %llu (%llu hits), disc error "
+                 "game summary: %llu CApp::Frame calls, contexts %s (%u switches), video standard %d, "
+                 "XGetLanguage %u "
+                 "(%s, %u calls), archives %u mounted / %u not mounted, archive lookups %llu (%llu hits), "
+                 "disc error "
                  "screen calls %u",
                  static_cast<unsigned long long>(s.frames), history.empty() ? "(none)" : history.c_str(),
-                 s.contextSwitches, s.videoStandard, s.language, XboxLanguageName(s.language), s.languageCalls,
-                 s.archivesMounted, s.archiveMountFailures, static_cast<unsigned long long>(s.archiveLookups),
+                 s.contextSwitches, s.videoStandard, s.language, XboxLanguageName(s.language),
+                 s.languageCalls, s.archivesMounted, s.archiveMountFailures,
+                 static_cast<unsigned long long>(s.archiveLookups),
                  static_cast<unsigned long long>(s.archiveHits), s.discErrorCalls);
     } catch (...) {
     }
@@ -433,11 +455,11 @@ void LogGameSummary() noexcept {
 
 FUT_PROBE(guest::kGameArchiveMount, &xapi::ArchiveMountProbe, Cdecl, "probe:Game::ArchiveMount",
           "6A FF 68 D6 CE 17 00", 7);
-FUT_PROBE(guest::kGameArchiveLookup, &xapi::ArchiveLookupProbe, Cdecl, "probe:Game::ArchiveLookup", "A0 E8 7A 2D 00",
-          5);
+FUT_PROBE(guest::kGameArchiveLookup, &xapi::ArchiveLookupProbe, Cdecl, "probe:Game::ArchiveLookup",
+          "A0 E8 7A 2D 00", 5);
 FUT_PROBE(guest::kGameInit, &xapi::GameInitProbe, Thiscall, "probe:Game::Init", "64 A1 00 00 00 00", 6);
 FUT_PROBE(guest::kCAppFrame, &xapi::CAppFrameProbe, Thiscall, "probe:CApp::Frame", "8B 15 40 67 2D 00", 6);
-FUT_PROBE(guest::kXapiXGetLanguage, &xapi::XGetLanguageProbe, Stdcall, "probe:XAPILIB::XGetLanguage", "55 8B EC 51 51",
-          5);
+FUT_PROBE(guest::kXapiXGetLanguage, &xapi::XGetLanguageProbe, Stdcall, "probe:XAPILIB::XGetLanguage",
+          "55 8B EC 51 51", 5);
 FUT_HOOK_EX(guest::kGameDiscErrorScreen, &xapi::DiscErrorScreenTrap, Thiscall, "trap:Game::DiscErrorScreen",
             "83 EC 0C 8B 0D 84 7B 2E 00", true);

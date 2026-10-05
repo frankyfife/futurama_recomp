@@ -56,9 +56,12 @@ endfunction()
 # ctest from the build root (review finding 10). Tests: fut_tests (unit tests, tests/CMakeLists.txt)
 # and, when FUT_TEST_CONFIG names a test INI with the user's ISO and a userdata directory under run/,
 # fut_selftest (design 5.2: futurama.exe --selftest --stop-at=main) and fut_m1_check (tools/m1_check.py,
-# all six M1 exit criteria over 10 runs).
+# all six M1 exit criteria over 10 runs). FUT_M2_TEST_CONFIG (an INI without stop_at, e.g.
+# run/m2/futurama.ini) adds fut_m2_check (tools/m2_check.py, all seven M2 exit criteria over 3 runs of
+# 3000 frames, about 65 s each).
 enable_testing()
 set(FUT_TEST_CONFIG "" CACHE FILEPATH "Test INI for fut_selftest/fut_m1_check ([paths] iso + userdata under run/); empty = not registered")
+set(FUT_M2_TEST_CONFIG "" CACHE FILEPATH "Test INI for fut_m2_check (no stop_at; [paths] iso + userdata under run/); empty = not registered")
 
 add_subdirectory(src/shared)
 add_subdirectory(src/game)
@@ -86,6 +89,14 @@ if(FUT_TEST_CONFIG)
         # Both tests write into the same userdata directory.
         set_tests_properties(fut_selftest PROPERTIES RUN_SERIAL TRUE)
     endif()
+endif()
+
+# fut_m2_check (M2 exit criteria, design section 6): runs past main until the frame limit.
+if(FUT_M2_TEST_CONFIG AND Python3_FOUND)
+    add_test(NAME fut_m2_check
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/m2_check.py
+                --exe $<TARGET_FILE:fut_launcher> --config ${FUT_M2_TEST_CONFIG} --runs 3 --fresh)
+    set_tests_properties(fut_m2_check PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
 endif()
 
 # fut_gen: verify that the checked-in generated files are current (needs Python; not part of ALL).
