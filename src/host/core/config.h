@@ -9,8 +9,8 @@
 // parentheses (e.g. the ISO) through the INI file.
 //
 // Every key is checked against the table kKnownKeys in config.cpp: an unknown key in a known section
-// and a value that is not a valid boolean/number are configuration errors (exit code 1); an unknown
-// section only produces a warning in the log. Known keys:
+// and a value that is not a valid boolean/number/choice (language, key_mode, d3d_traps) are
+// configuration errors (exit code 1); an unknown section only produces a warning in the log. Known keys:
 //
 //   [paths]
 //   iso      = Y:\xbox games\...\Futurama (Europe) (En,Fr,De,Es,It).iso   ; disc image (D:, default.xbe)
@@ -26,6 +26,8 @@
 //   minidump = 1               ; minidump on fatal errors (default 1)
 //   mmio_trap = 1              ; reserve the Xbox MMIO range 0xFD000000.. as NOACCESS (default 1)
 //   crash_test = 0             ; unhandled guest AV right before entry (tests the crash path)
+//   exit_hang_test = 0         ; (M2 review) an exit reporter that never returns: the watchdog must end
+//                              ; the orderly exit with exit code 5 (tests the watchdog during the exit)
 //   frames   = 3000            ; (gfx, M2) end with exit code 0 after N displayed frames, 0 = off
 //   [kernel]
 //   strict   = 1               ; UNIMPLEMENTED kernel stub -> debug break + abort
@@ -39,15 +41,18 @@
 //   [hooks]
 //   disable  = 0x13F250,NiUDSStream::*   ; design 3.2: name, prefix* or address (any 0x form)
 //   [settings]
-//   language = english         ; english|german|french|spanish|italian|... or 1..9
+//   language = english         ; english|japanese|german|french|spanish|italian|korean|tchinese|
+//                              ; portuguese or 1..9 (anything else: exit code 1)
 //   game_region / av_region / video_flags / audio_flags / av_pack = <number>
 //   [saves]
-//   key_mode = fixed           ; fixed | xbox (design 4.5)
+//   key_mode = fixed           ; fixed | xbox (design 4.5; anything else: exit code 1)
 //   signature_key / xbox_cert_key = <32 hex digits>
 //   [render]                   ; (gfx module M2, src/host/gfx/gfx_config.h)
 //   frame_rate = 50            ; DisplayFrame paces to N Hz like the Xbox vblank wait, 0 = unthrottled
-//   d3d_traps = abort          ; abort | log (a hit D3D trap logs and returns 0 with the right purge)
-//   load_textures = 1          ; NiPCRenderer slot 65 reads texture files (size, like FUN_0015E010)
+//   d3d_traps = abort          ; abort | log (a hit D3D trap logs and returns 0 with the right purge;
+//                              ; anything else: exit code 1)
+//   load_textures = 1          ; NiPCRenderer slot 65 reads texture files like FUN_0015E010 (0: such
+//                              ; textures get the 8x8 default texture)
 //   [audio]                    ; (M2, src/host/audio/dsound_stubs.h)
 //   dummy_streams = 0          ; 1: DirectSoundCreateStream returns stub streams (packets complete after
 //                              ;    their play time) instead of NULL; 0 = design default *ppStream = NULL
@@ -133,6 +138,9 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
 
 // True if [section] key is in the table of known keys (config.cpp kKnownKeys).
 bool IsKnownConfigKey(std::string_view section, std::string_view key);
+// (M2 review) The allowed values of a choice key ("fixed|xbox", "english|...|1..9"), nullptr for keys of
+// other types. Tests compare them with the modules that parse the key.
+const char* ConfigKeyChoices(std::string_view section, std::string_view key);
 
 // Win32 long path support of this process (LongPathsEnabled = 1 and the launcher manifest's
 // longPathAware). Without it LoadConfig rejects a userdata path longer than this many characters,

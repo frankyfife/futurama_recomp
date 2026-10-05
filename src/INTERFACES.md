@@ -67,16 +67,23 @@ and must not set `stop_at`; the script adds `--selftest`, and `--frames=3000` / 
 `[debug] frames` / `trace`). Per run it checks the seven M2 exit criteria of design section 6 from the log and
 `vfs_trace.log`: (1) `archive: mounted sysPAL.img as #0` .. `FutPAL04.img as #5`, `FutPAL05.img not mounted`
 + a documented miss in the trace, `game: video standard CApp+0xE8 = 0 (PAL`; (2) `XGetLanguage() = N` and
-`game: language "..."` match `[settings] language`; (3) `game: BUILD.TXT = "1.25"` + the archive lookup;
-(4) first context Intro, Intro -> next context, `FRAMES: limit of N frames reached`, exit 0 before the timeout;
-(5) `fiber summary: N switches` > 0, `I/O APC stats` with XBE completions > 0 and 0 error completions / failed
-requests, disc error handler registered + trapped and `disc error screen calls 0`; (6) `SELFTEST PASS
+`game: language "..."` match `[settings] language` (default english; the game string is compared
+case-insensitively - for english the game keeps its default `"English"`); (3) `game: BUILD.TXT = "1.25"` + the
+archive lookup; (4) first context Intro, `FRAMES: limit of N frames reached`, exit 0 before the timeout, and from
+1000 frames on also Intro -> next context (shorter runs only warn); (5) `fiber summary: N switches (G game, S
+self-test` with G > 0 and `fiber: first SwitchToFiber (game)` (the self-test's own switches do not count), `I/O
+APC stats` with XBE completions > 0, 0 error completions and 0 `failed APC reads` (failed writes = save layer,
+reported only), disc error handler registered + trapped and `disc error screen calls 0`; (6) `SELFTEST PASS
 GuestSehOnFiberStack`; (7) every `vfs_trace.log` line a hit, archive hit, documented miss, symlink or mount line
-(no UNDOCUMENTED / error), every non-archived asset followed by its loose open; plus no error/warn/UNIMPLEMENTED/
-TRAP line. 3000 frames at the default 50 Hz take about 60 s per run (`[debug] timeout` must be larger, e.g. 150).
+(no UNDOCUMENTED / error; lines ending in `[self-test]` are counted apart), every non-archived asset followed by
+its loose open; plus no error/warn/UNIMPLEMENTED/TRAP line. On a failed run the script prints the exe's own
+stderr line (not the console copy of the log) or the first error/warn line of the log. 3000 frames at the
+default 50 Hz take about 60 s per run (`[debug] timeout` must be larger, e.g. 150).
 Logs: `<userdata>\m2_check\run_NN.log`, `run_NN_vfs_trace.log`. Configs: `run\m2` (german, Debug), `run\m2-rel` /
 `run\m2-clang` (same settings for the RelWithDebInfo / clang-cl builds), `run\m2-fr` (french, 1000 frames), `run\m2-long` (30000 frames, stability), `run\m2-ctest` (ctest `fut_m2_check`, cache variable
-`FUT_M2_TEST_CONFIG`, 3 runs with `--fresh`).
+`FUT_M2_TEST_CONFIG`, 3 runs with `--fresh`); after the review fixes `run\m2fix\<de|rel|clang|en|en-explicit|fr|
+frames100|long|ctest|ctest-en|exit-hang>` (docs/m2_report.md). Cache variable `FUT_M2_EXTRA_TEST_CONFIGS` (list)
+registers one-run variants `fut_m2_check_<directory name>` (e.g. `run\m2fix\ctest-en`: no language key = english).
 
 Skeleton state (end of phase 1): every stage is an empty stub; a run logs all stages, lists the 110
 kernel slots that are still generated stubs and stops at `AdoptBootThreadAndRunEntry` with exit code 2.
@@ -139,6 +146,8 @@ NTSTATUS __stdcall NtFoo(...) noexcept { FUT_HLE_TRY { ... } FUT_HLE_CATCH("NtFo
 ```
 
 Channels `Core Krnl Vfs Xapi Gfx Snd Vid Inp Hook Game`; levels `Error Warn Info Debug Trace`.
+`core::LogSeconds()` / `core::LogThreadName()` (M2 review) return the time and thread columns of the log; files
+that must line up with `futurama.log` (`vfs_trace.log`) use them.
 `core::SetFatalHook(fn)` (crash module) runs inside `Fatal`. printf format strings are checked by MSVC
 (`_Printf_format_string_`): use `%lu`/`%lX` for `ULONG`/`DWORD`/`NTSTATUS` casts, `%u`/`%X` for `uint32_t`.
 
@@ -155,6 +164,11 @@ unknown keys in a known section and invalid booleans/numbers are configuration e
 unknown sections only a warning (`Config::warnings`, logged after the log opens). A userdata path longer
 than 200 characters is rejected when the process has no Win32 long path support
 (`core::ProcessLongPathsEnabled()`).
+M2 review: choice keys (`KeyType::Choice`, `core::ConfigKeyChoices(section, key)`) are validated with the
+configuration too, so an invalid `[settings] language` (names of `kernel\kernel_settings.cpp` or 1..9),
+`[saves] key_mode` (fixed|xbox) or `[render] d3d_traps` (abort|log) ends with exit code 1 instead of a stage
+failure (exit code 2). `[debug] exit_hang_test = 1` registers an exit reporter that never returns (test of the
+watchdog during the exit, section 5).
 `core::WideToUtf8` / `core::Utf8ToWide` convert strings.
 
 ### 4.4 Guest addresses and memory - `core\guest.h`
@@ -307,7 +321,9 @@ XGetDiskClusterSizeA 0xF8081, memory.cpp pool init 0xA4920, XapiBootToDash.
 FUT_SELFTEST(TlsSlotsReadBack, Host) { detail = "..."; return ok; }   // phases Host, Mapped, AdoptedThread
 ```
 
-Run with `--selftest`; result lines `SELFTEST PASS|FAIL <name>: <detail>`.
+Run with `--selftest`; result lines `SELFTEST PASS|FAIL <name>: <detail>`. `core::InSelfTest()` (M2 review) is
+true while the runner executes a test on the calling thread; the fiber counters and the VFS trace use it to keep
+the self-tests' own activity apart from the game's.
 
 ### 4.11 Guest structures - `src\shared\`
 
@@ -392,10 +408,12 @@ Design 1.7 "Fibers", E9, R2. XAPI `CreateFiber` 0x1708B0, `DeleteFiber` 0x17093C
   `TEB.DeallocationStack` (fs:[0xE0C]) from the bookkeeping (thread fiber `[f+8] = 0`: the real values saved
   when the thread fiber was left) and replaces the saved ExceptionList -1 of a fresh fiber by the fiber-top
   record. Callable from host code (`fut_switch_to_fiber(fiber)`) on an adopted thread.
-- Counters: `xapi::GetFiberStats()` `{switches, toThreadFiber, chainFixups, unknownStacks}`,
-  `xapi::FiberSwitchCount()`, `xapi::LogFiberSummary()` (XAPI/info `fiber summary: N switches ...`; crash
-  reporter "fibers" after the first switch; exit reporter "fibers" since the M2 integration). Log evidence: KRNL/info `fiber stacks: ...` (first stack),
-  XAPI/info `fiber: first SwitchToFiber ...` (M2 exit 5), every switch at XAPI/trace.
+- Counters: `xapi::GetFiberStats()` `{switches, toThreadFiber, chainFixups, unknownStacks, selfTestSwitches}`,
+  `xapi::FiberSwitchCount()`, `xapi::LogFiberSummary()` (XAPI/info `fiber summary: N switches (G game, S
+  self-test; ...)`; crash reporter "fibers" after the first switch; exit reporter "fibers" since the M2
+  integration). Log evidence: KRNL/info `fiber stacks: ...` (first stack), XAPI/info `fiber: first SwitchToFiber
+  (self-test) ...` and `fiber: first SwitchToFiber (game) ...` (M2 exit 5 needs the game line; review finding 5),
+  every switch at XAPI/trace.
 - Self-tests (AdoptedThread, `core\selftest_m2.cpp`): `GuestSehOnFiberStack` (M2 exit 6) and
   `GuestSehThroughHostFrame` (rule below). Unit tests `tests\fiber_tests.cpp` (incl. child processes with the
   SEHOP mitigation enforced: positive, negative control, unhandled -> top-level filter).
@@ -431,9 +449,12 @@ Design 2.2 (E6): the graphics boundary is the NiRenderer interface. Nothing is d
   NiXBoxSourceTextureData: +0x10 renderer, +0x3C D3D texture, +0x48/+0x4C size, +0x54, +0x58, +0x5C, +0x60 -
   the offsets the movie player FUN_000EE220 writes) and `NiPCRenderedTextureData` (0x84 + target descriptor).
   Own data vtables (11 / 14 slots) mirror 0x2AB97C / 0x2AB9F4; slot 0 releases +0x3C through the D3D shim,
-  deletes the rest of the chain and frees through operator delete. Slot 65 takes the size from the
-  NiPixelData (+0x34) or, with `[render] load_textures = 1`, reads the texture file (+0x30) through the game's
-  NiImageConverter (0x30EF64, vf2) like FUN_0015E010.
+  deletes the rest of the chain and frees through operator delete. Slot 65 picks the image in the order of
+  FUN_0015E010 (M2 review finding 1): the texture file (+0x30) if a path is set, read through the game's
+  NiImageConverter (0x30EF64, vf2), else the NiPixelData (+0x34); no image, an unreadable file or a width/height
+  that is not a power of two gives the renderer's default texture (8x8, A8R8G8B8 - FUN_0014AB50), silently
+  (GFX/debug, counters in the statistics line). `[render] load_textures = 0` skips the file read (default
+  texture, counted as "not loaded").
 - **D3D shim** (`gfx\d3d_shim.h`, design 2.2 table, stdcall, purge `static_assert`ed): `D3DDevice_AddRef/
   Release` (counter), `CreateTexture2` (Xbox-like header {Common 0x1040001, Data, Lock, Format, Size} + pixel
   buffer, e.g. W*H*2 for YUY2 0x24), `D3DTexture_GetSurfaceLevel2` (surface 0x1050001 holding its parent),
@@ -470,6 +491,12 @@ Design 2.2 (E6): the graphics boundary is the NiRenderer interface. Nothing is d
   `gfx` (`gfx::LogRendererStatistics`, first `NiXBoxRenderer::Create`), `io apc`
   (`krnl::io::LogIoApcStats("process exit")`, static), `xdk` (`xdk::LogCallSummary(Info)`, static). Every orderly
   end (`--frames`, `--stop-at`, guest shutdown) therefore logs the fiber, APC and XDK lines (M1 logs: 5 lines).
+  M2 review finding 7: if the orderly exit itself hangs (a reporter or the log flush blocks), the watchdog calls
+  `ExitHostProcess(kExitWatchdog)` again, which then terminates at once (stderr line, exit code 5) instead of
+  waiting; `core::ExitInProgress()` tells the watchdog to skip its log-based thread dump. Test knob
+  `[debug] exit_hang_test`. The `io apc` line reads `..., error completions N, failed APC reads N (disc error
+  path), failed APC writes N (save layer)` (finding 2: `IoApcStats::failedWriteRequests`; a failed WriteFileEx
+  is a KRNL/warn, a failed ReadFileEx a KRNL/error).
 - **Game observer probes** (`xapi\game_probes.cpp`, FUT_PROBE: log + call the original, design 8.2 B7): the
   evidence of M2 exit criteria 1-5 and 7 on log level info.
 
@@ -478,12 +505,14 @@ Design 2.2 (E6): the graphics boundary is the NiRenderer interface. Nothing is d
 | `probe:Game::ArchiveMount` | `FUN_0013FE70` (cdecl 1) | VFS/info `archive: mounted <name> as #<i> (<size> bytes, header 0x.. bytes, stream ..)` / `archive: <name> not mounted (...)`; trace `archive mount "<name>" ... : mounted` / `: not mounted` |
 | `probe:Game::ArchiveLookup` | `FUN_0013FE10` (cdecl 3) | trace per asset `archive lookup "<name>" -> <archive>+0x<offset> (<size> bytes) : hit archive #<i>` / `: not archived (loose file D:\ follows)`; VFS/trace in the log |
 | `probe:Game::Init` | `FUN_000A26A0` (thiscall) | GAME/info `game: Game::Init (...) -> 1`, `game: video standard CApp+0xE8 = 0 (PAL; 50 fps, fixed time step 0.0200 s, movie tag "PAL")`, `game: language "german" (...)`, `game: BUILD.TXT = "1.25"`, `game: archives mounted: ...`, `game: contexts ...; current "Intro" (...)`, `game: disc error handler [0x0030E68C] = 0x002D707C (... = trap:Game::DiscErrorScreen)` |
-| `probe:CApp::Frame` | `FUN_000D2630` (thiscall, every frame) | GAME/info `game: context <from> -> <to> (CApp::Frame #N)`; GAME/warn if it returns FALSE (main loop ends) |
+| `probe:CApp::Frame` | `FUN_000D2630` (thiscall, every frame) | counts frames; fallback `game: context <from> -> <to> (CApp::Frame #N) [seen after the frame]` if CApp+0xBC changed without the probe below; GAME/warn if it returns FALSE (main loop ends) |
+| `probe:Game::ContextSwitch` (M2 review) | `FUN_000A48C0` (cdecl 0, pool maintenance; logs only for the call 0xA2E40 in Game::Frame, return 0xA2E45) | GAME/info `game: context <from> -> <to> (CApp::Frame #N)` at every switch Game::Frame makes, also several within one frame (finding 4) |
 | `probe:XAPILIB::XGetLanguage` | 0xF6440 | XAPI/info `XGetLanguage() = 3 (german), called from ...` whenever the value changes |
 | `trap:Game::DiscErrorScreen` | 0xF2FD0 (vf0 of the disc error handler 0x2D707C, thiscall 1; extra function start) | GAME/error `TRAP DiscErrorScreen @0x000F2FD0 from ... (stream ...)` + `core::Fatal` (the original loops forever) |
 
   API: `xapi::GetGameObserverStats()` `{archivesMounted, archiveMountFailures, archiveLookups, archiveHits, frames,
-  contextSwitches, discErrorCalls, language, languageCalls, videoStandard, gameInitDone}`, `MountedArchiveNames()`,
+  contextSwitches, switchesSeenAfterFrame, discErrorCalls, language, languageCalls, videoStandard, gameInitDone}`,
+  `MountedArchiveNames()`,
   `ContextHistory()`, `XboxLanguageName(value)`, `LogGameSummary()` (GAME/info `game summary: ...`). Guest
   constants in `core\guest.h` (block "added in M2 phase 2"). Unit tests: `tests\m2_integration_tests.cpp`.
 
@@ -508,6 +537,8 @@ Design 2.2 (E6): the graphics boundary is the NiRenderer interface. Nothing is d
 | `core::ReadOriginalXbeBytes(va, out, n)` / `core::XbeFileOffset(va, off)` - original (unpatched) image bytes, e.g. for XeLoadSection | core -> kernel |
 | `platform::RequestQuit(exitCode)` makes the boot thread's message loop return; the loop also ends (code 4) when `krnl::GuestThreadsExitedEvent()` is signaled | core <- kernel, all |
 | `core::AddExitReporter(name, fn)` - statistics logged by `ExitHostProcess` at every orderly end (not after a watchdog timeout), sorted by name (section 4.16) | core -> all (M2 integration) |
+| `core::ExitInProgress()`; a second `ExitHostProcess(kExitWatchdog, ..)` during a hung exit terminates at once (M2 review finding 7) | core -> platform |
+| `core::InSelfTest()` - activity of the self-tests is reported apart (fiber switches, `[self-test]` in `vfs_trace.log`) | core -> xapi, trace (M2 review) |
 
 ## 6. Conventions (design 5.3)
 
@@ -575,3 +606,8 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-05 | integration (M2 phase 2) | new `xapi\game_probes.h/.cpp`, `core\trace.cpp` (VFS trace header), new `tests\m2_integration_tests.cpp` | Five game observer probes + `trap:Game::DiscErrorScreen` (section 4.16, design 8.2 B7/B9/B10); `vfs_trace.log` gains `archive mount` / `archive lookup` lines (header explains them). 6 more `HOOK INFO` lines (160 hooks). |
 | 2026-10-05 | integration (M2 phase 2) | `CMakeLists.txt`, new `tools\m2_check.py`, run configs `run\m2`, `run\m2-fr`, `run\m2-long`, `run\m2-ctest` | M2 exit check (section 1): seven criteria per run, `--runs N --fresh`; cache variable `FUT_M2_TEST_CONFIG` registers ctest `fut_m2_check` (3 runs, `--fresh`, timeout 900 s, RUN_SERIAL). |
 | 2026-10-05 | integration (M2 phase 2) | `docs\loader_design.md` (section 8 split into 8.1 M1 / 8.2 M2, 5.4 `FATAL_STUBS` sentence), `docs\m1_report.md` (anchor of the section 8 link) | M2 deviations B1-B13 with evidence (module agents' deviations included), new hook targets, measured M2 values. |
+| 2026-10-05 | M2 review fixes (phase 4) | `core\log.h/.cpp` | `core::LogSeconds()`, `core::LogThreadName()` (time/thread column of the log; finding 9). |
+| 2026-10-05 | M2 review fixes (phase 4) | `core\config.h/.cpp` | `KeyType::Choice` + `KnownKey::choices`, `core::ConfigKeyChoices`; `[settings] language`, `[saves] key_mode`, `[render] d3d_traps` are choice keys (invalid value = exit code 1, finding 10); new key `[debug] exit_hang_test` (Bool, finding 7). |
+| 2026-10-05 | M2 review fixes (phase 4) | `core\guest.h` | `kGameFrame` 0xA2C20, `kGamePoolMaintenance` 0xA48C0, `kGameFrameContextSwitchReturn` 0xA2E45, `kCAppNextContextOffset` 0xC0 (probe:Game::ContextSwitch, finding 4; evidence in the header). |
+| 2026-10-05 | M2 review fixes (phase 4) | `CMakeLists.txt` | cache variable `FUT_M2_EXTRA_TEST_CONFIGS` (list) -> ctest `fut_m2_check_<dir>` with 1 run each (finding 3: english variant). |
+| 2026-10-05 | M2 review fixes (phase 4) | (owned files, listed for the other modules) | `core\host_main.*`: `ExitInProgress()`, watchdog during a hung exit terminates (finding 7); `core\selftest.*`: `InSelfTest()`; `core\trace.cpp`: VFS trace lines `[<log seconds>] <tid>:<thread name> ...`, `[self-test]` suffix, header text (findings 8b, 9); `xapi\xapi_fiber.*`: `FiberStats::selfTestSwitches`, summary `(G game, S self-test; ...)`, first-switch lines per kind (finding 5); `xapi\game_probes.*`: `probe:Game::ContextSwitch`, `switchesSeenAfterFrame` (finding 4; 161 hooks); `kernel\io_apc.*`: `IoApcStats::failedWriteRequests`, stats line `failed APC reads/writes` (finding 2); `vfs\vfs_known_missing.cpp`: partition1 misses only for save directories (12 hex digits) and the five save files (finding 8a); `gfx\nipc_renderer.cpp`: slot 65 in the order of FUN_0015E010 with the 8x8 default texture (finding 1); `tools\m2_check.py` (findings 2, 3, 5, 6, 8b, 9). Tests: new cases in `apc_tests`, `kernel_tests`, `m2_integration_tests`, `test_core`, `vfs_trace_tests`. |

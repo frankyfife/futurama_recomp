@@ -58,7 +58,7 @@ endfunction()
 # fut_selftest (design 5.2: futurama.exe --selftest --stop-at=main) and fut_m1_check (tools/m1_check.py,
 # all six M1 exit criteria over 10 runs). FUT_M2_TEST_CONFIG (an INI without stop_at, e.g.
 # run/m2/futurama.ini) adds fut_m2_check (tools/m2_check.py, all seven M2 exit criteria over 3 runs of
-# 3000 frames, about 65 s each).
+# 3000 frames, about 65 s each). FUT_M2_EXTRA_TEST_CONFIGS adds one-run variants (e.g. english).
 enable_testing()
 set(FUT_TEST_CONFIG "" CACHE FILEPATH "Test INI for fut_selftest/fut_m1_check ([paths] iso + userdata under run/); empty = not registered")
 set(FUT_M2_TEST_CONFIG "" CACHE FILEPATH "Test INI for fut_m2_check (no stop_at; [paths] iso + userdata under run/); empty = not registered")
@@ -97,6 +97,19 @@ if(FUT_M2_TEST_CONFIG AND Python3_FOUND)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/m2_check.py
                 --exe $<TARGET_FILE:fut_launcher> --config ${FUT_M2_TEST_CONFIG} --runs 3 --fresh)
     set_tests_properties(fut_m2_check PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
+endif()
+# Variants of the M2 check (M2 review finding 3), e.g. english / no [settings] language: one test
+# fut_m2_check_<name of the INI's directory> per entry, 1 run each.
+set(FUT_M2_EXTRA_TEST_CONFIGS "" CACHE STRING "More test INIs for fut_m2_check_<dir> (list; 1 run each); empty = none")
+if(Python3_FOUND)
+    foreach(fut_m2_cfg IN LISTS FUT_M2_EXTRA_TEST_CONFIGS)
+        get_filename_component(fut_m2_dir "${fut_m2_cfg}" DIRECTORY)
+        get_filename_component(fut_m2_name "${fut_m2_dir}" NAME)
+        add_test(NAME fut_m2_check_${fut_m2_name}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/m2_check.py
+                    --exe $<TARGET_FILE:fut_launcher> --config ${fut_m2_cfg} --runs 1 --fresh)
+        set_tests_properties(fut_m2_check_${fut_m2_name} PROPERTIES TIMEOUT 400 RUN_SERIAL TRUE)
+    endforeach()
 endif()
 
 # fut_gen: verify that the checked-in generated files are current (needs Python; not part of ALL).

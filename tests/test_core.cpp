@@ -9,6 +9,7 @@
 #include "core/guest_call.h"
 #include "core/guest_thread.h"
 #include "core/hooks.h"
+#include "core/selftest.h"
 #include "shared/launcher_info.h"
 #include "shared/xbox_types.h"
 
@@ -338,4 +339,30 @@ TEST_CASE("core: LogAllThreads snapshots other threads and returns (watchdog dia
     sleeper.join();
     CloseHandle(release);
     CHECK(core::GuestExceptionCount() == 0u);
+}
+
+TEST_CASE("core: choice keys reject invalid values with exit code 1 semantics (M2 review finding 10)") {
+    core::Config cfg;
+    std::string error;
+    const auto ini = WriteTestIni("choice.ini", "[debug]\nselftest = 0\n");
+    for (const wchar_t* bad :
+         {L" --set=settings.language=klingon", L" --set=settings.language=0", L" --set=settings.language=10",
+          L" --set=saves.key_mode=xboxx", L" --set=render.d3d_traps=ignore"}) {
+        CAPTURE(core::WideToUtf8(bad));
+        CHECK_FALSE(LoadTestConfig(ini, cfg, error, bad));
+        CHECK(error.find("invalid value for") != std::string::npos);
+    }
+    for (const wchar_t* good :
+         {L" --set=settings.language=english", L" --set=settings.language=GERMAN",
+          L" --set=settings.language=3", L" --set=settings.language=9", L" --set=settings.language=tchinese",
+          L" --set=saves.key_mode=Fixed", L" --set=render.d3d_traps=log"}) {
+        CAPTURE(core::WideToUtf8(good));
+        CHECK_MESSAGE(LoadTestConfig(ini, cfg, error, good), error);
+    }
+    CHECK(std::string(core::ConfigKeyChoices("settings", "language")).find("1..9") != std::string::npos);
+    CHECK(core::ConfigKeyChoices("debug", "timeout") == nullptr);
+}
+
+TEST_CASE("core: InSelfTest is false outside the self-test runner") {
+    CHECK_FALSE(core::InSelfTest());
 }

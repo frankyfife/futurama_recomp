@@ -126,11 +126,7 @@ void FormatAndEmit(Channel channel, Level level, const char* fmt, va_list args) 
     if (!LogEnabled(channel, level)) {
         return;
     }
-    EnsureClock();
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    const double seconds =
-        static_cast<double>(now.QuadPart - g_qpcStart.QuadPart) / static_cast<double>(g_qpcFreq.QuadPart);
+    const double seconds = LogSeconds();
 
     char stackBuf[2048];
     int prefix = std::snprintf(stackBuf, sizeof(stackBuf), "[%11.6f] %-10s %-4s %s ", seconds, ThreadName(),
@@ -289,6 +285,17 @@ void LogWriteV(Channel channel, Level level, const char* fmt, va_list args) noex
 
 void LogSetThreadName(const char* name) noexcept {
     std::snprintf(t_threadName, sizeof(t_threadName), "%s", name ? name : "?");
+}
+
+double LogSeconds() noexcept {
+    EnsureClock();
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return static_cast<double>(now.QuadPart - g_qpcStart.QuadPart) / static_cast<double>(g_qpcFreq.QuadPart);
+}
+
+const char* LogThreadName() noexcept {
+    return ThreadName();
 }
 
 void SetLogTap(LogTap tap) noexcept {

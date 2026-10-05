@@ -10,6 +10,7 @@
 #include "core/log.h"
 
 #include <atomic>
+#include <cstring>
 #include <deque>
 #include <unordered_map>
 
@@ -38,6 +39,7 @@ std::atomic<std::uint64_t> g_queued{0};
 std::atomic<std::uint64_t> g_delivered{0};
 std::atomic<std::uint64_t> g_errorCompletions{0};
 std::atomic<std::uint64_t> g_failedRequests{0};
+std::atomic<std::uint64_t> g_failedWriteRequests{0};
 std::atomic<std::uint32_t> g_maxPending{0};
 std::atomic<std::uint64_t> g_deliveredXbe{0};
 std::atomic<bool> g_firstXbeDeliveryLogged{false};
@@ -80,8 +82,9 @@ void CallApc(const IoApc& apc) noexcept {
         if (error != 0) {
             g_errorCompletions.fetch_add(1, std::memory_order_relaxed);
             FUT_LOGE(Krnl,
-                     "I/O APC: completion %s called with error %u (status %s) - the stream completion "
-                     "0x13F1D0 calls the disc error handler (DAT_0030E68C) for this",
+                     "I/O APC: completion %s called with error %u (status %s) - the stream read completion "
+                     "0x13F1D0 calls the disc error handler (DAT_0030E68C) for this, the save write "
+                     "completion 0xE01A0 only records the error",
                      guest::Symbolize(guest::Addr(apc.context)).c_str(), error,
                      StatusString(apc.status).c_str());
         }
@@ -178,11 +181,22 @@ void NoteFailedIoApcRequest(const char* api, const char* path, IoApcRoutine rout
     if (routine == nullptr) {
         return;
     }
-    if (IsNtUserIoApcDispatcher(routine)) {
+    const bool write = api != nullptr && std::strcmp(api, "NtWriteFile") == 0;
+    if (IsNtUserIoApcDispatcher(routine) && write) {
+        // XAPI WriteFileEx 0xF7654 (only caller: the save layer FUN_000E0B00, completion 0xE01A0): it closes
+        // the file and reports the save as failed; the disc error handler is not involved.
+        g_failedWriteRequests.fetch_add(1, std::memory_order_relaxed);
+        FUT_LOGW(
+            Krnl,
+            "%s(%s) with NtUserIoApcDispatcher failed synchronously: %s - XAPI WriteFileEx returns FALSE "
+            "(save layer FUN_000E0B00: the save fails)",
+            api, path != nullptr ? path : "?", StatusString(status).c_str());
+    } else if (IsNtUserIoApcDispatcher(routine)) {
+        // XAPI ReadFileEx 0xF7603 (only caller: NiUDSStream FUN_0013F660).
         g_failedRequests.fetch_add(1, std::memory_order_relaxed);
         FUT_LOGE(Krnl,
-                 "%s(%s) with NtUserIoApcDispatcher failed synchronously: %s - XAPI ReadFileEx/WriteFileEx "
-                 "returns FALSE (NiUDSStream FUN_0013F660 then calls the disc error handler DAT_0030E68C)",
+                 "%s(%s) with NtUserIoApcDispatcher failed synchronously: %s - XAPI ReadFileEx returns FALSE "
+                 "(NiUDSStream FUN_0013F660 then calls the disc error handler DAT_0030E68C)",
                  api, path != nullptr ? path : "?", StatusString(status).c_str());
     } else {
         FUT_LOGD(Krnl, "%s(%s) with ApcRoutine %p failed synchronously: %s (nothing queued)", api,
@@ -192,10 +206,13 @@ void NoteFailedIoApcRequest(const char* api, const char* path, IoApcRoutine rout
 }
 
 IoApcStats GetIoApcStats() noexcept {
-    return IoApcStats{
-        g_queued.load(std::memory_order_relaxed),           g_delivered.load(std::memory_order_relaxed),
-        g_errorCompletions.load(std::memory_order_relaxed), g_failedRequests.load(std::memory_order_relaxed),
-        g_maxPending.load(std::memory_order_relaxed),       g_deliveredXbe.load(std::memory_order_relaxed)};
+    return IoApcStats{g_queued.load(std::memory_order_relaxed),
+                      g_delivered.load(std::memory_order_relaxed),
+                      g_errorCompletions.load(std::memory_order_relaxed),
+                      g_failedRequests.load(std::memory_order_relaxed),
+                      g_maxPending.load(std::memory_order_relaxed),
+                      g_deliveredXbe.load(std::memory_order_relaxed),
+                      g_failedWriteRequests.load(std::memory_order_relaxed)};
 }
 
 void LogIoApcStats(const char* reason) noexcept {
@@ -203,11 +220,13 @@ void LogIoApcStats(const char* reason) noexcept {
     FUT_LOGI(
         Krnl,
         "I/O APC stats (%s): queued %llu, delivered %llu (XBE completions %llu), pending %u, max pending "
-        "%u, error completions %llu, failed APC requests %llu",
+        "%u, error completions %llu, failed APC reads %llu (disc error path), failed APC writes %llu (save "
+        "layer)",
         reason != nullptr ? reason : "-", static_cast<unsigned long long>(s.queued),
         static_cast<unsigned long long>(s.delivered), static_cast<unsigned long long>(s.deliveredXbe),
         PendingIoApcCountAllThreads(), s.maxPending, static_cast<unsigned long long>(s.errorCompletions),
-        static_cast<unsigned long long>(s.failedRequests));
+        static_cast<unsigned long long>(s.failedRequests),
+        static_cast<unsigned long long>(s.failedWriteRequests));
 }
 
 namespace {

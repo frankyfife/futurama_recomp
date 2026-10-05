@@ -63,6 +63,11 @@ void LogWriteV(Channel channel, Level level, const char* fmt, va_list args) noex
 
 // Name shown in the thread column (e.g. "boot", "guest-main"). Default: "t<n>" in order of first use.
 void LogSetThreadName(const char* name) noexcept;
+// (added in the M2 review fixes) The time column of the log: seconds since the log clock started (the
+// first log line / LogInit), and the thread column of the calling thread. Other files that must line up
+// with futurama.log (vfs_trace.log, core/trace.h) use the same values.
+double LogSeconds() noexcept;
+const char* LogThreadName() noexcept;
 
 // (added by io, M2) Observer of every line that passes the level check, e.g. the kernel trace ring
 // buffer of core/trace.h (design 5.4). Called before the line is written, outside the log lock, with

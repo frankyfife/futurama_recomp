@@ -32,15 +32,17 @@ inline constexpr std::uint32_t kSavedContextExceptionList = 0x00;
 inline constexpr std::uint32_t kSavedContextBytes = 0x14;  // ExceptionList, ebx, edi, esi, ebp
 
 struct FiberStats {
-    std::uint64_t switches;       // SwitchToFiber calls (replacement)
-    std::uint64_t toThreadFiber;  // ... whose target was a ConvertThreadToFiber fiber
-    std::uint64_t chainFixups;    // fresh fibers whose ExceptionList -1 became the fiber-top record
-    std::uint64_t unknownStacks;  // targets whose stack is not from MmCreateKernelStack (fallback)
+    std::uint64_t switches;          // SwitchToFiber calls (replacement)
+    std::uint64_t toThreadFiber;     // ... whose target was a ConvertThreadToFiber fiber
+    std::uint64_t chainFixups;       // fresh fibers whose ExceptionList -1 became the fiber-top record
+    std::uint64_t unknownStacks;     // targets whose stack is not from MmCreateKernelStack (fallback)
+    std::uint64_t selfTestSwitches;  // (M2 review) switches made while a self-test ran (core::InSelfTest)
 };
 FiberStats GetFiberStats() noexcept;
 std::uint64_t FiberSwitchCount() noexcept;
-// Logs "fiber summary: N switches ..." plus the kernel stack statistics (info). Meant for the end of a
-// run (M2 exit criterion 5); also registered as a crash reporter on the first switch.
+// Logs "fiber summary: N switches (G game, S self-test; ...)" plus the kernel stack statistics (info).
+// Meant for the end of a run (M2 exit criterion 5: G > 0); also registered as a crash reporter on the
+// first switch. The first switch of each kind logs "fiber: first SwitchToFiber (game|self-test) ...".
 void LogFiberSummary() noexcept;
 
 namespace detail {

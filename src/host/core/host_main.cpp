@@ -149,6 +149,16 @@ bool InitConfigAndLog(const LauncherInfo* info) {
              info->tlsSlots[FUT_TLS_S_TLS], info->tlsSlots[FUT_TLS_S_KTHREAD], info->tlsSlots[FUT_TLS_S_PRCB],
              info->tlsSlots[FUT_TLS_S_IRQL], info->tlsSlots[FUT_TLS_S_DPC], info->xbeSpace,
              info->xbeSpaceSize);
+    if (c.GetBool("debug", "exit_hang_test", false)) {
+        // M2 review finding 7: an exit reporter that never returns (sorted last) makes the orderly exit
+        // hang; the watchdog ([debug] timeout) must still end the process with exit code 5.
+        FUT_LOGI(Core, "debug: exit_hang_test = 1 - the exit reporter 'zz exit hang test' blocks the exit");
+        AddExitReporter("zz exit hang test", []() noexcept {
+            for (;;) {
+                Sleep(INFINITE);
+            }
+        });
+    }
     return true;
 }
 
@@ -225,9 +235,33 @@ void RunExitReporters() noexcept {
     }
 }
 
+namespace {
+std::atomic<int> g_exiting{0};
+
+// stderr line without the log (its lock may be held by the hung exit).
+void WriteStderrRaw(const char* text) noexcept {
+    const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+    if (err != nullptr && err != INVALID_HANDLE_VALUE) {
+        DWORD written = 0;
+        WriteFile(err, text, static_cast<DWORD>(std::strlen(text)), &written, nullptr);
+    }
+}
+}  // namespace
+
+bool ExitInProgress() noexcept {
+    return g_exiting.load() != 0;
+}
+
 void ExitHostProcess(int exitCode, const char* reason) noexcept {
-    static std::atomic<int> exiting{0};
-    if (exiting.fetch_add(1) != 0) {
+    if (g_exiting.fetch_add(1) != 0) {
+        if (exitCode == kExitWatchdog) {
+            // M2 review finding 7: the orderly exit of another thread hangs (an exit reporter or the log
+            // flush blocks). Waiting for it would hang forever; end the process hard. No log call: the
+            // hung thread may hold the log lock.
+            WriteStderrRaw("futurama: watchdog: the process exit did not finish within [debug] timeout - "
+                           "terminating with exit code 5\n");
+            TerminateProcess(GetCurrentProcess(), static_cast<UINT>(kExitWatchdog));
+        }
         // Another thread is already ending the process with its exit code; wait for it.
         for (;;) {
             Sleep(INFINITE);

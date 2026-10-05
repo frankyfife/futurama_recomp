@@ -31,7 +31,9 @@
 // calls it when ReadFileEx returns FALSE (= NtReadFile returned an NT_ERROR status). The io layer
 // never queues a failed transfer (errors are returned synchronously, NT IopCompleteRequest), so
 // path 1 cannot happen; path 2 is counted by NoteFailedIoApcRequest. Both counters must stay 0 in
-// the M2 run (GetIoApcStats: errorCompletions, failedRequests).
+// the M2 run (GetIoApcStats: errorCompletions, failedRequests). A failed WriteFileEx (only caller: the
+// save layer FUN_000E0B00, completion 0xE01A0) does not reach the handler; it is counted separately
+// (failedWriteRequests, M2 review finding 2).
 #pragma once
 
 #include "kernel/io_types.h"
@@ -56,22 +58,25 @@ std::uint32_t PendingIoApcCountAllThreads() noexcept;
 
 // (M2) Records an APC request (ApcRoutine != NULL) that failed synchronously, i.e. nothing was queued
 // and the caller sees an NT_ERROR status. With ApcRoutine == NtUserIoApcDispatcher this is XAPI
-// ReadFileEx/WriteFileEx returning FALSE - for a read, FUN_0013F660 then calls the disc error
-// handler - so it is logged as an error; other routines are logged at debug level.
+// ReadFileEx/WriteFileEx returning FALSE: api "NtReadFile" -> FUN_0013F660 calls the disc error handler,
+// logged as an error and counted in failedRequests; api "NtWriteFile" -> the save fails, logged as a
+// warning and counted in failedWriteRequests. Other routines are logged at debug level.
 void NoteFailedIoApcRequest(const char* api, const char* path, IoApcRoutine routine,
                             NTSTATUS status) noexcept;
 
 // Process-wide counters (M2 exit criterion 5: "APC-Zustellungen > 0", disc error handler never called).
 struct IoApcStats {
-    std::uint64_t queued;            // QueueIoApc
-    std::uint64_t delivered;         // APCs delivered (completion/routine called)
-    std::uint64_t errorCompletions;  // (M2) completions called with dwErrorCode != 0
-    std::uint64_t failedRequests;    // (M2) NoteFailedIoApcRequest with NtUserIoApcDispatcher
-    std::uint32_t maxPending;        // (M2) longest queue of one thread seen
-    std::uint64_t deliveredXbe;      // (M2) completions inside the XBE image (the game's 0x13F1D0/0xE01A0)
+    std::uint64_t queued;               // QueueIoApc
+    std::uint64_t delivered;            // APCs delivered (completion/routine called)
+    std::uint64_t errorCompletions;     // (M2) completions called with dwErrorCode != 0
+    std::uint64_t failedRequests;       // (M2) failed NtReadFile with NtUserIoApcDispatcher (disc error path)
+    std::uint32_t maxPending;           // (M2) longest queue of one thread seen
+    std::uint64_t deliveredXbe;         // (M2) completions inside the XBE image (the game's 0x13F1D0/0xE01A0)
+    std::uint64_t failedWriteRequests;  // (M2 review) failed NtWriteFile with NtUserIoApcDispatcher (saves)
 };
 IoApcStats GetIoApcStats() noexcept;
-// (M2) Logs "I/O APC stats (<reason>): queued N, delivered N (XBE completions N), ..." on KRNL/info - for
+// (M2) Logs "I/O APC stats (<reason>): queued N, delivered N (XBE completions N), ..., error completions N,
+// failed APC reads N (disc error path), failed APC writes N (save layer)" on KRNL/info - for
 // the orderly end of a run (e.g. --frames) and the M2 check. The first delivery to a completion routine
 // inside the XBE image is logged on KRNL/info as "I/O APC: first XBE completion delivered ..." by
 // DeliverIoApcs itself (host completions of self-tests/unit tests do not count there).

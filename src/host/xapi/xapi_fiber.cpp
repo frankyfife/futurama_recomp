@@ -16,6 +16,7 @@
 #include "core/hooks.h"
 #include "core/host_main.h"
 #include "core/log.h"
+#include "core/selftest.h"
 #include "kernel/mm_kernel_stack.h"
 #include "shared/launcher_info.h"
 #include "shared/xbox_types.h"
@@ -37,7 +38,10 @@ std::atomic<std::uint64_t> g_switches{0};
 std::atomic<std::uint64_t> g_toThreadFiber{0};
 std::atomic<std::uint64_t> g_chainFixups{0};
 std::atomic<std::uint64_t> g_unknownStacks{0};
+std::atomic<std::uint64_t> g_selfTestSwitches{0};  // switches made by self-tests (core::InSelfTest)
 std::atomic<bool> g_reporterAdded{false};
+std::atomic<bool> g_firstSelfTestSwitchLogged{false};
+std::atomic<bool> g_firstGameSwitchLogged{false};
 
 // Real TEB stack values of the calling thread, saved whenever it leaves its ConvertThreadToFiber
 // fiber (design 1.7: "beim ersten Wechsel gesicherte echte TEB-Werte"; saving on every switch away
@@ -60,8 +64,8 @@ void CrashReporter() noexcept {
 }  // namespace
 
 FiberStats GetFiberStats() noexcept {
-    return FiberStats{g_switches.load(), g_toThreadFiber.load(), g_chainFixups.load(),
-                      g_unknownStacks.load()};
+    return FiberStats{g_switches.load(), g_toThreadFiber.load(), g_chainFixups.load(), g_unknownStacks.load(),
+                      g_selfTestSwitches.load()};
 }
 
 std::uint64_t FiberSwitchCount() noexcept {
@@ -73,9 +77,12 @@ void LogFiberSummary() noexcept {
     const krnl::KernelStackStats k = krnl::GetKernelStackStats();
     FUT_LOGI(
         Xapi,
-        "fiber summary: %llu switches (%llu to the thread fiber, %llu ExceptionList fixups, %llu unknown "
-        "stacks); kernel stacks: %u created, %u deleted, %u live (peak %u), %u failed",
-        static_cast<unsigned long long>(f.switches), static_cast<unsigned long long>(f.toThreadFiber),
+        "fiber summary: %llu switches (%llu game, %llu self-test; %llu to the thread fiber, %llu "
+        "ExceptionList "
+        "fixups, %llu unknown stacks); kernel stacks: %u created, %u deleted, %u live (peak %u), %u failed",
+        static_cast<unsigned long long>(f.switches),
+        static_cast<unsigned long long>(f.switches - f.selfTestSwitches),
+        static_cast<unsigned long long>(f.selfTestSwitches), static_cast<unsigned long long>(f.toThreadFiber),
         static_cast<unsigned long long>(f.chainFixups), static_cast<unsigned long long>(f.unknownStacks),
         k.created, k.deleted, k.live, k.peakLive, k.failed);
 }
@@ -179,14 +186,24 @@ extern "C" void __cdecl fut_fiber_switch_prepare(std::uint32_t fiber, std::uint3
     }
 
     const std::uint64_t n = g_switches.fetch_add(1, std::memory_order_relaxed) + 1;
-    if (n == 1) {
+    // The self-test GuestSehOnFiberStack switches fibers on the boot thread before entry; its switches
+    // are counted apart so that "the game switched fibers" (M2 exit 5) is not satisfied by the self-test
+    // alone (M2 review finding 5).
+    const bool selfTest = core::InSelfTest();
+    if (selfTest) {
+        g_selfTestSwitches.fetch_add(1, std::memory_order_relaxed);
+    }
+    std::atomic<bool>& firstLogged = selfTest ? g_firstSelfTestSwitchLogged : g_firstGameSwitchLogged;
+    if (!firstLogged.exchange(true)) {
         if (!g_reporterAdded.exchange(true)) {
             core::AddCrashReporter("fibers", &CrashReporter);
         }
-        FUT_LOGI(Xapi,
-                 "fiber: first SwitchToFiber 0x%08X -> 0x%08X (%s, esp 0x%08X, TEB stack 0x%08X..0x%08X, "
-                 "DeallocationStack 0x%08X)",
-                 current, fiber, kind, newEsp, target.stackLimit, target.stackBase, target.deallocationStack);
+        FUT_LOGI(
+            Xapi,
+            "fiber: first SwitchToFiber (%s) 0x%08X -> 0x%08X (%s, esp 0x%08X, TEB stack 0x%08X..0x%08X, "
+            "DeallocationStack 0x%08X)",
+            selfTest ? "self-test" : "game", current, fiber, kind, newEsp, target.stackLimit,
+            target.stackBase, target.deallocationStack);
     } else if (core::LogEnabled(core::Channel::Xapi, core::Level::Trace)) {
         FUT_LOGT(Xapi, "fiber: switch #%llu 0x%08X -> 0x%08X (%s, esp 0x%08X, stack 0x%08X..0x%08X)",
                  static_cast<unsigned long long>(n), current, fiber, kind, newEsp, target.stackLimit,

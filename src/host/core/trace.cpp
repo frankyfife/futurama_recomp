@@ -3,6 +3,7 @@
 
 #include "core/crash.h"
 #include "core/log.h"
+#include "core/selftest.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -42,24 +43,6 @@ void CrashReporterKrnlRing() noexcept {
     DumpKrnlRing();
 }
 
-std::int64_t ProcessStartFileTime() noexcept {
-    static const std::int64_t start = [] {
-        FILETIME creation{}, exit{}, kernel{}, user{};
-        if (!GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user)) {
-            GetSystemTimePreciseAsFileTime(&creation);
-        }
-        return (static_cast<std::int64_t>(creation.dwHighDateTime) << 32) | creation.dwLowDateTime;
-    }();
-    return start;
-}
-
-double SecondsSinceProcessStart() noexcept {
-    FILETIME now{};
-    GetSystemTimePreciseAsFileTime(&now);
-    const std::int64_t t = (static_cast<std::int64_t>(now.dwHighDateTime) << 32) | now.dwLowDateTime;
-    return static_cast<double>(t - ProcessStartFileTime()) / 1.0e7;
-}
-
 void WriteRaw(HANDLE h, const char* data, std::size_t size) noexcept {
     while (size > 0) {
         DWORD written = 0;
@@ -92,9 +75,11 @@ bool OpenVfsFile(const std::filesystem::path& directory) noexcept {
         }
         static const char kHeader[] =
             "# Futurama PC loader - VFS trace (--trace=vfs, design 5.4, M2 exit criterion 7)\n"
-            "# [seconds since process start] thread-id  api  \"guest path\" -> device path : result\n"
+            "# [seconds, same clock as futurama.log] thread-id:thread-name (the log's thread column)\n"
+            "# api  \"guest path\" -> device path : result\n"
             "# result: hit <action> | missing <status> (documented: <reason>) | missing <status> + the\n"
             "# marker for misses without analysis (grep for it: must not occur) | error <status>\n"
+            "# a trailing [self-test] marks the loader's own self-tests (--selftest), not the game\n"
             "# game probes (xapi/game_probes.cpp): \"archive mount\" (mounted | not mounted) and\n"
             "# \"archive lookup\" per asset (hit archive #n = member of a mounted .img | not archived =\n"
             "# the loose-file open that follows decides)\n";
@@ -245,8 +230,10 @@ void VfsLine(const char* fmt, ...) noexcept {
         return;
     }
     char buf[1536];
-    int n =
-        std::snprintf(buf, sizeof(buf), "[%11.6f] %5lu ", SecondsSinceProcessStart(), GetCurrentThreadId());
+    // Same clock and thread name as futurama.log (M2 review finding 9): one event has the same timestamp
+    // in both files.
+    const int n = std::snprintf(buf, sizeof(buf), "[%11.6f] %5lu:%-10s ", LogSeconds(), GetCurrentThreadId(),
+                                LogThreadName());
     if (n < 0) {
         return;
     }
@@ -260,6 +247,12 @@ void VfsLine(const char* fmt, ...) noexcept {
     std::size_t size = static_cast<std::size_t>(n) + static_cast<std::size_t>(body);
     if (size > sizeof(buf) - 2) {
         size = sizeof(buf) - 2;  // truncated
+    }
+    // Opens of the loader's own self-tests (core::InSelfTest, M2 review finding 8) are not the game's.
+    static constexpr char kSelfTestMarker[] = " [self-test]";
+    if (InSelfTest() && size + sizeof(kSelfTestMarker) <= sizeof(buf) - 1) {
+        std::memcpy(buf + size, kSelfTestMarker, sizeof(kSelfTestMarker) - 1);
+        size += sizeof(kSelfTestMarker) - 1;
     }
     buf[size++] = '\n';
     AcquireSRWLockExclusive(&g_vfsLock);

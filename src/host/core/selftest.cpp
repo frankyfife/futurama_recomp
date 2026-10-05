@@ -51,6 +51,14 @@ int SelfTestCount(SelfTestPhase phase) noexcept {
     return n;
 }
 
+namespace {
+thread_local bool t_inSelfTest = false;  // set while RunSelfTests runs a test on this thread
+}  // namespace
+
+bool InSelfTest() noexcept {
+    return t_inSelfTest;
+}
+
 int RunSelfTests(SelfTestPhase phase) noexcept {
     if (!GetConfig().selftest) {
         return 0;
@@ -63,6 +71,7 @@ int RunSelfTests(SelfTestPhase phase) noexcept {
         ++run;
         std::string detail;
         bool ok = false;
+        t_inSelfTest = true;
         try {
             ok = t.fn(detail);
         } catch (const std::exception& e) {
@@ -70,6 +79,7 @@ int RunSelfTests(SelfTestPhase phase) noexcept {
         } catch (...) {
             detail = "unknown exception";
         }
+        t_inSelfTest = false;
         failures += ok ? 0 : 1;
         LogWrite(Channel::Core, ok ? Level::Info : Level::Error, "SELFTEST %s %s: %s", ok ? "PASS" : "FAIL",
                  t.name, detail.c_str());

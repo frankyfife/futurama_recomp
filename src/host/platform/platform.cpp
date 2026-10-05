@@ -85,6 +85,11 @@ int StageMessageLoop() {
             continue;
         }
         if (r == WAIT_TIMEOUT) {
+            if (core::ExitInProgress()) {
+                // The orderly exit itself hangs (M2 review finding 7): its thread may hold the log lock, so
+                // no thread dump / minidump here; ExitHostProcess terminates with exit code 5.
+                core::ExitHostProcess(core::kExitWatchdog, "watchdog timeout during the process exit");
+            }
             FUT_LOGE(Core, "watchdog: the process did not end within [debug] timeout = %u s",
                      g_timeoutSeconds);
             core::LogAllThreads("watchdog");

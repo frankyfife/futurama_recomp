@@ -28,7 +28,7 @@ tools/          Python-Tools (XDVDFS, .img, XBE-Header, Strings, Ghidra-Starter)
 orig/proto/     default.xbe + Dateilisten + extrahierte Skripte/Textdateien (Prototyp)
 orig/retail_eu/ default.xbe + Dateilisten (Retail EU)
 ghidra/         Ghidra-Projekt "Futurama" (/proto, /retail_eu)
-src/            Loader: Launcher, Host-DLL (core, kernel, vfs, xapi), gemeinsame Gast-Strukturen
+src/            Loader: Launcher, Host-DLL (core, kernel, vfs, xapi, gfx, audio, video, input), gemeinsame Gast-Strukturen
 tests/          Unit-Tests des Loaders (doctest)
 docs/           Loader-Design und Meilenstein-Berichte
 run/            Benutzerdaten und Logs der Testläufe (eine INI pro Lauf)
@@ -71,20 +71,21 @@ Manuelle Arbeit in der Ghidra-Oberfläche geht bei einem Neubau verloren. Dauerh
 - Spielklassen mit NiRTTI: `PhysicController`, `AimController`, `LightSource`/`LightTarget`, `LMSource`/`LMTarget`, `MasterPropertyAccumulator`.
 - Eintrittspunkt `entry` (0xF84DD) startet einen Thread bei 0xF8469, `XapiInitProcess` liegt bei 0xF92C0.
 
-## Loader (PC-Port, Meilenstein M1 erreicht)
+## Loader (PC-Port, Meilenstein M2 erreicht)
 
-Der Loader führt das Original-XBE nativ auf Windows aus. `futurama.exe` ist ein Launcher mit fester Basis 0x10000. `futurama_host.dll` stellt den xboxkrnl-Kernel als HLE bereit, mappt `default.xbe` direkt aus dem eigenen ISO und startet es. Stand M1: Der Original-Bootpfad läuft bis `main` (0xD29B0).
+Der Loader führt das Original-XBE nativ auf Windows aus. `futurama.exe` ist ein Launcher mit fester Basis 0x10000. `futurama_host.dll` stellt den xboxkrnl-Kernel als HLE bereit, mappt `default.xbe` direkt aus dem eigenen ISO und startet es. Stand M2: Das Spiel läuft über `main` hinaus ohne Bild und Ton. Es mountet `SysPAL.img` und `FutPAL00`–`04.img`, liest Sprache und `BUILD.TXT`, spielt den Intro-Kontext durch (Filme werden übersprungen) und erreicht das Frontend-Menü. Dafür sorgen der Null-Renderer `NiPCRenderer` an der NiRenderer-Schnittstelle, stille Stubs für DSOUND/XMV/XPP, Fibers und asynchrones I/O mit Gast-APCs. Nächster Meilenstein: M3, erstes Bild mit D3D11.
 
 - Design: [`docs/loader_design.md`](docs/loader_design.md) (Entscheidungen E1–E12, Abweichungen in Abschnitt 8)
-- Stand, Bauen, Konfiguration und Prüfung: [`docs/m1_report.md`](docs/m1_report.md) (Abschnitt 3)
+- Stand, Bauen, Konfiguration und Prüfung: [`docs/m2_report.md`](docs/m2_report.md) (Abschnitt 3), M1: [`docs/m1_report.md`](docs/m1_report.md)
 - Schnittstellen für Entwickler: [`src/INTERFACES.md`](src/INTERFACES.md)
 
 Kurzfassung (MSVC x86, CMake, Ninja; `build.cmd` immer mit vollem Pfad aufrufen):
 
 ```
 cmd /c "D:\FuturamaDecomp\build.cmd" build\x86-debug Debug
-build\x86-debug\bin\futurama.exe --config=<eigene futurama.ini>     (ISO-Pfad und userdata in der INI)
-python tools\m1_check.py --exe build\x86-debug\bin\futurama.exe --config <ini> --runs 10 --xbe orig\retail_eu\default.xbe
+build\x86-debug\bin\futurama.exe --config=<eigene futurama.ini> --frames=3000     (ISO-Pfad und userdata in der INI)
+python tools\m2_check.py --exe build\x86-debug\bin\futurama.exe --config <ini> --runs 3 --fresh
+python tools\m1_check.py --exe build\x86-debug\bin\futurama.exe --config <ini mit stop_at = main> --runs 10 --xbe orig\retail_eu\default.xbe
 ```
 
 ## Port-Strategie (Vorschlag)

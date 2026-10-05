@@ -57,6 +57,8 @@ std::atomic<std::uint32_t> g_languageCalls{0};
 std::atomic<std::int32_t> g_videoStandard{-1};
 std::atomic<bool> g_gameInitDone{false};
 std::atomic<std::uint32_t> g_lastContext{0};
+std::atomic<std::uint32_t> g_app{0};                 // CApp from Game::Init (0 = use g_pGame [0x2E7B84])
+std::atomic<std::uint32_t> g_switchesAfterFrame{0};  // switches only the CApp::Frame fallback saw
 
 // Archive names by mount index and the context history. Only the guest main thread writes them; the
 // lock covers readers on other threads (exit reporter, tests). Never held across a guest call.
@@ -123,6 +125,23 @@ guest::GuestAddr Trampoline(guest::GuestAddr address) noexcept {
         core::Fatal("probe at 0x%08X runs without an installed trampoline", address);
     }
     return t;
+}
+
+// Records a context change from g_lastContext to `current` (context history + log line). `how` is
+// appended after the frame number (empty for switches seen by probe:Game::ContextSwitch).
+void NoteContextChange(guest::GuestAddr current, std::uint64_t frame, const char* how) {
+    const guest::GuestAddr previous = g_lastContext.exchange(current);
+    const std::string from = ContextName(previous);
+    const std::string to = ContextName(current);
+    g_contextSwitches.fetch_add(1);
+    {
+        std::lock_guard<std::mutex> lock(g_lock);
+        if (Contexts().size() < kMaxContexts) {
+            Contexts().push_back(to);
+        }
+    }
+    FUT_LOGI(Game, "game: context %s -> %s (CApp::Frame #%llu)%s", from.c_str(), to.c_str(),
+             static_cast<unsigned long long>(frame), how);
 }
 
 void RegisterExitReporter() noexcept {
@@ -262,6 +281,7 @@ std::uint32_t __fastcall GameInitProbe(std::uint32_t self, std::uint32_t /*edx*/
     const std::uint32_t eax = core::CallGuestThiscall(Trampoline(guest::kGameInit), self, {});
     try {
         RegisterExitReporter();
+        g_app.store(self);
         const std::uint32_t standard = ReadU32(self + guest::kCAppVideoStandardOffset);
         g_videoStandard.store(static_cast<std::int32_t>(standard));
         g_gameInitDone.store(true);
@@ -322,27 +342,18 @@ std::uint32_t __fastcall GameInitProbe(std::uint32_t self, std::uint32_t /*edx*/
 
 // CApp::Frame FUN_000D2630 - thiscall (ecx = CApp), no stack args, plain ret 0xD265A/0xD268B; al =
 // FALSE ends the main loop of main (Game::Frame 0xA2C20 had no context left). Called once per frame
-// (startup.md 3.1). The probe counts frames and logs every change of the current context CApp+0xBC
-// (Game::Frame switches it after cur->Update() returned FALSE, startup.md 3.2).
+// (startup.md 3.1). The probe counts frames. Context switches are logged by probe:Game::ContextSwitch
+// where Game::Frame makes them; comparing CApp+0xBC after the frame is only the fallback (e.g. with that
+// probe disabled), because it misses a context entered and left within one frame (review finding 4).
 // Prologue 8B 15 40 67 2D 00 = mov edx,[0x2D6740] (absolute operand).
 std::uint32_t __fastcall CAppFrameProbe(std::uint32_t self, std::uint32_t /*edx*/) noexcept {
     const std::uint32_t eax = core::CallGuestThiscall(Trampoline(guest::kCAppFrame), self, {});
     const std::uint64_t n = g_frames.fetch_add(1) + 1;
     try {
         const guest::GuestAddr current = ReadU32(self + guest::kCAppCurrentContextOffset);
-        const guest::GuestAddr previous = g_lastContext.exchange(current);
-        if (current != previous) {
-            const std::string from = ContextName(previous);
-            const std::string to = ContextName(current);
-            g_contextSwitches.fetch_add(1);
-            {
-                std::lock_guard<std::mutex> lock(g_lock);
-                if (Contexts().size() < kMaxContexts) {
-                    Contexts().push_back(to);
-                }
-            }
-            FUT_LOGI(Game, "game: context %s -> %s (CApp::Frame #%llu)", from.c_str(), to.c_str(),
-                     static_cast<unsigned long long>(n));
+        if (current != g_lastContext.load()) {
+            g_switchesAfterFrame.fetch_add(1);
+            NoteContextChange(current, n, " [seen after the frame]");
         }
         if ((eax & 0xFF) == 0) {
             FUT_LOGW(Game, "game: CApp::Frame #%llu returned FALSE - the main loop of main ends (context %s)",
@@ -351,6 +362,30 @@ std::uint32_t __fastcall CAppFrameProbe(std::uint32_t self, std::uint32_t /*edx*
     } catch (...) {
     }
     return eax;
+}
+
+// FUN_000A48C0 - cdecl, no args, plain ret 0xA48D6, returns 0: maintenance of the game memory pool
+// 0x2E7D60. Game::Frame calls it at 0xA2E40 right after a context switch (cur->Exit(), FUN_0002A660,
+// CApp+0xBC = CApp+0xC0, CApp+0xC0 = 0) and before the new context's Enter(); the level loader
+// FUN_0002A760 calls it too (startup.md 3.2, guest.h kGamePoolMaintenance). The probe logs the switch
+// only for the Game::Frame call site (return address 0xA2E45), reading the new context from CApp+0xBC.
+// Unlike the CApp::Frame comparison it also sees a context that is left again within the same frame
+// (review finding 4: Frontend -> Attract -> Frontend when the XMV stub ends Attract-PAL.xmv in its first
+// Update). The frame number is the CApp::Frame call in progress.
+// Prologue B9 60 7D 2E 00 = mov ecx,0x2E7D60 (immediate operand; the function writes ecx first and does
+// not read eax/edx).
+std::uint32_t __cdecl ContextSwitchProbe() noexcept {
+    if (guest::Addr(_ReturnAddress()) == guest::kGameFrameContextSwitchReturn) {
+        try {
+            guest::GuestAddr app = g_app.load();
+            if (app == 0) {
+                app = ReadU32(guest::kGameGamePtr);
+            }
+            NoteContextChange(ReadU32(app + guest::kCAppCurrentContextOffset), g_frames.load() + 1, "");
+        } catch (...) {
+        }
+    }
+    return core::CallGuest(Trampoline(guest::kGamePoolMaintenance));
 }
 
 // XAPILIB::XGetLanguage 0xF6440 - no arguments, plain ret (0xF6475/0xF6479): ExQueryNonVolatileSetting(7)
@@ -411,6 +446,7 @@ GameObserverStats GetGameObserverStats() noexcept {
     s.archiveHits = g_hits.load();
     s.frames = g_frames.load();
     s.contextSwitches = g_contextSwitches.load();
+    s.switchesSeenAfterFrame = g_switchesAfterFrame.load();
     s.discErrorCalls = g_discErrorCalls.load();
     s.language = g_language.load();
     s.languageCalls = g_languageCalls.load();
@@ -437,14 +473,15 @@ void LogGameSummary() noexcept {
             history += (history.empty() ? "" : " -> ") + c;
         }
         FUT_LOGI(Game,
-                 "game summary: %llu CApp::Frame calls, contexts %s (%u switches), video standard %d, "
+                 "game summary: %llu CApp::Frame calls, contexts %s (%u switches, %u of them seen only "
+                 "after the frame), video standard %d, "
                  "XGetLanguage %u "
                  "(%s, %u calls), archives %u mounted / %u not mounted, archive lookups %llu (%llu hits), "
                  "disc error "
                  "screen calls %u",
                  static_cast<unsigned long long>(s.frames), history.empty() ? "(none)" : history.c_str(),
-                 s.contextSwitches, s.videoStandard, s.language, XboxLanguageName(s.language),
-                 s.languageCalls, s.archivesMounted, s.archiveMountFailures,
+                 s.contextSwitches, s.switchesSeenAfterFrame, s.videoStandard, s.language,
+                 XboxLanguageName(s.language), s.languageCalls, s.archivesMounted, s.archiveMountFailures,
                  static_cast<unsigned long long>(s.archiveLookups),
                  static_cast<unsigned long long>(s.archiveHits), s.discErrorCalls);
     } catch (...) {
@@ -459,6 +496,8 @@ FUT_PROBE(guest::kGameArchiveLookup, &xapi::ArchiveLookupProbe, Cdecl, "probe:Ga
           "A0 E8 7A 2D 00", 5);
 FUT_PROBE(guest::kGameInit, &xapi::GameInitProbe, Thiscall, "probe:Game::Init", "64 A1 00 00 00 00", 6);
 FUT_PROBE(guest::kCAppFrame, &xapi::CAppFrameProbe, Thiscall, "probe:CApp::Frame", "8B 15 40 67 2D 00", 6);
+FUT_PROBE(guest::kGamePoolMaintenance, &xapi::ContextSwitchProbe, Cdecl, "probe:Game::ContextSwitch",
+          "B9 60 7D 2E 00", 5);
 FUT_PROBE(guest::kXapiXGetLanguage, &xapi::XGetLanguageProbe, Stdcall, "probe:XAPILIB::XGetLanguage",
           "55 8B EC 51 51", 5);
 FUT_HOOK_EX(guest::kGameDiscErrorScreen, &xapi::DiscErrorScreenTrap, Thiscall, "trap:Game::DiscErrorScreen",

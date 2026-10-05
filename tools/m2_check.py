@@ -6,16 +6,21 @@ the VFS trace of every run and checks the seven M2 exit criteria plus the genera
 ("0 Fallen, 0 UNIMPLEMENTED, Log ohne error"; like M1 also no warn):
 
   1 SysPAL.img and FutPAL00..04.img mounted, FutPAL05.img not found, PAL mode (CApp+0xE8 = 0)
-  2 the language from the INI ([settings] language) takes effect: XGetLanguage() and the game's
-    language string (german -> 3 / "german")
+  2 the language from the INI ([settings] language, default english) takes effect: XGetLanguage() and
+    the game's language string, compared case-insensitively (german -> 3 / "german"; english or no
+    key -> 1 / "English" - the game keeps the default name of its string manager)
   3 BUILD.TXT = "1.25" read (archive member of sysPAL.img)
   4 the intro context runs, the frame limit ends the run orderly (exit 0, no watchdog, no hang);
-    additionally the intro context finishes (Intro -> next context) - no context waits forever
-  5 fiber switches > 0, APC deliveries > 0 (XBE completions), no error completion / failed APC
-    request, the disc error handler (DAT_0030E68C -> vf0 0xF2FD0) registered and never called
+    additionally, from 1000 frames on, the intro context finishes (Intro -> next context) - no
+    context waits forever
+  5 fiber switches of the game > 0 (the self-test's own switches do not count), APC deliveries > 0
+    (XBE completions), no error completion / failed APC read (= the disc error path; failed writes
+    belong to the save layer and are only reported), the disc error handler (DAT_0030E68C -> vf0
+    0xF2FD0) registered and never called
   6 self-test "SEH on fiber stack" (GuestSehOnFiberStack) passes
   7 vfs_trace.log lists every open; each one is a hit or a documented miss (no UNDOCUMENTED, no
-    error), every asset lookup is an archive hit or followed by its loose-file open
+    error), every asset lookup is an archive hit or followed by its loose-file open; opens of the
+    loader's self-tests (marked [self-test]) are counted apart
 
 The evidence lines come from the game observer probes (src/host/xapi/game_probes.cpp), the exit
 reporters (core::AddExitReporter: fiber summary, I/O APC stats, game summary) and the VFS trace.
@@ -39,11 +44,18 @@ import time
 from pathlib import Path
 
 DEFAULT_FRAMES = 3000
-# XC_LANGUAGE values (ExQueryNonVolatileSetting 7, design 2.1; kernel/kernel_settings: names or 1..9).
+# The intro context (legal screen, fox/sci/uds movies, splash, load menu, intro movie) ends after about
+# 800 displayed frames (Intro -> Frontend at CApp::Frame #780). Shorter runs only check that it runs.
+INTRO_MIN_FRAMES = 1000
+# XC_LANGUAGE values (ExQueryNonVolatileSetting 7, design 2.1): the names of kernel/kernel_settings.cpp
+# (= the choices of [settings] language in core/config.cpp) or 1..9.
 LANGUAGES = {"english": 1, "japanese": 2, "german": 3, "french": 4, "spanish": 5, "italian": 6,
-             "korean": 7, "chinese": 8, "portuguese": 9}
+             "korean": 7, "tchinese": 8, "portuguese": 9}
 # FUN_000D9990 (files.md 3.2): 3 german, 4 french, 5 spanish, 6 italian, everything else english.
+# FUN_000D9B20 replaces the string manager's default "English" only if __stricmp differs, so the game
+# keeps "English" (capital E) for english - the language string is compared case-insensitively.
 GAME_LANGUAGE = {3: "german", 4: "french", 5: "spanish", 6: "italian"}
+LOG_LINE = re.compile(r"^\[\s*[0-9.]+\] ")
 BUILD_TXT = "1.25"
 ARCHIVES = ["sysPAL.img"] + [f"FutPAL{i:02d}.img" for i in range(5)]
 
@@ -52,7 +64,7 @@ CRITERIA = [
     "2 language from the config (XGetLanguage, game language string)",
     "3 BUILD.TXT = \"1.25\" read",
     "4 intro context runs, frame limit ends the run orderly (exit 0)",
-    "5 fiber switches > 0, APC deliveries > 0, disc error handler never called",
+    "5 game fiber switches > 0, APC deliveries > 0, disc error handler never called",
     "6 self-test SEH on fiber stack (GuestSehOnFiberStack)",
     "7 vfs_trace.log: every open a hit or a documented miss",
     "log without error/warn/UNIMPLEMENTED/TRAP",
@@ -91,8 +103,11 @@ def log_userdata(lines: list[str]) -> str | None:
     return None
 
 
-TRACE_LINE = re.compile(r'^\[\s*[0-9.]+\]\s+\d+\s+(?P<api>.+?)\s+"(?P<path>[^"]*)"(?: -> (?P<target>.*?))? : '
-                        r'(?P<result>.*)$')
+# "[  0.051364]  8228:guest-main NtCreateFile "\??\D:\SysPAL.img" -> \Device\CdRom0\SysPAL.img : hit ..."
+# (time and thread name as in futurama.log; older traces have only the thread id).
+TRACE_LINE = re.compile(r'^\[\s*[0-9.]+\]\s+\d+(?::(?P<thread>\S+))?\s+(?P<api>.+?)\s+"(?P<path>[^"]*)"'
+                        r'(?: -> (?P<target>.*?))? : (?P<result>.*)$')
+SELFTEST_MARK = " [self-test]"
 
 
 def parse_trace(text: str) -> tuple[list[dict], list[str]]:
@@ -105,9 +120,21 @@ def parse_trace(text: str) -> tuple[list[dict], list[str]]:
         if not m:
             bad.append(ln)
             continue
+        result = m.group("result").strip()
+        selftest = result.endswith(SELFTEST_MARK.strip())
+        if selftest:
+            result = result[: -len(SELFTEST_MARK.strip())].rstrip()
         entries.append({"api": m.group("api").strip(), "path": m.group("path"),
-                        "target": m.group("target") or "", "result": m.group("result").strip(), "line": ln})
+                        "target": m.group("target") or "", "result": result, "line": ln,
+                        "thread": m.group("thread") or "", "selftest": selftest})
     return entries, bad
+
+
+def classify_entry(e: dict) -> str:
+    # Opens of the loader's own self-tests (--selftest) are listed but are not the game's (finding 8).
+    if e["selftest"] and classify(e["result"]) in ("hit", "symlink"):
+        return "self-test"
+    return classify(e["result"])
 
 
 def classify(result: str) -> str:
@@ -180,7 +207,7 @@ def check_run(log: str, trace: str, exit_code: int, elapsed: float, timeout: int
     xlang = sorted({int(m.group(1)) for m in all_matches(r"XGetLanguage\(\) = (\d+) \(")})
     game_lang = first(r'game: language "([^"]*)"')
     want_game = GAME_LANGUAGE.get(language, "english")
-    lang_ok = xlang == [language] and game_lang is not None and game_lang.group(1) == want_game
+    lang_ok = xlang == [language] and game_lang is not None and game_lang.group(1).lower() == want_game
     results.append((CRITERIA[1], lang_ok,
                     f"expected XGetLanguage {language} / \"{want_game}\": XGetLanguage {xlang or 'not logged'}, "
                     f"game language {game_lang.group(1) if game_lang else 'not logged'!r}"))
@@ -199,39 +226,54 @@ def check_run(log: str, trace: str, exit_code: int, elapsed: float, timeout: int
                 for m in all_matches(r"game: context (\S+) -> (\S+) \(CApp::Frame #(\d+)\)")]
     intro_first = contexts is not None and contexts.group(2) == "Intro"
     intro_done = any(a == "Intro" and b != "Intro" for a, b, _ in switches)
+    # B11: the intro must also finish - only if the run is long enough for it (finding 6).
+    need_intro_done = frames >= INTRO_MIN_FRAMES
     limit = first(rf"FRAMES: limit of {frames} frames reached")
     pexit = first(r"process exit: frame limit reached \(exit code 0")
-    summary = first(r"game summary: (\d+) CApp::Frame calls, contexts (.*?) \((\d+) switches\)")
+    summary = first(r"game summary: (\d+) CApp::Frame calls, contexts (.*?) \((\d+) switches")
     app_frames = int(summary.group(1)) if summary else 0
     no_hang = exit_code == 0 and elapsed < timeout
-    ok4 = intro_first and intro_done and limit is not None and pexit is not None and no_hang and app_frames > 0
+    ok4 = (intro_first and (intro_done or not need_intro_done) and limit is not None and pexit is not None
+           and no_hang and app_frames > 0)
     history = summary.group(2) if summary else "?"
-    info.update(frames=app_frames, contexts=history, elapsed=elapsed)
+    info.update(frames=app_frames, contexts=history, elapsed=elapsed,
+                switches=int(summary.group(3)) if summary else 0)
     intro_frames = next((n for a, _, n in switches if a == "Intro"), None)
+    if intro_frames:
+        intro_note = f" (Intro left after CApp::Frame #{intro_frames})"
+    elif need_intro_done:
+        intro_note = " (Intro never left)"
+    else:
+        intro_note = f" (Intro still running; leaving it is only required from {INTRO_MIN_FRAMES} frames on)"
     results.append((CRITERIA[3], ok4,
-                    f"first context {contexts.group(2) if contexts else '?'!r}, contexts {history}"
-                    f"{f' (Intro left after CApp::Frame #{intro_frames})' if intro_frames else ' (Intro never left)'}, "
+                    f"first context {contexts.group(2) if contexts else '?'!r}, contexts {history}{intro_note}, "
+                    f"{len(switches)} switches logged, "
                     f"{app_frames} CApp::Frame calls, frame limit {'reached' if limit else 'NOT reached'}, "
                     f"exit {exit_code} after {elapsed:.0f} s (timeout {timeout} s)"))
 
     # 5 fibers, APCs, disc error handler
-    fib = first(r"fiber summary: (\d+) switches")
-    first_switch = first(r"fiber: first SwitchToFiber") is not None
+    # Fiber switches of the game only: the self-test GuestSehOnFiberStack switches too (finding 5).
+    fib = first(r"fiber summary: (\d+) switches \((\d+) game, (\d+) self-test")
+    first_game_switch = first(r"fiber: first SwitchToFiber \(game\)")
     apc = first(r"I/O APC stats \([^)]*\): queued (\d+), delivered (\d+) \(XBE completions (\d+)\).*"
-                r"error completions (\d+), failed APC requests (\d+)")
+                r"error completions (\d+), failed APC reads (\d+) \(disc error path\), failed APC writes (\d+)")
     first_apc = first(r"I/O APC: first XBE completion delivered") is not None
     handler = first(r"game: disc error handler \[0x0030E68C\] = 0x002D707C .*= trap:Game::DiscErrorScreen")
     disc_calls = first(r"disc error screen calls (\d+)")
     disc_trap = first(r"TRAP DiscErrorScreen") is not None
-    n_sw = int(fib.group(1)) if fib else 0
+    n_sw, n_game, n_self = (int(fib.group(1)), int(fib.group(2)), int(fib.group(3))) if fib else (0, 0, 0)
     n_del, n_xbe = (int(apc.group(2)), int(apc.group(3))) if apc else (0, 0)
-    n_err, n_fail = (int(apc.group(4)), int(apc.group(5))) if apc else (-1, -1)
-    ok5 = (n_sw > 0 and first_switch and n_del > 0 and n_xbe > 0 and first_apc and n_err == 0 and n_fail == 0
-           and handler is not None and disc_calls is not None and disc_calls.group(1) == "0" and not disc_trap)
-    info.update(switches=n_sw, apcs=n_del)
+    # Only failed reads lead to the disc error handler (finding 2); failed writes belong to the save layer.
+    n_err, n_fail, n_wfail = (int(apc.group(4)), int(apc.group(5)), int(apc.group(6))) if apc else (-1, -1, -1)
+    ok5 = (n_game > 0 and first_game_switch is not None and n_del > 0 and n_xbe > 0 and first_apc
+           and n_err == 0 and n_fail == 0 and handler is not None and disc_calls is not None
+           and disc_calls.group(1) == "0" and not disc_trap)
+    info.update(fiber_switches=n_game, apcs=n_del)
     results.append((CRITERIA[4], ok5,
-                    f"fiber switches {n_sw}, APC deliveries {n_del} (XBE {n_xbe}), error completions {n_err}, "
-                    f"failed APC requests {n_fail}, handler registered+trapped {handler is not None}, "
+                    f"fiber switches {n_sw} ({n_game} game, {n_self} self-test; first game switch "
+                    f"{'logged' if first_game_switch else 'MISSING'}), APC deliveries {n_del} (XBE {n_xbe}), "
+                    f"error completions {n_err}, failed APC reads {n_fail} (writes {n_wfail}), handler "
+                    f"registered+trapped {handler is not None}, "
                     f"disc error screen calls {disc_calls.group(1) if disc_calls else '?'}"))
 
     # 6 self-test SEH on fiber stack
@@ -244,8 +286,8 @@ def check_run(log: str, trace: str, exit_code: int, elapsed: float, timeout: int
     # 7 VFS trace
     counts: dict[str, int] = {}
     for e in entries:
-        counts[classify(e["result"])] = counts.get(classify(e["result"]), 0) + 1
-    problems = [e["line"] for e in entries if classify(e["result"]) in ("undocumented", "error", "unknown")]
+        counts[classify_entry(e)] = counts.get(classify_entry(e), 0) + 1
+    problems = [e["line"] for e in entries if classify_entry(e) in ("undocumented", "error", "unknown")]
     problems += [f"unparsed: {ln}" for ln in unparsed]
     # every lookup that is not archived must be followed by the loose-file open of the same path
     for i, e in enumerate(entries):
@@ -300,6 +342,9 @@ def main() -> int:
     rate = int(ini_value(cp, "render", "frame_rate", "50") or "50", 0)
     if rate == 0:
         print("m2_check: warning: [render] frame_rate = 0 - time-based loading loops spin, the intro barely runs")
+    if frames < INTRO_MIN_FRAMES:
+        print(f"m2_check: warning: {frames} frames are too few for the intro context to finish (about 800); "
+              f"criterion 4 only checks that it runs and that the run ends orderly")
     timeout = args.timeout or (frames // max(rate, 1) + 90)
     ini_timeout = int(ini_value(cp, "debug", "timeout", "0") or "0", 0)
     if ini_timeout and ini_timeout < frames // max(rate, 1) + 10:
@@ -341,14 +386,21 @@ def main() -> int:
         infos.append(info)
         trace_paths.append([e["api"] + " " + e["path"] for e in parse_trace(trace)[0]])
         print(f"run {i:2d}: exit {code}, {elapsed:.0f} s, {'OK' if run_ok else 'FAILED'}")
-        if not run_ok and stderr:
-            print("    stderr: " + stderr.splitlines()[-1][:200])
+        if not run_ok:
+            # stderr carries the console copy of the log; only a line that is not a log line explains a
+            # failure (stage error, configuration error, kill), else the first error line of the log does.
+            own = [ln for ln in stderr.splitlines() if ln.strip() and not LOG_LINE.match(ln)]
+            first_error = next((ln for ln in log.splitlines() if re.search(r" (ERROR|WARN) ", ln)), None)
+            if own:
+                print("    stderr: " + own[-1][:200])
+            elif first_error:
+                print("    first error/warn line of the log: " + first_error[:200])
         for name, ok, detail in results:
             if i == 1 or not ok:
                 print(f"    [{'PASS' if ok else 'FAIL'}] {name}: {detail}")
         if i > 1 and run_ok:
-            print(f"    frames {info.get('frames')}, contexts {info.get('contexts')}, fiber switches "
-                  f"{info.get('switches')}, APC deliveries {info.get('apcs')}")
+            print(f"    frames {info.get('frames')}, contexts {info.get('contexts')} ({info.get('switches')} "
+                  f"switches), game fiber switches {info.get('fiber_switches')}, APC deliveries {info.get('apcs')}")
 
     # Information only: are the opened paths the same in every run (single guest thread)?
     if len(trace_paths) > 1:

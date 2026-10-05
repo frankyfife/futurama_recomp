@@ -146,3 +146,30 @@ TEST_CASE("trace: VFS trace file is truncated per run and written line by line")
     CHECK(all.find("not written") == std::string::npos);
     CHECK(all.find("second 2") == std::string::npos);
 }
+
+// M2 review finding 9: vfs_trace.log uses the clock and the thread column of futurama.log.
+TEST_CASE("trace: VFS trace lines carry the log clock and the log thread name") {
+    const fs::path dir = TraceTempDir("trace_vfs_clock");
+    core::trace::Options o;
+    o.vfs = true;
+    o.directory = dir / "logs";
+    REQUIRE(core::trace::Configure(o));
+    core::LogSetThreadName("trace-test");
+    const double before = core::LogSeconds();
+    core::trace::VfsLine("%s \"%s\" : hit", "NtOpenFile", R"(\??\D:\x)");
+    const double after = core::LogSeconds();
+    REQUIRE(core::trace::Configure(core::trace::Options{}));
+    std::ifstream in(dir / "logs" / "vfs_trace.log");
+    std::string line;
+    for (std::string l; std::getline(in, l);) {
+        if (l.rfind("# ", 0) != 0) {
+            line = l;
+        }
+    }
+    REQUIRE(line.rfind("[", 0) == 0);
+    const double t = std::stod(line.substr(1, line.find(']') - 1));
+    CHECK(t >= before - 1e-6);
+    CHECK(t <= after + 1e-6);
+    CHECK(line.find(std::to_string(GetCurrentThreadId()) + ":trace-test") != std::string::npos);
+    CHECK(line.find("[self-test]") == std::string::npos);  // not inside a self-test
+}

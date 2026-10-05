@@ -5,6 +5,8 @@
 
 #include "core/guest.h"
 #include "core/host_main.h"
+#include "vfs/vfs.h"
+#include "vfs/vfs_internal.h"
 #include "xapi/game_probes.h"
 
 #include <string>
@@ -65,6 +67,7 @@ TEST_CASE("xapi: game probe targets are function starts with room for their stol
                               {guest::kGameArchiveLookup, 5, "FUN_0013fe10"},
                               {guest::kGameInit, 6, "FUN_000a26a0"},
                               {guest::kCAppFrame, 6, "FUN_000d2630"},
+                              {guest::kGamePoolMaintenance, 5, "FUN_000a48c0"},
                               {guest::kXapiXGetLanguage, 5, "XAPILIB::XGetLanguage"},
                               {guest::kGameDiscErrorScreen, 5, "DiscErrorScreen_vf0"}};
     for (const Target& t : targets) {
@@ -83,6 +86,10 @@ TEST_CASE("xapi: game probe targets are function starts with room for their stol
     REQUIRE(disc != nullptr);
     CHECK(disc->flags == guest::kFunctionExtraStart);
     CHECK(disc->size == 0xD9u);
+    // probe:Game::ContextSwitch logs only the call from Game::Frame (return address after `call 0xA48C0`)
+    const guest::FunctionInfo* frame = guest::FindFunctionContaining(guest::kGameFrameContextSwitchReturn);
+    REQUIRE(frame != nullptr);
+    CHECK(frame->address == guest::kGameFrame);
 }
 
 TEST_CASE("xapi: game observer statistics start empty") {
@@ -90,8 +97,29 @@ TEST_CASE("xapi: game observer statistics start empty") {
     CHECK(s.archivesMounted == 0u);
     CHECK(s.frames == 0u);
     CHECK(s.discErrorCalls == 0u);
+    CHECK(s.contextSwitches == 0u);
+    CHECK(s.switchesSeenAfterFrame == 0u);
     CHECK(s.videoStandard == -1);
     CHECK_FALSE(s.gameInitDone);
     CHECK(xapi::MountedArchiveNames().empty());
     CHECK(xapi::ContextHistory().empty());
+}
+
+// M2 review finding 8: only save directories (12 hex digits) and the five save files count as documented
+// misses on partition1; everything else there (TitleMeta.xbx, typos) is UNDOCUMENTED.
+TEST_CASE("vfs: documented misses on partition1 are limited to save directories and save files") {
+    const char* p1 = vfs::kPartition1;
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\0123456789AB)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\0123456789ab\Futurama.dat)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\udata\46490002\A1B2C3D4E5F6\SaveMeta.xbx)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\A1B2C3D4E5F6\options.dat)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\A1B2C3D4E5F6\Unlock.dat)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\A1B2C3D4E5F6\saveimage.xbx)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\TitleMeta.xbx)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\TitleImage.xbx)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\ZZZZZZZZZZZZ\Futurama.dat)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\0123456789AB\Futurama.txt)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\UDATA\46490002\0123456789A\Futurama.dat)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(p1, R"(\TDATA\46490002\0123456789AB)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(vfs::kCdRom0, R"(\FutPAL05.img)") != nullptr);
 }

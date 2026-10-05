@@ -216,3 +216,25 @@ TEST_CASE("apc: wait exports on event and unknown handles") {
     CHECK_FALSE(krnl::DeliversUserApcs(krnl::kKernelMode, TRUE));
     CHECK_FALSE(krnl::DeliversUserApcs(krnl::kUserMode, FALSE));
 }
+
+// M2 review finding 2: only a failed ReadFileEx (NiUDSStream FUN_0013F660) leads to the disc error
+// handler; a failed WriteFileEx (save layer FUN_000E0B00) is counted separately and must not fail M2
+// exit criterion 5 ("failed APC reads 0").
+TEST_CASE("apc: failed APC requests are split into reads (disc error path) and writes (save layer)") {
+    const krnl::io::IoApcStats before = krnl::io::GetIoApcStats();
+    krnl::io::NoteFailedIoApcRequest("NtWriteFile", R"(\Device\Harddisk0\partition1\x.dat)", Dispatcher(),
+                                     STATUS_DISK_FULL);
+    krnl::io::IoApcStats after = krnl::io::GetIoApcStats();
+    CHECK(after.failedWriteRequests - before.failedWriteRequests == 1);
+    CHECK(after.failedRequests == before.failedRequests);
+    krnl::io::NoteFailedIoApcRequest("NtReadFile", R"(\Device\CdRom0\a.img)", Dispatcher(),
+                                     STATUS_END_OF_FILE);
+    after = krnl::io::GetIoApcStats();
+    CHECK(after.failedRequests - before.failedRequests == 1);
+    CHECK(after.failedWriteRequests - before.failedWriteRequests == 1);
+    // other APC routines and requests without APC are not counted
+    krnl::io::NoteFailedIoApcRequest("NtReadFile", "x", nullptr, STATUS_END_OF_FILE);
+    after = krnl::io::GetIoApcStats();
+    CHECK(after.failedRequests - before.failedRequests == 1);
+    CHECK(after.errorCompletions == before.errorCompletions);
+}

@@ -110,11 +110,15 @@ std::string_view StripInlineComment(std::string_view line) {
 // Every key the host reads (review finding 8). A module that reads a new key adds it here. A key
 // that is not listed is a configuration error in a known section (typos such as "stop-at" or
 // "timeout = 60s" must not be ignored silently); an unknown section only produces a warning.
-enum class KeyType : std::uint8_t { String, Bool, U32, List, Path };
+// Choice (M2 review finding 10): the value must be one of the '|'-separated words (case-insensitive) or
+// lie in a numeric range "a..b" of the list; otherwise the configuration error (exit code 1) is raised
+// here instead of a stage failure (exit code 2) when the module parses the key.
+enum class KeyType : std::uint8_t { String, Bool, U32, List, Path, Choice };
 struct KnownKey {
     const char* section;
     const char* key;
     KeyType type;
+    const char* choices = nullptr;  // KeyType::Choice only
 };
 constexpr KnownKey kKnownKeys[] = {
     {"paths", "iso", KeyType::Path},
@@ -127,6 +131,7 @@ constexpr KnownKey kKnownKeys[] = {
     {"debug", "msgbox", KeyType::Bool},
     {"debug", "timeout", KeyType::U32},
     {"debug", "crash_test", KeyType::Bool},
+    {"debug", "exit_hang_test", KeyType::Bool},  // M2 review finding 7: an exit reporter that never returns
     {"debug", "minidump", KeyType::Bool},
     {"debug", "mmio_trap", KeyType::Bool},
     {"debug", "frames", KeyType::U32},  // gfx (M2): end orderly after N displayed frames, 0 = off
@@ -137,22 +142,51 @@ constexpr KnownKey kKnownKeys[] = {
     {"log", "console", KeyType::Bool},
     {"log", "debugger", KeyType::Bool},
     {"hooks", "disable", KeyType::List},
-    {"settings", "language", KeyType::String},
+    // same names as kLanguages in kernel/kernel_settings.cpp (unit test "config: choice keys ...")
+    {"settings", "language", KeyType::Choice,
+     "english|japanese|german|french|spanish|italian|korean|tchinese|portuguese|1..9"},
     {"settings", "game_region", KeyType::U32},
     {"settings", "av_region", KeyType::U32},
     {"settings", "video_flags", KeyType::U32},
     {"settings", "audio_flags", KeyType::U32},
     {"settings", "av_pack", KeyType::U32},
-    {"saves", "key_mode", KeyType::String},
+    {"saves", "key_mode", KeyType::Choice, "fixed|xbox"},
     {"saves", "signature_key", KeyType::String},
     {"saves", "xbox_cert_key", KeyType::String},
     // gfx (M2, src/host/gfx/gfx_config.h): [render] = null renderer and D3D shim/traps
     {"render", "frame_rate", KeyType::U32},       // DisplayFrame pacing in Hz, 0 = unthrottled (default 50)
-    {"render", "d3d_traps", KeyType::String},     // abort (default) | log
+    {"render", "d3d_traps", KeyType::Choice, "abort|log"},  // default abort
     {"render", "load_textures", KeyType::Bool},   // slot 65 reads texture files for their size (default 1)
     // xdk (M2, src/host/audio/dsound_stubs.h): DirectSoundCreateStream returns stub streams instead of NULL
     {"audio", "dummy_streams", KeyType::Bool},  // default 0
 };
+
+// True if `value` is one of the '|'-separated choices (words case-insensitive, "a..b" numeric ranges).
+bool MatchesChoice(std::string_view value, std::string_view choices) {
+    const std::string v = Lower(Trim(value));
+    std::uint32_t number = 0;
+    const bool isNumber = ParseU32(v, number);
+    std::size_t start = 0;
+    while (start <= choices.size()) {
+        std::size_t bar = choices.find('|', start);
+        if (bar == std::string_view::npos) {
+            bar = choices.size();
+        }
+        const std::string_view choice = choices.substr(start, bar - start);
+        const std::size_t dots = choice.find("..");
+        if (dots != std::string_view::npos) {
+            std::uint32_t lo = 0, hi = 0;
+            if (isNumber && ParseU32(choice.substr(0, dots), lo) && ParseU32(choice.substr(dots + 2), hi) &&
+                number >= lo && number <= hi) {
+                return true;
+            }
+        } else if (v == choice) {
+            return true;
+        }
+        start = bar + 1;
+    }
+    return false;
+}
 
 bool IsKnownSection(std::string_view section) {
     for (const KnownKey& k : kKnownKeys) {
@@ -203,6 +237,11 @@ bool ValidateKeys(const std::map<std::string, std::string, std::less<>>& values,
         }
         if (known->type == KeyType::U32 && !ParseU32(value, u)) {
             error = "invalid number for " + where + ": '" + value + "' (expected decimal or 0x hex, no unit)";
+            return false;
+        }
+        if (known->type == KeyType::Choice && known->choices != nullptr &&
+            !MatchesChoice(Unquote(value), known->choices)) {
+            error = "invalid value for " + where + ": '" + value + "' (expected " + known->choices + ")";
             return false;
         }
     }
@@ -454,6 +493,11 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
 
 bool IsKnownConfigKey(std::string_view section, std::string_view key) {
     return FindKnownKey(Lower(section), Lower(key)) != nullptr;
+}
+
+const char* ConfigKeyChoices(std::string_view section, std::string_view key) {
+    const KnownKey* k = FindKnownKey(Lower(section), Lower(key));
+    return k != nullptr && k->type == KeyType::Choice ? k->choices : nullptr;
 }
 
 bool ProcessLongPathsEnabled() noexcept {

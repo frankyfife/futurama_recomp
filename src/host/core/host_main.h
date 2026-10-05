@@ -20,8 +20,12 @@ int RunHost(const LauncherInfo* info) noexcept;
 // Ends the process from any thread (guest hooks, kernel HLE such as HalReturnToFirmware, the
 // --stop-at hook): logs "process exit: <reason> (code N)", flushes the log and terminates the
 // process with `exitCode`. Uses TerminateProcess, like core::Fatal: no DLL_PROCESS_DETACH / static
-// destructors run while guest threads are frozen at arbitrary points. Never returns.
+// destructors run while guest threads are frozen at arbitrary points. Never returns. A second call while
+// an exit is in progress waits for it - except with kExitWatchdog, which terminates at once (the first
+// exit hangs in an exit reporter or the log flush; M2 review finding 7).
 [[noreturn]] void ExitHostProcess(int exitCode, const char* reason) noexcept;
+// True once ExitHostProcess has started (the watchdog then skips its log-based thread dump).
+bool ExitInProgress() noexcept;
 
 // Exit reporters (M2 integration): module statistics that belong into the log at every orderly
 // process end through ExitHostProcess (--frames limit, --stop-at, guest shutdown), e.g. the fiber

@@ -289,6 +289,21 @@ inline constexpr std::uint32_t kGameBuildTextSize = 0x100;
 inline constexpr GuestAddr kGameDiscErrorHandlerVar = 0x0030E68C;
 inline constexpr GuestAddr kGameDiscErrorObject = 0x002D707C;
 inline constexpr GuestAddr kGameDiscErrorScreen = 0x000F2FD0;
+// --- added in the M2 review fixes (context switch probe, review finding 4) --------------------------
+// Game::Frame FUN_000A2C20 (thiscall ecx = CApp, called by CApp::Frame) switches the context inside its
+// fixed-step loop when cur->Update() returns FALSE: cur->Exit() (0xA2DEB), FUN_0002A660 (0xA2DF6, eight
+// cleared frames), CApp+0xBC = CApp+0xC0 (0xA2E28), CApp+0xC0 = 0 (0xA2E34), FUN_000A48C0 (call 0xA2E40,
+// return address 0xA2E45), new cur->Enter() (0xA2EC8) and Update(). Several switches can happen within
+// one CApp::Frame (up to 6 steps per frame, startup.md 3.2).
+inline constexpr GuestAddr kGameFrame = 0x000A2C20;
+// FUN_000A48C0: cdecl, no args, `xor eax,eax; ret` (0xA48D4): FUN_000A3CE0 + FUN_000A3B10 on the game
+// memory pool object 0x2E7D60 (kGameMemoryPool). Callers: Game::Frame right after `cur = next`
+// (kGameFrameContextSwitchReturn) and the level loader FUN_0002A760. Prologue B9 60 7D 2E 00 =
+// mov ecx,0x2E7D60 (capstone; the only raw branch candidate into 0xA48C1..0xA48C4, 0xA4892, lies inside
+// the instruction at 0xA4890).
+inline constexpr GuestAddr kGamePoolMaintenance = 0x000A48C0;
+inline constexpr GuestAddr kGameFrameContextSwitchReturn = 0x000A2E45;
+inline constexpr std::uint32_t kCAppNextContextOffset = 0xC0;  // next context (0 after the switch)
 
 // ---------------------------------------------------------------------------------------------
 // Memory helpers

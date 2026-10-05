@@ -729,3 +729,31 @@ TEST_CASE("kernel: IRQL emulation uses the S_IRQL TLS slot") {
     krnl::KfLowerIrql(2);  // raising via KfLowerIrql is rejected (logged)
     CHECK(krnl::CurrentIrql() == 0);
 }
+
+// M2 review finding 10: the configuration validates [settings] language (exit code 1) with the same
+// names the kernel parses - every choice of config.cpp must be accepted here.
+TEST_CASE("kernel: every [settings] language choice of the config table is a kernel language") {
+    const std::string choices = core::ConfigKeyChoices("settings", "language");
+    std::size_t start = 0;
+    int words = 0;
+    while (start <= choices.size()) {
+        std::size_t bar = choices.find('|', start);
+        if (bar == std::string::npos) {
+            bar = choices.size();
+        }
+        const std::string choice = choices.substr(start, bar - start);
+        start = bar + 1;
+        if (choice.find("..") != std::string::npos) {
+            continue;
+        }
+        ++words;
+        core::Config c;
+        c.values["settings.language"] = choice;
+        krnl::KernelSettings s;
+        std::string err;
+        CAPTURE(choice);
+        CHECK(krnl::LoadKernelSettings(c, s, err));
+        CHECK(std::string(krnl::LanguageName(s.language)) == choice);
+    }
+    CHECK(words == 9);
+}

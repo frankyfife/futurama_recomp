@@ -205,10 +205,12 @@ FUT_SELFTEST(GuestSehOnFiberStack, AdoptedThread) {
         probe.lastException.info1 == probe.noAccessPage && guest::InXbeImage(probe.lastException.eip) &&
         probe.lastException.esp >= stack.stackLimit && probe.lastException.esp < stack.stackBase;
     const std::uint64_t switches = fibersAfter.switches - fibersBefore.switches;
-    const bool countersOk = switches == 2 && fibersAfter.chainFixups - fibersBefore.chainFixups == 1 &&
-                            stacksAfter.created == stacksBefore.created + 1 &&
-                            stacksAfter.deleted == stacksBefore.deleted + 1 &&
-                            stacksAfter.live == stacksBefore.live;
+    // Both switches count as self-test switches (core::InSelfTest), not as the game's (M2 exit 5).
+    const bool countersOk =
+        switches == 2 && fibersAfter.selfTestSwitches - fibersBefore.selfTestSwitches == 2 &&
+        fibersAfter.chainFixups - fibersBefore.chainFixups == 1 &&
+        stacksAfter.created == stacksBefore.created + 1 && stacksAfter.deleted == stacksBefore.deleted + 1 &&
+        stacksAfter.live == stacksBefore.live;
     std::string where;
     try {
         where = guest::Symbolize(probe.lastException.eip);

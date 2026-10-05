@@ -146,33 +146,101 @@ void UnlinkRendererData(std::uint32_t texture, std::uint32_t data) noexcept {
     }
 }
 
-// Size and format of a source texture as FUN_0015E010 takes them: the NiPixelData at +0x34, or the file
-// at +0x30 read through the game's NiImageConverter (vf2 = ReadImageFile, thiscall (path, 0); the result
-// has refcount 0 and is freed again by the AddRef/Release pair, 0x15E06A..0x15E076 and the end of
-// FUN_0015E010). NiPixelData (ctor 0x110FF0, FUN_00111260): +0x0C NiPixelFormat (8 DWORDs), +0x2C palette,
+// Default texture of NiXBoxRenderer (renderer +0x5A0 pixel data, +0x598 format): FUN_0014AB50 (called by
+// the device setup FUN_0014C0F0) creates it as NiPixelData FUN_00111260(8, 8, [+0x598], 1) - 8x8, one mip
+// level, a red/blue/yellow test pattern written as 32-bit ARGB (0xFFFF0000, 0xFF0000FF, 0xFFFFFF00).
+// FUN_0015E010 uses it instead of the texture's own image when there is no image, the image file cannot
+// be read, its width or height is not a power of two, or no D3D format matches (renderer.md 5.2).
+inline constexpr std::uint32_t kDefaultTextureSize = 8;
+inline constexpr std::uint32_t kDefaultTextureBytes = kDefaultTextureSize * kDefaultTextureSize * 4;
+// NiPixelFormat of the default texture (layout of the NiPixelFormat ctor FUN_001409A0: +0 format 1 = RGBA,
+// +4..+0x10 R/G/B/A masks, +0x14 bits per pixel, +0x18/+0x1C packed channel descriptors).
+// ASSUMPTION: [+0x598] = [+0x53C] is the 32-bit A8R8G8B8 entry FUN_0014A410 builds with
+// FUN_00140D80(0xFF0000, 0xFF00, 0xFF, 0xFF000000, 0x20); the packed descriptors depend on runtime
+// tables (0x2D7B5C..0x2D7B64, 0x30E8AC) and stay 0 - nothing reads them before M3.
+inline constexpr std::uint32_t kDefaultTextureFormat[8] = {1, 0xFF0000, 0xFF00, 0xFF, 0xFF000000, 32, 0, 0};
+
+std::atomic<std::uint32_t> g_defaultNoImage{0}, g_defaultUnreadable{0}, g_defaultNotPow2{0},
+    g_defaultNotLoaded{0};
+
+bool IsPowerOfTwo(std::uint32_t v) noexcept {
+    return v != 0 && (v & (v - 1)) == 0;  // = the bit loops of FUN_0015E010 (0x15E0B5..0x15E0D8)
+}
+
+void FillDefaultTextureInfo(NiPCTextureData* data) noexcept {
+    data->width = kDefaultTextureSize;
+    data->height = kDefaultTextureSize;
+    data->sizeBytes = kDefaultTextureBytes;
+    data->revision = 0;
+    for (std::uint32_t i = 0; i < 8; ++i) {
+        data->pixelFormat[i] = kDefaultTextureFormat[i];
+    }
+}
+
+// Size and format of a source texture in the order of FUN_0015E010 (0x15E04B..0x15E0F0):
+//   1. image = the file at +0x30 if a path is set, read through the game's NiImageConverter (singleton
+//      [0x30EF64], vf2 = ReadImageFile, thiscall (path, 0); the result has refcount 0), else the
+//      NiPixelData at +0x34 - a path wins even if +0x34 is set;
+//   2. no image, or width/height of mip 0 not a power of two -> the renderer's default texture (8x8).
+// The game sees the result through NiSourceTexture::vf11/vf12 (GetWidth/GetHeight 0x118000/0x118020 ->
+// renderer data vf2/vf3 = +0x48/+0x4C). Not reproduced: the D3D format choice FUN_001572D0 (its NULL
+// result also selects the default) - the NiPixelFormat of the source stands in for it.
+// `[render] load_textures = 0` skips the file read; such a texture gets the default like an unreadable
+// file (deviation, counted). The original falls back silently, so does this (GFX/debug only).
+// NiPixelData (ctor 0x110FF0, FUN_00111260): +0x0C NiPixelFormat (8 DWORDs), +0x2C palette,
 // +0x34 width[] / +0x38 height[] per mip, +0x3C offsets[mips + 1], +0x40 mip count, +0x48 revision.
 void FillSourceTextureInfo(NiPCTextureData* data, std::uint32_t texture) noexcept {
-    std::uint32_t pixels = Read(texture + kNiSourceTexturePixelData);
     const std::uint32_t path = Read(texture + kNiSourceTexturePath);
-    if (pixels == 0 && path != 0 && GetSettings().loadTextures) {
+    std::uint32_t pixels = 0;
+    if (path != 0) {
         const std::uint32_t converter = Read(guest::kNiImageConverterPtr);
+        if (!GetSettings().loadTextures) {
+            g_defaultNotLoaded.fetch_add(1, std::memory_order_relaxed);
+            FUT_LOGD(Gfx, "texture '%.200s': not read ([render] load_textures = 0) - default 8x8 texture",
+                     guest::Ptr<const char>(path));
+            FillDefaultTextureInfo(data);
+            return;
+        }
         if (converter != 0) {
             pixels = core::CallGuestThiscall(Read(Read(converter) + 8), converter, {path, 0});
             g_textureFilesRead.fetch_add(1, std::memory_order_relaxed);
-            if (pixels == 0) {
-                FUT_LOGW(Gfx, "texture '%.200s': NiImageConverter could not read it (size stays 0)",
-                         guest::Ptr<const char>(path));
-            }
         }
-    }
-    if (pixels == 0) {
-        return;
+        if (pixels == 0) {
+            g_defaultUnreadable.fetch_add(1, std::memory_order_relaxed);
+            FUT_LOGD(Gfx,
+                     "texture '%.200s': NiImageConverter could not read it - default 8x8 texture (as "
+                     "FUN_0015E010)",
+                     guest::Ptr<const char>(path));
+            FillDefaultTextureInfo(data);
+            return;
+        }
+    } else {
+        pixels = Read(texture + kNiSourceTexturePixelData);
+        if (pixels == 0) {
+            // E.g. the movie player's texture (NiSourceTexture::Create(NULL, ..) in FUN_000EE220), which
+            // then writes its own size into +0x48/+0x4C (renderer.md 5.2).
+            g_defaultNoImage.fetch_add(1, std::memory_order_relaxed);
+            FillDefaultTextureInfo(data);
+            return;
+        }
     }
     auto* refCount = guest::Ptr<std::uint32_t>(pixels + 4);
     ++*refCount;
     const std::uint32_t widths = Read(pixels + 0x34), heights = Read(pixels + 0x38);
-    data->width = widths != 0 ? Read(widths) : 0;
-    data->height = heights != 0 ? Read(heights) : 0;
+    const std::uint32_t width = widths != 0 ? Read(widths) : 0;
+    const std::uint32_t height = heights != 0 ? Read(heights) : 0;
+    if (!IsPowerOfTwo(width) || !IsPowerOfTwo(height)) {
+        g_defaultNotPow2.fetch_add(1, std::memory_order_relaxed);
+        FUT_LOGD(Gfx,
+                 "texture '%.200s' (NiPixelData 0x%08X): %ux%u is not a power of two - default 8x8 "
+                 "texture (as FUN_0015E010)",
+                 path != 0 ? guest::Ptr<const char>(path) : "(pixel data)", pixels, width, height);
+        FillDefaultTextureInfo(data);
+        ReleaseRefObject(pixels);  // a file image with refcount 0 is freed here (the original leaks it)
+        return;
+    }
+    data->width = width;
+    data->height = height;
     data->revision = Read(pixels + 0x48);
     const std::uint32_t offsets = Read(pixels + 0x3C), mips = Read(pixels + 0x40);
     data->sizeBytes = offsets != 0 && mips < 16 ? Read(offsets + 4 * mips) : 0;
@@ -959,9 +1027,14 @@ std::uint32_t SlotCallCount(std::uint32_t slot) noexcept {
 }
 
 void LogRendererStatistics() noexcept {
-    FUT_LOGI(Gfx, "NiPCRenderer: %u frames displayed; texture data: %u source + %u rendered created, %u destroyed; "
-             "%u texture files read", g_framesDisplayed.load(), g_sourceDataCreated.load(),
-             g_renderedDataCreated.load(), g_dataDestroyed.load(), g_textureFilesRead.load());
+    FUT_LOGI(
+        Gfx,
+        "NiPCRenderer: %u frames displayed; texture data: %u source + %u rendered created, %u destroyed; "
+        "%u texture files read; default 8x8 texture for %u without image, %u unreadable, %u not a power "
+        "of two, %u not loaded",
+        g_framesDisplayed.load(), g_sourceDataCreated.load(), g_renderedDataCreated.load(),
+        g_dataDestroyed.load(), g_textureFilesRead.load(), g_defaultNoImage.load(),
+        g_defaultUnreadable.load(), g_defaultNotPow2.load(), g_defaultNotLoaded.load());
     char line[512];
     std::size_t used = 0;
     line[0] = 0;

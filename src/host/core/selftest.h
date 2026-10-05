@@ -34,6 +34,9 @@ struct SelfTestRegistrar {
 int RunSelfTests(SelfTestPhase phase) noexcept;
 // Number of registered tests in a phase.
 int SelfTestCount(SelfTestPhase phase) noexcept;
+// (M2 review) True while RunSelfTests executes a test on the calling thread. Lets statistics and traces
+// keep the self-tests' own activity apart from the game's (fiber switches, VFS trace lines).
+bool InSelfTest() noexcept;
 
 // HostMain stage (after hooks): runs the Host and Mapped tests; false if any failed.
 bool StageRunSelfTests(const Config& config);
