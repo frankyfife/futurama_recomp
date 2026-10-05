@@ -421,6 +421,48 @@ extract/ff failures).
 - Slots 69/70 keep TRUE without renderer data (P8 is expanded by texconv); 56/71 stay no-ops.
 - Each slot keeps its M2 header comment, `ret N` static_assert and purge self-test.
 
+**Phase-3 results (integration; supersedes the marked points of sections 2, 8, 9 and 11):**
+- **`gfx::GpuRenderer`** (`gfx/nipc_gpu.h/.cpp`) is the host side of the d3d11 backend behind
+  `HostRenderer::gpu`; `nipc_renderer.cpp` keeps the guest side. Create: `[render] backend = d3d11` (now the
+  default) + `platform::MainWindow()` -> device (`WantDebugLayer`, `adapter`), `FixedFunctionPipeline::Init`,
+  the 8x8 default texture (FUN_0014AB50) and a black 1x1 texture, `DefaultCamera`, back buffer + depth bound;
+  any failure -> GFX/error and the null renderer. Create line: `... -> NiPCRenderer 0x.. (d3d11: <adapter>,
+  <api>, debug layer <state>; vtable ...)`.
+- **Slots:** 15 NULL -> `SetRenderTargets({}, {})` + whole-target viewport, a texture -> draws and clears are
+  counted no-ops (`texture target`, P2); 16 -> `GpuRenderer::DisplayFrame`: frame summary (trace/screenshot
+  frames), screenshot (`screenshot_frames` or F12), `Present({vsync})` (DeviceLost -> GFX/error +
+  `core::Fatal`), `platform::NotePresentedFrame`, arena reset; then (both backends) `platform::PaceFrame` (the
+  M2 pacer of nipc_renderer.cpp is gone), counter, `--frames`; 17 ClearBuffer (new handler, ret 8): whole-target
+  viewport, mode bit 1/4/2 -> color/depth/stencil, `ni::ClearRect`, empty rect -> nothing; 19 swap flag to the
+  GPU; 27 `_ftol(c * 255) & 0xFF` like 0x14B0C6 (M2 clamped); 45 `ni::BeginScene`; 47 `ni::ExtractCamera` (target
+  size + swap of the GpuRenderer) -> viewport + `ff.SetCamera`; 48-51/54/55 outside a scene -> counted
+  `NotInScene`, else `ni::Extract*` -> `ff.Draw` with outcome counting (`Drawn/Skipped/Failed/Empty/
+  Unsupported/Error/NotInScene/TextureTarget`, first non-drawn outcome per kind logged; `Error` on GFX/warn).
+- **Viewport rule:** the camera handed to the pipeline always carries the viewport set on the context
+  (ClearBuffer changes only the viewport). **Half-pixel correction (supersedes section 11, first point):** the
+  projection and the screen projection given to `ff.SetCamera` are shifted by +0.5 pixel (`clip.x += w / vw`,
+  `clip.y -= w / vh`), so transformed geometry covers the D3D8/NV2A pixels too; measured against the xemu
+  frontend captures on the static pixels: 61 % -> 93 % exactly equal.
+- **Slot 65** = FUN_0015E010 complete (texconv `SelectTextureSource` with the image format and FormatPrefs ->
+  FUN_001572D0 in both backends; +0x14..+0x33 = table format of the chosen entry, default texture = entry 5;
+  +0x50 = uploaded mip levels; +0x54 from FormatPrefs +0x18); GPU path: `ConvertPixelData` (BGRA8 / BC1-3,
+  `keep16Bit` off) -> `CreateTexture`; host fields +0x64 handle id, +0x68 `tex::TextureSource` |
+  `kHostOwnsTexture` (0x100), +0x6C revision; data slot 0 destroys an owned texture. A slot-65 stack probe
+  measures the loading-fiber stack use (log line `NiPCRenderer slot 65 stack: ...`).
+- **TextureResolver** = FUN_0015F930: data created on demand for an NiSourceTexture, FUN_0015E260 re-upload when a
+  non-static texture's (+0x38 == 0) NiPixelData revision changed, movie (+0x3C from the shim) and rendered
+  textures -> black texture.
+- **Log lines** (m3_check reads them): `draw trace frame N #i: <Kind> 0x.. -> <outcome>[: note]: ...` for
+  `trace_frames`; `draw summary frame N: X draw calls, Y drawn, Z not drawn, C clears; <Kind> n (<outcome> n,
+  ...)` for trace and screenshot frames; exit reporter "gfx": `NiPCRenderer textures: ...`, `NiPCRenderer slot 65
+  stack: ...`, `d3d11 draws <Kind>: N calls - drawn, skipped, failed, empty, unsupported, error, not in scene,
+  texture target`, `d3d11 frames: ...`, `ff pipeline: ...`, `ni_extract: ...` (ExtractCounters), `d3d11 device:
+  ...`. A traced frontend frame (~345 lines) costs ~30 ms of logging - trace frontend frames only in diagnostic
+  runs.
+- **Check:** `tools\m3_check.py` (all M3 criteria + `m2_check.check_run` + general rule; screenshots compared with
+  `run\xemu_ref`). Configs: `run\m3\futurama.ini` (Debug), `run\m3\rel\futurama.ini` (RelWithDebInfo,
+  `debug_layer = on`), regressions `run\m3\m1`, `run\m3\m2` (d3d11), `run\m3\m2-null`.
+
 ## 10. Ownership (phase 2)
 
 Edit only your files. Shared files: add-only changes, each logged in `src/INTERFACES.md` section 8.
@@ -458,6 +500,8 @@ Report deviations from this contract in your result instead of silently divergin
 
 - Half-pixel: pre-transformed quads are shifted +0.5 (exact pixel coverage); transformed geometry follows
   D3D11 rasterization rules (D3D8 put pixel centers on integers - sub-pixel shift, invisible at 640x480).
+  **Superseded in phase 3:** the integration shifts the projection by +0.5 pixel as well (section 9,
+  "Phase-3 results"); the shift was measurable against the xemu captures.
 - Colors > 1 or < 0 saturate (the original's `ROUND(c * 255)` wraps); ambient sum clamps (FUN_0015BA40 wraps).
 - FormatPrefs color reduction (32 -> 16 bit) is not reproduced; textures may look better than on the Xbox.
 - Multi-pass texture pipelines, NiTextureEffect (projected lights/shadows, environment/fog maps), render to

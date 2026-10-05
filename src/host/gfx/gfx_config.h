@@ -11,10 +11,9 @@
 //   [render] load_textures = 1  slot 65 (CreateSourceTextureRendererData) reads a texture that has only
 //                               a file name through the game's NiImageConverter, like FUN_0015E010, to
 //                               fill the size fields of the renderer data; 0 = size 0 for such textures
-// M3 (GFX_CONTRACT.md 8, keys registered in phase 1; the defaults keep the M2 null renderer until the
-// integration switches [render] backend to d3d11):
-//   [render] backend = null     null | d3d11: null = M2 null renderer (no window, nothing drawn);
-//                               d3d11 = window + D3D11 RHI (gfx/rhi/rhi.h)
+// M3 (GFX_CONTRACT.md 8, keys registered in phase 1; the M3 integration made d3d11 the default):
+//   [render] backend = d3d11    d3d11 | null: d3d11 = window + D3D11 RHI (gfx/rhi/rhi.h, gfx/nipc_gpu.h);
+//                               null = M2 null renderer (no window, nothing drawn; M1/M2 regression)
 //   [render] vsync = 1          Present waits for the vertical blank (sync interval 1)
 //   [render] debug_layer = auto auto | on | off: D3D11 debug layer (auto = on in Debug builds); a missing
 //                               layer is reported (GFX/warn), the device is created without it
@@ -48,7 +47,7 @@ struct Settings {
     TrapMode trapMode = TrapMode::Abort;
     bool loadTextures = true;
     // M3 (GFX_CONTRACT.md 8)
-    RenderBackend backend = RenderBackend::Null;
+    RenderBackend backend = RenderBackend::D3D11;  // default since the M3 integration
     bool vsync = true;
     DebugLayerMode debugLayer = DebugLayerMode::Auto;
     bool softwareAdapter = false;

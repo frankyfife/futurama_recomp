@@ -150,14 +150,12 @@ struct Scene {
             geometryVtables[i][kNiGeometryDataVfVertexCount / 4] = vf12[i];
             geometryVtables[i][kNiGeometryDataVfTriangleCount / 4] = vf15[i];
         }
-        const GuestPtr own[12] = {A(alpha),   A(dither),   A(fog),       A(material),
-                                  A(rendererSpecific), A(shade), A(specular), A(stencil),
-                                  A(texturing), A(vertexColor), A(wireframe), A(zbuffer)};
+        const GuestPtr own[12] = {A(alpha),     A(dither),   A(fog),     A(material),  A(rendererSpecific),
+                                  A(shade),     A(specular), A(stencil), A(texturing), A(vertexColor),
+                                  A(wireframe), A(zbuffer)};
         std::memcpy(defaults, own, sizeof(defaults));
     }
-    void SetBaseMap(bool on) {
-        maps[0] = on ? A(baseMap) : 0;
-    }
+    void SetBaseMap(bool on) { maps[0] = on ? A(baseMap) : 0; }
     ExtractContext Context() {
         ExtractContext c;
         c.arena = &arena;
@@ -223,7 +221,8 @@ struct Scene {
 
 }  // namespace
 
-// ---- camera ------------------------------------------------------------------------------------------------
+// ---- camera
+// ------------------------------------------------------------------------------------------------
 
 TEST_CASE("extract: SetCameraData view/projection/viewport (0x1469E0)") {
     const float loc[3] = {1.0f, 2.0f, 3.0f};
@@ -251,7 +250,8 @@ TEST_CASE("extract: SetCameraData view/projection/viewport (0x1469E0)") {
     CHECK(c.view.m[3][2] == -3.0f);
     CHECK(c.view.m[3][3] == 1.0f);
     // a world point on the right frustum edge at distance 10 maps to x_ndc = +1
-    const Float4 p = TransformFloat4(TransformFloat4(Float4{1.0f + 5.0f, 2.0f, 13.0f, 1.0f}, c.view), c.projection);
+    const Float4 p =
+        TransformFloat4(TransformFloat4(Float4{1.0f + 5.0f, 2.0f, 13.0f, 1.0f}, c.view), c.projection);
     CHECK(Near(p.x / p.w, 1.0f));
     CHECK(Near(p.y / p.w, 0.0f));
     CHECK(Near(c.projection.m[0][0], 2.0f));
@@ -302,7 +302,7 @@ TEST_CASE("extract: asymmetric frustum offsets and _ftol truncation") {
     in.port = &port;
     const CameraDesc c = ExtractCamera(in);
     CHECK(Near(c.projection.m[2][0], -(0.75f - 0.25f) / 1.0f));
-    CHECK(c.viewport.x == 213.0f);                              // trunc(213.12)
+    CHECK(c.viewport.x == 213.0f);  // trunc(213.12)
     CHECK(c.viewport.y == static_cast<float>(static_cast<int>((1.0 - 0.777f) * 480)));
     CHECK(c.viewport.width == static_cast<float>(static_cast<int>((0.999 - 0.333) * 640)));
     // NetImmerse axes: world +x = view +z (direction), world +z = view +x (right)
@@ -341,7 +341,8 @@ TEST_CASE("extract: ClearBuffer rectangle (0x1464C2)") {
     CHECK(r.bottom == 480);
 }
 
-// ---- D3D state model ----------------------------------------------------------------------------------------
+// ---- D3D state model
+// ----------------------------------------------------------------------------------------
 
 TEST_CASE("extract: Xbox texture ops map to the PC numbering") {
     CHECK(TextureOpFromXbox(1) == FF_TOP_DISABLE);
@@ -521,7 +522,7 @@ TEST_CASE("extract: fog (FUN_00159700 / FUN_00159900)") {
     CHECK(Near(st.fogEnd, 101.0f));
     CHECK(Near(st.fogDensity, 1.0f / 50.0f));
     CHECK(Near(st.fogColor.x, 1.0f));
-    CHECK(Near(st.fogColor.y, 127.0f / 255.0f));         // trunc(0.5 * 255) = 127
+    CHECK(Near(st.fogColor.y, 127.0f / 255.0f));        // trunc(0.5 * 255) = 127
     CHECK(Near(st.fogColor.z, (382 & 0xFF) / 255.0f));  // trunc(1.5 * 255) & 0xFF wraps
     // RANGE_SQ -> EXP + range fog; a new property object is evaluated again
     auto* fog2 = sc.heap.New<NiFogProperty>();
@@ -657,7 +658,7 @@ TEST_CASE("extract: vertex color sources and their persistence (FUN_0015BF80)") 
     REQUIRE(sc.State(&st) == ExtractStatus::Ok);
     CHECK_FALSE(st.lightingEnable);
     CHECK(st.emissiveSource == FF_MCS_COLOR1);  // off path does not touch the sources
-    sc.vertexColor->source = 0;  // E + IGNORE: lighting on, emissive source reset (mode was 1)
+    sc.vertexColor->source = 0;                 // E + IGNORE: lighting on, emissive source reset (mode was 1)
     REQUIRE(sc.State(&st) == ExtractStatus::Ok);
     CHECK(st.lightingEnable);
     CHECK(st.emissiveSource == FF_MCS_MATERIAL);
@@ -746,7 +747,8 @@ TEST_CASE("extract: missing property pointers are an error") {
     CHECK(sc.State(&st) == ExtractStatus::Error);
 }
 
-// ---- geometry -------------------------------------------------------------------------------------------------
+// ---- geometry
+// -------------------------------------------------------------------------------------------------
 
 namespace {
 
@@ -825,7 +827,7 @@ TEST_CASE("extract: RenderShape (slot 48) streams, indices, transform") {
     CHECK(g.dataId == 9);
     CHECK(g.dataRevision == 3);
     CHECK(item.worldScale == 2.0f);
-    CHECK(item.world.m[0][1] == 2.0f);   // rotate * scale, no transpose
+    CHECK(item.world.m[0][1] == 2.0f);  // rotate * scale, no transpose
     CHECK(item.world.m[1][0] == -2.0f);
     CHECK(item.world.m[3][0] == 10.0f);
     CHECK(item.state.normalizeNormals);  // scale 2
@@ -1048,4 +1050,7 @@ TEST_CASE("extract: arena memory is guest-visible") {
     void* p = arena.Allocate(64);
     REQUIRE(p != nullptr);
     CHECK(reinterpret_cast<std::uintptr_t>(p) < 0x80000000u);
+    const std::uint32_t generation = arena.Generation();
+    arena.Reset();
+    CHECK(arena.Generation() == generation + 1);
 }

@@ -54,7 +54,8 @@ inline constexpr std::uint32_t kMaxLights = FF_MAX_LIGHTS;
 inline constexpr std::uint32_t kMaxTextureStages = FF_MAX_STAGES;
 inline constexpr std::uint32_t kMaxUvSets = FF_MAX_UV_SETS;
 
-// ---- camera ------------------------------------------------------------------------------------------------
+// ---- camera
+// ------------------------------------------------------------------------------------------------
 
 // Inputs of SetCameraData (slot 47, thiscall, 6 stack args: loc, dir, up, right, NiFrustum*, NiRect<float>*
 // port) as host pointers (guest::Ptr of the slot arguments), plus the current render target size and the
@@ -105,9 +106,11 @@ CameraDesc DefaultCamera(std::uint32_t targetWidth, std::uint32_t targetHeight) 
 // (returns true; an empty rectangle after clamping has right <= left or bottom <= top). Note: slot 17 sets
 // the D3D viewport to the whole target (renderer +0x414) before clearing and does not restore it - the
 // next draws use the full-target viewport until the next SetCameraData (integration).
-bool ClearRect(const NiRectF* rect, std::uint32_t targetWidth, std::uint32_t targetHeight, rhi::Rect* out) noexcept;
+bool ClearRect(const NiRectF* rect, std::uint32_t targetWidth, std::uint32_t targetHeight,
+               rhi::Rect* out) noexcept;
 
-// ---- render state (what REN wrote into D3D8) -----------------------------------------------------------------
+// ---- render state (what REN wrote into D3D8)
+// -----------------------------------------------------------------
 
 enum class ShadeMode : std::uint8_t { Flat, Gouraud };
 
@@ -122,9 +125,9 @@ struct MaterialDesc {
 
 // One D3D8 texture stage as the original texture pipeline configured it. Op/arg codes = FF_TOP_* / FF_TA_*.
 struct TextureStageDesc {
-    GuestPtr niTexture = 0;              // NiTexture* bound to the stage (0 = none); for diagnostics also set
-                                         // when the resolver found no host texture (then `texture` is empty)
-    rhi::TextureHandle texture;          // filled through ExtractContext::resolveTexture (integration)
+    GuestPtr niTexture = 0;      // NiTexture* bound to the stage (0 = none); for diagnostics also set
+                                 // when the resolver found no host texture (then `texture` is empty)
+    rhi::TextureHandle texture;  // filled through ExtractContext::resolveTexture (integration)
     std::uint8_t colorOp = FF_TOP_DISABLE;
     std::uint8_t colorArg1 = FF_TA_TEXTURE;
     std::uint8_t colorArg2 = FF_TA_CURRENT;
@@ -134,14 +137,14 @@ struct TextureStageDesc {
     std::uint8_t alphaArg2 = FF_TA_CURRENT;
     std::uint8_t alphaArg0 = FF_TA_CURRENT;
     std::uint8_t resultArg = FF_TA_CURRENT;
-    std::uint32_t texCoordIndex = 0;     // D3DTSS_TEXCOORDINDEX (UV set in the low 16 bits)
-    rhi::AddressMode addressU = rhi::AddressMode::Wrap;   // NiTexturingMap clamp -> FUN_00161D60
+    std::uint32_t texCoordIndex = 0;                     // D3DTSS_TEXCOORDINDEX (UV set in the low 16 bits)
+    rhi::AddressMode addressU = rhi::AddressMode::Wrap;  // NiTexturingMap clamp -> FUN_00161D60
     rhi::AddressMode addressV = rhi::AddressMode::Wrap;
-    rhi::Filter minFilter = rhi::Filter::Linear;          // NiTexturingMap filter -> table DAT_0030FEF8
+    rhi::Filter minFilter = rhi::Filter::Linear;  // NiTexturingMap filter -> table DAT_0030FEF8
     rhi::Filter magFilter = rhi::Filter::Linear;
     rhi::MipFilter mipFilter = rhi::MipFilter::None;
-    std::uint32_t transformFlags = FF_TTFF_DISABLE;       // D3DTSS_TEXTURETRANSFORMFLAGS (FUN_00161F70)
-    Matrix4 transform = IdentityMatrix();                 // D3DTS_TEXTUREn
+    std::uint32_t transformFlags = FF_TTFF_DISABLE;  // D3DTSS_TEXTURETRANSFORMFLAGS (FUN_00161F70)
+    Matrix4 transform = IdentityMatrix();            // D3DTS_TEXTUREn
 };
 
 // Which branch of the texture pipeline produced the stages (diagnostics, statistics).
@@ -172,37 +175,37 @@ struct RenderStateDesc {
     rhi::StencilOp stencilFail = rhi::StencilOp::Keep;
     rhi::StencilOp stencilZFail = rhi::StencilOp::Keep;
     rhi::StencilOp stencilPass = rhi::StencilOp::Keep;
-    rhi::CullMode cullMode = rhi::CullMode::CW;          // draw mode 0 (CCW_OR_BOTH)
+    rhi::CullMode cullMode = rhi::CullMode::CW;  // draw mode 0 (CCW_OR_BOTH)
     // Wireframe / shade / dither / specular (FUN_00159CD0, FUN_00159980)
     rhi::FillMode fillMode = rhi::FillMode::Solid;
     ShadeMode shadeMode = ShadeMode::Gouraud;
     bool ditherEnable = false;
     bool specularEnable = false;
-    bool normalizeNormals = false;                       // FUN_00159200 (world scale outside 0.99..1.01)
+    bool normalizeNormals = false;  // FUN_00159200 (world scale outside 0.99..1.01)
     // NiFogProperty (FUN_00159700 / FUN_00159900)
     bool fogEnable = false;
-    std::uint8_t fogTableMode = FF_FOG_NONE;             // FF_FOG_*
+    std::uint8_t fogTableMode = FF_FOG_NONE;  // FF_FOG_*
     bool rangeFogEnable = false;
     float fogStart = 0.0f;
     float fogEnd = 1.0f;
     float fogDensity = 1.0f;
-    Float3 fogColor;                                     // D3DRS_FOGCOLOR bytes / 255 (trunc(c*255) & 0xFF)
+    Float3 fogColor;  // D3DRS_FOGCOLOR bytes / 255 (trunc(c*255) & 0xFF)
     // Lighting (FUN_0015BF80 with NiVertexColorProperty / NiTexturingProperty)
     bool lightingEnable = true;
-    std::uint8_t diffuseSource = FF_MCS_MATERIAL;        // D3DRS_DIFFUSEMATERIALSOURCE (0x24488C)
-    std::uint8_t ambientSource = FF_MCS_MATERIAL;        // D3DRS_AMBIENTMATERIALSOURCE (0x244890)
-    std::uint8_t specularSource = FF_MCS_MATERIAL;       // D3DRS_SPECULARMATERIALSOURCE (0x244888, REN never
-                                                         // writes it: device default COLOR2)
-    std::uint8_t emissiveSource = FF_MCS_MATERIAL;       // D3DRS_EMISSIVEMATERIALSOURCE (0x244894)
+    std::uint8_t diffuseSource = FF_MCS_MATERIAL;   // D3DRS_DIFFUSEMATERIALSOURCE (0x24488C)
+    std::uint8_t ambientSource = FF_MCS_MATERIAL;   // D3DRS_AMBIENTMATERIALSOURCE (0x244890)
+    std::uint8_t specularSource = FF_MCS_MATERIAL;  // D3DRS_SPECULARMATERIALSOURCE (0x244888, REN never
+                                                    // writes it: device default COLOR2)
+    std::uint8_t emissiveSource = FF_MCS_MATERIAL;  // D3DRS_EMISSIVEMATERIALSOURCE (0x244894)
     MaterialDesc material;
     // Texturing (texture pipeline +0x5C8)
-    std::uint32_t stageCount = 0;                        // stages with colorOp != DISABLE (0..4)
+    std::uint32_t stageCount = 0;  // stages with colorOp != DISABLE (0..4)
     TextureStageDesc stages[kMaxTextureStages];
-    Float4 textureFactor{1.0f, 1.0f, 1.0f, 1.0f};        // D3DRS_TEXTUREFACTOR
-    std::uint32_t passCount = 1;                         // multi-pass pipelines (P2): only pass 1 in M3
+    Float4 textureFactor{1.0f, 1.0f, 1.0f, 1.0f};  // D3DRS_TEXTUREFACTOR
+    std::uint32_t passCount = 1;                   // multi-pass pipelines (P2): only pass 1 in M3
     // Added in phase 2 (extract agent):
-    bool localViewer = true;                             // D3DRS_LOCALVIEWER: REN never writes it, device
-                                                         // default TRUE (DAT_00242748[104])
+    bool localViewer = true;  // D3DRS_LOCALVIEWER: REN never writes it, device
+                              // default TRUE (DAT_00242748[104])
     TexturePath texturePath = TexturePath::SingleStage;
 };
 
@@ -212,23 +215,23 @@ struct LightDesc {
     Float4 diffuse;                             // dimmer * NiLight color, alpha 1
     Float4 specular;
     Float4 ambient;
-    Float3 position;                            // world translate +0xA0 (point/spot)
-    Float3 direction;                           // world direction (directional +0x110, spot +0x120)
+    Float3 position;   // world translate +0xA0 (point/spot)
+    Float3 direction;  // world direction (directional +0x110, spot +0x120)
     float range = 0.0f;
     float falloff = 0.0f;
     float attenuation0 = 0.0f, attenuation1 = 0.0f, attenuation2 = 0.0f;
     float theta = 0.0f, phi = 0.0f;
     GuestPtr niLight = 0;
-    std::uint32_t index = 0;                    // NiLight +0xC4 (D3D light index)
+    std::uint32_t index = 0;  // NiLight +0xC4 (D3D light index)
 };
 
 struct LightSetDesc {
-    Float4 ambient{0.0f, 0.0f, 0.0f, 1.0f};     // D3DRS_AMBIENT: sum of dimmer * ambient of ambient lights
-                                                //  (FUN_0015BA40), packed like the original: each channel
-                                                //  trunc(c * 255) & 0xFF (wraps above 1.0), then / 255
+    Float4 ambient{0.0f, 0.0f, 0.0f, 1.0f};  // D3DRS_AMBIENT: sum of dimmer * ambient of ambient lights
+                                             //  (FUN_0015BA40), packed like the original: each channel
+                                             //  trunc(c * 255) & 0xFF (wraps above 1.0), then / 255
     std::uint32_t count = 0;
     LightDesc lights[kMaxLights];
-    std::uint32_t dropped = 0;                  // enabled lights beyond kMaxLights (logged by the caller)
+    std::uint32_t dropped = 0;  // enabled lights beyond kMaxLights (logged by the caller)
 };
 
 // NiTextureEffect slots of the NiDynamicEffectState (P2: projected lights/shadows, environment and fog
@@ -242,7 +245,8 @@ struct TextureEffectSlots {
     GuestPtr fogMap = 0;
 };
 
-// ---- geometry -------------------------------------------------------------------------------------------------
+// ---- geometry
+// -------------------------------------------------------------------------------------------------
 
 enum class DrawKind : std::uint8_t {
     Shape,          // slot 48 RenderShape(NiTriShapeData*, NiSkinInstance*, NiTransform*, NiBound*)
@@ -265,17 +269,17 @@ enum class Topology : std::uint8_t {
 
 struct GeometryDesc {
     std::uint32_t vertexCount = 0;
-    VertexStreamView positions;            // float3 (pre-transformed: x, y in D3D8 pixels, z)
-    VertexStreamView normals;              // float3
-    VertexStreamView colors;               // float4 NiColorA
-    VertexStreamView uvs[kMaxUvSets];      // float2
-    std::uint32_t uvSetCount = 0;          // min(NiGeometryData +0x0A, 4)
+    VertexStreamView positions;        // float3 (pre-transformed: x, y in D3D8 pixels, z)
+    VertexStreamView normals;          // float3
+    VertexStreamView colors;           // float4 NiColorA
+    VertexStreamView uvs[kMaxUvSets];  // float2
+    std::uint32_t uvSetCount = 0;      // min(NiGeometryData +0x0A, 4)
     Topology topology = Topology::TriangleList;
     const std::uint16_t* indices = nullptr;  // nullptr = non-indexed (vertexCount vertices in order)
     std::uint32_t indexCount = 0;
-    std::uint32_t primitiveCount = 0;      // triangles the original would draw (statistics)
-    bool pretransformed = false;           // D3DFVF_XYZRHW (screen textures)
-    bool skinned = false;                  // positions/normals were deformed by FUN_0014F710
+    std::uint32_t primitiveCount = 0;  // triangles the original would draw (statistics)
+    bool pretransformed = false;       // D3DFVF_XYZRHW (screen textures)
+    bool skinned = false;              // positions/normals were deformed by FUN_0014F710
     // Cache keys for a later static-geometry cache (NiGeometryData* + id +0x2C + revision +0x2E).
     GuestPtr guestData = 0;
     std::uint16_t dataId = 0;
@@ -284,17 +288,18 @@ struct GeometryDesc {
 
 struct DrawItem {
     DrawKind kind = DrawKind::Shape;
-    GuestPtr guestObject = 0;              // the slot's first argument (diagnostics)
-    Matrix4 world = IdentityMatrix();      // D3DTS_WORLD (NiTransformToWorld; identity for 2D)
+    GuestPtr guestObject = 0;          // the slot's first argument (diagnostics)
+    Matrix4 world = IdentityMatrix();  // D3DTS_WORLD (NiTransformToWorld; identity for 2D)
     float worldScale = 1.0f;
-    bool useScreenCamera = false;          // slot 54: view = identity, projection = screenProjection
+    bool useScreenCamera = false;  // slot 54: view = identity, projection = screenProjection
     GeometryDesc geometry;
     RenderStateDesc state;
     LightSetDesc lights;
     TextureEffectSlots effects;
 };
 
-// ---- extraction ------------------------------------------------------------------------------------------------
+// ---- extraction
+// ------------------------------------------------------------------------------------------------
 
 // Bump allocator for per-frame converted data (16-byte aligned blocks). Reset() at DisplayFrame.
 // Blocks come from gfx::AllocGuestPages (below 0x80000000; FUN_0014F710 writes skinned vertices into them).
@@ -314,12 +319,15 @@ public:
     void Reset() noexcept;
     std::size_t BytesUsed() const noexcept;      // since the last Reset
     std::size_t BytesReserved() const noexcept;  // all blocks
+    // Incremented by every Reset (phase 2): caches of arena data (skinning) compare it.
+    std::uint32_t Generation() const noexcept { return generation_; }
 
 private:
     struct Block;
     Block* head_ = nullptr;
     Block* current_ = nullptr;
     std::size_t used_ = 0;
+    std::uint32_t generation_ = 0;
 };
 
 enum class ExtractStatus : std::uint8_t {
@@ -335,17 +343,17 @@ std::uint8_t TextureOpFromXbox(std::uint32_t xboxOp) noexcept;
 
 // Counters of things the caller may want to log (statistics of the M3 run; reset with the shadow).
 struct ExtractCounters {
-    std::uint64_t states = 0;              // ExtractState calls that produced a state
-    std::uint64_t multiMapApproximated = 0;// TexturePath::MultiMap draws (other maps/effects ignored)
-    std::uint64_t textureEffectDraws = 0;  // draws whose effect state carries NiTextureEffects (P2)
-    std::uint64_t lightEvaluations = 0;    // FUN_0015BA40 runs
-    std::uint64_t lightsDropped = 0;       // enabled D3D lights beyond kMaxLights
-    std::uint64_t unknownLightTypes = 0;   // GetEffectType not one of the known implementations
-    std::uint64_t skinnedDraws = 0;        // draws with a NiSkinInstance
-    std::uint64_t skinDeforms = 0;         // FUN_0014F710 calls
-    std::uint64_t skinCacheHits = 0;       // second draw of the same skin instance in a frame
-    std::uint64_t invalidMapModes = 0;     // clamp > 3 or filter > 5 (out of REN's tables)
-    std::uint64_t unresolvedTextures = 0;  // stage textures the resolver had no host texture for
+    std::uint64_t states = 0;                // ExtractState calls that produced a state
+    std::uint64_t multiMapApproximated = 0;  // TexturePath::MultiMap draws (other maps/effects ignored)
+    std::uint64_t textureEffectDraws = 0;    // draws whose effect state carries NiTextureEffects (P2)
+    std::uint64_t lightEvaluations = 0;      // FUN_0015BA40 runs
+    std::uint64_t lightsDropped = 0;         // enabled D3D lights beyond kMaxLights
+    std::uint64_t unknownLightTypes = 0;     // GetEffectType not one of the known implementations
+    std::uint64_t skinnedDraws = 0;          // draws with a NiSkinInstance
+    std::uint64_t skinDeforms = 0;           // FUN_0014F710 calls
+    std::uint64_t skinCacheHits = 0;         // second draw of the same skin instance in a frame
+    std::uint64_t invalidMapModes = 0;       // clamp > 3 or filter > 5 (out of REN's tables)
+    std::uint64_t unresolvedTextures = 0;    // stage textures the resolver had no host texture for
 };
 
 // D3D8 state persistence between draws (GFX_CONTRACT.md 4.2, header comment above): REN's caches and the
@@ -353,9 +361,9 @@ struct ExtractCounters {
 // constructor and Reset() give the state after NiXBoxRenderer::Create (D3D library defaults FUN_002395C0
 // + REN's init FUN_00159410, light manager ctor FUN_0015BCB0, pipeline manager init FUN_0015AB40).
 struct StateShadow {
-    static constexpr std::uint32_t kRsFirst = 57;    // D3DRS_ZFUNC, first state of REN's cache range
-    static constexpr std::uint32_t kRsCount = 109;   // states 57..165 (FUN_00159410 loop 0xE4..0x298)
-    static constexpr std::uint32_t kTssCount = 32;   // Xbox D3DTEXTURESTAGESTATETYPE 0..31
+    static constexpr std::uint32_t kRsFirst = 57;   // D3DRS_ZFUNC, first state of REN's cache range
+    static constexpr std::uint32_t kRsCount = 109;  // states 57..165 (FUN_00159410 loop 0xE4..0x298)
+    static constexpr std::uint32_t kTssCount = 32;  // Xbox D3DTEXTURESTAGESTATETYPE 0..31
 
     // Render-state cache rs+0x22C + S*8 (REN's belief) and the device value (D3D_g_RenderState 0x2446D0).
     std::uint32_t renRs[kRsCount];
@@ -367,8 +375,8 @@ struct StateShadow {
     // Bound textures (D3DDevice_SetTexture; REN cache rs+0xB6C + stage * 4 always equals the device).
     GuestPtr boundNiTexture[kMaxTextureStages];
     rhi::TextureHandle boundTexture[kMaxTextureStages];
-    Matrix4 textureTransform[kMaxTextureStages];   // D3DTS_TEXTUREn (FUN_00161F70)
-    MaterialDesc material;                         // D3DDevice_SetMaterial (FUN_00161880)
+    Matrix4 textureTransform[kMaxTextureStages];  // D3DTS_TEXTUREn (FUN_00161F70)
+    MaterialDesc material;                        // D3DDevice_SetMaterial (FUN_00161880)
     // FUN_00159CD0 property caches (rs+0x195..+0x19C bytes, +0x164 alpha, +0x190 fog, +0x16C fog color,
     // +0x1F8 cull, +0x220 normalize).
     // ASSUMPTION: the byte caches start at 0 (fresh heap memory of the render-state cache, FUN_00159C20 does
@@ -388,14 +396,15 @@ struct StateShadow {
     GuestPtr lastEffectState = 0;
     bool lastLightsEnabled = false;
     std::uint32_t lastAmbient = 0;
-    LightSetDesc lights;                           // enabled D3D lights (SetLight/LightEnable) + ambient
+    LightSetDesc lights;  // enabled D3D lights (SetLight/LightEnable) + ambient
     // CPU skinning cache (FUN_00157C00 deforms once per skin instance and frame).
     struct SkinEntry {
         GuestPtr skin = 0;
         GuestPtr data = 0;
         std::uint32_t frame = 0;
+        std::uint32_t arenaGeneration = 0;
         std::uint32_t vertexCount = 0;
-        const float* vertices = nullptr;           // interleaved position (+ normal) in the arena
+        const float* vertices = nullptr;  // interleaved position (+ normal) in the arena
         std::uint32_t stride = 0;
         bool hasNormals = false;
     };
@@ -421,15 +430,15 @@ void BeginScene(StateShadow* shadow) noexcept;
 using TextureResolver = rhi::TextureHandle (*)(void* user, GuestPtr niTexture) noexcept;
 
 struct ExtractContext {
-    ExtractArena* arena = nullptr;         // required
-    const CameraDesc* camera = nullptr;    // current SetCameraData result (screen polygons need near/range)
-    std::uint32_t targetWidth = 640;       // current render target (screen textures wrap/position in it)
+    ExtractArena* arena = nullptr;       // required
+    const CameraDesc* camera = nullptr;  // current SetCameraData result (screen polygons need near/range)
+    std::uint32_t targetWidth = 640;     // current render target (screen textures wrap/position in it)
     std::uint32_t targetHeight = 480;
-    std::uint32_t frame = 0;               // displayed-frame counter (skinning: once per instance and frame)
-    bool leftRightSwap = false;            // cull table index (FUN_001599E0)
+    std::uint32_t frame = 0;     // displayed-frame counter (skinning: once per instance and frame)
+    bool leftRightSwap = false;  // cull table index (FUN_001599E0)
     TextureResolver resolveTexture = nullptr;
     void* resolveUser = nullptr;
-    StateShadow* shadow = nullptr;         // persistent D3D state (nullptr: every draw starts from defaults)
+    StateShadow* shadow = nullptr;  // persistent D3D state (nullptr: every draw starts from defaults)
     // Added in phase 2 (extract agent):
     // The 12 default property pointers slot 55 starts from (kDefaultPropertyGlobals); nullptr -> read the
     // guest globals. Unit tests pass their own array.
@@ -442,8 +451,8 @@ struct ExtractContext {
 // Property/effect state -> RenderStateDesc + LightSetDesc + effect slots (FUN_00159CD0, FUN_0015BF80,
 // texture pipeline). `hasNormals` / `worldScale` as FUN_00149AE0 passes them on (FUN_00159200 normalize).
 struct StateInput {
-    GuestPtr propertyState = 0;            // renderer +0x0C (required)
-    GuestPtr effectState = 0;              // renderer +0x10 (0 = no lights / effects)
+    GuestPtr propertyState = 0;  // renderer +0x0C (required)
+    GuestPtr effectState = 0;    // renderer +0x10 (0 = no lights / effects)
     float worldScale = 1.0f;
     bool hasNormals = false;
     std::uint32_t uvSetCount = 0;
@@ -457,24 +466,29 @@ ExtractStatus ExtractState(const ExtractContext& context, const StateInput& inpu
 // Slots 48-51: data/skin/transform/bound are the slot's guest arguments; propertyState/effectState are
 // renderer +0x0C/+0x10 at the time of the call. The caller checks the in-scene flag (renderer +0x500).
 struct GeometryInput {
-    GuestPtr data = 0;                     // NiTriShapeData / NiTrianglesData / NiTriStripData / NiTriStripsData
-    GuestPtr skinInstance = 0;             // slots 48/51 only
-    GuestPtr transform = 0;                // NiTransform*
-    GuestPtr bound = 0;                    // NiBound* (unused for drawing)
+    GuestPtr data = 0;          // NiTriShapeData / NiTrianglesData / NiTriStripData / NiTriStripsData
+    GuestPtr skinInstance = 0;  // slots 48/51 only
+    GuestPtr transform = 0;     // NiTransform*
+    GuestPtr bound = 0;         // NiBound* (unused for drawing)
     GuestPtr propertyState = 0;
     GuestPtr effectState = 0;
 };
 ExtractStatus ExtractShape(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept;
-ExtractStatus ExtractStrips(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept;
-ExtractStatus ExtractTriangles(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept;
-ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept;
+ExtractStatus ExtractStrips(const ExtractContext& context, const GeometryInput& input,
+                            DrawItem* out) noexcept;
+ExtractStatus ExtractTriangles(const ExtractContext& context, const GeometryInput& input,
+                               DrawItem* out) noexcept;
+ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput& input,
+                              DrawItem* out) noexcept;
 
 // Slot 54: property state = polygon +0x08, no effect state; positions -> (d*x, d*y, d) in the arena,
 // fan -> triangle list (strip if +0x1E), useScreenCamera = true, world = identity.
-ExtractStatus ExtractScreenPolygon(const ExtractContext& context, GuestPtr screenPolygon, DrawItem* out) noexcept;
+ExtractStatus ExtractScreenPolygon(const ExtractContext& context, GuestPtr screenPolygon,
+                                   DrawItem* out) noexcept;
 // Slot 55: quads of pre-transformed vertices in the arena (FUN_0014A050 rules, ni_guest_layouts.h) and
 // the state of slot 55's temporary property state (defaults + alpha 0xED, z off, vertex color EMISSIVE/E,
 // the NiScreenTexture's NiTexturingProperty) through the screen-texture pipeline.
-ExtractStatus ExtractScreenTexture(const ExtractContext& context, GuestPtr screenTexture, DrawItem* out) noexcept;
+ExtractStatus ExtractScreenTexture(const ExtractContext& context, GuestPtr screenTexture,
+                                   DrawItem* out) noexcept;
 
 }  // namespace gfx::ni

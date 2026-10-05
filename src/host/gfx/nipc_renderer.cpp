@@ -1,5 +1,6 @@
-// NiPCRenderer null renderer: Create detour, slot handlers, texture renderer data, frame counter and
-// pacing (see nipc_renderer.h; design 2.2, 5.4; renderer.md 1-7).
+// NiPCRenderer: Create detour, slot handlers, texture renderer data, frame counter and pacing (see
+// nipc_renderer.h; design 2.2, 5.4, 6 M3; renderer.md 1-7). The drawing of the d3d11 backend lives in
+// gfx/nipc_gpu.cpp (GpuRenderer); this file keeps the guest-visible side.
 #include "gfx/nipc_renderer.h"
 
 #include "core/crash.h"
@@ -13,21 +14,25 @@
 #include "gfx/gfx_abi.h"
 #include "gfx/gfx_config.h"
 #include "gfx/guest_memory.h"
+#include "gfx/nipc_gpu.h"
 #include "gfx/nipc_validate.h"
 #include "gfx/purge_probe.h"
+#include "gfx/texconv.h"
+#include "kernel/mm_kernel_stack.h"
+#include "platform/frame_pacer.h"
+#include "platform/window.h"
 
 #include <intrin.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <limits>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
-
-#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
-#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
-#endif
 
 namespace gfx {
 namespace {
@@ -49,6 +54,9 @@ struct HostRenderer {
     bool leftRightSwap = false;
     bool inScene = false;
     std::uint32_t batchPropertyState = 0, batchEffectState = 0;
+    // M3: [render] backend = d3d11 with a window and a working device; nullptr = null renderer.
+    std::unique_ptr<GpuRenderer> gpu;
+    tex::HostImage image;  // conversion buffer of slot 65 (guest main thread only)
 };
 
 HostRenderer* Host(const NiPCRenderer* r) noexcept {
@@ -160,23 +168,33 @@ void UnlinkRendererData(std::uint32_t texture, std::uint32_t data) noexcept {
 
 // Default texture of NiXBoxRenderer (renderer +0x5A0 pixel data, +0x598 format): FUN_0014AB50 (called by
 // the device setup FUN_0014C0F0) creates it as NiPixelData FUN_00111260(8, 8, [+0x598], 1) - 8x8, one mip
-// level, a red/blue/yellow test pattern written as 32-bit ARGB (0xFFFF0000, 0xFF0000FF, 0xFFFFFF00).
-// FUN_0015E010 uses it instead of the texture's own image when there is no image, the image file cannot
-// be read, its width or height is not a power of two, or no D3D format matches (renderer.md 5.2).
+// level, a red/blue/yellow test pattern written as 32-bit ARGB (0xFFFF0000, 0xFF0000FF, 0xFFFFFF00;
+// tex::MakeDefaultTexture). FUN_0015E010 uses it instead of the texture's own image when there is no
+// image, the image file cannot be read, its width or height is not a power of two, or FUN_001572D0 finds
+// no D3D format (renderer.md 5.2; tex::SelectTextureSource). [+0x598] = table entry 5 A8R8G8B8 (texconv.h).
 inline constexpr std::uint32_t kDefaultTextureSize = 8;
 inline constexpr std::uint32_t kDefaultTextureBytes = kDefaultTextureSize * kDefaultTextureSize * 4;
-// NiPixelFormat of the default texture (layout of the NiPixelFormat ctor FUN_001409A0: +0 format 1 = RGBA,
-// +4..+0x10 R/G/B/A masks, +0x14 bits per pixel, +0x18/+0x1C packed channel descriptors).
-// ASSUMPTION: [+0x598] = [+0x53C] is the 32-bit A8R8G8B8 entry FUN_0014A410 builds with
-// FUN_00140D80(0xFF0000, 0xFF00, 0xFF, 0xFF000000, 0x20); the packed descriptors depend on runtime
-// tables (0x2D7B5C..0x2D7B64, 0x30E8AC) and stay 0 - nothing reads them before M3.
-inline constexpr std::uint32_t kDefaultTextureFormat[8] = {1, 0xFF0000, 0xFF00, 0xFF, 0xFF000000, 32, 0, 0};
+// NiSourceTexture +0x38: "static" byte (ctor 0x1184A0 sets 1). The texture manager FUN_0015F930 calls the
+// revision check FUN_0015E260 on every use of a texture whose byte is 0.
+inline constexpr std::uint32_t kNiSourceTextureStatic = 0x38;
+// NiPixelData (ctor 0x110FF0, FUN_00111260; ni::NiPixelData): +0x0C NiPixelFormat, +0x34 width[] /
+// +0x38 height[] per mip, +0x3C offsets[mips + 1], +0x40 mip count, +0x48 revision.
+inline constexpr std::uint32_t kNiPixelDataRevision = 0x48;
 
-std::atomic<std::uint32_t> g_defaultNoImage{0}, g_defaultUnreadable{0}, g_defaultNotPow2{0},
-    g_defaultNotLoaded{0};
+constexpr std::uint32_t kTextureSources = 8;  // tex::TextureSource
+std::atomic<std::uint32_t> g_textureSources[kTextureSources];
+std::atomic<std::uint32_t> g_convertFailures[6];  // tex::ConvertStatus (Ok unused)
+std::atomic<std::uint32_t> g_uploads{0}, g_reuploads{0}, g_resolveCreated{0}, g_resolveNoData{0},
+    g_resolveMovie{0}, g_resolveRendered{0}, g_resolveForeign{0};
+std::atomic<std::uint32_t> g_uploadFormats[static_cast<std::uint32_t>(rhi::Format::Count)];
+std::atomic<std::uint64_t> g_uploadBytes{0};
+std::atomic<bool> g_convertReported[6];
 
-bool IsPowerOfTwo(std::uint32_t v) noexcept {
-    return v != 0 && (v & (v - 1)) == 0;  // = the bit loops of FUN_0015E010 (0x15E087..0x15E0C1)
+std::uint32_t Pod(const ni::NiPixelFormat& f, std::uint32_t i) noexcept {
+    std::uint32_t v[8];
+    static_assert(sizeof(v) == sizeof(ni::NiPixelFormat));
+    std::memcpy(v, &f, sizeof(v));
+    return v[i];
 }
 
 void FillDefaultTextureInfo(NiPCTextureData* data) noexcept {
@@ -184,91 +202,264 @@ void FillDefaultTextureInfo(NiPCTextureData* data) noexcept {
     data->height = kDefaultTextureSize;
     data->sizeBytes = kDefaultTextureBytes;
     data->revision = 0;
+    data->field50 = 1;  // one level (FUN_00111260(8, 8, fmt, 1))
+    // FUN_0015E010 copies the chosen table format: [+0x598] = A8R8G8B8 with its packed descriptors
+    // (texconv reproduces the NetImmerse constructors). DWORD 9 (+0x38, the Xbox D3DFORMAT) stays 0: only
+    // REN code reads it.
+    const ni::NiPixelFormat f = tex::XboxTableFormat(tex::XboxFormat::A8R8G8B8);
     for (std::uint32_t i = 0; i < 8; ++i) {
-        data->pixelFormat[i] = kDefaultTextureFormat[i];
+        data->pixelFormat[i] = Pod(f, i);
     }
 }
 
-// Size and format of a source texture in the order of FUN_0015E010 (0x15E05B..0x15E0E0):
+// ---- slot 65 stack use on loading fibers -----------------------------------------------------------------
+// Slot 65 runs on the loading fibers of the file class (startup.md 4.2) and now calls texconv and D3D11
+// there (GFX_CONTRACT.md 8, design R6). The stack below the slot entry is filled with a pattern before the
+// work and scanned afterwards: deepest use and least headroom per run (exit reporter "gfx").
+constexpr std::uint32_t kStackPattern = 0xA5C3A5C3u;
+constexpr std::uint32_t kStackProbeGap = 0x2000;  // left untouched below the probe's own frame
+struct StackProbeStats {
+    std::uint32_t fiberCalls = 0, otherCalls = 0;
+    std::uint32_t deepest = 0;           // bytes below the slot entry ESP
+    std::uint32_t leastHeadroom = ~0u;   // bytes above StackLimit (the guard page lies below)
+    std::uint32_t stackBytes = 0;        // committed size of that fiber stack
+};
+StackProbeStats g_stackProbe;
+
+class StackProbe {
+public:
+    explicit StackProbe(std::uint32_t entry) noexcept : entry_(entry) {
+        krnl::KernelStackInfo info{};
+        if (!krnl::FindKernelStackContaining(entry, &info)) {
+            ++g_stackProbe.otherCalls;
+            return;
+        }
+        ++g_stackProbe.fiberCalls;
+        const auto here = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&info));
+        low_ = (info.stackLimit + 3u) & ~3u;
+        high_ = here > low_ + kStackProbeGap ? (here - kStackProbeGap) & ~3u : low_;
+        stackLimit_ = info.stackLimit;
+        stackBytes_ = info.stackBase - info.stackLimit;
+        Fill(low_, high_);
+    }
+    ~StackProbe() {
+        if (high_ <= low_) {
+            return;
+        }
+        std::uint32_t lowest = high_;
+        for (std::uint32_t a = low_; a < high_; a += 4) {
+            if (*reinterpret_cast<const volatile std::uint32_t*>(static_cast<std::uintptr_t>(a)) != kStackPattern) {
+                lowest = a;
+                break;
+            }
+        }
+        const std::uint32_t depth = entry_ - lowest;
+        const std::uint32_t headroom = lowest - stackLimit_;
+        g_stackProbe.deepest = std::max(g_stackProbe.deepest, depth);
+        if (headroom < g_stackProbe.leastHeadroom) {
+            g_stackProbe.leastHeadroom = headroom;
+            g_stackProbe.stackBytes = stackBytes_;
+        }
+    }
+    StackProbe(const StackProbe&) = delete;
+    StackProbe& operator=(const StackProbe&) = delete;
+
+private:
+    __declspec(noinline) static void Fill(std::uint32_t low, std::uint32_t high) noexcept {
+        for (std::uint32_t a = low; a < high; a += 4) {
+            *reinterpret_cast<volatile std::uint32_t*>(static_cast<std::uintptr_t>(a)) = kStackPattern;
+        }
+    }
+    std::uint32_t entry_ = 0, low_ = 0, high_ = 0, stackLimit_ = 0, stackBytes_ = 0;
+};
+
+// ---- slot 65: conversion and upload ---------------------------------------------------------------------
+
+// texconv + device texture for the chosen image (GPU path). Uncompressed formats become BGRA8 by bit
+// replication (the xemu captures match it texel for texel, GFX_CONTRACT.md 7), DXT stays BC1/2/3.
+bool UploadImage(HostRenderer* h, NiPCTextureData* data, std::uint32_t texture, std::uint32_t pixels,
+                 tex::TextureSource source) noexcept {
+    const tex::ConvertStatus status = tex::ConvertPixelData(pixels, 0, tex::ConvertOptions{}, &h->image);
+    if (status != tex::ConvertStatus::Ok) {
+        const auto s = static_cast<std::uint32_t>(status);
+        if (s < 6) {
+            g_convertFailures[s].fetch_add(1, std::memory_order_relaxed);
+            if (!g_convertReported[s].exchange(true)) {
+                const auto* pd = guest::Ptr<const ni::NiPixelData>(pixels);
+                FUT_LOGI(Gfx,
+                         "texture 0x%08X: texconv '%s' for NiPixelFormat %u (%u bpp, NiPixelData 0x%08X) - default "
+                         "8x8 texture",
+                         texture, tex::ConvertStatusName(status), pd->format.format,
+                         static_cast<unsigned>(pd->format.bitsPerPixel), pixels);
+            }
+        }
+        return false;
+    }
+    char name[48];
+    std::snprintf(name, sizeof(name), "NiSourceTexture 0x%08X", texture);
+    const rhi::TextureHandle handle = h->gpu->CreateTexture(h->image, name);
+    if (!handle) {
+        return false;  // logged once by GpuRenderer::CreateTexture
+    }
+    if ((data->hostInfo & kHostOwnsTexture) != 0 && data->hostTexture != 0) {
+        h->gpu->DestroyTexture(rhi::TextureHandle{data->hostTexture});
+    }
+    data->hostTexture = handle.id;
+    data->hostInfo = static_cast<std::uint32_t>(source) | kHostOwnsTexture;
+    data->hostRevision = Read(pixels + kNiPixelDataRevision);
+    data->field50 = h->image.mipCount;  // data vf5: level count of the device texture (FUN_00161E40 rule)
+    g_uploads.fetch_add(1, std::memory_order_relaxed);
+    const auto f = static_cast<std::uint32_t>(h->image.format);
+    if (f < static_cast<std::uint32_t>(rhi::Format::Count)) {
+        g_uploadFormats[f].fetch_add(1, std::memory_order_relaxed);
+    }
+    g_uploadBytes.fetch_add(h->image.bytes.size(), std::memory_order_relaxed);
+    return true;
+}
+
+// FUN_0015E010 for a new NiPCTextureData (slot 65 and the on-demand creation of the texture manager
+// FUN_0015F930), source order 0x15E05B..0x15E0E0:
 //   1. image = the file at +0x30 if a path is set, read through the game's NiImageConverter (FUN_001511D0
 //      = singleton [0x30EF64], vf2 = ReadImageFile, thiscall (path, 0); the result has refcount 0), else the
 //      NiPixelData at +0x34 - a path wins even if +0x34 is set;
-//   2. no image, or width/height of mip 0 not a power of two -> the renderer's default texture (8x8).
+//   2. no image, width/height of mip 0 not a power of two, or FUN_001572D0 (FormatPrefs +0x14, renderer
+//      table +0x528) without an entry -> the renderer's default texture (8x8); tex::SelectTextureSource.
+//   3. GPU path: texconv + device texture; a format texconv cannot convert (bump maps, 8-bit RGB) also
+//      gets the default texture (the Xbox would show it - deviation, counted).
 // The game sees the result through NiSourceTexture::vf11/vf12 (GetWidth/GetHeight 0x118000/0x118020 ->
-// renderer data vf2/vf3 = +0x48/+0x4C). Not reproduced: the D3D format choice FUN_001572D0 (its NULL
-// result also selects the default) - the NiPixelFormat of the source stands in for it.
-// `[render] load_textures = 0` skips the file read; such a texture gets the default like an unreadable
-// file (deviation, counted). The original falls back silently, so does this (GFX/debug only).
-// NiPixelData (ctor 0x110FF0, FUN_00111260): +0x0C NiPixelFormat (8 DWORDs), +0x2C palette,
-// +0x34 width[] / +0x38 height[] per mip, +0x3C offsets[mips + 1], +0x40 mip count, +0x48 revision.
-void FillSourceTextureInfo(NiPCTextureData* data, std::uint32_t texture) noexcept {
+// renderer data vf2/vf3 = +0x48/+0x4C). `[render] load_textures = 0` skips the file read (default
+// texture, counted). The original falls back silently, so does this (GFX/debug only).
+void FillSourceTextureData(HostRenderer* h, NiPCTextureData* data, std::uint32_t texture) noexcept {
+    const Settings& settings = GetSettings();
+    tex::TextureSourceInput in;
     const std::uint32_t path = Read(texture + kNiSourceTexturePath);
+    in.hasPath = path != 0;
+    in.loadTextures = settings.loadTextures;
+    in.pixelData = Read(texture + kNiSourceTexturePixelData);
     std::uint32_t pixels = 0;
     if (path != 0) {
         const std::uint32_t converter = Read(guest::kNiImageConverterPtr);
-        if (!GetSettings().loadTextures) {
-            g_defaultNotLoaded.fetch_add(1, std::memory_order_relaxed);
-            FUT_LOGD(Gfx, "texture '%.200s': not read ([render] load_textures = 0) - default 8x8 texture",
-                     guest::Ptr<const char>(path));
-            FillDefaultTextureInfo(data);
-            return;
-        }
-        if (converter != 0) {
+        if (settings.loadTextures && converter != 0) {
             pixels = core::CallGuestThiscall(Read(Read(converter) + 8), converter, {path, 0});
             g_textureFilesRead.fetch_add(1, std::memory_order_relaxed);
         }
-        if (pixels == 0) {
-            g_defaultUnreadable.fetch_add(1, std::memory_order_relaxed);
-            FUT_LOGD(Gfx,
-                     "texture '%.200s': NiImageConverter could not read it - default 8x8 texture (as "
-                     "FUN_0015E010)",
-                     guest::Ptr<const char>(path));
-            FillDefaultTextureInfo(data);
-            return;
-        }
+        in.fileImage = pixels;
     } else {
-        pixels = Read(texture + kNiSourceTexturePixelData);
-        if (pixels == 0) {
-            // E.g. the movie player's texture (NiSourceTexture::Create(NULL, ..) in FUN_000EE220), which
-            // then writes its own size into +0x48/+0x4C (renderer.md 5.2).
-            g_defaultNoImage.fetch_add(1, std::memory_order_relaxed);
-            FillDefaultTextureInfo(data);
-            return;
-        }
+        pixels = in.pixelData;
     }
-    auto* refCount = guest::Ptr<std::uint32_t>(pixels + 4);
-    ++*refCount;
-    const std::uint32_t widths = Read(pixels + 0x34), heights = Read(pixels + 0x38);
-    const std::uint32_t width = widths != 0 ? Read(widths) : 0;
-    const std::uint32_t height = heights != 0 ? Read(heights) : 0;
-    if (!IsPowerOfTwo(width) || !IsPowerOfTwo(height)) {
-        g_defaultNotPow2.fetch_add(1, std::memory_order_relaxed);
-        FUT_LOGD(Gfx,
-                 "texture '%.200s' (NiPixelData 0x%08X): %ux%u is not a power of two - default 8x8 "
-                 "texture (as FUN_0015E010)",
-                 path != 0 ? guest::Ptr<const char>(path) : "(pixel data)", pixels, width, height);
-        FillDefaultTextureInfo(data);
-        ReleaseRefObject(pixels);  // a file image with refcount 0 is freed here (the original leaks it)
-        return;
+    ni::NiPixelFormat format{};
+    if (pixels != 0) {
+        ++*guest::Ptr<std::uint32_t>(pixels + 4);  // smart pointer while we work on it
+        const auto* pd = guest::Ptr<const ni::NiPixelData>(pixels);
+        in.width = pd->widths != 0 ? Read(pd->widths) : 0;
+        in.height = pd->heights != 0 ? Read(pd->heights) : 0;
+        format = pd->format;
+        in.imageFormat = &format;  // step 3 of FUN_0015E010 (FUN_001572D0)
+        in.prefs = tex::ReadFormatPrefs(texture);
     }
-    if (GetSettings().validate) {
+    tex::TextureSource source = tex::SelectTextureSource(in);
+    const bool image = source == tex::TextureSource::FileImage || source == tex::TextureSource::PixelData;
+    if (image && GetSettings().validate) {
         validate::OnSourceTexture(pixels);  // M3 phase-2 harness: texconv on the selected image
     }
-    data->width = width;
-    data->height = height;
-    data->revision = Read(pixels + 0x48);
-    const std::uint32_t offsets = Read(pixels + 0x3C), mips = Read(pixels + 0x40);
-    data->sizeBytes = offsets != 0 && mips < 16 ? Read(offsets + 4 * mips) : 0;
-    // NiPixelFormat of the source (NiPixelData +0x0C..+0x2B, ctor 0x110FF0 / FUN_00111260 copy 8 DWORDs).
-    // FUN_0015E010 copies the D3D-side format it picked (8 DWORDs to +0x14..+0x33, DWORD 9 to +0x38);
-    // without a D3D format the source format is the closest equivalent, +0x38 stays 0.
-    for (std::uint32_t i = 0; i < 8; ++i) {
-        data->pixelFormat[i] = Read(pixels + 0x0C + 4 * i);
+    if (image && h != nullptr && h->gpu != nullptr && !UploadImage(h, data, texture, pixels, source)) {
+        source = tex::TextureSource::DefaultUnsupported;
     }
-    if (path != 0) {
-        FUT_LOGT(Gfx, "texture '%.200s': %ux%u", guest::Ptr<const char>(path), data->width, data->height);
+    // +0x54 mipmapped = FormatPrefs +0x18 == YES || (== MIP_DEFAULT && DAT_0030EF84); DAT_0030EF84 = 0
+    // (BSS, never written).
+    data->mipmapped = tex::ReadFormatPrefs(texture).mipMapped == 1 ? 1 : 0;
+    if (source == tex::TextureSource::FileImage || source == tex::TextureSource::PixelData) {
+        const auto* pd = guest::Ptr<const ni::NiPixelData>(pixels);
+        data->width = in.width;
+        data->height = in.height;
+        data->revision = pd->revision;
+        data->sizeBytes = pd->offsets != 0 && pd->mipCount < 16 ? Read(pd->offsets + 4 * pd->mipCount) : 0;
+        if (data->field50 == 0) {
+            data->field50 = pd->mipCount;  // null renderer: the stored levels (= what the Xbox uploads)
+        }
+        // FUN_0015E010 copies the NiPixelFormat of the table entry FUN_001572D0 picked (an identical layout).
+        const ni::NiPixelFormat f = tex::XboxTableFormat(tex::ChooseXboxFormat(format, in.prefs));
+        for (std::uint32_t i = 0; i < 8; ++i) {
+            data->pixelFormat[i] = Pod(f, i);
+        }
+        if (path != 0) {
+            FUT_LOGT(Gfx, "texture '%.200s': %ux%u", guest::Ptr<const char>(path), data->width, data->height);
+        }
+    } else {
+        FillDefaultTextureInfo(data);
+        if (h != nullptr && h->gpu != nullptr) {
+            data->hostTexture = h->gpu->DefaultTexture().id;
+            data->hostInfo = static_cast<std::uint32_t>(source);  // shared, not owned
+        }
+        // E.g. the movie player's texture (NiSourceTexture::Create(NULL, ..) in FUN_000EE220, which then
+        // writes its own size into +0x48/+0x4C, renderer.md 5.2) has no image at all.
+        if (source != tex::TextureSource::DefaultNoImage) {
+            FUT_LOGD(Gfx, "texture 0x%08X '%.200s' (image 0x%08X %ux%u): %s - default 8x8 texture (as FUN_0015E010)",
+                     texture, path != 0 ? guest::Ptr<const char>(path) : "(pixel data)", pixels, in.width, in.height,
+                     tex::TextureSourceName(source));
+        }
     }
-    ReleaseRefObject(pixels);
+    const auto s = static_cast<std::uint32_t>(source);
+    if (s < kTextureSources) {
+        g_textureSources[s].fetch_add(1, std::memory_order_relaxed);
+    }
+    if (pixels != 0) {
+        ReleaseRefObject(pixels);  // a file image with refcount 0 is freed here (the original leaks it)
+    }
+}
+
+std::uint32_t CreateSourceData(NiPCRenderer* self, std::uint32_t texture) noexcept;
+
+// TextureResolver of ni_extract (GFX_CONTRACT.md 9) = what the texture manager vf2 FUN_0015F930 does for
+// a stage texture: renderer data at NiTexture +0x20 (created on demand for an NiSourceTexture, through
+// FUN_0015E010), FUN_0015E260 re-conversion when a non-static texture's NiPixelData revision changed, and
+// the data's D3D texture. Movie textures (the shim's YUY2 surface at +0x3C) and rendered textures (P2)
+// resolve to a black texture; an empty handle = the original's texture manager failing.
+rhi::TextureHandle ResolveTexture(void* user, ni::GuestPtr niTexture) noexcept {
+    auto* self = static_cast<NiPCRenderer*>(user);
+    HostRenderer* h = self != nullptr ? Host(self) : nullptr;
+    if (h == nullptr || h->gpu == nullptr || niTexture == 0) {
+        return {};
+    }
+    std::uint32_t data = Read(niTexture + kNiTextureRendererData);
+    if (data == 0) {
+        // ASSUMPTION: the IsKindOf(NiSourceTexture) test of FUN_0015F930 (FUN_00011470) is met by the exact
+        // vtable 0x2A8034 - no subclass of NiSourceTexture is instantiated by this game.
+        if (Read(niTexture) != ni::kNiSourceTextureVtable) {
+            g_resolveNoData.fetch_add(1, std::memory_order_relaxed);
+            return {};
+        }
+        data = CreateSourceData(self, niTexture);
+        if (data == 0) {
+            return {};
+        }
+        g_resolveCreated.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (!IsOurData(data)) {
+        g_resolveForeign.fetch_add(1, std::memory_order_relaxed);
+        return {};
+    }
+    auto* d = guest::Ptr<NiPCTextureData>(data);
+    if (Read(data) == RenderedVtableAddr()) {
+        g_resolveRendered.fetch_add(1, std::memory_order_relaxed);
+        return h->gpu->BlackTexture();  // render to texture is P2
+    }
+    if (d->d3dTexture != 0 && (d->hostInfo & kHostOwnsTexture) == 0) {
+        g_resolveMovie.fetch_add(1, std::memory_order_relaxed);
+        return h->gpu->BlackTexture();  // movie player texture: contents from M6
+    }
+    if ((d->hostInfo & kHostOwnsTexture) != 0 && guest::Read<std::uint8_t>(niTexture + kNiSourceTextureStatic) == 0) {
+        // FUN_0015E260: NiSourceTexture +0x34 NiPixelData revision != data +0x60 -> convert and copy again.
+        const std::uint32_t pixels = Read(niTexture + kNiSourceTexturePixelData);
+        if (pixels != 0 && Read(pixels + kNiPixelDataRevision) != d->revision) {
+            const auto source = static_cast<tex::TextureSource>(d->hostInfo & 0xFF);
+            if (UploadImage(h, d, niTexture, pixels, source)) {
+                d->revision = Read(pixels + kNiPixelDataRevision);
+                g_reuploads.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
+    return rhi::TextureHandle{d->hostTexture};
 }
 
 std::uint32_t NewTextureData(NiPCRenderer* self, std::uint32_t texture, std::uint32_t size,
@@ -353,24 +544,51 @@ std::uint32_t __fastcall SlotSetRenderTarget(NiPCRenderer* self, void*, std::uin
         core::CallGuest(guest::kGameScreenOffsetZero);
     }
     h->renderTarget = texture;
+    if (h->gpu != nullptr) {
+        if (texture == 0) {
+            h->gpu->SetBackBufferTarget();
+        } else {
+            h->gpu->SetTextureTarget(h->targetWidth, h->targetHeight);  // P2: draws/clears are counted, not done
+        }
+    }
     return 1;
 }
 
 void OnFrameDisplayed() noexcept;
 
-// slot 16 - DisplayFrame (0x146460, ret): D3DDevice_Swap only while the back buffer is the target ->
-// frame counter, pacing and the --frames limit (design 5.4).
+// slot 16 - DisplayFrame (0x146460, ret): D3DDevice_Swap only while the back buffer is the target
+// (descriptor +0x10 == 0) -> screenshot, Present and arena reset (GPU path), then pacing, frame counter and
+// the --frames limit (design 5.4).
 std::uint32_t __fastcall SlotDisplayFrame(NiPCRenderer* self, void*) noexcept {
     if (InPurgeProbe()) {
         return 0;
     }
     NoteCall(16, _ReturnAddress());
-    const HostRenderer* h = Host(self);
+    HostRenderer* h = Host(self);
     if (h != nullptr && h->renderTarget == 0) {
-        if (GetSettings().validate) {
+        if (h->gpu != nullptr) {
+            h->gpu->DisplayFrame(FramesDisplayed() + 1);
+        } else if (GetSettings().validate) {
             validate::OnFrameDisplayed(FramesDisplayed() + 1);
         }
         OnFrameDisplayed();
+    }
+    return 0;
+}
+
+// slot 17 - ClearBuffer(const NiRect<float>* rect or NULL, unsigned mode) (0x146490, ret 8): mode bit 1
+// color (background +0x2CC), 4 depth (+0x2D0), 2 stencil (+0x2D4); D3D viewport = whole target first
+// (0x146538, not restored); the rectangle in target pixels (0x1464C2..0x14652B, ni::ClearRect). Returns
+// nothing (eax undefined; 0 here).
+std::uint32_t __fastcall SlotClearBuffer(NiPCRenderer* self, void*, std::uint32_t rect, std::uint32_t mode) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(17, _ReturnAddress());
+    HostRenderer* h = Host(self);
+    if (h != nullptr && h->gpu != nullptr) {
+        h->gpu->ClearBuffer(rect != 0 ? guest::Ptr<const ni::NiRectF>(rect) : nullptr, mode, h->backgroundColor,
+                            h->depthClear, h->stencilClear);
     }
     return 0;
 }
@@ -391,6 +609,9 @@ std::uint32_t __fastcall SlotSetLeftRightSwap(NiPCRenderer* self, void*, std::ui
     NoteCall(19, _ReturnAddress());
     if (HostRenderer* h = Host(self)) {
         h->leftRightSwap = (swap & 0xFF) != 0;
+        if (h->gpu != nullptr) {
+            h->gpu->SetLeftRightSwap(h->leftRightSwap);
+        }
     }
     return 1;
 }
@@ -460,9 +681,13 @@ std::uint32_t __fastcall SlotSetBackgroundColor(NiPCRenderer* self, void*, std::
     NoteCall(27, _ReturnAddress());
     HostRenderer* h = Host(self);
     if (h != nullptr && color != 0) {
+        // 0x14B0C6..0x14B10B: fld c; fmul [0x2A14C4] (255.0); _ftol (FUN_00167080, truncation; out of range ->
+        // 0x80000000); the low byte of each channel (wraps, no clamp), alpha 0xFF.
         auto channel = [&](std::uint32_t i) -> std::uint32_t {
-            const float v = Read<float>(color + 4 * i) * 255.0f;
-            return v <= 0.0f ? 0u : v >= 255.0f ? 255u : static_cast<std::uint32_t>(v);
+            const double v = static_cast<double>(Read<float>(color + 4 * i)) * 255.0;
+            const std::int32_t t = v > -2147483649.0 && v < 2147483648.0 ? static_cast<std::int32_t>(v)
+                                                                         : std::numeric_limits<std::int32_t>::min();
+            return static_cast<std::uint32_t>(t) & 0xFFu;
         };
         h->backgroundColor = 0xFF000000u | (channel(0) << 16) | (channel(1) << 8) | channel(2);
     }
@@ -539,7 +764,8 @@ std::uint32_t __fastcall SlotBeginBatch(NiPCRenderer* self, void*, std::uint32_t
 }
 
 // slot 45 - BeginScene (0x148950, ret) / slot 46 - EndScene (0x1469C0, ret): in-scene flag (+0x500 in
-// the original; SetRenderTarget refuses to switch inside a scene).
+// the original; SetRenderTarget refuses to switch inside a scene). BeginScene also forgets REN's cached
+// alpha/fog property and disables every light (FUN_00158B90, FUN_0015B990 -> ni::BeginScene).
 std::uint32_t __fastcall SlotBeginScene(NiPCRenderer* self, void*) noexcept {
     if (InPurgeProbe()) {
         return 0;
@@ -547,6 +773,9 @@ std::uint32_t __fastcall SlotBeginScene(NiPCRenderer* self, void*) noexcept {
     NoteCall(45, _ReturnAddress());
     if (HostRenderer* h = Host(self)) {
         h->inScene = true;
+        if (h->gpu != nullptr) {
+            h->gpu->BeginScene();
+        }
     }
     return 0;
 }
@@ -562,7 +791,8 @@ std::uint32_t __fastcall SlotEndScene(NiPCRenderer* self, void*) noexcept {
 }
 
 // slot 47 - SetCameraData(loc, dir, up, right, const NiFrustum&, const NiRect<float>& port) (0x1469E0,
-// ret 0x18; NiCamera::Click FUN_00100C50 passes cam +0xA0/+0x110/+0x11C/+0x128/+0x134/+0x14C). Null renderer:
+// ret 0x18; NiCamera::Click FUN_00100C50 passes cam +0xA0/+0x110/+0x11C/+0x128/+0x134/+0x14C): view and
+// projection (D3DDevice_SetTransform) and the viewport of the port (ni::ExtractCamera). Null renderer:
 // nothing to do; [render] validate = 1 runs ni::ExtractCamera (M3 phase-2 harness, nipc_validate.h).
 std::uint32_t __fastcall SlotSetCameraData(NiPCRenderer* self, void*, std::uint32_t location, std::uint32_t direction,
                                            std::uint32_t up, std::uint32_t right, std::uint32_t frustum,
@@ -571,8 +801,20 @@ std::uint32_t __fastcall SlotSetCameraData(NiPCRenderer* self, void*, std::uint3
         return 0;
     }
     NoteCall(47, _ReturnAddress());
-    if (GetSettings().validate) {
-        validate::OnSetCameraData(location, direction, up, right, frustum, port, Target(Host(self)));
+    HostRenderer* h = Host(self);
+    if (h != nullptr && h->gpu != nullptr) {
+        if (location != 0 && direction != 0 && up != 0 && right != 0 && frustum != 0 && port != 0) {
+            ni::CameraInput in;
+            in.location = guest::Ptr<const float>(location);
+            in.direction = guest::Ptr<const float>(direction);
+            in.up = guest::Ptr<const float>(up);
+            in.right = guest::Ptr<const float>(right);
+            in.frustum = guest::Ptr<const ni::NiFrustum>(frustum);
+            in.port = guest::Ptr<const ni::NiRectF>(port);
+            h->gpu->SetCameraData(in);  // target size and left-right swap are the GpuRenderer's
+        }
+    } else if (GetSettings().validate) {
+        validate::OnSetCameraData(location, direction, up, right, frustum, port, Target(h));
     }
     return 0;
 }
@@ -582,6 +824,29 @@ std::uint32_t __fastcall SlotSetCameraData(NiPCRenderer* self, void*, std::uint3
 // RenderTriangles / 50 RenderTriStrip(data, const NiTransform&, const NiBound&) (0x14B590, ret 0xC). The
 // geometry's vf33 wrote renderer +0x0C/+0x10 before the call. The original draws only inside a scene
 // (+0x500). Null renderer: nothing drawn; [render] validate = 1 runs ni_extract.
+void RenderGeometry(NiPCRenderer* self, ni::DrawKind kind, std::uint32_t data, std::uint32_t skin,
+                    std::uint32_t transform, std::uint32_t bound) noexcept {
+    HostRenderer* h = Host(self);
+    if (h == nullptr) {
+        return;
+    }
+    if (h->gpu != nullptr) {
+        if (!h->inScene) {
+            h->gpu->CountNotInScene(kind, data);
+            return;
+        }
+        ni::GeometryInput in;
+        in.data = data;
+        in.skinInstance = skin;
+        in.transform = transform;
+        in.bound = bound;
+        in.propertyState = self->propertyState;
+        in.effectState = self->effectState;
+        h->gpu->DrawGeometry(kind, in);
+    } else if (GetSettings().validate && h->inScene) {
+        validate::OnGeometry(kind, data, skin, transform, bound, self->propertyState, self->effectState, Target(h));
+    }
+}
 template <std::uint32_t Slot, ni::DrawKind Kind>
 std::uint32_t __fastcall SlotRenderSkinnable(NiPCRenderer* self, void*, std::uint32_t data, std::uint32_t skin,
                                              std::uint32_t transform, std::uint32_t bound) noexcept {
@@ -589,10 +854,7 @@ std::uint32_t __fastcall SlotRenderSkinnable(NiPCRenderer* self, void*, std::uin
         return 0;
     }
     NoteCall(Slot, _ReturnAddress());
-    const HostRenderer* h = Host(self);
-    if (GetSettings().validate && h != nullptr && h->inScene) {
-        validate::OnGeometry(Kind, data, skin, transform, bound, self->propertyState, self->effectState, Target(h));
-    }
+    RenderGeometry(self, Kind, data, skin, transform, bound);
     return 0;
 }
 template <std::uint32_t Slot, ni::DrawKind Kind>
@@ -602,10 +864,7 @@ std::uint32_t __fastcall SlotRenderUnskinned(NiPCRenderer* self, void*, std::uin
         return 0;
     }
     NoteCall(Slot, _ReturnAddress());
-    const HostRenderer* h = Host(self);
-    if (GetSettings().validate && h != nullptr && h->inScene) {
-        validate::OnGeometry(Kind, data, 0, transform, bound, self->propertyState, self->effectState, Target(h));
-    }
+    RenderGeometry(self, Kind, data, 0, transform, bound);
     return 0;
 }
 
@@ -616,8 +875,14 @@ std::uint32_t __fastcall SlotRenderScreenPolygon(NiPCRenderer* self, void*, std:
         return 0;
     }
     NoteCall(54, _ReturnAddress());
-    const HostRenderer* h = Host(self);
-    if (GetSettings().validate && h != nullptr && h->inScene && polygon != 0) {
+    HostRenderer* h = Host(self);
+    if (h != nullptr && h->gpu != nullptr) {
+        if (!h->inScene) {
+            h->gpu->CountNotInScene(ni::DrawKind::ScreenPolygon, polygon);
+        } else if (polygon != 0) {
+            h->gpu->DrawScreenPolygon(polygon);
+        }
+    } else if (GetSettings().validate && h != nullptr && h->inScene && polygon != 0) {
         validate::OnScreenPolygon(polygon, Target(h));
     }
     return 0;
@@ -627,22 +892,42 @@ std::uint32_t __fastcall SlotRenderScreenTexture(NiPCRenderer* self, void*, std:
         return 0;
     }
     NoteCall(55, _ReturnAddress());
-    const HostRenderer* h = Host(self);
-    if (GetSettings().validate && h != nullptr && h->inScene && screenTexture != 0) {
+    HostRenderer* h = Host(self);
+    if (h != nullptr && h->gpu != nullptr) {
+        if (!h->inScene) {
+            h->gpu->CountNotInScene(ni::DrawKind::ScreenTexture, screenTexture);
+        } else if (screenTexture != 0) {
+            h->gpu->DrawScreenTexture(screenTexture);
+        }
+    } else if (GetSettings().validate && h != nullptr && h->inScene && screenTexture != 0) {
         validate::OnScreenTexture(screenTexture, Target(h));
     }
     return 0;
 }
 
+// New NiPCTextureData (0x70, layout of NiXBoxSourceTextureData) for an NiSourceTexture, filled as
+// FUN_0015E010 does and appended to the chain at +0x20; 0 if the game's operator new fails.
+std::uint32_t CreateSourceData(NiPCRenderer* self, std::uint32_t texture) noexcept {
+    const std::uint32_t addr = NewTextureData(self, texture, sizeof(NiPCTextureData), SourceVtableAddr());
+    if (addr == 0) {
+        return 0;
+    }
+    FillSourceTextureData(Host(self), guest::Ptr<NiPCTextureData>(addr), texture);
+    AppendRendererData(texture, addr);
+    g_sourceDataCreated.fetch_add(1, std::memory_order_relaxed);
+    return addr;
+}
+
 // slot 65 - CreateSourceTextureRendererData(NiSourceTexture*) (0x147350, ret 4). Must return TRUE, else
 // NiSourceTexture::Create (FUN_00118600/FUN_00118520 via the broadcast FUN_00117FC0) returns NULL.
-// Existing data -> TRUE (like the original). New data: NiPCTextureData (0x70, layout of
-// NiXBoxSourceTextureData) appended to the chain at +0x20, size/format as FUN_0015E010 takes them.
+// Existing data -> TRUE (like the original). New data: CreateSourceData (source order, Xbox format choice
+// and - with the d3d11 backend - conversion and upload). Often runs on a loading fiber (StackProbe).
 std::uint32_t __fastcall SlotCreateSourceTextureData(NiPCRenderer* self, void*, std::uint32_t texture) noexcept {
     if (InPurgeProbe()) {
         return 0;
     }
     NoteCall(65, _ReturnAddress());
+    const auto entry = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(_AddressOfReturnAddress()));
     FUT_HLE_TRY {
         if (texture == 0) {
             FUT_LOGW(Gfx, "NiPCRenderer slot 65 with NULL texture from %s - FALSE",
@@ -652,14 +937,8 @@ std::uint32_t __fastcall SlotCreateSourceTextureData(NiPCRenderer* self, void*, 
         if (Read(texture + kNiTextureRendererData) != 0) {
             return 1;
         }
-        const std::uint32_t addr = NewTextureData(self, texture, sizeof(NiPCTextureData), SourceVtableAddr());
-        if (addr == 0) {
-            return 0;
-        }
-        FillSourceTextureInfo(guest::Ptr<NiPCTextureData>(addr), texture);
-        AppendRendererData(texture, addr);
-        g_sourceDataCreated.fetch_add(1, std::memory_order_relaxed);
-        return 1;
+        const StackProbe probe(entry);
+        return CreateSourceData(self, texture) != 0 ? 1 : 0;
     }
     FUT_HLE_CATCH("NiPCRenderer slot 65 (CreateSourceTextureRendererData)")
 }
@@ -761,6 +1040,8 @@ const void* SlotEntry() noexcept {
         return Checked<Slot>(&SlotSetRenderTarget);
     } else if constexpr (Slot == 16) {
         return Checked<Slot>(&SlotDisplayFrame);
+    } else if constexpr (Slot == 17) {
+        return Checked<Slot>(&SlotClearBuffer);
     } else if constexpr (Slot == 18) {
         return Checked<Slot>(&SlotGetLeftRightSwap);
     } else if constexpr (Slot == 19) {
@@ -837,6 +1118,18 @@ std::uint32_t __fastcall DataDestroy(NiPCTextureData* data, void*, std::uint32_t
         if (data->pixelData != 0) {
             ReleaseRefObject(data->pixelData);
             data->pixelData = 0;
+        }
+        if ((data->hostInfo & kHostOwnsTexture) != 0 && data->hostTexture != 0) {
+            // M3: the device texture of this data (shared default/black textures are not owned). The data
+            // may outlive its renderer only if the renderer was destroyed first (never in this game).
+            if (data->renderer != 0 && data->renderer == g_currentRenderer.load()) {
+                HostRenderer* h = Host(guest::Ptr<NiPCRenderer>(data->renderer));
+                if (h != nullptr && h->gpu != nullptr) {
+                    h->gpu->DestroyTexture(rhi::TextureHandle{data->hostTexture});
+                }
+            }
+            data->hostTexture = 0;
+            data->hostInfo = 0;
         }
         const std::uint32_t next = data->next;
         data->next = 0;
@@ -945,7 +1238,7 @@ Tables* BuildTables() noexcept {
         DataEntry<ra[12]>(&RenderedGetDescriptor), DataEntry<ra[13]>(&RenderedSetDescriptor)};
     std::memcpy(t->sourceData, source, sizeof(source));
     std::memcpy(t->renderedData, rendered, sizeof(rendered));
-    std::snprintf(t->driverInfo, sizeof(t->driverInfo), "NiPCRenderer (null renderer, M2)");
+    std::snprintf(t->driverInfo, sizeof(t->driverInfo), "NiPCRenderer (M3: d3d11 or null renderer)");
     return t;
 }
 
@@ -975,41 +1268,12 @@ const char* DriverInfoString() noexcept {
 
 // ---- frames: counter, pacing, --frames limit (design 5.4) ---------------------------------------------
 
-std::mutex g_paceMutex;
-LONGLONG g_nextFrame = 0;
-
-// Waits for the next 1/hz s slot like D3DDevice_Swap waits for the vertical blank (PresentationInterval
-// ONE from FUN_000D26A0). Falls back to a new schedule when the game is more than one frame late.
-void PaceFrame(std::uint32_t hz) noexcept {
-    static HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-                                                 TIMER_ALL_ACCESS);
-    std::lock_guard<std::mutex> lock(g_paceMutex);
-    LARGE_INTEGER freq, now;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&now);
-    const LONGLONG period = freq.QuadPart / hz;
-    if (g_nextFrame == 0 || now.QuadPart - g_nextFrame > period) {
-        g_nextFrame = now.QuadPart + period;
-        return;
-    }
-    if (now.QuadPart < g_nextFrame) {
-        const LONGLONG ticks = g_nextFrame - now.QuadPart;
-        LARGE_INTEGER due;
-        due.QuadPart = -(ticks * 10000000 / freq.QuadPart);
-        if (timer != nullptr && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) {
-            WaitForSingleObject(timer, INFINITE);
-        } else {
-            Sleep(static_cast<DWORD>(ticks * 1000 / freq.QuadPart));
-        }
-    }
-    g_nextFrame += period;
-}
-
+// After the frame (and Present with the d3d11 backend): wait for the next 1/frame_rate s slot like
+// D3DDevice_Swap waits for the PAL vertical blank (PresentationInterval ONE from FUN_000D26A0;
+// platform::PaceFrame = the M2 algorithm, moved to platform/frame_pacer.cpp in M3), count, --frames.
 void OnFrameDisplayed() noexcept {
     const Settings& s = GetSettings();
-    if (s.frameRate != 0) {
-        PaceFrame(s.frameRate);
-    }
+    platform::PaceFrame(s.frameRate);  // 0 = unthrottled
     const std::uint32_t n = g_framesDisplayed.fetch_add(1) + 1;
     if (n == 1) {
         FUT_LOGI(Gfx, "NiPCRenderer: first frame displayed (pacing %u Hz, frame limit %u)", s.frameRate,
@@ -1076,11 +1340,38 @@ std::uint32_t CreateRenderer(std::uint32_t width, std::uint32_t height, std::uin
         core::AddExitReporter("gfx", &LogRendererStatistics);
     });
     const Settings& s = GetSettings();
+    // M3: [render] backend = d3d11 -> device, swap chain and fixed-function pipeline for the main window
+    // (stage 12). Failure keeps the null renderer so that the game still runs (GFX/error).
+    std::string backend = "null renderer";
+    if (s.backend == RenderBackend::D3D11) {
+        HWND window = platform::MainWindow();
+        if (window == nullptr) {
+            FUT_LOGE(Gfx,
+                     "NiXBoxRenderer::Create: [render] backend = d3d11 but there is no main window - null renderer");
+        } else {
+            GpuRenderer::CreateParams params;
+            params.window = window;
+            params.width = host->width;
+            params.height = host->height;
+            params.debugLayer = WantDebugLayer(s);
+            params.softwareAdapter = s.softwareAdapter;
+            params.resolveTexture = &ResolveTexture;
+            params.resolveUser = r;
+            std::string error;
+            host->gpu = GpuRenderer::Create(params, &error);
+            if (host->gpu == nullptr) {
+                FUT_LOGE(Gfx, "NiXBoxRenderer::Create: D3D11 renderer not available (%s) - null renderer",
+                         error.c_str());
+            } else {
+                backend = "d3d11: " + host->gpu->Describe();
+            }
+        }
+    }
     FUT_LOGI(Gfx, "NiXBoxRenderer::Create(%u, %u, %u, %u, 0x%08X, 0x%X, %u, %u) from %s -> NiPCRenderer 0x%08X "
-             "(null renderer: vtable 0x%08X, device 0x%08X, renderer list %u, pacing %u Hz, frame limit %u, "
+             "(%s; vtable 0x%08X, device 0x%08X, renderer list %u, pacing %u Hz, vsync %d, frame limit %u, "
              "d3d traps %s)", width, height, backBufferFormat, backBufferCount, flags, depthFormat, refreshRate,
-             presentInterval, SymbolizeSafe(from).c_str(), addr, guest::Addr(t->renderer), device, listCount,
-             s.frameRate, s.frameLimit, s.trapMode == TrapMode::Abort ? "abort" : "log");
+             presentInterval, SymbolizeSafe(from).c_str(), addr, backend.c_str(), guest::Addr(t->renderer), device,
+             listCount, s.frameRate, s.vsync ? 1 : 0, s.frameLimit, s.trapMode == TrapMode::Abort ? "abort" : "log");
     return addr;
 }
 
@@ -1132,14 +1423,49 @@ std::uint32_t SlotCallCount(std::uint32_t slot) noexcept {
 }
 
 void LogRendererStatistics() noexcept {
+    auto src = [](tex::TextureSource t) { return g_textureSources[static_cast<std::uint32_t>(t)].load(); };
     FUT_LOGI(
         Gfx,
         "NiPCRenderer: %u frames displayed; texture data: %u source + %u rendered created, %u destroyed; "
-        "%u texture files read; default 8x8 texture for %u without image, %u unreadable, %u not a power "
-        "of two, %u not loaded",
-        g_framesDisplayed.load(), g_sourceDataCreated.load(), g_renderedDataCreated.load(),
-        g_dataDestroyed.load(), g_textureFilesRead.load(), g_defaultNoImage.load(),
-        g_defaultUnreadable.load(), g_defaultNotPow2.load(), g_defaultNotLoaded.load());
+        "%u texture files read; images %u from files, %u from pixel data; default 8x8 texture for %u without "
+        "image, %u unreadable, %u not a power of two, %u not loaded, %u without Xbox format, %u not convertible",
+        g_framesDisplayed.load(), g_sourceDataCreated.load(), g_renderedDataCreated.load(), g_dataDestroyed.load(),
+        g_textureFilesRead.load(), src(tex::TextureSource::FileImage), src(tex::TextureSource::PixelData),
+        src(tex::TextureSource::DefaultNoImage), src(tex::TextureSource::DefaultUnreadable),
+        src(tex::TextureSource::DefaultNotPowerOfTwo), src(tex::TextureSource::DefaultNotLoaded),
+        src(tex::TextureSource::DefaultNoXboxFormat), src(tex::TextureSource::DefaultUnsupported));
+    const std::uint32_t current = g_currentRenderer.load();
+    HostRenderer* h = current != 0 ? Host(guest::Ptr<NiPCRenderer>(current)) : nullptr;
+    if (h != nullptr && h->gpu != nullptr) {
+        char formats[256];
+        std::size_t used = 0;
+        formats[0] = 0;
+        for (std::uint32_t f = 0; f < static_cast<std::uint32_t>(rhi::Format::Count); ++f) {
+            const std::uint32_t n = g_uploadFormats[f].load();
+            const int w = n == 0 ? 0
+                                 : std::snprintf(formats + used, sizeof(formats) - used, " %s:%u",
+                                                 rhi::GetFormatInfo(static_cast<rhi::Format>(f)).name, n);
+            if (w < 0 || static_cast<std::size_t>(w) >= sizeof(formats) - used) {
+                break;
+            }
+            used += static_cast<std::size_t>(w);
+        }
+        FUT_LOGI(Gfx,
+                 "NiPCRenderer textures: %u uploaded (%llu KiB;%s), %u re-uploaded (revision), conversion failures: "
+                 "%u no pixel data, %u unsupported, %u no palette, %u bad data, %u out of memory; resolver: %u "
+                 "created on demand, %u without data, %u movie (black), %u rendered (black, P2), %u foreign",
+                 g_uploads.load(), static_cast<unsigned long long>(g_uploadBytes.load() >> 10),
+                 used != 0 ? formats : " none", g_reuploads.load(), g_convertFailures[1].load(),
+                 g_convertFailures[2].load(), g_convertFailures[3].load(), g_convertFailures[4].load(),
+                 g_convertFailures[5].load(), g_resolveCreated.load(), g_resolveNoData.load(), g_resolveMovie.load(),
+                 g_resolveRendered.load(), g_resolveForeign.load());
+        const StackProbeStats& p = g_stackProbe;
+        FUT_LOGI(Gfx,
+                 "NiPCRenderer slot 65 stack: %u new texture data on loading-fiber stacks, %u elsewhere; deepest use "
+                 "%u bytes below the slot entry, least headroom %u bytes of a %u-byte fiber stack",
+                 p.fiberCalls, p.otherCalls, p.deepest, p.fiberCalls != 0 ? p.leastHeadroom : 0u, p.stackBytes);
+        h->gpu->LogStatistics();
+    }
     char line[512];
     std::size_t used = 0;
     line[0] = 0;

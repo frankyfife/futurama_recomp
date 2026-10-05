@@ -53,7 +53,8 @@
 //                              ; anything else: exit code 1)
 //   load_textures = 1          ; NiPCRenderer slot 65 reads texture files like FUN_0015E010 (0: such
 //                              ; textures get the 8x8 default texture)
-//   backend = null             ; (M3) null | d3d11 - null = M2 null renderer, d3d11 = window + D3D11
+//   backend = d3d11            ; (M3) d3d11 | null - d3d11 = window + D3D11 (default since the M3
+//                              ; integration), null = M2 null renderer (no window, nothing drawn)
 //   vsync = 1                  ; (M3) Present with sync interval 1
 //   debug_layer = auto         ; (M3) auto | on | off (auto: on in Debug builds if installed)
 //   adapter = hardware         ; (M3) hardware | warp

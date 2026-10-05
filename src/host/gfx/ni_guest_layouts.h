@@ -132,7 +132,8 @@ struct NiTriShapeDynamicData {
     std::uint16_t activeVertices; // +0x4C
     std::uint16_t activeTriangles;// +0x4E
 };
-static_assert(sizeof(NiTriShapeDynamicData) == 0x50 && offsetof(NiTriShapeDynamicData, activeTriangles) == 0x4E);
+static_assert(sizeof(NiTriShapeDynamicData) == 0x50 &&
+              offsetof(NiTriShapeDynamicData, activeTriangles) == 0x4E);
 
 // Phase 2: vtables of the geometry data classes (retail_eu_ni_classes.json) and the implementations of
 // GetVertexCount vf12 (+0x30) / GetTriangleCount vf15 (+0x3C) REN calls (slot 48 0x14C513, FUN_00146F20,
@@ -150,7 +151,7 @@ inline constexpr GuestPtr kVertexCountTrianglesData = 0x0011AC20; // u16 +0x38 *
 inline constexpr GuestPtr kVertexCountTriStripData = 0x0011B4B0;  // u16 +0x38 + 2 (0 if +0x38 == 0)
 inline constexpr GuestPtr kTriangleCountTriBased = 0x00115F60;    // u16 +0x34
 inline constexpr GuestPtr kTriangleCountDynamicData = 0x0011B100; // u16 +0x4E
-inline constexpr GuestPtr kTriangleCountActive = 0x0011B4F0;      // u16 +0x38 (NiTrianglesData, NiTriStripData)
+inline constexpr GuestPtr kTriangleCountActive = 0x0011B4F0;      // u16 +0x38 (NiTriangles/NiTriStripData)
 
 // NiTriStripsData (0x44) - CalculateNormals vf13 0x152460: strips are concatenated in +0x40, strip s has
 // stripLengths[s] indices; odd triangles of a strip swap their first two vertices (standard strip rule).
@@ -322,7 +323,7 @@ struct NiTexturingProperty {
     GuestPtr mapsVtable;          // +0x20 NiTArray<Map*> vtable 0x2A6BBC
     GuestPtr maps;                // +0x24 Map*[maxSize] (FUN_0015BF80: **(+0x24) = base map)
     std::uint32_t mapsMaxSize;    // +0x28 (7)
-    std::uint32_t mapsSize;       // +0x2C slots in use (viewer loop count; vf2 0x164477: decal maps = size - 6)
+    std::uint32_t mapsSize;       // +0x2C slots in use (viewer loop count; vf2 0x164477: decals = size - 6)
     std::uint32_t mapsUsed;       // +0x30 non-empty slots
     std::uint32_t mapsGrowBy;     // +0x34
     std::uint32_t decalMapCount;  // +0x38 phase 2: non-empty maps at index > 5 (vf04 0x10A1B0)
@@ -526,10 +527,13 @@ static_assert(sizeof(NiPalette) == 0x20 && offsetof(NiPalette, entries) == 0x18 
 //   pixelLayout 0 PALETTIZED_8, 1 HIGH_COLOR_16, 2 TRUE_COLOR_32, 3 COMPRESSED, 4 BUMPMAP, 5 PIX_DEFAULT
 //   alphaFormat 0 NONE, 1 BINARY, 2 SMOOTH, 3 ALPHA_DEFAULT; mipMapped 0 NO, 1 YES, 2 MIP_DEFAULT
 //   (ASSUMPTION: names after NetImmerse 4.2; the numeric use is FUN_001572D0's).
+// Field order verified in M3 phase 2 (texconv agent; integration fixed the names): FUN_0015E010 0x15E13B
+// derives the mipmap flag from +0x18 (== 1, or == 2 with DAT_0030EF84), FUN_001572D0 prefers PALA/1555
+// when +0x1C is 1/2 (alpha BINARY/SMOOTH); the NIF stream order is the same (tex::XboxFormatPrefs).
 struct NiTextureFormatPrefs {
     std::uint32_t pixelLayout;    // +0x14
-    std::uint32_t alphaFormat;    // +0x18
-    std::uint32_t mipMapped;      // +0x1C
+    std::uint32_t mipMapped;      // +0x18
+    std::uint32_t alphaFormat;    // +0x1C
 };
 struct NiSourceTextureLayout {
     NiObjectHeader obj;           // +0x00
@@ -576,6 +580,9 @@ static_assert(sizeof(NiScreenPolygon) == 0x24 && offsetof(NiScreenPolygon, isStr
 // indices (0,1,2) (2,1,3) per quad. The original draws them with its own property state (renderer
 // +0x5A8): NiAlphaProperty flags 0xED (blend SRCALPHA/INVSRCALPHA), NiZBufferProperty with test and write
 // off, NiVertexColorProperty (SOURCE_EMISSIVE, LIGHTING_E) and the screen texture's NiTexturingProperty.
+// Phase 2: LoadBinary NiScreenTexture::vf03 0x10B7C0 streams the six u16 in this order, then the color
+// (FUN_00151A30). FUN_0014A050 adds +0x04/+0x06 to left/top as width/height; the game's legal-screen
+// tiles store larger values (the rects overlap and are clipped; draw order + CLAMP give the picture).
 struct NiScreenTextureRect {
     std::int16_t top;             // +0x00
     std::int16_t left;            // +0x02
@@ -589,8 +596,8 @@ static_assert(sizeof(NiScreenTextureRect) == 0x1C);
 struct NiScreenTexture {
     NiObjectHeader obj;           // +0x00
     GuestPtr rects;               // +0x08 NiScreenTextureRect[]
-    std::uint32_t rectCapacity;   // +0x0C ASSUMPTION
-    std::uint16_t rectCount;      // +0x10
+    std::uint32_t rectCapacity;   // +0x0C phase 2: array {data, capacity, count} (FUN_0010B0C0, FUN_0010B5D0)
+    std::uint16_t rectCount;      // +0x10 (u32 in the array object, FUN_0014A050 reads the low u16)
     std::uint16_t pad12;
     GuestPtr texturing;           // +0x14 NiTexturingProperty*
     std::uint16_t revision;       // +0x18 (FUN_0014BFF0 rebuilds the quads when != 0 and resets it)

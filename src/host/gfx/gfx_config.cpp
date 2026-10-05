@@ -51,8 +51,8 @@ Settings Load() {
         FUT_LOGW(Gfx, "[render] d3d_traps = '%s' is neither 'abort' nor 'log' - using 'abort'", mode.c_str());
     }
     // M3 keys (choice values are validated by the configuration loader, core/config.cpp kKnownKeys).
-    s.backend = Lower(cfg.GetString("render", "backend", "null")) == "d3d11" ? RenderBackend::D3D11
-                                                                              : RenderBackend::Null;
+    s.backend = Lower(cfg.GetString("render", "backend", "d3d11")) == "null" ? RenderBackend::Null
+                                                                             : RenderBackend::D3D11;
     s.vsync = cfg.GetBool("render", "vsync", true);
     const std::string layer = Lower(cfg.GetString("render", "debug_layer", "auto"));
     s.debugLayer = layer == "on" ? DebugLayerMode::On : layer == "off" ? DebugLayerMode::Off : DebugLayerMode::Auto;

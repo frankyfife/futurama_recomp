@@ -11,7 +11,10 @@
 //   - required results (renderer.md 7.1): slot 1 = &NiXBoxRenderer::ms_RTTI 0x30EE00, slots 65/66 TRUE
 //     with layout-compatible renderer data, slot 39 FALSE (CPU geometry untouched), slot 16 counts
 //     frames for --frames=N; slot 0 destroys through FUN_001406E0 + the game's operator delete.
-// Nothing is drawn (M3 adds the HostRenderer backend behind the same slots).
+// [render] backend = null (M2): nothing is drawn. [render] backend = d3d11 (M3): the Create detour also
+// creates a gfx::GpuRenderer (gfx/nipc_gpu.h) for the main window and the slots 15, 16, 17, 45, 47-51,
+// 54, 55 and 65 draw through ni_extract -> ff_pipeline -> RHI (D3D11); without a window or when the
+// device cannot be created the renderer stays the null renderer (GFX/error).
 #pragma once
 
 #include <cstddef>
@@ -93,9 +96,18 @@ struct NiPCTextureData {
     std::uint32_t sizeBytes;       // +0x58 pixel bytes
     std::uint32_t pixelData;       // +0x5C smart pointer, released by the dtor (data vf10)
     std::uint32_t revision;        // +0x60 NiPixelData revision (+0x48)
-    std::uint32_t field64[3];      // +0x64..+0x6F
+    // +0x64..+0x6F: host fields (GFX_CONTRACT.md 9; the original keeps an update counter at +0x64, read
+    // only by REN code that never runs). Written by slot 65 and the texture resolver (M3).
+    std::uint32_t hostTexture;     // +0x64 rhi::TextureHandle::id (0 = none)
+    std::uint32_t hostInfo;        // +0x68 bits 0-7 tex::TextureSource, kHostOwnsTexture
+    std::uint32_t hostRevision;    // +0x6C NiPixelData revision of the uploaded image
 };
 static_assert(sizeof(NiPCTextureData) == 0x70);
+static_assert(offsetof(NiPCTextureData, hostTexture) == 0x64 && offsetof(NiPCTextureData, hostInfo) == 0x68 &&
+              offsetof(NiPCTextureData, hostRevision) == 0x6C);
+// NiPCTextureData::hostInfo: the RHI texture belongs to this data (destroyed with it); the shared default
+// and black textures do not.
+inline constexpr std::uint32_t kHostOwnsTexture = 0x100;
 static_assert(offsetof(NiPCTextureData, renderer) == 0x10 && offsetof(NiPCTextureData, d3dTexture) == 0x3C &&
               offsetof(NiPCTextureData, width) == 0x48 && offsetof(NiPCTextureData, height) == 0x4C &&
               offsetof(NiPCTextureData, mipmapped) == 0x54 && offsetof(NiPCTextureData, sizeBytes) == 0x58 &&

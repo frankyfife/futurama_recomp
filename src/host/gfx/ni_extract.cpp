@@ -14,50 +14,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
-#include <cstdio>
 #include <optional>
-
-
-// TEMPORARY PROBE (extract agent investigation, removed before hand-over).
-#include "core/log.h"
-namespace gfx::ni::probe {
-struct Stats {
-    std::uint64_t states = 0, path[3] = {}, apply[4] = {}, vc[4][2] = {}, lightingOn = 0, lightsHist[9] = {};
-    std::uint64_t diffuseColor1WithColors = 0, withColors = 0, blend = 0, atest = 0, ztest = 0, zwrite = 0;
-    std::uint64_t cull[3] = {}, stage0Tex = 0, filter[8] = {}, clamp[5] = {}, mapsMask[128] = {}, effects = 0;
-    std::uint64_t dyn = 0, shape = 0, other = 0, skinned = 0, ambientNonZero = 0, fog = 0, mips = 0;
-    std::uint64_t specular = 0, stencil = 0, wire = 0, flat = 0;
-};
-inline Stats g;
-inline void Dump() {
-    FUT_LOGI(Gfx, "PROBE states %llu paths single %llu multi %llu screen %llu; apply R %llu D %llu M %llu ?%llu",
-             (unsigned long long)g.states, (unsigned long long)g.path[0], (unsigned long long)g.path[1],
-             (unsigned long long)g.path[2], (unsigned long long)g.apply[0], (unsigned long long)g.apply[1],
-             (unsigned long long)g.apply[2], (unsigned long long)g.apply[3]);
-    FUT_LOGI(Gfx, "PROBE vc(src,light) I/E %llu I/EAD %llu Em/E %llu Em/EAD %llu AD/E %llu AD/EAD %llu ?/E %llu ?/EAD %llu; lightingOn %llu",
-             (unsigned long long)g.vc[0][0], (unsigned long long)g.vc[0][1], (unsigned long long)g.vc[1][0],
-             (unsigned long long)g.vc[1][1], (unsigned long long)g.vc[2][0], (unsigned long long)g.vc[2][1],
-             (unsigned long long)g.vc[3][0], (unsigned long long)g.vc[3][1], (unsigned long long)g.lightingOn);
-    char buf[512];
-    int n = 0;
-    for (int i = 0; i < 9; ++i) n += std::snprintf(buf + n, sizeof(buf) - n, " %d:%llu", i, (unsigned long long)g.lightsHist[i]);
-    FUT_LOGI(Gfx, "PROBE lights%s; ambient!=0 %llu; withColors %llu diffuseCOLOR1 %llu", buf,
-             (unsigned long long)g.ambientNonZero, (unsigned long long)g.withColors, (unsigned long long)g.diffuseColor1WithColors);
-    FUT_LOGI(Gfx, "PROBE blend %llu atest %llu ztest %llu zwrite %llu cull none %llu cw %llu ccw %llu fog %llu spec %llu stencil %llu wire %llu flat %llu",
-             (unsigned long long)g.blend, (unsigned long long)g.atest, (unsigned long long)g.ztest, (unsigned long long)g.zwrite,
-             (unsigned long long)g.cull[0], (unsigned long long)g.cull[1], (unsigned long long)g.cull[2], (unsigned long long)g.fog,
-             (unsigned long long)g.specular, (unsigned long long)g.stencil, (unsigned long long)g.wire, (unsigned long long)g.flat);
-    n = 0;
-    for (int i = 0; i < 8; ++i) n += std::snprintf(buf + n, sizeof(buf) - n, " f%d:%llu", i, (unsigned long long)g.filter[i]);
-    for (int i = 0; i < 5; ++i) n += std::snprintf(buf + n, sizeof(buf) - n, " c%d:%llu", i, (unsigned long long)g.clamp[i]);
-    FUT_LOGI(Gfx, "PROBE stage0Tex %llu mips %llu%s; effects %llu; shape %llu dyn %llu other %llu skinned %llu", (unsigned long long)g.stage0Tex,
-             (unsigned long long)g.mips, buf, (unsigned long long)g.effects, (unsigned long long)g.shape,
-             (unsigned long long)g.dyn, (unsigned long long)g.other, (unsigned long long)g.skinned);
-    n = 0;
-    for (int i = 0; i < 128; ++i) if (g.mapsMask[i]) n += std::snprintf(buf + n, sizeof(buf) - n, " %02X:%llu", i, (unsigned long long)g.mapsMask[i]);
-    FUT_LOGI(Gfx, "PROBE map masks (bit i = map i present):%s", buf);
-}
-}  // namespace gfx::ni::probe
 
 namespace gfx::ni {
 
@@ -123,6 +80,7 @@ void* ExtractArena::Allocate(std::size_t bytes, std::size_t alignment) noexcept 
 }
 
 void ExtractArena::Reset() noexcept {
+    ++generation_;
     current_ = head_;
     if (current_ != nullptr) {
         current_->offset = 0;
@@ -158,22 +116,24 @@ const char* ExtractStatusName(ExtractStatus status) noexcept {
 
 namespace {
 
-// ---- Xbox D3D8 codes REN uses -------------------------------------------------------------------------------
+// ---- Xbox D3D8 codes REN uses
+// -------------------------------------------------------------------------------
 
 // D3DRENDERSTATETYPE (Xbox): index into D3D_g_RenderState 0x2446D0 (D3DRS_ZFUNC 57 = 0x2447B4, FOGENABLE 92 =
 // 0x244840, LIGHTING 102 = 0x244868, AMBIENT 115 = 0x24489C) and REN's cache rs+0x22C + S*8 (FUN_001478C0:
 // 0x88..0x96 dispatch to the complex setters PSTextureModes .. LogicOp).
 namespace rs {
-constexpr std::uint32_t ZFUNC = 57, ALPHAFUNC = 58, ALPHABLENDENABLE = 59, ALPHATESTENABLE = 60, ALPHAREF = 61,
-                        SRCBLEND = 62, DESTBLEND = 63, ZWRITEENABLE = 64, DITHERENABLE = 65, SHADEMODE = 66,
-                        STENCILZFAIL = 68, STENCILPASS = 69, STENCILFUNC = 70, STENCILREF = 71, STENCILMASK = 72,
-                        FOGENABLE = 92, FOGTABLEMODE = 93, FOGSTART = 94, FOGEND = 95, FOGDENSITY = 96,
-                        RANGEFOGENABLE = 97, WRAP0 = 98, WRAP1 = 99, LIGHTING = 102, SPECULARENABLE = 103,
-                        LOCALVIEWER = 104, COLORVERTEX = 105, SPECULARMATERIALSOURCE = 110,
-                        DIFFUSEMATERIALSOURCE = 111, AMBIENTMATERIALSOURCE = 112, EMISSIVEMATERIALSOURCE = 113,
-                        AMBIENT = 115, VERTEXBLEND = 137, FOGCOLOR = 138, FILLMODE = 139,
-                        NORMALIZENORMALS = 142, ZENABLE = 143, STENCILENABLE = 144, STENCILFAIL = 145,
-                        CULLMODE = 147, TEXTUREFACTOR = 148, MULTISAMPLEANTIALIAS = 152;
+constexpr std::uint32_t ZFUNC = 57, ALPHAFUNC = 58, ALPHABLENDENABLE = 59, ALPHATESTENABLE = 60,
+                        ALPHAREF = 61, SRCBLEND = 62, DESTBLEND = 63, ZWRITEENABLE = 64, DITHERENABLE = 65,
+                        SHADEMODE = 66, STENCILZFAIL = 68, STENCILPASS = 69, STENCILFUNC = 70,
+                        STENCILREF = 71, STENCILMASK = 72, FOGENABLE = 92, FOGTABLEMODE = 93, FOGSTART = 94,
+                        FOGEND = 95, FOGDENSITY = 96, RANGEFOGENABLE = 97, WRAP0 = 98, WRAP1 = 99,
+                        LIGHTING = 102, SPECULARENABLE = 103, LOCALVIEWER = 104, COLORVERTEX = 105,
+                        SPECULARMATERIALSOURCE = 110, DIFFUSEMATERIALSOURCE = 111,
+                        AMBIENTMATERIALSOURCE = 112, EMISSIVEMATERIALSOURCE = 113, AMBIENT = 115,
+                        VERTEXBLEND = 137, FOGCOLOR = 138, FILLMODE = 139, NORMALIZENORMALS = 142,
+                        ZENABLE = 143, STENCILENABLE = 144, STENCILFAIL = 145, CULLMODE = 147,
+                        TEXTUREFACTOR = 148, MULTISAMPLEANTIALIAS = 152;
 }  // namespace rs
 
 // D3DTEXTURESTAGESTATETYPE (Xbox): D3D_g_DeferredTextureState 0x2444D0 + (stage*32 + T)*4; REN's cache
@@ -205,7 +165,8 @@ constexpr std::uint32_t kStencilTestTable[8] = {0x200, 0x201, 0x202, 0x203, 0x20
 // Stencil Action -> D3DSTENCILOP (rs+0x1C0, param_1[0x70..0x75]): KEEP ZERO REPLACE INCRSAT DECRSAT INVERT.
 constexpr std::uint32_t kStencilOpTable[6] = {0x1E00, 0, 0x1E01, 0x1E02, 0x1E03, 0x150A};
 // DrawMode * 2 + left-right swap -> D3DCULL (rs+0x1D8, param_1[0x76..0x7D]).
-constexpr std::uint32_t kCullTable[8] = {kCullCW, kCullCCW, kCullCW, kCullCCW, kCullCCW, kCullCW, kCullNone, kCullNone};
+constexpr std::uint32_t kCullTable[8] = {kCullCW,  kCullCCW, kCullCW,   kCullCCW,
+                                         kCullCCW, kCullCW,  kCullNone, kCullNone};
 
 // NiTexturingMap clamp -> (ADDRESSU, ADDRESSV) (DAT_0030FED8, set by FUN_0015A120): CLAMP_S_CLAMP_T,
 // CLAMP_S_WRAP_T, WRAP_S_CLAMP_T, WRAP_S_WRAP_T (D3DTADDRESS_WRAP 1, CLAMP 3).
@@ -213,7 +174,8 @@ constexpr std::uint32_t kClampTable[4][2] = {{3, 3}, {3, 1}, {1, 3}, {1, 1}};
 // NiTexturingMap filter -> (MINFILTER, MAGFILTER, MIPFILTER) (DAT_0030FEF8 + 12 * f, set by FUN_00159F40;
 // D3DTEXF_NONE 0, POINT 1, LINEAR 2): NEAREST, BILERP, TRILERP, NEAREST_MIPNEAREST, NEAREST_MIPLERP,
 // BILERP_MIPNEAREST.
-constexpr std::uint32_t kFilterTable[6][3] = {{1, 1, 0}, {2, 2, 0}, {2, 2, 2}, {1, 1, 1}, {1, 1, 2}, {2, 2, 1}};
+constexpr std::uint32_t kFilterTable[6][3] = {{1, 1, 0}, {2, 2, 0}, {2, 2, 2},
+                                              {1, 1, 1}, {1, 1, 2}, {2, 2, 1}};
 
 // Pipeline manager stage-op tables (FUN_0015A120): per map type (+0x94 of the stage object) COLOROP,
 // COLORARG1, COLORARG2, ALPHAOP, ALPHAARG1, ALPHAARG2. First table (+0x108, stage 0 of a pass) and second
@@ -298,7 +260,8 @@ constexpr std::uint32_t kRenTssInit[StateShadow::kTssCount] = {
 constexpr std::uint8_t kDevTssInit[StateShadow::kTssCount] = {1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 2, 1,
                                                               1, 1, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-// ---- small helpers ------------------------------------------------------------------------------------------
+// ---- small helpers
+// ------------------------------------------------------------------------------------------
 
 template <class T>
 const T* G(GuestPtr address) noexcept {
@@ -475,13 +438,13 @@ void StateShadow::Reset() noexcept {
         boundTexture[st] = {};
         textureTransform[st] = IdentityMatrix();  // FUN_002395C0 sets transforms 0..9 to identity
     }
-    devTss[0][tss::COLOROP] = kXTopModulate;     // 0x23966E
-    devTss[0][tss::ALPHAOP] = kXTopSelectArg1;   // 0x239679
+    devTss[0][tss::COLOROP] = kXTopModulate;    // 0x23966E
+    devTss[0][tss::ALPHAOP] = kXTopSelectArg1;  // 0x239679
     material = MaterialDesc{};
     ditherBit = shadeBit = specularBit = stencilOn = wireframeBit = zWriteBit = zTestBit = normalizeOn = 0;
     lastAlphaProperty = lastFogProperty = 0;
-    lastFogColor = 0;   // rs+0x16C = param_1[0x5B] = 0 (FUN_00158DE0)
-    lastCull = kCullCW; // rs+0x1F8 = param_1[0x7E] = 0x900
+    lastFogColor = 0;    // rs+0x16C = param_1[0x5B] = 0 (FUN_00158DE0)
+    lastCull = kCullCW;  // rs+0x1F8 = param_1[0x7E] = 0x900
 
     // REN init FUN_00159410 (after the cache tables): explicit cached writes.
     SetRs(*this, rs::CULLMODE, kCullCW);
@@ -502,11 +465,11 @@ void StateShadow::Reset() noexcept {
     // rs+0xE0 bit 0 = per-pixel z fog (FUN_00158D20: RasterCaps FOGTABLE 0x100 and ZFOG 0x100000; the static
     // caps table DAT_002D7580 copied by D3DDevice_GetDeviceCaps 0x2342C0 has RasterCaps 0x00377101) -> 3.
     SetRs(*this, rs::FOGTABLEMODE, FF_FOG_LINEAR);
-    SetRs(*this, rs::RANGEFOGENABLE, 0);  // FUN_001478C0(0x61, 0)
-    SetRs(*this, rs::FOGCOLOR, 0);        // (0x8A, 0)
-    SetRs(*this, rs::NORMALIZENORMALS, 0);// (0x8E, 0)
-    SetRs(*this, rs::ZENABLE, 1);         // (0x8F, 1): DAT_0030EDE4 (W-buffer request) is never written
-    SetRs(*this, rs::COLORVERTEX, 1);     // (0x69, 1)
+    SetRs(*this, rs::RANGEFOGENABLE, 0);    // FUN_001478C0(0x61, 0)
+    SetRs(*this, rs::FOGCOLOR, 0);          // (0x8A, 0)
+    SetRs(*this, rs::NORMALIZENORMALS, 0);  // (0x8E, 0)
+    SetRs(*this, rs::ZENABLE, 1);           // (0x8F, 1): DAT_0030EDE4 (W-buffer request) is never written
+    SetRs(*this, rs::COLORVERTEX, 1);       // (0x69, 1)
 
     // Light manager ctor FUN_0015BCB0.
     lastAmbient = 0;
@@ -593,7 +556,8 @@ CameraDesc ExtractCamera(const CameraInput& input) noexcept {
     const float* dir = input.direction != nullptr ? input.direction : zero;
     const float* up = input.up != nullptr ? input.up : zero;
     const float* right = input.right != nullptr ? input.right : zero;
-    const NiFrustum fr = input.frustum != nullptr ? *input.frustum : NiFrustum{-1.0f, 1.0f, 1.0f, -1.0f, 0.1f, 1.0f};
+    const NiFrustum fr =
+        input.frustum != nullptr ? *input.frustum : NiFrustum{-1.0f, 1.0f, 1.0f, -1.0f, 0.1f, 1.0f};
     const NiRectF port = input.port != nullptr ? *input.port : NiRectF{0.0f, 1.0f, 1.0f, 0.0f};
     c.location = {loc[0], loc[1], loc[2]};
     c.direction = {dir[0], dir[1], dir[2]};
@@ -614,9 +578,9 @@ CameraDesc ExtractCamera(const CameraInput& input) noexcept {
     v.m[3][3] = 1.0f;
 
     // Projection this+0x650 (0x146B4D..0x146C6A), x87 order with float stores of r-l, l+r, t-b, t+b.
-    c.nearPlane = fr.nearPlane;                                          // +0x34C
+    c.nearPlane = fr.nearPlane;  // +0x34C
     const D fn = D(fr.farPlane) - D(fr.nearPlane);
-    c.depthRange = static_cast<float>(fn);                              // +0x350 (fst)
+    c.depthRange = static_cast<float>(fn);  // +0x350 (fst)
     const float rl = static_cast<float>(D(fr.right) - D(fr.left));
     const float lr = static_cast<float>(D(fr.left) + D(fr.right));
     const float tb = static_cast<float>(D(fr.top) - D(fr.bottom));
@@ -658,17 +622,6 @@ CameraDesc ExtractCamera(const CameraInput& input) noexcept {
     c.viewport.height = static_cast<float>(Ftol((D(port.top) - D(port.bottom)) * h));
     c.viewport.minDepth = 0.0f;
     c.viewport.maxDepth = 1.0f;
-    {  // TEMPORARY PROBE
-        static int logged = 0;
-        static float lastKey = -1.0f;
-        const float key = fr.left * 3 + fr.right * 5 + fr.nearPlane * 7 + fr.farPlane + port.left + port.top * 11;
-        if (logged < 8 && key != lastKey) {
-            ++logged;
-            lastKey = key;
-            FUT_LOGI(Gfx, "PROBE camera loc (%.2f %.2f %.2f) dir (%.2f %.2f %.2f) up (%.2f %.2f %.2f) right (%.2f %.2f %.2f) frustum l %.3f r %.3f t %.3f b %.3f n %.3f f %.1f port l %.2f r %.2f t %.2f b %.2f -> vp %.0f %.0f %.0f %.0f",
-                     loc[0], loc[1], loc[2], dir[0], dir[1], dir[2], up[0], up[1], up[2], right[0], right[1], right[2], fr.left, fr.right, fr.top, fr.bottom, fr.nearPlane, fr.farPlane, port.left, port.right, port.top, port.bottom, c.viewport.x, c.viewport.y, c.viewport.width, c.viewport.height);
-        }
-    }
     return c;
 }
 
@@ -691,7 +644,8 @@ CameraDesc DefaultCamera(std::uint32_t targetWidth, std::uint32_t targetHeight) 
     return ExtractCamera(in);
 }
 
-bool ClearRect(const NiRectF* rect, std::uint32_t targetWidth, std::uint32_t targetHeight, rhi::Rect* out) noexcept {
+bool ClearRect(const NiRectF* rect, std::uint32_t targetWidth, std::uint32_t targetHeight,
+               rhi::Rect* out) noexcept {
     const auto w = static_cast<std::int32_t>(targetWidth);
     const auto h = static_cast<std::int32_t>(targetHeight);
     if (rect == nullptr) {
@@ -718,7 +672,8 @@ bool ClearRect(const NiRectF* rect, std::uint32_t targetWidth, std::uint32_t tar
 
 namespace {
 
-// ---- texture queries ----------------------------------------------------------------------------------------
+// ---- texture queries
+// ----------------------------------------------------------------------------------------
 
 struct TextureInfo {
     std::uint32_t width = 0;
@@ -789,7 +744,8 @@ Resolved ResolveTexture(const ExtractContext& context, StateShadow& s, GuestPtr 
     return r;
 }
 
-// ---- properties (FUN_00159CD0) ------------------------------------------------------------------------------
+// ---- properties (FUN_00159CD0)
+// ------------------------------------------------------------------------------
 
 // The 12 property pointers of a NiPropertyState (+0x08..+0x34).
 struct Props {
@@ -801,10 +757,10 @@ bool ReadProps(GuestPtr propertyState, Props* p) noexcept {
         return false;
     }
     const NiPropertyState* ps = G<NiPropertyState>(propertyState);
-    *p = Props{ps->alpha,  ps->dither,   ps->fog,         ps->material,  ps->rendererSpecific, ps->shade,
-               ps->specular, ps->stencil, ps->texturing, ps->vertexColor, ps->wireframe,      ps->zbuffer};
-    const GuestPtr all[12] = {p->alpha,  p->dither,   p->fog,         p->material,  p->rendererSpecific,
-                              p->shade,  p->specular, p->stencil,     p->texturing, p->vertexColor,
+    *p = Props{ps->alpha,    ps->dither,  ps->fog,       ps->material,    ps->rendererSpecific, ps->shade,
+               ps->specular, ps->stencil, ps->texturing, ps->vertexColor, ps->wireframe,        ps->zbuffer};
+    const GuestPtr all[12] = {p->alpha,     p->dither,   p->fog,     p->material,  p->rendererSpecific,
+                              p->shade,     p->specular, p->stencil, p->texturing, p->vertexColor,
                               p->wireframe, p->zbuffer};
     for (GuestPtr q : all) {
         if (!Plausible(q)) {  // FUN_00159CD0 dereferences every entry without a NULL check
@@ -867,16 +823,16 @@ void ApplyFog(StateShadow& s, GuestPtr property, const CameraDesc& camera) noexc
         return;
     }
     SetRs(s, rs::FOGENABLE, 1);
-    const float farPlane = camera.frustum.farPlane;      // rs+0x17C (0x146D37)
+    const float farPlane = camera.frustum.farPlane;  // rs+0x17C (0x146D37)
     const float depth = RF(property + offsetof(NiFogProperty, depth));
-    const float d = depth * camera.depthRange;           // fVar1 = depth * (far - near)
-    const float start = farPlane - d;                    // far - fVar1
-    const float end = d * 0.0f + farPlane;               // fVar1 * (1/maxFog - 1) + far
+    const float d = depth * camera.depthRange;  // fVar1 = depth * (far - near)
+    const float start = farPlane - d;           // far - fVar1
+    const float end = d * 0.0f + farPlane;      // fVar1 * (1/maxFog - 1) + far
     SetRsFloat(s, rs::FOGDENSITY, 1.0f / d);
     SetRsFloat(s, rs::FOGSTART, start);
     SetRsFloat(s, rs::FOGEND, end);
     const std::uint32_t function = (f >> 3) & 3u;
-    if (function == 0) {         // FOG_Z_LINEAR
+    if (function == 0) {  // FOG_Z_LINEAR
         SetRs(s, rs::FOGTABLEMODE, FF_FOG_LINEAR);
         SetRs(s, rs::RANGEFOGENABLE, 0);
     } else if (function == 1) {  // FOG_RANGE_SQ (rs+0xE0 bit 0 set: z fog supported)
@@ -912,7 +868,8 @@ void ApplyStencil(StateShadow& s, GuestPtr property, bool leftRightSwap) noexcep
         SetRs(s, rs::STENCILREF, st->ref);
         SetRs(s, rs::STENCILMASK, st->mask);
         SetRs(s, rs::STENCILFAIL, st->failAction < 6 ? kStencilOpTable[st->failAction] : kStencilOpTable[0]);
-        SetRs(s, rs::STENCILZFAIL, st->zFailAction < 6 ? kStencilOpTable[st->zFailAction] : kStencilOpTable[0]);
+        SetRs(s, rs::STENCILZFAIL,
+              st->zFailAction < 6 ? kStencilOpTable[st->zFailAction] : kStencilOpTable[0]);
         SetRs(s, rs::STENCILPASS, st->passAction < 6 ? kStencilOpTable[st->passAction] : kStencilOpTable[0]);
     }
     const std::uint32_t index = (st->drawMode & 3u) * 2u + (leftRightSwap ? 1u : 0u);
@@ -981,25 +938,27 @@ void ApplyNormalize(StateShadow& s, float scale) noexcept {
     s.normalizeOn = want;
 }
 
-// ---- texture pipeline ----------------------------------------------------------------------------------------
+// ---- texture pipeline
+// ----------------------------------------------------------------------------------------
 
 // The fields of the pipeline's 0xCC-byte stage object (ctor FUN_00161B20) that reach D3D.
 struct PipeStage {
-    GuestPtr texture = 0;          // +0x0C
-    std::uint32_t ops[6] = {};     // +0x10..+0x24 COLOROP, COLORARG1, COLORARG2, ALPHAOP, ALPHAARG1, ALPHAARG2
-    std::uint32_t texCoordIndex = 0;  // +0x28
-    std::uint32_t addressU = 1;    // +0x2C
-    std::uint32_t addressV = 1;    // +0x30
-    std::uint32_t filter = 0;      // +0x38 (NI filter mode)
-    std::uint32_t ttff = 0;        // +0x48
+    GuestPtr texture = 0;       // +0x0C
+    std::uint32_t ops[6] = {};  // +0x10..+0x24 COLOROP, COLORARG1, COLORARG2, ALPHAOP, ALPHAARG1, ALPHAARG2
+    std::uint32_t texCoordIndex = 0;            // +0x28
+    std::uint32_t addressU = 1;                 // +0x2C
+    std::uint32_t addressV = 1;                 // +0x30
+    std::uint32_t filter = 0;                   // +0x38 (NI filter mode)
+    std::uint32_t ttff = 0;                     // +0x48
     std::uint32_t textureFactor = 0xFFFFFFFFu;  // +0x8C
-    bool notReplace = true;        // +0x90 (applyMode != REPLACE)
-    std::uint32_t type = kMapTypeDefault;  // +0x94
+    bool notReplace = true;                     // +0x90 (applyMode != REPLACE)
+    std::uint32_t type = kMapTypeDefault;       // +0x94
 };
 
 // FUN_00163D60: a stage for a map; no texture or no UV sets -> none.
-bool MakeMapStage(StateShadow& s, GuestPtr texture, std::uint32_t clamp, std::uint32_t filter, std::uint32_t type,
-                  std::uint32_t uvSet, std::uint32_t uvSetCount, PipeStage* out) noexcept {
+bool MakeMapStage(StateShadow& s, GuestPtr texture, std::uint32_t clamp, std::uint32_t filter,
+                  std::uint32_t type, std::uint32_t uvSet, std::uint32_t uvSetCount,
+                  PipeStage* out) noexcept {
     if (texture == 0 || uvSetCount == 0) {
         return false;
     }
@@ -1011,7 +970,7 @@ bool MakeMapStage(StateShadow& s, GuestPtr texture, std::uint32_t clamp, std::ui
     }
     st.addressU = kClampTable[clamp][0];  // FUN_00159E00
     st.addressV = kClampTable[clamp][1];
-    st.filter = filter;                   // FUN_00159E20
+    st.filter = filter;  // FUN_00159E20
     st.type = type;
     st.texCoordIndex = uvSet < uvSetCount ? uvSet : uvSetCount - 1;
     st.ttff = 0;
@@ -1035,8 +994,8 @@ void SetupStageOps(PipeStage* st, std::uint32_t index) noexcept {
         } else if (st->texture == 0) {
             st->ops[0] = kXTopSelectArg2;
             st->ops[3] = kXTopSelectArg2;
-            st->ops[2] = 0;                // COLORARG2 DIFFUSE
-            st->ops[5] = 0;                // ALPHAARG2 DIFFUSE
+            st->ops[2] = 0;  // COLORARG2 DIFFUSE
+            st->ops[5] = 0;  // ALPHAARG2 DIFFUSE
         }
     } else {
         for (int i = 0; i < 6; ++i) {
@@ -1082,8 +1041,8 @@ bool HasClippedTextureEffects(GuestPtr effectState) noexcept {
 
 // Default pipeline vf2 0x164360 (single-stage path 0x16437D..0x16444E, end 0x1650A8..0x1650DE) and the screen
 // pipeline vf2 FUN_00160270. Multi-map/effect paths (vf2 0x164453 ff.) keep only the base map stage (P2).
-void BuildPass(StateShadow& s, GuestPtr texturing, GuestPtr effectState, std::uint32_t uvSetCount, bool screen,
-               PassSetup* pass) noexcept {
+void BuildPass(StateShadow& s, GuestPtr texturing, GuestPtr effectState, std::uint32_t uvSetCount,
+               bool screen, PassSetup* pass) noexcept {
     const NiTexturingProperty* t = G<NiTexturingProperty>(texturing);
     const NiTexturingMap* base = BaseMap(texturing);
     const GuestPtr texture = base != nullptr ? base->texture : 0;
@@ -1171,7 +1130,8 @@ void ApplyPass(const ExtractContext& context, StateShadow& s, const PassSetup& p
     }
 }
 
-// ---- lights (FUN_0015BF80 / FUN_0015BA40 / FUN_0015B6A0) -------------------------------------------------------
+// ---- lights (FUN_0015BF80 / FUN_0015BA40 / FUN_0015B6A0)
+// -------------------------------------------------------
 
 // GetEffectType (vf40) by implementation address; -1 = unknown.
 std::int32_t EffectType(const ExtractContext& context, GuestPtr effect) noexcept {
@@ -1360,7 +1320,8 @@ void ApplyLighting(const ExtractContext& context, StateShadow& s, GuestPtr effec
     s.lastLightsEnabled = s.lightsEnabled;
 }
 
-// ---- device state -> RenderStateDesc ---------------------------------------------------------------------------
+// ---- device state -> RenderStateDesc
+// ---------------------------------------------------------------------------
 
 rhi::BlendFactor BlendFrom(std::uint32_t v) noexcept {
     switch (v) {
@@ -1392,7 +1353,7 @@ rhi::BlendFactor BlendFrom(std::uint32_t v) noexcept {
 }
 rhi::CompareFunc CompareFrom(std::uint32_t v) noexcept {
     return v >= kCmpNever && v <= kCmpAlways ? static_cast<rhi::CompareFunc>(v - kCmpNever)
-                                              : rhi::CompareFunc::Always;
+                                             : rhi::CompareFunc::Always;
 }
 rhi::StencilOp StencilOpFrom(std::uint32_t v) noexcept {
     switch (v) {
@@ -1430,7 +1391,8 @@ rhi::AddressMode AddressFrom(std::uint32_t v) noexcept {
     }
 }
 rhi::Filter FilterFrom(std::uint32_t v) noexcept {
-    return v >= 2 ? rhi::Filter::Linear : rhi::Filter::Point;  // NONE/POINT -> point; LINEAR, ANISO.. -> linear
+    return v >= 2 ? rhi::Filter::Linear
+                  : rhi::Filter::Point;  // NONE/POINT -> point; LINEAR, ANISO.. -> linear
 }
 rhi::MipFilter MipFrom(std::uint32_t v) noexcept {
     return v == 0 ? rhi::MipFilter::None : (v == 1 ? rhi::MipFilter::Point : rhi::MipFilter::Linear);
@@ -1460,9 +1422,11 @@ void DeriveState(const StateShadow& s, TexturePath path, RenderStateDesc* out) n
     d.stencilZFail = StencilOpFrom(DevRs(s, rs::STENCILZFAIL));
     d.stencilPass = StencilOpFrom(DevRs(s, rs::STENCILPASS));
     const std::uint32_t cull = DevRs(s, rs::CULLMODE);
-    d.cullMode = cull == kCullCW ? rhi::CullMode::CW : (cull == kCullCCW ? rhi::CullMode::CCW : rhi::CullMode::None);
+    d.cullMode =
+        cull == kCullCW ? rhi::CullMode::CW : (cull == kCullCCW ? rhi::CullMode::CCW : rhi::CullMode::None);
     const std::uint32_t fill = DevRs(s, rs::FILLMODE);
-    d.fillMode = (fill == kFillWireframe || fill == kFillPoint) ? rhi::FillMode::Wireframe : rhi::FillMode::Solid;
+    d.fillMode =
+        (fill == kFillWireframe || fill == kFillPoint) ? rhi::FillMode::Wireframe : rhi::FillMode::Solid;
     d.shadeMode = DevRs(s, rs::SHADEMODE) == kShadeFlat ? ShadeMode::Flat : ShadeMode::Gouraud;
     d.ditherEnable = DevRs(s, rs::DITHERENABLE) != 0;
     d.specularEnable = DevRs(s, rs::SPECULARENABLE) != 0;
@@ -1545,7 +1509,8 @@ void CaptureEffects(StateShadow& s, GuestPtr effectState, TextureEffectSlots* ou
         }
         e.environmentMap = es->environmentMap;
         e.fogMap = es->fogMap;
-        if (e.projectedLightCount != 0 || e.projectedShadowCount != 0 || e.environmentMap != 0 || e.fogMap != 0) {
+        if (e.projectedLightCount != 0 || e.projectedShadowCount != 0 || e.environmentMap != 0 ||
+            e.fogMap != 0) {
             ++s.counters.textureEffectDraws;
         }
     }
@@ -1567,8 +1532,11 @@ ExtractStatus ExtractState(const ExtractContext& context, const StateInput& inpu
         local.emplace();
     }
     StateShadow& s = context.shadow != nullptr ? *context.shadow : *local;
-    const CameraDesc camera = context.camera != nullptr ? *context.camera
-                                                        : DefaultCamera(context.targetWidth, context.targetHeight);
+    std::optional<CameraDesc> defaultCamera;
+    if (context.camera == nullptr) {
+        defaultCamera.emplace(DefaultCamera(context.targetWidth, context.targetHeight));
+    }
+    const CameraDesc& camera = context.camera != nullptr ? *context.camera : *defaultCamera;
 
     // FUN_00159CD0
     ApplyProperties(s, p, camera, context.leftRightSwap);
@@ -1590,35 +1558,6 @@ ExtractStatus ExtractState(const ExtractContext& context, const StateInput& inpu
     if (state != nullptr) {
         DeriveState(s, pass.path, state);
     }
-    {  // TEMPORARY PROBE
-        auto& g = probe::g;
-        ++g.states;
-        g.path[static_cast<int>(pass.path)]++;
-        const NiTexturingProperty* tp = G<NiTexturingProperty>(p.texturing);
-        g.apply[tp->applyMode < 3 ? tp->applyMode : 3]++;
-        const NiVertexColorProperty* vcp = G<NiVertexColorProperty>(p.vertexColor);
-        g.vc[vcp->source < 3 ? vcp->source : 3][vcp->lighting != 0 ? 1 : 0]++;
-        RenderStateDesc d;
-        DeriveState(s, pass.path, &d);
-        if (d.lightingEnable) { g.lightingOn++; g.lightsHist[s.lights.count < 9 ? s.lights.count : 8]++; if ((DevRs(s, rs::AMBIENT) & 0xFFFFFF) != 0) g.ambientNonZero++; }
-        if (input.hasNormals || true) {}
-        if (d.alphaBlendEnable) g.blend++;
-        if (d.alphaTestEnable) g.atest++;
-        if (d.zFunc != rhi::CompareFunc::Always) g.ztest++;
-        if (d.zWriteEnable) g.zwrite++;
-        g.cull[static_cast<int>(d.cullMode)]++;
-        if (d.fogEnable) g.fog++;
-        if (d.specularEnable) g.specular++;
-        if (d.stencilEnable) g.stencil++;
-        if (d.fillMode == rhi::FillMode::Wireframe) g.wire++;
-        if (d.shadeMode == ShadeMode::Flat) g.flat++;
-        if (d.stages[0].niTexture != 0) { g.stage0Tex++; if (QueryTexture(d.stages[0].niTexture).mipLevels > 1) g.mips++; }
-        const NiTexturingMap* bm = BaseMap(p.texturing);
-        if (bm != nullptr) { g.filter[bm->filter < 8 ? bm->filter : 7]++; g.clamp[bm->clamp < 4 ? bm->clamp : 4]++; }
-        if (Plausible(tp->maps)) { unsigned mask = 0; for (std::uint32_t i = 0; i < tp->mapsSize && i < 7; ++i) if (R32(tp->maps + 4 * i)) mask |= 1u << i; g.mapsMask[mask & 127]++; }
-        if (Plausible(input.effectState)) { const NiDynamicEffectState* es = G<NiDynamicEffectState>(input.effectState); if (es->projectedLights || es->projectedShadows || es->environmentMap || es->fogMap) g.effects++; }
-        if (g.states == 20000 || g.states == 60000 || g.states % 100000 == 0) probe::Dump();
-    }
     if (lights != nullptr) {
         *lights = s.lights;
         lights->ambient = UnpackArgb(DevRs(s, rs::AMBIENT));
@@ -1630,7 +1569,8 @@ ExtractStatus ExtractState(const ExtractContext& context, const StateInput& inpu
 
 namespace {
 
-// ---- geometry -------------------------------------------------------------------------------------------------
+// ---- geometry
+// -------------------------------------------------------------------------------------------------
 
 // GetVertexCount (vf12) / GetTriangleCount (vf15) of a geometry data object by implementation address.
 bool GeometryCounts(const ExtractContext& context, GuestPtr data, std::uint32_t* vertices,
@@ -1733,7 +1673,7 @@ ExtractStatus Skin(const ExtractContext& context, StateShadow& s, GuestPtr skin,
     const bool hasNormals = Plausible(gd->normals);
     for (const StateShadow::SkinEntry& e : s.skinCache) {
         if (e.skin == skin && e.data == data && e.frame == context.frame && e.vertexCount == count &&
-            e.vertices != nullptr) {
+            e.arenaGeneration == context.arena->Generation() && e.vertices != nullptr) {
             ++s.counters.skinCacheHits;
             g->positions = {e.vertices, e.stride};
             g->normals = e.hasNormals ? VertexStreamView{e.vertices + 3, e.stride} : VertexStreamView{};
@@ -1752,7 +1692,7 @@ ExtractStatus Skin(const ExtractContext& context, StateShadow& s, GuestPtr skin,
                              hasNormals ? GuestAddr(out + 3) : 0u, stride});
     StateShadow::SkinEntry& e = s.skinCache[s.skinCacheNext];
     s.skinCacheNext = (s.skinCacheNext + 1) % StateShadow::kSkinCacheSize;
-    e = {skin, data, context.frame, count, out, stride, hasNormals};
+    e = {skin, data, context.frame, context.arena->Generation(), count, out, stride, hasNormals};
     g->positions = {out, stride};
     g->normals = hasNormals ? VertexStreamView{out + 3, stride} : VertexStreamView{};
     g->skinned = true;
@@ -1792,37 +1732,7 @@ ExtractStatus FinishGeometry(const ExtractContext& context, const GeometryInput&
     si.worldScale = t->scale;
     si.hasNormals = out->geometry.normals.data != nullptr;
     si.uvSetCount = out->geometry.uvSetCount;
-    const ExtractStatus res = ExtractState(ctx, si, &out->state, &out->lights, &out->effects);
-    if (out->geometry.skinned && Plausible(input.bound)) {  // TEMPORARY PROBE: space of the skinned vertices
-        static int logged = 0;
-        if (logged < 6) {
-            ++logged;
-            const NiBound* b = G<NiBound>(input.bound);
-            const auto* pp = static_cast<const float*>(out->geometry.positions.data);
-            const std::uint32_t stride = out->geometry.positions.stride / 4;
-            double maxWorld = 0, maxRaw = 0, maxSrc = 0;
-            const float* src = G<float>(G<NiGeometryData>(input.data)->vertices);
-            for (std::uint32_t v = 0; v < out->geometry.vertexCount; ++v) {
-                const Float3 raw{pp[v * stride], pp[v * stride + 1], pp[v * stride + 2]};
-                const Float3 w = TransformPoint(raw, out->world);
-                const Float3 sw = TransformPoint(Float3{src[v * 3], src[v * 3 + 1], src[v * 3 + 2]}, out->world);
-                auto dist = [&](const Float3& q) { const double dx = q.x - b->center[0], dy = q.y - b->center[1], dz = q.z - b->center[2]; return std::sqrt(dx * dx + dy * dy + dz * dz); };
-                maxWorld = std::fmax(maxWorld, dist(w));
-                maxRaw = std::fmax(maxRaw, dist(raw));
-                maxSrc = std::fmax(maxSrc, dist(sw));
-            }
-            FUT_LOGI(Gfx, "PROBE skin 0x%08X data 0x%08X: %u vertices, world bound c=(%.2f %.2f %.2f) r=%.2f; max dist: skinned*world %.2f, skinned raw %.2f, unskinned*world %.2f; scale %.3f t=(%.2f %.2f %.2f)",
-                     input.skinInstance, input.data, out->geometry.vertexCount, b->center[0], b->center[1], b->center[2], b->radius, maxWorld, maxRaw, maxSrc, out->worldScale, out->world.m[3][0], out->world.m[3][1], out->world.m[3][2]);
-        }
-    }
-    {  // TEMPORARY PROBE
-        if (out->geometry.colors.data != nullptr) {
-            probe::g.withColors++;
-            if (out->state.lightingEnable && out->state.diffuseSource == FF_MCS_COLOR1) probe::g.diffuseColor1WithColors++;
-            if (!out->state.lightingEnable) probe::g.other += 0;
-        }
-    }
-    return res;
+    return ExtractState(ctx, si, &out->state, &out->lights, &out->effects);
 }
 
 bool ValidData(GuestPtr data) noexcept {
@@ -1834,7 +1744,8 @@ bool ValidData(GuestPtr data) noexcept {
 
 }  // namespace
 
-ExtractStatus ExtractShape(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept {
+ExtractStatus ExtractShape(const ExtractContext& context, const GeometryInput& input,
+                           DrawItem* out) noexcept {
     if (out == nullptr || context.arena == nullptr || !Plausible(input.data)) {
         return ExtractStatus::Error;
     }
@@ -1849,11 +1760,6 @@ ExtractStatus ExtractShape(const ExtractContext& context, const GeometryInput& i
         return ExtractStatus::Error;
     }
     const NiTriShapeData* sd = G<NiTriShapeData>(input.data);
-    {  // TEMPORARY PROBE
-        const GuestPtr vt = R32(input.data);
-        if (vt == kNiTriShapeDataVtable) probe::g.shape++; else if (vt == kNiTriShapeDynamicDataVtable) probe::g.dyn++; else probe::g.other++;
-        if (input.skinInstance) probe::g.skinned++;
-    }
     if (vertices > sd->base.base.vertexCount) {
         return ExtractStatus::Error;
     }
@@ -1878,7 +1784,8 @@ ExtractStatus ExtractShape(const ExtractContext& context, const GeometryInput& i
     return st;
 }
 
-ExtractStatus ExtractStrips(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept {
+ExtractStatus ExtractStrips(const ExtractContext& context, const GeometryInput& input,
+                            DrawItem* out) noexcept {
     if (out == nullptr || context.arena == nullptr || !Plausible(input.data)) {
         return ExtractStatus::Error;
     }
@@ -1946,7 +1853,8 @@ ExtractStatus ExtractStrips(const ExtractContext& context, const GeometryInput& 
     return FinishGeometry(context, input, DrawKind::TriStrips, vertices, out);
 }
 
-ExtractStatus ExtractTriangles(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept {
+ExtractStatus ExtractTriangles(const ExtractContext& context, const GeometryInput& input,
+                               DrawItem* out) noexcept {
     if (out == nullptr || context.arena == nullptr || !Plausible(input.data)) {
         return ExtractStatus::Error;
     }
@@ -1965,14 +1873,16 @@ ExtractStatus ExtractTriangles(const ExtractContext& context, const GeometryInpu
     GeometryDesc& g = out->geometry;
     g.topology = Topology::TriangleList;  // DrawVertices(TRIANGLELIST, 3 * vf15)
     g.primitiveCount = triangles;
-    const ExtractStatus st = FinishGeometry(context, GeometryInput{input.data, 0, input.transform, input.bound,
-                                                                   input.propertyState, input.effectState},
-                                            DrawKind::Triangles, vertices, out);
+    const ExtractStatus st = FinishGeometry(
+        context,
+        GeometryInput{input.data, 0, input.transform, input.bound, input.propertyState, input.effectState},
+        DrawKind::Triangles, vertices, out);
     out->geometry.vertexCount = triangles * 3u;
     return st;
 }
 
-ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept {
+ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput& input,
+                              DrawItem* out) noexcept {
     if (out == nullptr || context.arena == nullptr || !Plausible(input.data)) {
         return ExtractStatus::Error;
     }
@@ -1991,14 +1901,16 @@ ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput
     GeometryDesc& g = out->geometry;
     g.topology = Topology::TriangleStrip;  // DrawVertices(TRIANGLESTRIP, vf15 + 2)
     g.primitiveCount = triangles;
-    const ExtractStatus st = FinishGeometry(context, GeometryInput{input.data, 0, input.transform, input.bound,
-                                                                   input.propertyState, input.effectState},
-                                            DrawKind::TriStrip, vertices, out);
+    const ExtractStatus st = FinishGeometry(
+        context,
+        GeometryInput{input.data, 0, input.transform, input.bound, input.propertyState, input.effectState},
+        DrawKind::TriStrip, vertices, out);
     out->geometry.vertexCount = triangles + 2u;
     return st;
 }
 
-ExtractStatus ExtractScreenPolygon(const ExtractContext& context, GuestPtr screenPolygon, DrawItem* out) noexcept {
+ExtractStatus ExtractScreenPolygon(const ExtractContext& context, GuestPtr screenPolygon,
+                                   DrawItem* out) noexcept {
     if (out == nullptr || context.arena == nullptr || !Plausible(screenPolygon)) {
         return ExtractStatus::Error;
     }
@@ -2016,8 +1928,9 @@ ExtractStatus ExtractScreenPolygon(const ExtractContext& context, GuestPtr scree
     out->world = IdentityMatrix();
     out->worldScale = 1.0f;
     out->useScreenCamera = true;
-    const CameraDesc camera = context.camera != nullptr ? *context.camera
-                                                        : DefaultCamera(context.targetWidth, context.targetHeight);
+    const CameraDesc camera = context.camera != nullptr
+                                  ? *context.camera
+                                  : DefaultCamera(context.targetWidth, context.targetHeight);
     // FUN_001585A0: (d*x, d*y, d) with d = range * z + near (+0x350, +0x34C).
     auto* pos = context.arena->AllocateArray<float>(static_cast<std::size_t>(n) * 3u);
     if (pos == nullptr) {
@@ -2067,22 +1980,11 @@ ExtractStatus ExtractScreenPolygon(const ExtractContext& context, GuestPtr scree
     si.worldScale = 1.0f;
     si.hasNormals = false;
     si.uvSetCount = g.uvSetCount;
-    const ExtractStatus res = ExtractState(context, si, &out->state, &out->lights, &out->effects);
-    {  // TEMPORARY PROBE
-        static int logged = 0;
-        if (logged < 6) {
-            ++logged;
-            const float* c4 = static_cast<const float*>(g.colors.data);
-            FUT_LOGI(Gfx, "PROBE screenpoly 0x%08X: %u verts strip %u src0 (%.3f %.3f %.3f) pos0 (%.3f %.3f %.3f) colors %d (%.2f %.2f %.2f %.2f) uvs %u near %.3f range %.3f; lighting %d vc %u/%u stage0 op %u tex 0x%08X blend %d z %u cull %u",
-                     screenPolygon, n, poly->isStrip, src[0], src[1], src[2], pos[0], pos[1], pos[2], c4 != nullptr, c4 ? c4[0] : 0.f, c4 ? c4[1] : 0.f, c4 ? c4[2] : 0.f, c4 ? c4[3] : 0.f, g.uvSetCount, camera.nearPlane, camera.depthRange,
-                     out->state.lightingEnable, G<NiVertexColorProperty>(G<NiPropertyState>(poly->propertyState)->vertexColor)->source, G<NiVertexColorProperty>(G<NiPropertyState>(poly->propertyState)->vertexColor)->lighting,
-                     out->state.stages[0].colorOp, out->state.stages[0].niTexture, out->state.alphaBlendEnable, static_cast<unsigned>(out->state.zFunc), static_cast<unsigned>(out->state.cullMode));
-        }
-    }
-    return res;
+    return ExtractState(context, si, &out->state, &out->lights, &out->effects);
 }
 
-ExtractStatus ExtractScreenTexture(const ExtractContext& context, GuestPtr screenTexture, DrawItem* out) noexcept {
+ExtractStatus ExtractScreenTexture(const ExtractContext& context, GuestPtr screenTexture,
+                                   DrawItem* out) noexcept {
     if (out == nullptr || context.arena == nullptr || !Plausible(screenTexture)) {
         return ExtractStatus::Error;
     }
@@ -2164,8 +2066,11 @@ ExtractStatus ExtractScreenTexture(const ExtractContext& context, GuestPtr scree
             uv[v * 2 + 1] = bottom ? v1 : v0;
         }
         const auto b = static_cast<std::uint16_t>(q * 4);
-        const std::uint16_t quad[6] = {b, static_cast<std::uint16_t>(b + 1), static_cast<std::uint16_t>(b + 2),
-                                       static_cast<std::uint16_t>(b + 2), static_cast<std::uint16_t>(b + 1),
+        const std::uint16_t quad[6] = {b,
+                                       static_cast<std::uint16_t>(b + 1),
+                                       static_cast<std::uint16_t>(b + 2),
+                                       static_cast<std::uint16_t>(b + 2),
+                                       static_cast<std::uint16_t>(b + 1),
                                        static_cast<std::uint16_t>(b + 3)};
         std::memcpy(idx + q * 6, quad, sizeof(quad));
     }
@@ -2189,7 +2094,7 @@ ExtractStatus ExtractScreenTexture(const ExtractContext& context, GuestPtr scree
     GuestPtr defaults[12];
     for (std::uint32_t i = 0; i < 12; ++i) {
         defaults[i] = context.defaultProperties != nullptr ? context.defaultProperties[i]
-                                                            : R32(kDefaultPropertyGlobals[i]);
+                                                           : R32(kDefaultPropertyGlobals[i]);
     }
     auto* vc = context.arena->AllocateArray<NiVertexColorProperty>(1);
     auto* alpha = context.arena->AllocateArray<NiAlphaProperty>(1);
@@ -2227,14 +2132,6 @@ ExtractStatus ExtractScreenTexture(const ExtractContext& context, GuestPtr scree
     si.hasNormals = false;
     si.uvSetCount = 1;
     si.screenTexture = true;
-    {  // TEMPORARY PROBE
-        static int logged = 0;
-        if (logged < 6 || (logged < 12 && rects > 8)) {
-            ++logged;
-            FUT_LOGI(Gfx, "PROBE screentex 0x%08X: %u rects, tex %ux%u (mips %u), apply %u, first quad (%.1f %.1f)-(%.1f %.1f) uv (%.3f %.3f)-(%.3f %.3f) color (%.2f %.2f %.2f %.2f), target %dx%d",
-                     screenTexture, rects, tex.width, tex.height, tex.mipLevels, G<NiTexturingProperty>(st->texturing)->applyMode, pos[0], pos[1], pos[9], pos[10], uv[0], uv[1], uv[6], uv[7], col[0], col[1], col[2], col[3], width, height);
-        }
-    }
     return ExtractState(context, si, &out->state, &out->lights, &out->effects);
 }
 
