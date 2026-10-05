@@ -26,9 +26,12 @@
 //   minidump = 1               ; minidump on fatal errors (default 1)
 //   mmio_trap = 1              ; reserve the Xbox MMIO range 0xFD000000.. as NOACCESS (default 1)
 //   crash_test = 0             ; unhandled guest AV right before entry (tests the crash path)
+//   frames   = 3000            ; (gfx, M2) end with exit code 0 after N displayed frames, 0 = off
 //   [kernel]
 //   strict   = 1               ; UNIMPLEMENTED kernel stub -> debug break + abort
 //   min_guest_stack = 0x200000 ; stack reserve of guest threads (design 1.7)
+//   fiber_stack = 0x80000      ; (fiber, M2) minimum committed size of MmCreateKernelStack fiber stacks
+//                              ; (design 1.7/E9; 0x10000..0x4000000, out-of-range values are clamped)
 //   [log]
 //   level    = info            ; default level of all channels
 //   console  = 1               ; stderr/parent console (default 1 in Debug builds)
@@ -41,10 +44,18 @@
 //   [saves]
 //   key_mode = fixed           ; fixed | xbox (design 4.5)
 //   signature_key / xbox_cert_key = <32 hex digits>
+//   [render]                   ; (gfx module M2, src/host/gfx/gfx_config.h)
+//   frame_rate = 50            ; DisplayFrame paces to N Hz like the Xbox vblank wait, 0 = unthrottled
+//   d3d_traps = abort          ; abort | log (a hit D3D trap logs and returns 0 with the right purge)
+//   load_textures = 1          ; NiPCRenderer slot 65 reads texture files (size, like FUN_0015E010)
+//   [audio]                    ; (M2, src/host/audio/dsound_stubs.h)
+//   dummy_streams = 0          ; 1: DirectSoundCreateStream returns stub streams (packets complete after
+//                              ;    their play time) instead of NULL; 0 = design default *ppStream = NULL
 //
 // Command line (wins over the INI):
 //   --config=<file> --userdata=<dir> --iso=<file> --xbe=<file> --stop-at=<main|0xADDR> --selftest
 //   --trace=<channels> --strict --log-level=<level> --set=<section>.<key>=<value> (any known key)
+//   --frames=<N> (= [debug] frames, gfx M2)
 //
 // Other modules read their keys generically, e.g.
 //   core::GetConfig().GetString("settings", "language", "english")

@@ -116,6 +116,13 @@ inline constexpr GuestAddr kXapiFiberStartRoutine = 0x0017086B;
 inline constexpr GuestAddr kXapiIsBadReadPtr = 0x001709C9;  // stdcall 2, self-test (design 1.4.8)
 inline constexpr GuestAddr kXapiReadFileEx = 0x000F7603;
 inline constexpr GuestAddr kXapiCreateFileA = 0x000F76E0;
+// (added by io, M2) WriteFileEx 0xF7654: stdcall 5 (h, buf, len, lpOverlapped, completion), ret 0x14,
+// NtWriteFile(h, 0, [slot 39] NtUserIoApcDispatcher, completion, ovl, buf, len, &ovl.Offset) at
+// 0xF7676..0xF7681 (files.md 2.2). SleepEx 0xF64BE: stdcall 2 (ms, alertable), ret 8,
+// KeDelayExecutionThread(1 = UserMode, alertable, &interval) at 0xF64E3..0xF64E9, returns 0xC0
+// (WAIT_IO_COMPLETION) after APCs (startup.md 4.3). Used by the io self-test GuestReadFileExApc.
+inline constexpr GuestAddr kXapiWriteFileEx = 0x000F7654;
+inline constexpr GuestAddr kXapiSleepEx = 0x000F64BE;
 inline constexpr GuestAddr kXapiProcessHeapVar = 0x0031039C;  // XapiProcessHeap
 
 // CRT / SEH (cpu.md 2.1/2.5)
@@ -162,6 +169,126 @@ inline constexpr GuestAddr kGameMemoryPoolInit = 0x000A4920;
 inline constexpr std::uint32_t kGameMemoryPoolBeginOffset = 0x0C;
 inline constexpr std::uint32_t kGameMemoryPoolEndOffset = 0x10;
 inline constexpr std::uint32_t kGameMemoryPoolSize = 0x02600000;  // 38 MiB, push at 0xA4530
+
+// --- added by the XDK agent (M2, DSOUND/XMV/XPP stubs; see Changelog in src/INTERFACES.md) ------
+// The 54 XDK entry addresses themselves are generated (gen/xdk_entries.gen.inc, audio/xdk_entries.h).
+// XPP device type descriptors; the game only passes their addresses (avi.md 4.1/4.3): Gamepad to
+// XInitDevices (0x9C2C3), XGetDevices (0x9C31C), XGetDeviceChanges (0x9C150) and XInputOpen
+// (0x9C1E4/0x9C37E); MemoryUnit once to XGetDevices (0x9C32D, result discarded).
+inline constexpr GuestAddr kXppDeviceTypeGamepad = 0x0028BF10;
+inline constexpr GuestAddr kXppDeviceTypeMemoryUnit = 0x0028BFC0;
+// CDirectSoundStream vtable (XMediaObject layout AddRef, Release, GetInfo, GetStatus, Process,
+// Discontinuity, Flush; constructor 0x248C91 stores it at +0; avi.md 2.2 / Verifikation Runde 2 #3).
+inline constexpr GuestAddr kDsoundStreamVtable = 0x002A5F5C;
+
+// --- added by the gfx agent (M2, NiPCRenderer null renderer + D3D shim; see Changelog) ----------
+// NiXBoxRenderer (renderer.md 1.1/1.4/2, nixboxrenderer_vtable.tsv): vtable 75 slots, object 0x6D0,
+// ms_RTTI (slot 1 GetRTTI 0x14B090 returns it). The 79 D3D trap addresses are generated
+// (gen/d3d_traps.gen.inc), the 75 slot rows too (gen/renderer_slots.gen.inc).
+inline constexpr GuestAddr kNiXBoxRendererVtable = 0x002AA7C0;
+inline constexpr GuestAddr kNiXBoxRendererRtti = 0x0030EE00;
+inline constexpr std::uint32_t kNiXBoxRendererSize = 0x6D0;  // push 0x6D0 at 0x14C1B6
+// NiRenderer base ctor/dtor (thiscall ecx = this, no stack args, plain ret; disassembly 0x14AF18
+// `mov esi,ecx` + 0x14AF1F `call 0x140550` without pushes; 0x1405EF / 0x140746 `ret`). The ctor
+// returns this and appends the renderer to the global renderer list; the dtor removes it, releases
+// the accumulator at +8 and runs the NiObject dtor (renderer.md 1.2, Verifikation 7).
+inline constexpr GuestAddr kNiRendererBaseCtor = 0x00140550;
+inline constexpr GuestAddr kNiRendererBaseDtor = 0x001406E0;
+// Renderer list object (+0 count, +4 head, +8 tail; node {renderer, next, prev}) used by the purge /
+// create broadcasts FUN_00117FC0, FUN_00110BD0, FUN_00111D70, FUN_00140160..FUN_00140250.
+inline constexpr GuestAddr kNiRendererList = 0x002D7B18;
+// Game operator new / delete of memory.cpp (cdecl: `push 0x6D0; call 0xA4900` at 0x14C1B6, size at
+// [esp+4], plain ret; delete 0xA3880 `push esi; call; add esp,4` in NiRenderer::vf00 0x14075F).
+inline constexpr GuestAddr kGameOperatorNew = 0x000A4900;
+inline constexpr GuestAddr kGameOperatorDelete = 0x000A3880;
+// Screen-centering helpers called by NiXBoxRenderer::vf15 (SetRenderTarget): back buffer -> user
+// offset FUN_000A1930 (SetScreenSpaceOffset([0x2E7928], [0x2E792C])), texture -> FUN_000A1920
+// (offset 0,0). Both cdecl/no arguments, plain ret (renderer.md 7.1.3, d3d.md 4.3).
+inline constexpr GuestAddr kGameScreenOffsetUser = 0x000A1930;
+inline constexpr GuestAddr kGameScreenOffsetZero = 0x000A1920;
+// NiImageConverter singleton (static initializer, initstubs_00230000.c) and its vf2 ReadImageFile
+// (thiscall 2 args: path, 0 -> NiPixelData* with refcount 0) as used by FUN_0015E010 0x15E06A.
+inline constexpr GuestAddr kNiImageConverterPtr = 0x0030EF64;
+// D3D8 functions the game calls directly (design 2.2 shim table, d3d.md 3.1/3.2/4.3; ret per
+// d3d_functions.tsv). All stdcall.
+inline constexpr GuestAddr kD3DDeviceAddRef = 0x00234440;                 // ret 0
+inline constexpr GuestAddr kD3DDeviceRelease = 0x00234460;                // ret 0
+inline constexpr GuestAddr kD3DDeviceCreateTexture2 = 0x002370D0;         // ret 0x1C
+inline constexpr GuestAddr kD3DTextureGetSurfaceLevel2 = 0x002371A0;      // ret 8
+inline constexpr GuestAddr kD3DResourceAddRef = 0x002373B0;               // ret 4
+inline constexpr GuestAddr kD3DResourceRelease = 0x002373F0;              // ret 4
+inline constexpr GuestAddr kD3DDeviceSetRenderStateYuvEnable = 0x00236DC0;  // ret 4
+inline constexpr GuestAddr kD3DDeviceSetScreenSpaceOffset = 0x002354F0;   // ret 8 (2 floats)
+
+// --- added by the fiber agent (M2, design 1.7/E9 + self-tests R2; see Changelog) ----------------
+// MSVC 7 SEH3 helpers used by every guest __try (startup.md 8): __SEH_prolog 0x167DC8 is called as
+// `push localsSize; push scopeTable; call` and builds the frame (record at ebp-0x10, handler
+// _except_handler3, trylevel -1, saved esp at ebp-0x18); __SEH_epilog 0x167E03 unlinks it and
+// restores ebx/esi/edi/ebp (disassembly 0x167DC8..0x167E13).
+inline constexpr GuestAddr kCrtSehProlog = 0x00167DC8;
+inline constexpr GuestAddr kCrtSehEpilog = 0x00167E03;
+// `eh vector constructor iterator` ??_L 0x166E00: stdcall 5 (ptr, size, count, ctor, dtor), ret 0x14;
+// ctor/dtor are thiscall without stack arguments (0x166E22 `mov ecx,esi; call [ebp+0x14]`); the body
+// is __try/__finally (scope table 0x2AC230) whose finally 0x166E4A calls __ArrayUnwind 0x166D42 for
+// the elements constructed so far when the loop did not complete.
+inline constexpr GuestAddr kCrtEhVectorCtorIterator = 0x00166E00;
+// CRT strchr 0x166FC0: cdecl (str, ch), reads the string without any SEH frame (0x166FCC..0x166FD8).
+inline constexpr GuestAddr kCrtStrchr = 0x00166FC0;
+
+// --- added in M2 phase 2 (integration: game observer probes, xapi/game_probes.cpp; see Changelog) --
+// Every prologue was checked with capstone (whole, position-independent instructions; no direct
+// branch of a Ghidra function and no raw E8/E9 in the code sections targets the inside of the stolen
+// range) and every return with the call sites (docs/loader_design.md section 8, M2).
+// .img archives (files.md 3.2/3.3): mount FUN_0013FE70 (cdecl 1: name, plain ret 0x13FFAC, callers
+// `add esp,4` at 0xD277C/0xD27AE via the jmp thunk 0x13FFB0; returns al = 1 on success) and lookup
+// FUN_0013FE10 (cdecl 3: name, &offset (stream +0x4C), &size (stream +0x40); returns the archive
+// stream or 0; only caller NiUDSStream ctor 0x13F3B2). Mounted entries {stream, header} are pointers
+// in the array [0x2D7AF0] with count [0x2D7AF8]; [0x2D7AE8] = 0 disables the lookup while mounting.
+inline constexpr GuestAddr kGameArchiveMount = 0x0013FE70;
+inline constexpr GuestAddr kGameArchiveLookup = 0x0013FE10;
+inline constexpr GuestAddr kGameArchiveTableVar = 0x002D7AF0;  // entry** (each entry: +0 stream, +4 header)
+inline constexpr GuestAddr kGameArchiveCountVar = 0x002D7AF8;  // u32
+inline constexpr GuestAddr kGameArchiveSearchVar = 0x002D7AE8;  // u8, 0 while mounting
+// Game::Init FUN_000A26A0 (CApp vf2 base part; thiscall ecx = CApp, no stack args, plain ret 0xA2C1A,
+// called `mov ecx,esi; call` at 0xD28F6 at the end of CApp::Init 0xD26A0). Sets fps/dt from
+// CApp+0xE8, selects the language again in PAL mode (0xA28DB..0xA2900), creates the contexts and
+// enters "Intro", then reads BUILD.TXT into kGameBuildText (<= 0xFF chars; startup.md 2.6 #11/#19).
+inline constexpr GuestAddr kGameInit = 0x000A26A0;
+// CApp::Frame FUN_000D2630 (CApp vf3; thiscall, no stack args, plain ret 0xD265A/0xD268B, al = FALSE
+// ends the main loop in main; startup.md 3.1). Called once per frame.
+inline constexpr GuestAddr kCAppFrame = 0x000D2630;
+// XAPILIB::XGetLanguage 0xF6440 (no args, plain ret 0xF6475/0xF6479; ExQueryNonVolatileSetting(7),
+// values > 9 mapped by the region; its only caller FUN_000D9990 maps 3 german, 4 french, 5 spanish,
+// 6 italian, else english - files.md 3.2, startup.md 2.6 #4).
+inline constexpr GuestAddr kXapiXGetLanguage = 0x000F6440;
+// g_pGame (CApp*, set by the game base ctor FUN_000A2240; startup.md 2.5) and CApp fields.
+inline constexpr GuestAddr kGameGamePtr = 0x002E7B84;
+inline constexpr std::uint32_t kCAppVideoStandardOffset = 0xE8;  // 0 = PAL, 1 = NTSC (files.md 3.2)
+inline constexpr std::uint32_t kCAppContextListOffset = 0xB8;    // first context
+inline constexpr std::uint32_t kCAppCurrentContextOffset = 0xBC;
+inline constexpr std::uint32_t kGameContextNameOffset = 0x04;  // char* (heap copy, ctor 0x2C346)
+inline constexpr std::uint32_t kGameContextNextOffset = 0x08;  // next in the CApp+0xB8 list
+// String-table manager singleton (FUN_000D9CF0 creates it, 0x1C bytes) and its current language
+// string (+0x18, set by FUN_000D9B20 from FUN_000D9990 = "german"/"french"/... - files.md 3.2).
+inline constexpr GuestAddr kGameStringManagerPtr = 0x002EC640;
+inline constexpr std::uint32_t kStringManagerLanguageOffset = 0x18;
+// Time base written by Game::Init from CApp+0xE8 (startup.md 3.2/3.4): fps (float, 50.0 PAL / 60.0
+// NTSC), fixed time step dt (float, 0.02 / 1/60) and the movie name tag ("PAL" / "NTSC", char[8]).
+inline constexpr GuestAddr kGameFpsVar = 0x002D6744;
+inline constexpr GuestAddr kGameFrameTimeVar = 0x002D6748;
+inline constexpr GuestAddr kGameMovieTagVar = 0x002E7B70;
+// BUILD.TXT contents (char[0x100]: NiUDSStream("BUILD.TXT") 0xA2B8E, Read(0x2E7A68, 0x100) 0xA2BBA,
+// NUL at 0xA2BD2 - files.md 1.2: "1.25").
+inline constexpr GuestAddr kGameBuildText = 0x002E7A68;
+inline constexpr std::uint32_t kGameBuildTextSize = 0x100;
+// Disc error handler (files.md 2.4): DAT_0030E68C is read only at 0x13F1E3 (ReadFileEx completion,
+// dwErr != 0) and 0x13F6B2 (FUN_0013F660, ReadFileEx returned FALSE); FUN_000F33E0 sets it through
+// FUN_0013FAD0 to the object 0x2D707C (vtable 0x2A59BC). Its vf0 0xF2FD0 (thiscall, 1 stack arg =
+// the stream; not a Ghidra function, 0xF2FD0..0xF30A9) draws the disc error screen in an endless
+// loop (`jmp 0xF3004` at 0xF30A4, no ret) - M2 exit 5: it must never be called.
+inline constexpr GuestAddr kGameDiscErrorHandlerVar = 0x0030E68C;
+inline constexpr GuestAddr kGameDiscErrorObject = 0x002D707C;
+inline constexpr GuestAddr kGameDiscErrorScreen = 0x000F2FD0;
 
 // ---------------------------------------------------------------------------------------------
 // Memory helpers

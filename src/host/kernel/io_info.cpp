@@ -312,6 +312,7 @@ NTSTATUS __stdcall NtQueryFullAttributesFile(xbox::OBJECT_ATTRIBUTES* ObjectAttr
         }
         FUT_LOGD(Vfs, "attributes %s -> %s%s : %s", target.objectName.c_str(), target.devicePath.c_str(),
                  target.relativePath.c_str(), io::StatusText(status).c_str());
+        io::TraceVfsLookup("NtQueryFullAttributesFile", target, status, nullptr, nullptr);
         return status;
     }
     FUT_HLE_CATCH("NtQueryFullAttributesFile")
@@ -343,6 +344,10 @@ NTSTATUS __stdcall NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, io::IoA
         }
         if (FileInformation == nullptr || Length < io::kFileDirectoryInformationHeaderSize) {
             return STATUS_INFO_LENGTH_MISMATCH;
+        }
+        Ref<EventObject> event;
+        if (const NTSTATUS es = io::ReferenceEvent("NtQueryDirectoryFile", Event, event); !NT_SUCCESS(es)) {
+            return es;
         }
         vfs::DirEntry entry;
         NTSTATUS status;
@@ -390,10 +395,14 @@ NTSTATUS __stdcall NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, io::IoA
                 status = STATUS_BUFFER_OVERFLOW;  // entry consumed, name truncated (NT semantics)
             }
         }
-        FUT_LOGT(Vfs, "query dir %s mask '%s' -> %s %s", file->FullPath().c_str(), file->dirMask.c_str(),
-                 io::StatusText(status).c_str(), NT_SUCCESS(status) ? entry.name.c_str() : "");
-        return io::CompleteIo("NtQueryDirectoryFile", Event, ApcRoutine, ApcContext, IoStatusBlock, status,
-                              written);
+        const NTSTATUS result = io::CompleteIo(io::IoRequest{"NtQueryDirectoryFile", file.get(), event.get(),
+                                                             ApcRoutine, ApcContext, IoStatusBlock},
+                                               status, written);
+        FUT_LOGT(Krnl, "NtQueryDirectoryFile(%p %s, class %lu, mask '%s', restart %u) -> %s %s", FileHandle,
+                 file->FullPath().c_str(), static_cast<unsigned long>(FileInformationClass),
+                 file->dirMask.c_str(), static_cast<unsigned>(RestartScan), io::StatusString(result).c_str(),
+                 NT_SUCCESS(status) ? entry.name.c_str() : "");
+        return result;
     }
     FUT_HLE_CATCH("NtQueryDirectoryFile")
 }

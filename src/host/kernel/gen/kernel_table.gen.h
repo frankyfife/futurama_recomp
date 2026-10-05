@@ -150,8 +150,8 @@ inline constexpr ExportInfo kExports[kSlotCount] = {
     {104, 153, Kind::Func, Conv::Stdcall,   3, 0, 12, false, true, Milestone::ReplacedLibs, Ret::Boolean, false, "KeSynchronizeExecution"},
     {105, 312, Kind::Func, Conv::Stdcall,   4, 0, 16, false, false, Milestone::M1, Ret::Void, false, "RtlUnwind"},
     {106,  95, Kind::Func, Conv::Stdcall,   1, 0,  4, false, false, Milestone::M1, Ret::Void, false, "KeBugCheck"},
-    {107, 169, Kind::Func, Conv::Stdcall,   2, 0,  8, false, false, Milestone::M2, Ret::Pointer, true, "MmCreateKernelStack"},
-    {108, 170, Kind::Func, Conv::Stdcall,   2, 0,  8, false, false, Milestone::M2, Ret::Void, true, "MmDeleteKernelStack"},
+    {107, 169, Kind::Func, Conv::Stdcall,   2, 0,  8, false, false, Milestone::M2, Ret::Pointer, false, "MmCreateKernelStack"},
+    {108, 170, Kind::Func, Conv::Stdcall,   2, 0,  8, false, false, Milestone::M2, Ret::Void, false, "MmDeleteKernelStack"},
     {109,   5, Kind::Func, Conv::Stdcall,   0, 0,  0, false, false, Milestone::M2, Ret::Void, false, "DbgBreakPoint"},
     {110, 356, Kind::Data, Conv::None,      0, 0,  0, false, false, Milestone::M1, Ret::Void, false, "HalBootSMCVideoMode"},
 };

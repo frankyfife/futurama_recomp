@@ -208,7 +208,8 @@ KRNL_ADDR(NtUserIoApcDispatcher, &NtUserIoApcDispatcher);
   returns the failure value of the export's return kind (phase 5, review finding 1): `STATUS_NOT_IMPLEMENTED`
   only for NTSTATUS exports, 0 (NULL/FALSE) for pointer/BOOLEAN/ULONG/void exports (`gen::ExportInfo::ret`,
   table `RETURN_KIND` in `tools\gen\gen_kernel_table.py`); with `[kernel] strict=1` debug break + `core::Fatal`.
-  Slots in `FATAL_STUBS` (`stubFatal`: 107 MmCreateKernelStack, 108 MmDeleteKernelStack until M2) abort always.
+  Slots in `FATAL_STUBS` (`stubFatal`) abort always; the list is empty since M2 (107 MmCreateKernelStack and
+  108 MmDeleteKernelStack were in it until the fiber agent implemented them, `kernel\mm_kernel_stack.cpp`).
   DATA -> zeroed writable 0x400-byte placeholder; ADDR -> routine that aborts when called.
 - Registration of the same slot twice is reported by `krnl::ValidateRegistry()` (error).
 - Resolution API (core): `krnl::ExportAt(slot)`, `krnl::FindExportByOrdinal(ord)`, `krnl::GetBinding(slot)`
@@ -310,10 +311,135 @@ Run with `--selftest`; result lines `SELFTEST PASS|FAIL <name>: <detail>`.
 | `gen_kernel_table.py` | `analysis\loader\kernel_imports.tsv` + design Anhang A | `src\host\kernel\gen\kernel_table.gen.h/.cpp` |
 | `gen_fs_patches.py` | `analysis\loader\fs_sites.tsv` (offset != 0x0; cross-checked against the XBE if present) | `src\host\gen\fs_patch_table.gen.inc` |
 | `gen_functions.py` | `analysis\retail_eu_export\functions.tsv` + `tools\gen\extra_function_starts.tsv` | `src\host\gen\xbe_functions.gen.inc` |
+| `gen_d3d_traps.py` (M2, gfx) | `analysis\loader\d3d_functions.tsv` (`ext_call_sites > 0` minus the 8 shims and the kernel thunk 0x2417B0; tail jumps resolved; `ret N` cross-checked with capstone against the XBE if present) | `src\host\gen\d3d_traps.gen.inc` (X-macro `FUT_D3D_TRAP`, 79 rows, section 4.15) |
+| `gen_renderer_slots.py` (M2, gfx) | `analysis\loader\nixboxrenderer_vtable.tsv` + `ret N` table of `renderer_retn.py` (vtable entries and every `ret N` cross-checked with capstone against the XBE if present) | `src\host\gen\renderer_slots.gen.inc` (X-macro `FUT_RENDERER_SLOT`, 75 rows, section 4.15) |
+| `gen_xdk_entries.py` (M2, xdk) | `analysis\loader\avi_api_surface.tsv` (54 entries + 5 stream vtable rows; `ret N` of every entry and of the 7 stream vtable slots cross-checked with capstone against the XBE if present) | `src\host\gen\xdk_entries.gen.inc` (X-macros `XDK_ENTRY`, `XDK_STREAM_METHOD`, section 4.13) |
 
 `python tools\gen\gen_all.py` regenerates, `--check` (or target `fut_gen`) verifies. Generated files are
 checked in; the build needs no Python. New function starts outside Ghidra go into
 `extra_function_starts.tsv` (with evidence) - this also makes them hookable.
+
+### 4.13 XDK stubs (DSOUND, XMV, XPP) - `audio\xdk_entries.h` (M2, xdk agent)
+
+The 54 XDK entry points the game calls (design E7, Anhang B: 40 DSOUND, 7 XMV, 7 XPP) are replaced by
+silent stubs in `audio\dsound_stubs.cpp`, `video\xmv_stubs.cpp`, `input\xpp_stubs.cpp` (namespaces `snd`,
+`vid`, `inp`; declarations in the matching `.h` for tests). Every stub has a header comment with
+address, `ret N`, arguments and the checked game call sites.
+
+```cpp
+// DSOUND::DirectSoundCreate 0x24935C - stdcall, 3 args (ret 12). Evidence: ...
+std::int32_t __stdcall DirectSoundCreateHle(const void* guid, void** ppDS, void* outer) noexcept { ...
+    XDK_TRACE_CALL(DirectSoundCreate, "(guid=0x%08X, ...) -> 0x%08X", ...);  // count + log once per site
+    return hr; }
+XDK_HOOK(DirectSoundCreate, &DirectSoundCreateHle);  // static_assert stdcall noexcept + purge == ret N
+```
+
+- `XDK_HOOK(Id, &fn)` = FUT_HOOK with hook name `<LIB>::<Id>` (`[hooks] disable = DSOUND::*` restores a
+  whole library) plus compile-time checks against `xdk::gen::<Id>` (address, `purgeBytes`, flags).
+- Table/API: `xdk::Entries()`, `Info(Entry)`, `RegisteredStub`, `CallCount`, `CallSiteCount`,
+  `LogCallSummary(level)` (also crash reporter "xdk"; integration may call it at the orderly `--frames`
+  end), `xdk::stream::<Method>::slot/purgeBytes` (XMediaObject vtable 0x2A5F5C).
+- Guest-visible dummy objects (below 0x80000000): `AllocGuestObject/FreeGuestObject/IsGuestObject`
+  (64-byte slots), `TrapVtable()` (+0 of every dummy handle; a virtual call ends with `TRAP`).
+- `xdk::MeasureEntryPurge(entry, dwords)`: runs an entry once on a probe thread with zero arguments and
+  returns the bytes it popped (same method as `gfx/purge_probe`); self-test `XdkEntryPurgeMeasured`
+  measures all 54 hooked guest entries (Mapped phase), `XdkHooksInstalled`, `XdkStubsRegistered`,
+  `XdkGuestObjectPool`.
+- Returned values (evidence per function): DSOUND - `DirectSoundCreate` S_OK + non-NULL dummy device
+  (SoundManager::Update 0xCBCB0 needs it to run the voice update), `CreateBuffer`/`CreateStream` S_OK +
+  `*pp = NULL` (all uses NULL-checked), `IDirectSoundBuffer_GetStatus` writes 0 always, other HRESULTs
+  S_OK. XMV - decoder from the first-packet header (W/H/tracks), `GetNextFrame` result 2 (movie ends on
+  the first Update), audio streams NULL. XPP - no devices (`XGetDevices` 0, `XGetDeviceChanges` FALSE,
+  `XInputOpen` NULL, `XInputGetState`/`SetState` 0x48F, rumble `dwStatus` never left at 0x3E5).
+- `[audio] dummy_streams = 1`: `DirectSoundCreateStream` returns stub streams (XMediaObject vtable;
+  `Process` sets E_PENDING synchronously, packets complete after their play time in `DirectSoundDoWork`).
+- Log: one INFO line per library on first use (`DSOUND: stub device`, `XMV: stub decoder`, `XPP: stub
+  input`), every call site once at debug on SND/VID/INP (`XDK <LIB>::<Id>(args) -> result ret=<site>`).
+
+### 4.14 Fibers - `xapi\xapi_fiber.h`, `kernel\mm_kernel_stack.h` (M2, fiber agent)
+
+Design 1.7 "Fibers", E9, R2. XAPI `CreateFiber` 0x1708B0, `DeleteFiber` 0x17093C, `ConvertThreadToFiber`
+0x17098E and the trampoline 0x17086B stay guest code.
+
+- `krnl::MmCreateKernelStack` / `MmDeleteKernelStack` (slots 107/108, stdcall 2/2): VirtualAlloc of
+  `max(NumberOfBytes, [kernel] fiber_stack = 0x80000)` committed + one guard page (RW|GUARD) below; returns
+  `top = StackBase - 0x20`. Above top: fiber-top SEH record (StackBase-0x18, host handler that calls
+  `UnhandledExceptionFilter` = the host crash report) -> terminal record (StackBase-0x10, filled by ntdll
+  `RtlInitializeExceptionChain` = ntdll's FinalExceptionHandler unless SEHOP is disabled) -> -1; the top 8
+  bytes stay 0 (SEHOP requires every record < StackBase - 8). Bookkeeping: `krnl::FindKernelStack(top)`,
+  `FindKernelStackContaining(addr)`, `GetKernelStackStats()`, `ConfiguredFiberStackBytes()`,
+  `KernelStackTerminalHandler(IsNtdll)()`.
+- `XAPILIB::SwitchToFiber` 0x17094F is detoured (`FUT_HOOK_EX`, name `XAPILIB::SwitchToFiber`) to
+  `fut_switch_to_fiber` (`asm\fiber_switch.asm`, stdcall 1, same saved-context layout as the original) +
+  `fut_fiber_switch_prepare` (C++): additionally sets `TEB.NtTib.StackBase/StackLimit` (fs:[4]/fs:[8]) and
+  `TEB.DeallocationStack` (fs:[0xE0C]) from the bookkeeping (thread fiber `[f+8] = 0`: the real values saved
+  when the thread fiber was left) and replaces the saved ExceptionList -1 of a fresh fiber by the fiber-top
+  record. Callable from host code (`fut_switch_to_fiber(fiber)`) on an adopted thread.
+- Counters: `xapi::GetFiberStats()` `{switches, toThreadFiber, chainFixups, unknownStacks}`,
+  `xapi::FiberSwitchCount()`, `xapi::LogFiberSummary()` (XAPI/info `fiber summary: N switches ...`; crash
+  reporter "fibers" after the first switch). Log evidence: KRNL/info `fiber stacks: ...` (first stack),
+  XAPI/info `fiber: first SwitchToFiber ...` (M2 exit 5), every switch at XAPI/trace.
+- Self-tests (AdoptedThread, `core\selftest_m2.cpp`): `GuestSehOnFiberStack` (M2 exit 6) and
+  `GuestSehThroughHostFrame` (rule below). Unit tests `tests\fiber_tests.cpp` (incl. child processes with the
+  SEHOP mitigation enforced: positive, negative control, unhandled -> top-level filter).
+- **Rule for hooks / host frames between guest frames** (verified by `GuestSehThroughHostFrame`, MSVC and
+  clang-cl): a guest SEH exception (AV, RtlRaiseException) passes through host C++ frames: the search phase
+  skips them, the guest handler's unwind (`__global_unwind2` -> RtlUnwind slot 105) removes them, guest
+  `__finally` blocks run - but **no destructor of a host frame runs** and `catch (...)` / `FUT_HLE_CATCH` never
+  sees it (/EHsc: `__CxxFrameHandler3` ignores non-C++ exceptions). Hence a host function that calls guest
+  code (probe, hook calling an original, HLE delivering a callback) must not hold a lock, an owning object or
+  other state that needs cleanup across that call, or must restore it before calling into the guest.
+
+### 4.15 Graphics: NiPCRenderer, D3D shim, D3D traps - `gfx\*.h` (M2, gfx agent)
+
+Design 2.2 (E6): the graphics boundary is the NiRenderer interface. Nothing is drawn in M2.
+
+- **`NiXBoxRenderer::Create` 0x14C170** (cdecl, 8 args; call site 0xD26BE..0xD26E7, `add esp,0x20`) is
+  detoured (hook name `NiXBoxRenderer::Create`) to the **NiPCRenderer** null renderer (`gfx\nipc_renderer.h`):
+  0x6D0-byte object from the game's operator new 0xA4900 (as the original), built by the original NiRenderer
+  base ctor FUN_00140550 (thiscall, verified at 0x14AF18/0x14AF1F: renderer list 0x2D7B18 for the purge /
+  create broadcasts), then +0x00 own 75-slot vtable, +0x60 dummy device (`gfx::d3d::DummyDevice()`, 0x2040
+  zero bytes), +0x6C0 host state. +0x04/+0x08/+0x0C/+0x10 are the NiRenderer base fields the game writes.
+- **Slots** (`gen\renderer_slots.gen.inc` from `tools\gen\gen_renderer_slots.py`: original address and
+  `ret N` of all 75 slots, capstone-checked against the XBE): 2..10 = original NiObject entries of 0x2AA7C0;
+  all others are host `__fastcall(self, edx, stack args...)` functions with the original purge
+  (`static_assert` per handler + runtime measurement). Results: 0 destroys via FUN_001406E0 + operator
+  delete 0xA3880; 1 = &NiXBoxRenderer::ms_RTTI 0x30EE00; 15 SetRenderTarget (FALSE in a scene, calls the game's
+  screen-offset helpers 0xA1930/0xA1920 like vf15); 16 DisplayFrame (back buffer only: frame counter, pacing,
+  `--frames` limit); 21/22 = 640x480 or the rendered texture's size; 23 = 32; 27 SetBackgroundColor TRUE;
+  29 GetMaxFogValue float 1.0; 39 PrecacheGeometry FALSE; 40 writes NULL to its out pointer; 45/46 scene
+  flag; 57/69/70 TRUE; 65/66 TRUE + renderer data; everything else 0. Each slot's first call is logged on
+  GFX/debug (`NiPCRenderer slot N (...) first called from ...`).
+- **Texture renderer data** (slots 65/66, chain at NiTexture+0x20): `gfx::NiPCTextureData` (0x70, layout of
+  NiXBoxSourceTextureData: +0x10 renderer, +0x3C D3D texture, +0x48/+0x4C size, +0x54, +0x58, +0x5C, +0x60 -
+  the offsets the movie player FUN_000EE220 writes) and `NiPCRenderedTextureData` (0x84 + target descriptor).
+  Own data vtables (11 / 14 slots) mirror 0x2AB97C / 0x2AB9F4; slot 0 releases +0x3C through the D3D shim,
+  deletes the rest of the chain and frees through operator delete. Slot 65 takes the size from the
+  NiPixelData (+0x34) or, with `[render] load_textures = 1`, reads the texture file (+0x30) through the game's
+  NiImageConverter (0x30EF64, vf2) like FUN_0015E010.
+- **D3D shim** (`gfx\d3d_shim.h`, design 2.2 table, stdcall, purge `static_assert`ed): `D3DDevice_AddRef/
+  Release` (counter), `CreateTexture2` (Xbox-like header {Common 0x1040001, Data, Lock, Format, Size} + pixel
+  buffer, e.g. W*H*2 for YUY2 0x24), `D3DTexture_GetSurfaceLevel2` (surface 0x1050001 holding its parent),
+  `D3DResource_AddRef/Release` (rules of 0x2373B0/0x2373F0; NULL/unknown pointers ignored, logged once),
+  `SetRenderState_YuvEnable`, `SetScreenSpaceOffset`. Host API: `LookupResource(header)` (pixels for M3/M6),
+  `GetShimState()`, `DummyDevice()`. Hook names `D3D8::<function>`.
+- **D3D traps** (`gfx\d3d_traps.h`, `gen\d3d_traps.gen.inc` from `tools\gen\gen_d3d_traps.py`): the 79 other
+  D3D entries with `ext_call_sites > 0` (88 - 8 shims - the MmFreeContiguousMemory import thunk 0x2417B0),
+  registered through `core::RegisterHook` (hook names `trap:D3D8::...`, `[hooks] disable = trap:*`). Stubs
+  have the original convention/purge (stdcall, `SetRenderState_Simple` fastcall) and log
+  `TRAP <name> @<address> from <return> (<args>)` on GFX/error, then `core::Fatal`; `[render] d3d_traps = log`
+  logs once per call site and returns 0.
+- **Frames** (design 5.4): `[debug] frames = N` / `--frames=N` ends the process after N back-buffer frames:
+  `FRAMES: limit of N frames reached`, statistics, `core::ExitHostProcess(0, "frame limit reached")`.
+  `[render] frame_rate = 50` (default) paces DisplayFrame like the Xbox vblank wait (PresentationInterval ONE,
+  PAL): N frames take N/50 s; `0` = unthrottled (time-based game loops then spin, e.g. 3000 frames in ~2 ms
+  before the main loop runs). API: `gfx::FramesDisplayed()`, `SlotCallCount(slot)`, `CurrentRenderer()`,
+  `LogRendererStatistics()` (also crash reporter "gfx").
+- **Purge measurement** `gfx::MeasureCalleePurge(entry, ecx, edx, stackDwords)` (`gfx\purge_probe.h`):
+  runs an entry on a suspended-then-resumed host thread whose context returns into a landing function;
+  exit code = bytes popped. Entries check `gfx::InPurgeProbe()` first and return without side effects.
+- Self-tests (Mapped): `GfxRendererSlotTable`, `GfxRendererThunkPurge` (66 + 11 + 14 thunks measured),
+  `GfxD3DShimTrapPurge` (8 + 79). Unit tests: `tests\gfx_tests.cpp`.
 
 ## 5. Cross-module contracts
 
@@ -382,3 +508,18 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-05 | phase 5 (review fixes) | `core\config.h/.cpp`, `core\log.h/.cpp`, `core\hooks.h/.cpp`, `core\host_main.cpp`, `core\selftest.cpp`, `core\crash.h` | INI inline comments, `kKnownKeys` validation, `Config::warnings`, `core::IsKnownConfigKey`, `core::ProcessLongPathsEnabled`, `kMaxUserdataWithoutLongPaths`; `core::LogLastError()`; stage failures and `core::Fatal` are reported on stderr / message box with the log path; `core::HookDisableEntryMatches`, `ParseHookAddressEntry`, `UnmatchedHookDisableEntries`; self-test phases run Host then Mapped; `core::ExceptionCode(EXCEPTION_*)` (DWORD form for clang). |
 | 2026-10-05 | phase 5 (review fixes) | `vfs\vfs.h`, `vfs\host_dir_device.cpp`, `vfs\vfs_init.cpp`, `launcher\futurama.manifest` | `vfs::CreateHostDirectories(dir, error)` (`\\?\` form, no MAX_PATH limit); launcher manifest `longPathAware`. |
 | 2026-10-05 | phase 5 (review fixes) | `CMakeLists.txt`, `CMakePresets.json`, `build.cmd`, `tests\CMakeLists.txt`, `tools\m1_check.py` | `enable_testing()` at the top level, `FUT_TEST_CONFIG` -> tests `fut_selftest`, `fut_m1_check`; preset `x86-clang-debug`, `build.cmd ... clang`, `FUT_CMAKE_ARGS`; m1_check passes `--selftest --stop-at=main`, fails on a missing/empty log and on a userdata mismatch. |
+| 2026-10-05 | io (M2 phase 1) | `core\log.h/.cpp` | `core::LogTap` + `core::SetLogTap(tap)`: observer of every line that passes the level check (called outside the log lock, before the write; one tap per process). Used by the kernel trace ring of `core\trace.h`. No behaviour change without a tap. |
+| 2026-10-05 | io (M2 phase 1) | new `core\trace.h/.cpp` (io-owned), `vfs\vfs_init.*` | **Tracing (design 5.4)**, started by `vfs::StageInitVfs` from `[debug] trace` / `--trace=`: `krnl` (or `all`) = ring buffer of the last 1024 KRNL log lines (with `--trace=krnl` the channel runs at trace, so every HLE call that logs its decoded arguments), dumped by the crash reporter "kernel trace ring (--trace=krnl)" (`core::AddCrashReporter`, lines `krnl| ...` on CORE/error after the backtrace). `vfs` (or `all`) = `<userdata>\logs\vfs_trace.log` (truncated per run, unbuffered): one line per open (`NtCreateFile`/`NtOpenFile`), `NtQueryFullAttributesFile` and symbolic link: `[sec] tid api "guest path" -> device path : hit <FILE_OPENED/...> h=.. \| missing <status> (documented: <reason>) \| missing <status> UNDOCUMENTED \| error <status>`. Documented misses: table in `vfs\vfs_known_missing.cpp` (`vfs::detail::DocumentedMissReason`; FutPAL05.img, sysNTSC/FutNTSC*, Video\*.txt, fonts/kanjii*, arial2t20px32x32.*, MusicClip.wav, Mine_Activate.wav, LipsyncMeshes, NiTCache.dat, partition1 `UDATA\46490002\*` before the first save). M2 exit 7: `grep UNDOCUMENTED vfs_trace.log` must be empty (or the miss analysed and added to the table). API: `core::trace::Init/Configure/OptionsFromConfig`, `KrnlEnabled/VfsEnabled`, `RecordKrnl`, `KrnlRingSnapshot`, `KrnlRecordCount`, `DumpKrnlRing`, `VfsLine`, `VfsTracePath`, `VfsLineCount`. NtReadFile/NtWriteFile/NtFlushBuffersFile/NtQueryDirectoryFile per-call lines moved from VFS/trace to KRNL/trace (decoded handle, path, offset, APC, result). |
+| 2026-10-05 | io (M2 phase 1) | `kernel\ke_wait.*` (moved from the kernel agent to io for M2, as assigned), `kernel\io_apc.*`, `kernel\io_common.*`, `kernel\io_file.cpp`, `kernel\io_info.cpp`, `kernel\io_control.cpp` | **APC contract (supersedes the 2026-10-04 io/kernel rows)**: delivery writes the IoStatusBlock (= OVERLAPPED) and, for ApcRoutine == NtUserIoApcDispatcher, calls the completion directly: `Completion(dwErr = NT_ERROR ? RtlNtStatusToDosError : 0, Information, lpOverlapped)` through `core::CallGuest` (stdcall ret 0xC verified at 0x13F1D0/0xE01A0; esp restored); other routines `routine(ctx, iosb, 0)`. User APCs are delivered only by `KeDelayExecutionThread` / `NtWaitForSingleObjectEx` with **WaitMode == UserMode (1) and Alertable** (XAPI SleepEx/WaitForSingleObjectEx push 1); `NtWaitForSingleObject` never delivers (ASSUMPTION: Xbox forwards with KernelMode). New `kernel\ke_wait.h`: `krnl::kKernelMode/kUserMode`, `DeliversUserApcs`, `krnl::EventObject` (handle type "Event", Notification/Synchronization), `CreateEventHandle`, `LookupEvent`; waits on event handles. `io_apc.h`: `PendingIoApcCountAllThreads`, `NoteFailedIoApcRequest`, `IoApcStats{queued, delivered, errorCompletions, failedRequests, maxPending}`, `LogIoApcStats(reason)`; `IoApcStats::deliveredXbe` counts completions inside the XBE image; the first one logs `I/O APC: first XBE completion delivered on thread N: 0x0013F1D0 ...(err 0, bytes ..)` (KRNL/info) - **M2 exit 5 evidence** (host completions of self-/unit tests do not count); integration: call `krnl::io::LogIoApcStats("...")` at the orderly `--frames` end. **Event parameter** of NtReadFile/NtWriteFile/NtQueryDirectoryFile/NtDeviceIoControlFile/NtFsControlFile: reset at the start, signalled on completion; unknown handle -> STATUS_INVALID_HANDLE, other type -> STATUS_OBJECT_TYPE_MISMATCH (request not started). Async handle + APC: STATUS_PENDING, IoStatusBlock at delivery (at once if an event is given); synchronous handle + APC: final status, APC still queued. **A8 re-checked**: kept (read starting at/after EOF -> STATUS_END_OF_FILE; past-EOF reads clipped with success). **Disc error handler** = object 0x2D707C (vtable 0x2A59BC, vf0 0xF2FD0, not a Ghidra function start); `DAT_0030E68C` is read only at 0x13F1E3 (completion, dwErr != 0) and 0x13F6B2 (FUN_0013F660, ReadFileEx FALSE) - both paths are counted (`errorCompletions`, `failedRequests`, each also an ERROR log line) and must stay 0. Self-test `GuestReadFileExApc` (AdoptedThread, new `kernel\io_selftest.cpp`): guest WriteFileEx/ReadFileEx/SleepEx(0, TRUE) on a delete-on-close partition1 file -> STATUS_PENDING, OVERLAPPED untouched, SleepEx = 0xC0, completions (0, 0x800, ovl) in FIFO order, read past EOF clipped. `core\guest.h` (shared, additive): `kXapiWriteFileEx` 0xF7654, `kXapiSleepEx` 0xF64BE. Tests: new `tests\apc_tests.cpp`, `tests\vfs_trace_tests.cpp`, new cases in `tests\vfs_tests.cpp` (synthetic-image directory enumeration, host-dir enumeration with APC, Event/A8, end-to-end VFS trace); `TempDir` normalizes `FUT_TEST_TMP` with `make_preferred`. |
+| 2026-10-05 | xdk (M2 phase 1) | new `tools\gen\gen_xdk_entries.py`, generated `src\host\gen\xdk_entries.gen.inc`, `tools\gen\gen_all.py` (one `GENERATORS.append` line) | XDK entry table from `analysis\loader\avi_api_surface.tsv` (54 entries, `ret N` + 7 stream vtable slots verified with capstone against the XBE; `--check` works without the XBE). Consumers: `audio\xdk_entries.h` (section 4.13). |
+| 2026-10-05 | xdk (M2 phase 1) | `core\guest.h` | `kXppDeviceTypeGamepad` 0x28BF10, `kXppDeviceTypeMemoryUnit` 0x28BFC0 (XPP device type descriptors, compared by address only), `kDsoundStreamVtable` 0x2A5F5C (XMediaObject vtable of CDirectSoundStream). |
+| 2026-10-05 | xdk (M2 phase 1) | `core\config.cpp` (`kKnownKeys`), `core\config.h` (doc) | `[audio] dummy_streams` (Bool, default 0): stub streams instead of `*ppStream = NULL`. |
+| 2026-10-05 | xdk (M2 phase 1) | (xdk-owned APIs, listed for the other agents) | `src\host\audio\**`, `src\host\video\**`, `src\host\input\**`, `tests\xdk_tests.cpp`: 54 XDK stubs (`XDK_HOOK`), call tracing, dummy guest objects, `xdk::MeasureEntryPurge`, self-tests `XdkStubsRegistered`, `XdkGuestObjectPool` (Host), `XdkHooksInstalled`, `XdkEntryPurgeMeasured` (Mapped); crash reporter "xdk" (call counts). 54 more `HOOK INFO` lines and 3 INFO lines on first use (`DSOUND: stub device`, `XMV: stub decoder`, `XPP: stub input`) in every log. Section 4.13. |
+| 2026-10-05 | fiber (M2 phase 1) | `tools\gen\gen_kernel_table.py` (`FATAL_STUBS` now empty), regenerated `kernel\gen\kernel_table.gen.*`, `tests\kernel_tests.cpp` (stub test expects 0 fatal stubs, 107/108 implemented), `src\INTERFACES.md` 4.6 (one sentence) | 107 MmCreateKernelStack / 108 MmDeleteKernelStack are implemented (`kernel\mm_kernel_stack.cpp`, `KRNL_FUNC`), so they left the always-abort list; `stubFatal` is false for every slot, the mechanism stays. `gen_all.py --check` passes. |
+| 2026-10-05 | fiber (M2 phase 1) | `core\config.cpp` (`kKnownKeys`), `core\config.h` (doc) | `[kernel] fiber_stack` (U32, default 0x80000): minimum committed size of MmCreateKernelStack stacks (clamped to 0x10000..0x4000000 with a warning). |
+| 2026-10-05 | fiber (M2 phase 1) | `core\guest.h` | `kCrtSehProlog` 0x167DC8, `kCrtSehEpilog` 0x167E03 (MSVC 7 SEH3 helpers), `kCrtEhVectorCtorIterator` 0x166E00 (`??_L`, stdcall 5, __try/__finally), `kCrtStrchr` 0x166FC0 (cdecl, no SEH) - used by the self-test `GuestSehThroughHostFrame`; evidence in the header. |
+| 2026-10-05 | fiber (M2 phase 1) | (fiber-owned files and APIs, listed for the other agents) | New `asm\fiber_switch.asm` (`fut_switch_to_fiber`, `fut_seh3_frame_call`), `kernel\mm_kernel_stack.h/.cpp`, `xapi\xapi_fiber.h/.cpp`, `core\selftest_m2.cpp`, `tests\fiber_tests.cpp`; section 4.14. Hook `XAPILIB::SwitchToFiber` 0x17094F (+1 `HOOK INFO` line). New log lines on the first fiber use: KRNL/info `fiber stacks: ...`, XAPI/info `fiber: first SwitchToFiber ...` (M2 exit 5: fiber switches > 0). Self-tests (AdoptedThread) `GuestSehOnFiberStack` (M2 exit 6) and `GuestSehThroughHostFrame` (m1_report 8: host frame between guest frames - works, but host destructors are skipped; rule in 4.14). **Experiment (R2, Windows 11 WoW64, 32-bit ntdll disassembly)**: without switching TEB StackBase/StackLimit every exception on a fiber stack kills the process; Windows 11 runs SEHOP in audit mode by default, with SEHOP enforced (`PROCESS_CREATION_MITIGATION_POLICY_SEHOP_ENABLE`) a chain ending in -1, or a terminal record at StackBase-8, kills the process - the stacks therefore carry a terminal record from `RtlInitializeExceptionChain` at StackBase-0x10 (deviation from design 1.7 "8-Byte-Record oben", which fails the strict bound). An unhandled exception on a fiber reaches the host top-level filter only through the fiber-top record. Verified: unit tests (also in SEHOP-enforced child processes), loader self-tests and a 600-frame run under enforced SEHOP. **Integration**: please call `xapi::LogFiberSummary()` (and `krnl::io::LogIoApcStats`) before `core::ExitHostProcess` at the orderly `--frames` end (`gfx\nipc_renderer.cpp`), there is no generic exit reporter. |
+| 2026-10-05 | gfx (M2 phase 1) | `core\guest.h` | Renderer/D3D constants (evidence in the header): `kNiXBoxRendererVtable` 0x2AA7C0, `kNiXBoxRendererRtti` 0x30EE00, `kNiXBoxRendererSize` 0x6D0, `kNiRendererBaseCtor` 0x140550 / `kNiRendererBaseDtor` 0x1406E0 (thiscall, no stack args), `kNiRendererList` 0x2D7B18, `kGameOperatorNew` 0xA4900 / `kGameOperatorDelete` 0xA3880 (cdecl), `kGameScreenOffsetUser` 0xA1930 / `kGameScreenOffsetZero` 0xA1920, `kNiImageConverterPtr` 0x30EF64, the 8 D3D shim addresses `kD3DDeviceAddRef` .. `kD3DDeviceSetScreenSpaceOffset`. |
+| 2026-10-05 | gfx (M2 phase 1) | `core\config.cpp` (`kKnownKeys`, command line), `core\config.h` (doc) | `[debug] frames` (U32, 0 = off) + command line `--frames=N` (design 5.4); new section `[render]` (not `[gfx]`: `tests	est_core.cpp` uses `[gfx]` as its example of an unknown section): `frame_rate` (U32 Hz, default 50, 0 = unthrottled), `d3d_traps` (String abort\|log), `load_textures` (Bool, default 1). |
+| 2026-10-05 | gfx (M2 phase 1) | new `tools\gen\gen_d3d_traps.py`, `tools\gen\gen_renderer_slots.py`, generated `src\host\gen\d3d_traps.gen.inc`, `src\host\gen\renderer_slots.gen.inc`, `tools\gen\gen_all.py` (two `GENERATORS.append` lines) | D3D trap table (79 rows) and NiXBoxRenderer slot table (75 rows, `ret N`), both cross-checked with capstone against the XBE if present (section 4.12). |
+| 2026-10-05 | gfx (M2 phase 1) | (gfx-owned files and APIs, listed for the other agents) | New module `src\host\gfx\` (`nipc_renderer.*`, `d3d_shim.*`, `d3d_traps.*`, `purge_probe.*`, `guest_memory.*`, `gfx_config.*`, `gfx_abi.h`, `gfx_selftest.cpp`) and `tests\gfx_tests.cpp`: hooks `NiXBoxRenderer::Create`, 8 `D3D8::*` shims, 79 `trap:D3D8::*`; self-tests `GfxRendererSlotTable`, `GfxRendererThunkPurge`, `GfxD3DShimTrapPurge`; crash reporter "gfx". The orderly `--frames` end (`gfx\nipc_renderer.cpp`, `OnFrameDisplayed`) logs `FRAMES: limit of N frames reached`, the renderer/D3D statistics, `xapi::LogFiberSummary()`, `krnl::io::LogIoApcStats("frame limit")`, `xdk::LogCallSummary(Info)` and exits with code 0 (section 4.15). |

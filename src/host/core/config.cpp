@@ -129,8 +129,10 @@ constexpr KnownKey kKnownKeys[] = {
     {"debug", "crash_test", KeyType::Bool},
     {"debug", "minidump", KeyType::Bool},
     {"debug", "mmio_trap", KeyType::Bool},
+    {"debug", "frames", KeyType::U32},  // gfx (M2): end orderly after N displayed frames, 0 = off
     {"kernel", "strict", KeyType::Bool},
     {"kernel", "min_guest_stack", KeyType::U32},
+    {"kernel", "fiber_stack", KeyType::U32},  // fiber (M2): MmCreateKernelStack minimum, default 0x80000
     {"log", "level", KeyType::String},
     {"log", "console", KeyType::Bool},
     {"log", "debugger", KeyType::Bool},
@@ -144,6 +146,12 @@ constexpr KnownKey kKnownKeys[] = {
     {"saves", "key_mode", KeyType::String},
     {"saves", "signature_key", KeyType::String},
     {"saves", "xbox_cert_key", KeyType::String},
+    // gfx (M2, src/host/gfx/gfx_config.h): [render] = null renderer and D3D shim/traps
+    {"render", "frame_rate", KeyType::U32},       // DisplayFrame pacing in Hz, 0 = unthrottled (default 50)
+    {"render", "d3d_traps", KeyType::String},     // abort (default) | log
+    {"render", "load_textures", KeyType::Bool},   // slot 65 reads texture files for their size (default 1)
+    // xdk (M2, src/host/audio/dsound_stubs.h): DirectSoundCreateStream returns stub streams instead of NULL
+    {"audio", "dummy_streams", KeyType::Bool},  // default 0
 };
 
 bool IsKnownSection(std::string_view section) {
@@ -345,6 +353,8 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
             overrides["debug.selftest"] = "1";
         } else if (valueOf("--trace=", v)) {
             overrides["debug.trace"] = v;
+        } else if (valueOf("--frames=", v)) {  // gfx (M2), design 5.4
+            overrides["debug.frames"] = v;
         } else if (arg == "--strict") {
             overrides["kernel.strict"] = "1";
         } else if (valueOf("--log-level=", v)) {
@@ -360,7 +370,7 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
         } else {
             error = "unknown command line option '" + arg +
                     "' (known: --config= --userdata= --iso= --xbe= --stop-at= --selftest --trace= --strict "
-                    "--log-level= --set=section.key=value)";
+                    "--log-level= --frames= --set=section.key=value)";
             LocalFree(argv);
             return false;
         }

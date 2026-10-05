@@ -720,14 +720,14 @@ std::uint32_t __stdcall Stub_KeBugCheck(std::uint32_t a1) noexcept {
 }
 
 // slot 107, Ord 169: XAPI CreateFiber (Spiel FUN_0013f250 ruft CreateFiber). Stack per VirtualAlloc, Rueckgabe Obergrenze; besser Fiber-API (Create/Switch/Delete/ConvertThreadToFiber) per HLE auf Win32-Fibers
-// returns pointer; fatal stub: XAPI CreateFiber 0x1708B0 needs a real fiber stack (M2, design 1.7/E9)
+// returns pointer
 std::uint32_t __stdcall Stub_MmCreateKernelStack(std::uint32_t a1, std::uint32_t a2) noexcept {
     const std::uint32_t args[2] = {a1, a2};
     return ReportUnimplemented(107, args, 2, _ReturnAddress());
 }
 
 // slot 108, Ord 170: XAPI DeleteFiber. VirtualFree des Stacks (entfaellt bei Fiber-HLE)
-// returns void; fatal stub: XAPI DeleteFiber 0x17093C frees a stack from MmCreateKernelStack (M2, design 1.7/E9)
+// returns void
 std::uint32_t __stdcall Stub_MmDeleteKernelStack(std::uint32_t a1, std::uint32_t a2) noexcept {
     const std::uint32_t args[2] = {a1, a2};
     return ReportUnimplemented(108, args, 2, _ReturnAddress());

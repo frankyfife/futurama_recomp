@@ -40,6 +40,7 @@ LARGE_INTEGER g_qpcStart{};
 LARGE_INTEGER g_qpcFreq{};
 thread_local char t_threadName[24] = {};
 char g_lastError[512] = {};  // body of the most recent error-level line (guarded by g_lock)
+std::atomic<LogTap> g_tap{nullptr};  // (io, M2) SetLogTap
 
 void EnsureClock() noexcept {
     if (g_qpcFreq.QuadPart == 0) {
@@ -162,6 +163,9 @@ void FormatAndEmit(Channel channel, Level level, const char* fmt, va_list args) 
     }
     line[size++] = '\n';
     line[size] = 0;
+    if (const LogTap tap = g_tap.load(std::memory_order_acquire)) {
+        tap(channel, level, line, size);
+    }
     AcquireSRWLockExclusive(&g_lock);
     EmitLocked(line, size);
     if (level == Level::Error) {
@@ -285,6 +289,10 @@ void LogWriteV(Channel channel, Level level, const char* fmt, va_list args) noex
 
 void LogSetThreadName(const char* name) noexcept {
     std::snprintf(t_threadName, sizeof(t_threadName), "%s", name ? name : "?");
+}
+
+void SetLogTap(LogTap tap) noexcept {
+    g_tap.store(tap, std::memory_order_release);
 }
 
 const char* ChannelName(Channel channel) noexcept {

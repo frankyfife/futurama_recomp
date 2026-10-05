@@ -93,6 +93,7 @@ NTSTATUS CreateOrOpen(const char* api, HANDLE* FileHandle, xbox::ACCESS_MASK Des
             static_cast<unsigned long>(DesiredAccess), static_cast<unsigned long>(CreateDisposition),
             static_cast<unsigned long>(CreateOptions));
     }
+    io::TraceVfsLookup(api, target, status, NT_SUCCESS(status) ? ActionName(action) : nullptr, handle);
     return status;
 }
 
@@ -175,8 +176,18 @@ KRNL_FUNC(NtOpenFile, &NtOpenFile);
 // 2048-aligned chunks that may run up to 2047 bytes past the end -> success with a smaller
 // Information; reads must never fail), 5.1 item 2 (ReadFileEx: ApcRoutine = NtUserIoApcDispatcher,
 // ApcContext = completion routine, IoStatusBlock = OVERLAPPED); design 1.7 (APC path).
-// M1: the transfer is always synchronous; with an ApcRoutine the completion is queued for the calling
-// thread and STATUS_PENDING returned (io_apc.h) - delivery needs the kernel agent's alertable waits.
+// The transfer is always synchronous; with an ApcRoutine the completion is queued for the calling
+// thread and STATUS_PENDING returned (io_apc.h, CompleteIo), delivered by the alertable waits of
+// ke_wait.cpp. The Event parameter is reset at the start and signalled on completion (io_common.h).
+// End of file (deviation A8, re-checked for M2): a read that runs past the end succeeds with the
+// clipped length; a read that STARTS at/after the end returns STATUS_END_OF_FILE like NT (XAPI ReadFile
+// 0xF7203..0xF7215 turns it into TRUE with 0 bytes). On the ReadFileEx path that status would make
+// ReadFileEx return FALSE and FUN_0013F660 call the disc error handler (io_apc.h), but the stream code
+// never asks for it: FUN_0013F7B0 only issues a chunk while the aligned position (+0x5C) is below the
+// stream size (+0x40), so the ByteOffset archiveBase(+0x4C) + alignedPos is inside the member and
+// archive members lie completely inside their .img (files.md 3.4); the last chunk is rounded up by at
+// most 0x7FF (0x13F847) - clipped, not failed. Should it happen anyway, NoteFailedIoApcRequest logs
+// an error and counts it (GetIoApcStats().failedRequests, M2 exit criterion 5).
 NTSTATUS __stdcall NtReadFile(HANDLE FileHandle, HANDLE Event, io::IoApcRoutine ApcRoutine, void* ApcContext,
                               xbox::IO_STATUS_BLOCK* IoStatusBlock, void* Buffer, ULONG Length,
                               xbox::LARGE_INTEGER* ByteOffset) noexcept {
@@ -188,6 +199,10 @@ NTSTATUS __stdcall NtReadFile(HANDLE FileHandle, HANDLE Event, io::IoApcRoutine 
         }
         if (file->File().IsDirectory()) {
             return STATUS_INVALID_DEVICE_REQUEST;
+        }
+        Ref<EventObject> event;
+        if (const NTSTATUS es = io::ReferenceEvent("NtReadFile", Event, event); !NT_SUCCESS(es)) {
+            return es;
         }
         std::uint64_t offset = 0;
         if (!ResolveOffset("NtReadFile", *file, ByteOffset, false, offset)) {
@@ -204,16 +219,21 @@ NTSTATUS __stdcall NtReadFile(HANDLE FileHandle, HANDLE Event, io::IoApcRoutine 
         if (NT_SUCCESS(status) && file->Synchronous()) {
             file->SetPosition(offset + transferred);
         }
-        FUT_LOGT(Vfs, "read %s @0x%llX len 0x%lX -> %s 0x%X%s", file->FullPath().c_str(),
-                 static_cast<unsigned long long>(offset), static_cast<unsigned long>(Length),
-                 io::StatusText(status).c_str(), transferred, ApcRoutine != nullptr ? " (APC)" : "");
+        const NTSTATUS result = io::CompleteIo(
+            io::IoRequest{"NtReadFile", file.get(), event.get(), ApcRoutine, ApcContext, IoStatusBlock},
+            status, transferred);
+        // Kernel trace (design 5.4): decoded arguments and result.
+        FUT_LOGT(Krnl, "NtReadFile(%p %s, @0x%llX, len 0x%lX, apc %p ctx %p iosb %p) -> %s, 0x%X bytes%s",
+                 FileHandle, file->FullPath().c_str(), static_cast<unsigned long long>(offset),
+                 static_cast<unsigned long>(Length), reinterpret_cast<void*>(ApcRoutine), ApcContext,
+                 static_cast<void*>(IoStatusBlock), io::StatusString(result).c_str(), transferred,
+                 Event != nullptr ? " (event)" : "");
         if (!NT_SUCCESS(status) && status != STATUS_END_OF_FILE) {
             FUT_LOGW(Vfs, "read %s @0x%llX len 0x%lX failed: %s", file->FullPath().c_str(),
                      static_cast<unsigned long long>(offset), static_cast<unsigned long>(Length),
                      io::StatusText(status).c_str());
         }
-        return io::CompleteIo("NtReadFile", Event, ApcRoutine, ApcContext, IoStatusBlock, status,
-                              transferred);
+        return result;
     }
     FUT_HLE_CATCH("NtReadFile")
 }
@@ -241,6 +261,10 @@ NTSTATUS __stdcall NtWriteFile(HANDLE FileHandle, HANDLE Event, io::IoApcRoutine
                      static_cast<unsigned long>(file->DesiredAccess()));
             return STATUS_ACCESS_DENIED;
         }
+        Ref<EventObject> event;
+        if (const NTSTATUS es = io::ReferenceEvent("NtWriteFile", Event, event); !NT_SUCCESS(es)) {
+            return es;
+        }
         std::uint64_t offset = 0;
         if (!ResolveOffset("NtWriteFile", *file, ByteOffset, true, offset)) {
             return STATUS_INVALID_PARAMETER;
@@ -256,16 +280,20 @@ NTSTATUS __stdcall NtWriteFile(HANDLE FileHandle, HANDLE Event, io::IoApcRoutine
         if (NT_SUCCESS(status) && file->Synchronous()) {
             file->SetPosition(offset + transferred);
         }
-        FUT_LOGT(Vfs, "write %s @0x%llX len 0x%lX -> %s 0x%X%s", file->FullPath().c_str(),
-                 static_cast<unsigned long long>(offset), static_cast<unsigned long>(Length),
-                 io::StatusText(status).c_str(), transferred, ApcRoutine != nullptr ? " (APC)" : "");
+        const NTSTATUS result = io::CompleteIo(
+            io::IoRequest{"NtWriteFile", file.get(), event.get(), ApcRoutine, ApcContext, IoStatusBlock},
+            status, transferred);
+        FUT_LOGT(Krnl, "NtWriteFile(%p %s, @0x%llX, len 0x%lX, apc %p ctx %p iosb %p) -> %s, 0x%X bytes%s",
+                 FileHandle, file->FullPath().c_str(), static_cast<unsigned long long>(offset),
+                 static_cast<unsigned long>(Length), reinterpret_cast<void*>(ApcRoutine), ApcContext,
+                 static_cast<void*>(IoStatusBlock), io::StatusString(result).c_str(), transferred,
+                 Event != nullptr ? " (event)" : "");
         if (!NT_SUCCESS(status)) {
             FUT_LOGW(Vfs, "write %s @0x%llX len 0x%lX failed: %s", file->FullPath().c_str(),
                      static_cast<unsigned long long>(offset), static_cast<unsigned long>(Length),
                      io::StatusText(status).c_str());
         }
-        return io::CompleteIo("NtWriteFile", Event, ApcRoutine, ApcContext, IoStatusBlock, status,
-                              transferred);
+        return result;
     }
     FUT_HLE_CATCH("NtWriteFile")
 }
@@ -284,7 +312,8 @@ NTSTATUS __stdcall NtFlushBuffersFile(HANDLE FileHandle, xbox::IO_STATUS_BLOCK* 
         if (NT_SUCCESS(status)) {
             io::WriteIoStatus(IoStatusBlock, status, 0);
         }
-        FUT_LOGT(Vfs, "flush %s -> %s", file->FullPath().c_str(), io::StatusText(status).c_str());
+        FUT_LOGT(Krnl, "NtFlushBuffersFile(%p %s) -> %s", FileHandle, file->FullPath().c_str(),
+                 io::StatusString(status).c_str());
         return status;
     }
     FUT_HLE_CATCH("NtFlushBuffersFile")

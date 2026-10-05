@@ -5,6 +5,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 GENERATORS = ["gen_kernel_table.py", "gen_fs_patches.py", "gen_functions.py"]
+GENERATORS.append("gen_xdk_entries.py")  # M2: DSOUND/XMV/XPP entry table (src/host/gen/xdk_entries.gen.inc)
+GENERATORS.append("gen_d3d_traps.py")  # M2 gfx: D3D traps (src/host/gen/d3d_traps.gen.inc)
+GENERATORS.append("gen_renderer_slots.py")  # M2 gfx: NiPCRenderer slots (src/host/gen/renderer_slots.gen.inc)
 
 
 def main():

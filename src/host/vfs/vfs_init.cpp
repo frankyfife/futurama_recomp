@@ -8,6 +8,7 @@
 #include "vfs/vfs_internal.h"
 
 #include "core/log.h"
+#include "core/trace.h"
 
 #include <system_error>
 
@@ -15,6 +16,10 @@ namespace vfs {
 
 bool StageInitVfs(const core::Config& config) {
     try {
+        // --trace=krnl / --trace=vfs (design 5.4): kernel trace ring + crash reporter, vfs_trace.log.
+        // A trace file that cannot be created is logged but does not stop the run.
+        core::trace::Init(config);
+
         // \Device\CdRom0 (D:): the disc image, optionally an extracted disc directory, else no files.
         std::shared_ptr<Device> cdrom;
         const std::filesystem::path discDir = config.GetPath("paths", "disc_dir");

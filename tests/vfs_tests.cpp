@@ -5,10 +5,13 @@
 #include "doctest.h"
 
 #include "core/config.h"
+#include "core/trace.h"
 #include "kernel/io_apc.h"
 #include "kernel/io_exports.h"
 #include "kernel/io_types.h"
+#include "kernel/ke_wait.h"
 #include "kernel/kernel_api.h"
+#include "kernel/kernel_exports.h"
 #include "kernel/ob_handles.h"
 #include "vfs/vfs.h"
 #include "vfs/vfs_init.h"
@@ -16,6 +19,7 @@
 
 #include <winioctl.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <filesystem>
@@ -52,7 +56,8 @@ fs::path TempDir(const char* name) {
     if (base.empty()) {
         base = ExeDir() / "fut_tests_tmp";
     }
-    const fs::path dir = base / name;
+    // make_preferred: FUT_TEST_TMP may use '/', but the "\\?\" paths built by the tests need '\'.
+    const fs::path dir = (base / name).make_preferred();
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir);
@@ -932,4 +937,412 @@ TEST_CASE("io: CdRom0 without a disc image has no files") {
     CHECK(Open(&h, 0x80100000, "\\Device\\CdRom0\\default.xbe", nullptr, 1, 0x60) ==
           STATUS_OBJECT_NAME_NOT_FOUND);
     vfs::ResetNamespace();
+}
+
+// =================================================================================================
+// M2 (io agent): directory enumeration on both device types, Event parameter, APC paths, A8 / disc
+// error handler path, VFS trace. The disc tests use the synthetic XDVDFS image (no ISO needed).
+namespace {
+
+// Namespace with \Device\CdRom0 = synthetic image (root {a.txt 5000, Dir {Sub File.dat}, zeta.bin}) and
+// partition1 under a fresh userdata.
+struct SyntheticDiscFixture {
+    fs::path dir;
+    std::size_t baseHandles = 0;
+
+    explicit SyntheticDiscFixture(const char* name, std::vector<std::string> trace = {}) {
+        vfs::ResetNamespace();
+        dir = TempDir(name);
+        WriteFileBytes(dir / "synthetic.iso", BuildSyntheticImage());
+        core::Config cfg;
+        cfg.userdata = dir / "userdata";
+        cfg.iso = dir / "synthetic.iso";
+        cfg.trace = std::move(trace);
+        REQUIRE(vfs::StageInitVfs(cfg));
+        baseHandles = krnl::HandleTable::Instance().Count();
+    }
+    ~SyntheticDiscFixture() {
+        core::trace::Configure(core::trace::Options{});  // tracing off again
+        vfs::ResetNamespace();
+    }
+    SyntheticDiscFixture(const SyntheticDiscFixture&) = delete;
+    SyntheticDiscFixture& operator=(const SyntheticDiscFixture&) = delete;
+
+    fs::path Partition1() const { return dir / "userdata" / "hdd" / "partition1"; }
+};
+
+struct DirRecord {
+    std::string name;
+    std::uint32_t attributes = 0;
+    std::int64_t endOfFile = 0;
+};
+
+// One NtQueryDirectoryFile call (class 1, 0x148-byte buffer like FindFirstFileA).
+NTSTATUS QueryOne(HANDLE dir, const char* mask, BOOLEAN restart, DirRecord* out,
+                  xbox::IO_STATUS_BLOCK* iosbOut = nullptr, ULONG length = 0x148, HANDLE event = nullptr) {
+    alignas(8) std::uint8_t buf[0x148] = {};
+    xbox::ANSI_STRING m{};
+    std::string maskText = mask != nullptr ? mask : "";
+    m.Length = static_cast<std::uint16_t>(maskText.size());
+    m.MaximumLength = m.Length;
+    m.Buffer = maskText.data();
+    xbox::IO_STATUS_BLOCK iosb{};
+    const NTSTATUS s = krnl::NtQueryDirectoryFile(dir, event, nullptr, nullptr, &iosb, buf, length, 1,
+                                                  mask != nullptr ? &m : nullptr, restart);
+    if ((NT_SUCCESS(s) || s == STATUS_BUFFER_OVERFLOW) && out != nullptr) {
+        const auto* d = reinterpret_cast<const krnl::io::GuestFileDirectoryInformation*>(buf);
+        const std::uint32_t room = length - 0x40;
+        out->name.assign(d->FileName, std::min(room, d->FileNameLength));
+        out->attributes = d->FileAttributes;
+        out->endOfFile = d->EndOfFile.QuadPart;
+    }
+    if (iosbOut != nullptr) {
+        *iosbOut = iosb;
+    }
+    return s;
+}
+
+std::vector<std::string> Sorted(std::vector<std::string> v) {
+    std::sort(v.begin(), v.end());
+    return v;
+}
+
+krnl::io::IoApcRoutine DispatcherRoutine() {
+    return reinterpret_cast<krnl::io::IoApcRoutine>(
+        krnl::GetBinding(krnl::exp::NtUserIoApcDispatcher::slot).address);
+}
+
+std::vector<std::string> ReadLines(const fs::path& p) {
+    std::vector<std::string> lines;
+    std::ifstream in(p);
+    for (std::string line; std::getline(in, line);) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+bool AnyLineContains(const std::vector<std::string>& lines, std::initializer_list<const char*> parts) {
+    for (const std::string& l : lines) {
+        bool all = true;
+        for (const char* p : parts) {
+            if (l.find(p) == std::string::npos) {
+                all = false;
+                break;
+            }
+        }
+        if (all) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+TEST_CASE("io: NtQueryDirectoryFile on the disc image (masks, attributes, restart, buffer, errors)") {
+    SyntheticDiscFixture fx("io_dir_disc");
+    HANDLE h = nullptr;
+    // FindFirstFileA 0xF8961: NtOpenFile(dir, 0x100001, share 3, 0x4021 = SYNC_NONALERT|DIRECTORY|BACKUP)
+    REQUIRE(Open(&h, 0x100001, "\\Device\\CdRom0\\", nullptr, 3, 0x4021) == STATUS_SUCCESS);
+    CHECK(Sorted(ListDir(h, "")) == std::vector<std::string>{"Dir", "a.txt", "zeta.bin"});
+    krnl::NtClose(h);
+    REQUIRE(Open(&h, 0x100001, "\\Device\\CdRom0\\", nullptr, 3, 0x4021) == STATUS_SUCCESS);
+    CHECK(ListDir(h, "*.TXT") == std::vector<std::string>{"a.txt"});  // case-insensitive mask
+    krnl::NtClose(h);
+    REQUIRE(Open(&h, 0x100001, "\\Device\\CdRom0\\", nullptr, 3, 0x4021) == STATUS_SUCCESS);
+    CHECK(ListDir(h, "?eta.*") == std::vector<std::string>{"zeta.bin"});
+    krnl::NtClose(h);
+    NTSTATUS first = 0;
+    REQUIRE(Open(&h, 0x100001, "\\Device\\CdRom0\\", nullptr, 3, 0x4021) == STATUS_SUCCESS);
+    CHECK(ListDir(h, "*.xyz", &first).empty());
+    CHECK(first == STATUS_NO_SUCH_FILE);  // nothing matched since the scan started
+    krnl::NtClose(h);
+
+    // attributes and sizes; one entry per call; RestartScan rewinds; the end is STATUS_NO_MORE_FILES
+    REQUIRE(Open(&h, 0x100001, "\\Device\\CdRom0\\", nullptr, 3, 0x4021) == STATUS_SUCCESS);
+    std::vector<DirRecord> recs;
+    DirRecord r;
+    xbox::IO_STATUS_BLOCK iosb{};
+    REQUIRE(QueryOne(h, "*", FALSE, &r, &iosb) == STATUS_SUCCESS);
+    CHECK(iosb.Information == 0x40 + r.name.size());
+    const std::string firstName = r.name;
+    recs.push_back(r);
+    while (QueryOne(h, nullptr, FALSE, &r) == STATUS_SUCCESS) {
+        recs.push_back(r);
+    }
+    REQUIRE(recs.size() == 3);
+    CHECK(QueryOne(h, nullptr, FALSE, &r) == STATUS_NO_MORE_FILES);
+    for (const DirRecord& d : recs) {
+        CHECK((d.attributes & 0x01) != 0);  // the disc is read-only
+        if (d.name == "Dir") {
+            CHECK((d.attributes & 0x10) != 0);
+            CHECK(d.endOfFile == 0);
+        } else {
+            CHECK((d.attributes & 0x10) == 0);
+            CHECK(d.endOfFile == (d.name == "a.txt" ? kAFileSize : 10));
+        }
+    }
+    REQUIRE(QueryOne(h, nullptr, TRUE, &r) == STATUS_SUCCESS);  // RestartScan
+    CHECK(r.name == firstName);
+    // a buffer too small for the name: STATUS_BUFFER_OVERFLOW, the entry is consumed (NT semantics)
+    REQUIRE(QueryOne(h, nullptr, TRUE, &r) == STATUS_SUCCESS);
+    CHECK(QueryOne(h, nullptr, FALSE, &r, &iosb, 0x42) == STATUS_BUFFER_OVERFLOW);
+    CHECK(iosb.Information == 0x42);
+    CHECK(r.name.size() == 2);
+    CHECK(QueryOne(h, nullptr, FALSE, &r) == STATUS_SUCCESS);
+    CHECK(QueryOne(h, nullptr, FALSE, &r) == STATUS_NO_MORE_FILES);
+    CHECK(QueryOne(h, nullptr, FALSE, &r, nullptr, 0x3F) == STATUS_INFO_LENGTH_MISMATCH);
+    {
+        alignas(8) std::uint8_t buf[0x148];
+        CHECK(krnl::NtQueryDirectoryFile(h, nullptr, nullptr, nullptr, &iosb, buf, sizeof(buf), 2, nullptr,
+                                         FALSE) == STATUS_INVALID_INFO_CLASS);
+    }
+    // Event parameter: reset at the start, signalled on completion; a bad handle starts nothing
+    const HANDLE ev = krnl::CreateEventHandle(krnl::EventObject::Type::Notification, false);
+    REQUIRE(ev != nullptr);
+    REQUIRE(QueryOne(h, nullptr, TRUE, &r, nullptr, 0x148, ev) == STATUS_SUCCESS);
+    CHECK(krnl::LookupEvent(ev)->TryWait());
+    CHECK(QueryOne(h, nullptr, FALSE, &r, nullptr, 0x148, reinterpret_cast<HANDLE>(0x7777)) ==
+          STATUS_INVALID_HANDLE);
+    CHECK(QueryOne(h, nullptr, FALSE, &r, nullptr, 0x148, h) == STATUS_OBJECT_TYPE_MISMATCH);
+    REQUIRE(QueryOne(h, nullptr, FALSE, &r) == STATUS_SUCCESS);  // 2nd entry: the bad calls did not advance
+    CHECK(r.name != firstName);
+    krnl::NtClose(ev);
+    krnl::NtClose(h);
+
+    // subdirectory, opened relative to the root handle like FUN_000f8709
+    HANDLE root = nullptr;
+    REQUIRE(Open(&root, 0x100001, "\\Device\\CdRom0\\", nullptr, 3, 0x4021) == STATUS_SUCCESS);
+    REQUIRE(Open(&h, 0x100001, "dir", root, 3, 0x4021) == STATUS_SUCCESS);
+    CHECK(ListDir(h, "*") == std::vector<std::string>{"Sub File.dat"});
+    krnl::NtClose(h);
+    krnl::NtClose(root);
+    // a file is not a directory
+    REQUIRE(Open(&h, 0x80100080, "\\Device\\CdRom0\\a.txt", nullptr, 1, 0x40) == STATUS_SUCCESS);
+    CHECK(QueryOne(h, "*", FALSE, &r) == STATUS_INVALID_PARAMETER);
+    krnl::NtClose(h);
+    CHECK(krnl::HandleTable::Instance().Count() == fx.baseHandles);
+}
+
+TEST_CASE("io: NtQueryDirectoryFile on a host directory (partition1) and with an APC") {
+    SyntheticDiscFixture fx("io_dir_host");
+    const fs::path title = fx.Partition1() / "UDATA" / "46490002";
+    fs::create_directories(title / "0123456789AB");
+    {
+        std::ofstream(title / "TitleMeta.xbx", std::ios::binary) << "abcd";
+    }
+    {
+        std::ofstream(title / "0123456789AB" / "SaveMeta.xbx", std::ios::binary) << "x";
+    }
+    HANDLE h = nullptr;
+    REQUIRE(Open(&h, 0x100001, "\\Device\\Harddisk0\\partition1\\UDATA\\46490002", nullptr, 3, 0x4021) ==
+            STATUS_SUCCESS);
+    std::vector<DirRecord> recs;
+    DirRecord r;
+    for (NTSTATUS s = QueryOne(h, "*", FALSE, &r); s == STATUS_SUCCESS; s = QueryOne(h, nullptr, FALSE, &r)) {
+        recs.push_back(r);
+    }
+    REQUIRE(recs.size() == 2);  // no "." / ".."
+    for (const DirRecord& d : recs) {
+        if (d.name == "0123456789AB") {
+            CHECK((d.attributes & 0x10) != 0);
+        } else {
+            CHECK(d.name == "TitleMeta.xbx");
+            CHECK((d.attributes & 0x10) == 0);
+            CHECK(d.endOfFile == 4);
+        }
+    }
+    krnl::NtClose(h);
+
+    // asynchronous directory handle (no FILE_SYNCHRONOUS_IO_*) + NtUserIoApcDispatcher: STATUS_PENDING,
+    // the IoStatusBlock is written when the APC is delivered by an alertable user-mode wait
+    REQUIRE(Open(&h, 0x100001, "\\Device\\Harddisk0\\partition1\\UDATA\\46490002", nullptr, 3, 0x4001) ==
+            STATUS_SUCCESS);
+    alignas(8) std::uint8_t buf[0x148];
+    xbox::OVERLAPPED ovl{};
+    xbox::ANSI_STRING mask{};
+    char maskText[] = "*.xbx";
+    mask.Length = 5;
+    mask.MaximumLength = 6;
+    mask.Buffer = maskText;
+    g_completionCalls = 0;
+    CHECK(krnl::NtQueryDirectoryFile(h, nullptr, DispatcherRoutine(),
+                                     reinterpret_cast<void*>(&TestCompletion),
+                                     reinterpret_cast<xbox::IO_STATUS_BLOCK*>(&ovl), buf, sizeof(buf), 1,
+                                     &mask, FALSE) == STATUS_PENDING);
+    CHECK(ovl.InternalHigh == 0);
+    xbox::LARGE_INTEGER zero;
+    zero.QuadPart = 0;
+    CHECK(krnl::KeDelayExecutionThread(krnl::kUserMode, TRUE, &zero) == STATUS_USER_APC);
+    CHECK(g_completionCalls == 1);
+    CHECK(g_completionError == 0);
+    CHECK(g_completionBytes == 0x40 + 13);  // "TitleMeta.xbx"
+    CHECK(ovl.InternalHigh == 0x40 + 13);
+    // no match left: STATUS_NO_MORE_FILES is a warning (0x80000006), not an error - completed like a
+    // success (NT IopCompleteRequest), dwErrorCode 0 (BasepIoCompletion), the status in the OVERLAPPED
+    CHECK(krnl::NtQueryDirectoryFile(h, nullptr, DispatcherRoutine(),
+                                     reinterpret_cast<void*>(&TestCompletion),
+                                     reinterpret_cast<xbox::IO_STATUS_BLOCK*>(&ovl), buf, sizeof(buf), 1,
+                                     nullptr, FALSE) == STATUS_PENDING);
+    CHECK(krnl::KeDelayExecutionThread(krnl::kUserMode, TRUE, &zero) == STATUS_USER_APC);
+    CHECK(g_completionCalls == 2);
+    CHECK(g_completionError == 0);
+    CHECK(ovl.Internal == static_cast<std::uint32_t>(STATUS_NO_MORE_FILES));
+    // an error is returned synchronously: nothing is queued
+    CHECK(krnl::NtQueryDirectoryFile(h, nullptr, DispatcherRoutine(),
+                                     reinterpret_cast<void*>(&TestCompletion),
+                                     reinterpret_cast<xbox::IO_STATUS_BLOCK*>(&ovl), buf, sizeof(buf), 7,
+                                     nullptr, FALSE) == STATUS_INVALID_INFO_CLASS);
+    CHECK(krnl::io::PendingIoApcCount() == 0);
+    krnl::NtClose(h);
+
+    // synchronous handle + APC: the final status is returned, the APC is still queued (NT)
+    REQUIRE(Open(&h, 0x100001, "\\Device\\Harddisk0\\partition1\\UDATA\\46490002", nullptr, 3, 0x4021) ==
+            STATUS_SUCCESS);
+    xbox::OVERLAPPED ovl2{};
+    CHECK(krnl::NtQueryDirectoryFile(h, nullptr, DispatcherRoutine(),
+                                     reinterpret_cast<void*>(&TestCompletion),
+                                     reinterpret_cast<xbox::IO_STATUS_BLOCK*>(&ovl2), buf, sizeof(buf), 1,
+                                     nullptr, FALSE) == STATUS_SUCCESS);
+    CHECK(ovl2.InternalHigh != 0);  // written at once on a synchronous handle
+    CHECK(krnl::io::PendingIoApcCount() == 1);
+    CHECK(krnl::KeDelayExecutionThread(krnl::kUserMode, TRUE, &zero) == STATUS_USER_APC);
+    CHECK(g_completionCalls == 3);
+    krnl::NtClose(h);
+    CHECK(krnl::HandleTable::Instance().Count() == fx.baseHandles);
+}
+
+TEST_CASE("io: NtReadFile Event parameter, end of file (A8) and the disc error handler path") {
+    SyntheticDiscFixture fx("io_read_event");
+    REQUIRE(krnl::IsImplemented(krnl::exp::NtUserIoApcDispatcher::slot));
+    while (krnl::io::DeliverIoApcs() != 0) {
+    }
+    HANDLE h = nullptr;
+    // NiUDSStream: CreateFileA(.., OPEN_EXISTING, 0x68000000) -> asynchronous handle, options 0x4C
+    REQUIRE(Open(&h, 0x80100080, "\\Device\\CdRom0\\a.txt", nullptr, 1, 0x4C) == STATUS_SUCCESS);
+    std::vector<std::uint8_t> buf(0x1000, 0xEE);
+    xbox::IO_STATUS_BLOCK iosb{};
+    xbox::LARGE_INTEGER off{};
+    xbox::LARGE_INTEGER zero{};
+    const HANDLE ev = krnl::CreateEventHandle(krnl::EventObject::Type::Notification, true);
+    REQUIRE(ev != nullptr);
+
+    // plain read with an event: completes at once, IoStatusBlock + event
+    off.QuadPart = 0;
+    CHECK(krnl::NtReadFile(h, ev, nullptr, nullptr, &iosb, buf.data(), 0x800, &off) == STATUS_SUCCESS);
+    CHECK(iosb.Information == 0x800);
+    CHECK(krnl::LookupEvent(ev)->TryWait());
+
+    // ReadFileEx-style request with an event: STATUS_PENDING, IoStatusBlock + event at once, APC later
+    const krnl::io::IoApcStats before = krnl::io::GetIoApcStats();
+    xbox::OVERLAPPED ovl{};
+    g_completionCalls = 0;
+    off.QuadPart = 4096;  // last 2048-aligned chunk: runs 0x800 - 904 bytes past the end -> clipped
+    CHECK(krnl::NtReadFile(h, ev, DispatcherRoutine(), reinterpret_cast<void*>(&TestCompletion),
+                           reinterpret_cast<xbox::IO_STATUS_BLOCK*>(&ovl), buf.data(), 0x800,
+                           &off) == STATUS_PENDING);
+    CHECK(ovl.InternalHigh == kAFileSize - 4096);
+    CHECK(krnl::LookupEvent(ev)->TryWait());
+    CHECK(g_completionCalls == 0);
+    CHECK(krnl::KeDelayExecutionThread(krnl::kUserMode, TRUE, &zero) == STATUS_USER_APC);
+    CHECK(g_completionCalls == 1);
+    CHECK(g_completionError == 0);  // a read past EOF never reaches the completion as an error
+    CHECK(g_completionBytes == kAFileSize - 4096);
+
+    // A8: a read that STARTS at/after the end fails synchronously - with NtUserIoApcDispatcher this is
+    // the "ReadFileEx returns FALSE" path of FUN_0013F660 (disc error handler), counted and logged
+    off.QuadPart = 6144;
+    buf[0] = 0xEE;
+    CHECK(krnl::NtReadFile(h, ev, DispatcherRoutine(), reinterpret_cast<void*>(&TestCompletion),
+                           reinterpret_cast<xbox::IO_STATUS_BLOCK*>(&ovl), buf.data(), 0x800,
+                           &off) == STATUS_END_OF_FILE);
+    CHECK(krnl::io::PendingIoApcCount() == 0);
+    CHECK_FALSE(krnl::LookupEvent(ev)->TryWait());  // reset at the start, not signalled on failure
+    const krnl::io::IoApcStats after = krnl::io::GetIoApcStats();
+    CHECK(after.failedRequests - before.failedRequests == 1);
+    CHECK(after.errorCompletions == before.errorCompletions);
+    CHECK(after.queued - before.queued == 1);
+    // synchronous ReadFile at EOF (XAPI turns STATUS_END_OF_FILE into TRUE with 0 bytes)
+    CHECK(krnl::NtReadFile(h, nullptr, nullptr, nullptr, &iosb, buf.data(), 0x800, &off) ==
+          STATUS_END_OF_FILE);
+
+    // bad Event handles: the request is not started
+    off.QuadPart = 0;
+    CHECK(krnl::NtReadFile(h, reinterpret_cast<HANDLE>(0x7777), nullptr, nullptr, &iosb, buf.data(), 0x800,
+                           &off) == STATUS_INVALID_HANDLE);
+    CHECK(buf[0] == 0xEE);
+    CHECK(krnl::NtReadFile(h, h, nullptr, nullptr, &iosb, buf.data(), 0x800, &off) ==
+          STATUS_OBJECT_TYPE_MISMATCH);
+    CHECK(buf[0] == 0xEE);
+    krnl::NtClose(ev);
+    krnl::NtClose(h);
+
+    // NtWriteFile with an event on partition1 (WriteFileEx-style save write: STATUS_PENDING + APC)
+    const HANDLE wev = krnl::CreateEventHandle(krnl::EventObject::Type::Synchronization, false);
+    REQUIRE(wev != nullptr);
+    REQUIRE(Create(&h, 0x40100080, "\\Device\\Harddisk0\\partition1\\TDATA\\save.dat", nullptr, 0x80, 0, 5,
+                   0x48) == STATUS_SUCCESS);
+    std::vector<std::uint8_t> data(0x1000, 0x5A);
+    xbox::OVERLAPPED wovl{};
+    off.QuadPart = 0;
+    g_completionCalls = 0;
+    CHECK(krnl::NtWriteFile(h, wev, DispatcherRoutine(), reinterpret_cast<void*>(&TestCompletion),
+                            reinterpret_cast<xbox::IO_STATUS_BLOCK*>(&wovl), data.data(), 0x1000,
+                            &off) == STATUS_PENDING);
+    CHECK(krnl::NtWaitForSingleObjectEx(wev, krnl::kUserMode, TRUE, &zero) == STATUS_USER_APC);
+    CHECK(g_completionCalls == 1);
+    CHECK(g_completionBytes == 0x1000);
+    CHECK(krnl::NtWaitForSingleObjectEx(wev, krnl::kUserMode, FALSE, &zero) == STATUS_SUCCESS);  // was set
+    krnl::NtClose(h);
+    krnl::NtClose(wev);
+    CHECK(fs::file_size(fx.Partition1() / "TDATA" / "save.dat") == 0x1000);
+    CHECK(krnl::HandleTable::Instance().Count() == fx.baseHandles);
+}
+
+TEST_CASE("io: --trace=vfs writes every open to vfs_trace.log (hit / documented miss / undocumented)") {
+    SyntheticDiscFixture fx("io_vfs_trace", {"vfs"});
+    REQUIRE(core::trace::VfsEnabled());
+    const fs::path tracePath = core::trace::VfsTracePath();
+    CHECK(tracePath == fx.dir / "userdata" / "logs" / "vfs_trace.log");
+    {
+        ObjAttr link("\\??\\D:", nullptr), dev("\\Device\\CdRom0", nullptr);
+        REQUIRE(krnl::IoCreateSymbolicLink(&link.str, &dev.str) == STATUS_SUCCESS);
+        CHECK(krnl::IoCreateSymbolicLink(&link.str, &dev.str) == STATUS_OBJECT_NAME_COLLISION);
+    }
+    HANDLE h = nullptr;
+    REQUIRE(Create(&h, 0x80100080, "D:\\A.TXT", kDos, 0, 1, 1, 0x4C) == STATUS_SUCCESS);
+    krnl::NtClose(h);
+    CHECK(Create(&h, 0x80100080, "D:\\FutPAL05.img", kDos, 0, 1, 1, 0x4C) == STATUS_OBJECT_NAME_NOT_FOUND);
+    CHECK(Create(&h, 0x80100080, "D:\\Video\\Intro-PAL.txt", kDos, 0, 1, 1, 0x4C) ==
+          STATUS_OBJECT_PATH_NOT_FOUND);
+    CHECK(Create(&h, 0x80100080, "D:\\nothing.bin", kDos, 0, 1, 1, 0x4C) == STATUS_OBJECT_NAME_NOT_FOUND);
+    CHECK(Create(&h, 0xC0100080, "D:\\new.dat", kDos, 0x80, 0, 2, 0x60) == STATUS_MEDIA_WRITE_PROTECTED);
+    CHECK(Create(&h, 0x80100080, "Q:\\x", kDos, 0, 1, 1, 0x4C) != STATUS_SUCCESS);  // no Q: link
+    REQUIRE(Create(&h, 0x40100080, "\\Device\\Harddisk0\\partition1\\TDATA\\t.bin", nullptr, 0x80, 0, 5,
+                   0x60) == STATUS_SUCCESS);
+    krnl::NtClose(h);
+    {
+        ObjAttr oa("D:\\zeta.bin", kDos);
+        krnl::io::GuestFileNetworkOpenInformation n{};
+        CHECK(krnl::NtQueryFullAttributesFile(&oa.oa, &n) == STATUS_SUCCESS);
+    }
+    CHECK(core::trace::VfsLineCount() >= 10);
+
+    const std::vector<std::string> lines = ReadLines(tracePath);
+    CHECK(AnyLineContains(lines, {"symbolic link", "\\??\\D:", "\\Device\\CdRom0", ": created"}));
+    CHECK(AnyLineContains(lines, {"symbolic link", "\\??\\D:", "exists STATUS_OBJECT_NAME_COLLISION"}));
+    CHECK(AnyLineContains(lines, {"NtCreateFile", "\"\\??\\D:\\A.TXT\"", "-> \\Device\\CdRom0\\A.TXT",
+                                  ": hit FILE_OPENED", "h="}));
+    CHECK(AnyLineContains(
+        lines, {"FutPAL05.img", ": missing STATUS_OBJECT_NAME_NOT_FOUND (documented: end of the FutPAL"}));
+    CHECK(AnyLineContains(lines,
+                          {"Intro-PAL.txt", ": missing STATUS_OBJECT_PATH_NOT_FOUND (documented: optional"}));
+    CHECK(AnyLineContains(lines, {"nothing.bin", ": missing STATUS_OBJECT_NAME_NOT_FOUND UNDOCUMENTED"}));
+    CHECK(AnyLineContains(lines, {"new.dat", ": error STATUS_MEDIA_WRITE_PROTECTED"}));
+    CHECK(AnyLineContains(lines, {"\"\\??\\Q:\\x\" -> <unresolved>"}));
+    CHECK(AnyLineContains(lines, {"TDATA\\t.bin", ": hit FILE_CREATED"}));
+    CHECK(AnyLineContains(lines, {"NtQueryFullAttributesFile", "zeta.bin", ": hit STATUS_SUCCESS"}));
+    for (const std::string& l : lines) {
+        CHECK((l.empty() || l[0] == '#' || l[0] == '['));
+    }
 }

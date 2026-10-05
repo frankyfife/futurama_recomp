@@ -477,7 +477,8 @@ TEST_CASE("kernel: generated stubs return the failure value of their return kind
     CHECK(exAllocatePool(0x10, 0x74736554) == 0u);           // PVOID -> NULL
     CHECK(halIsReset() == 0u);                               // BOOLEAN -> FALSE
 
-    // Every FUNC export has a return kind; only 107/108 abort without [kernel] strict (until M2).
+    // Every FUNC export has a return kind. 107/108 aborted without [kernel] strict until M2; since M2
+    // they are implemented (kernel/mm_kernel_stack.cpp, fiber agent) and FATAL_STUBS is empty.
     std::uint32_t fatal = 0;
     for (const auto& e : krnl::gen::kExports) {
         CAPTURE(e.name);
@@ -487,9 +488,11 @@ TEST_CASE("kernel: generated stubs return the failure value of their return kind
         }
         fatal += e.stubFatal ? 1u : 0u;
     }
-    CHECK(fatal == 2u);
-    CHECK(krnl::gen::kExports[krnl::exp::MmCreateKernelStack::slot].stubFatal);
-    CHECK(krnl::gen::kExports[krnl::exp::MmDeleteKernelStack::slot].stubFatal);
+    CHECK(fatal == 0u);
+    CHECK_FALSE(krnl::gen::kExports[krnl::exp::MmCreateKernelStack::slot].stubFatal);
+    CHECK_FALSE(krnl::gen::kExports[krnl::exp::MmDeleteKernelStack::slot].stubFatal);
+    CHECK(krnl::IsImplemented(krnl::exp::MmCreateKernelStack::slot));
+    CHECK(krnl::IsImplemented(krnl::exp::MmDeleteKernelStack::slot));
 }
 
 TEST_CASE("kernel: [saves] key_mode = xbox derives the keys from the certificate (design 4.5)") {

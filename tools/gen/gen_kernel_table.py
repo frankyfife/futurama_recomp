@@ -60,9 +60,9 @@ RET_ENUM = {"ntstatus": "Ntstatus", "pointer": "Pointer", "boolean": "Boolean", 
 
 # Slots whose generated stub aborts even without [kernel] strict = 1, because no return value lets
 # the caller continue safely (review finding 1). Remove a slot here once it is implemented.
+# M2 (fiber agent): 107 MmCreateKernelStack / 108 MmDeleteKernelStack are implemented in
+# src/host/kernel/mm_kernel_stack.cpp and were removed; the mechanism stays for future slots.
 FATAL_STUBS = {
-    107: "XAPI CreateFiber 0x1708B0 needs a real fiber stack (M2, design 1.7/E9)",
-    108: "XAPI DeleteFiber 0x17093C frees a stack from MmCreateKernelStack (M2, design 1.7/E9)",
 }
 
 

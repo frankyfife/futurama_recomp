@@ -12,6 +12,7 @@
 #include "vfs/vfs_internal.h"
 
 #include "core/log.h"
+#include "core/trace.h"
 
 #include <algorithm>
 
@@ -147,11 +148,14 @@ NTSTATUS CreateSymbolicLink(std::string_view link, std::string_view target) {
                                         [&](const DeviceEntry& d) { return IEquals(d.name, name); });
         if (exists) {
             FUT_LOGD(Vfs, "symlink %s exists already -> STATUS_OBJECT_NAME_COLLISION", name.c_str());
+            core::trace::VfsLine("%-25s \"%s\" -> %s : exists STATUS_OBJECT_NAME_COLLISION", "symbolic link",
+                                 name.c_str(), dest.c_str());
             return STATUS_OBJECT_NAME_COLLISION;
         }
         ns.links.push_back(LinkEntry{name, dest});
     }
     FUT_LOGI(Vfs, "symlink %s -> %s", name.c_str(), dest.c_str());
+    core::trace::VfsLine("%-25s \"%s\" -> %s : created", "symbolic link", name.c_str(), dest.c_str());
     return STATUS_SUCCESS;
 }
 

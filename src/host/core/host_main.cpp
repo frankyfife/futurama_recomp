@@ -32,9 +32,12 @@
 #include "platform/platform.h"
 #include "vfs/vfs_init.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <functional>
+#include <mutex>
 #include <string>
 
 extern "C" std::uint32_t __cdecl fut_asm_probe(void);  // asm/asm_probe.asm
@@ -165,6 +168,63 @@ FUT_SELFTEST(AsmObjectLinked, Host) {
     return v == 0x46555441u;
 }
 
+namespace {
+
+struct ExitReporterEntry {
+    const char* name;
+    ExitReporter fn;
+};
+std::mutex g_exitReporterLock;  // constexpr constructor: usable from static initializers
+ExitReporterEntry g_exitReporters[kMaxExitReporters] = {};
+int g_exitReporterCount = 0;
+
+}  // namespace
+
+void AddExitReporter(const char* name, ExitReporter reporter) noexcept {
+    if (reporter == nullptr) {
+        return;
+    }
+    const char* n = name != nullptr ? name : "?";
+    bool full = false;
+    {
+        std::lock_guard<std::mutex> lock(g_exitReporterLock);
+        for (int i = 0; i < g_exitReporterCount; ++i) {
+            if (std::strcmp(g_exitReporters[i].name, n) == 0) {
+                return;  // registered already (e.g. a module that registers on first use)
+            }
+        }
+        if (g_exitReporterCount < kMaxExitReporters) {
+            g_exitReporters[g_exitReporterCount++] = ExitReporterEntry{n, reporter};
+        } else {
+            full = true;
+        }
+    }
+    if (full) {
+        FUT_LOGW(Core, "exit reporter '%s' ignored (more than %d)", n, kMaxExitReporters);
+    }
+}
+
+int ExitReporterCount() noexcept {
+    std::lock_guard<std::mutex> lock(g_exitReporterLock);
+    return g_exitReporterCount;
+}
+
+void RunExitReporters() noexcept {
+    ExitReporterEntry copy[kMaxExitReporters];
+    int count = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_exitReporterLock);
+        count = g_exitReporterCount;
+        std::copy(g_exitReporters, g_exitReporters + count, copy);
+    }
+    std::sort(copy, copy + count, [](const ExitReporterEntry& a, const ExitReporterEntry& b) {
+        return std::strcmp(a.name, b.name) < 0;
+    });
+    for (int i = 0; i < count; ++i) {
+        copy[i].fn();  // noexcept by type: a throwing reporter ends in std::terminate (crash path)
+    }
+}
+
 void ExitHostProcess(int exitCode, const char* reason) noexcept {
     static std::atomic<int> exiting{0};
     if (exiting.fetch_add(1) != 0) {
@@ -172,6 +232,11 @@ void ExitHostProcess(int exitCode, const char* reason) noexcept {
         for (;;) {
             Sleep(INFINITE);
         }
+    }
+    if (exitCode != kExitWatchdog) {
+        // Not after a watchdog timeout: a hung guest thread might hold a lock a reporter takes, and the
+        // watchdog has already dumped every thread.
+        RunExitReporters();
     }
     FUT_LOGI(Core, "process exit: %s (exit code %d; %llu first-chance guest exceptions)",
              reason ? reason : "-", exitCode, static_cast<unsigned long long>(GuestExceptionCount()));

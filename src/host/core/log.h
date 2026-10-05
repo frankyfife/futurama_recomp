@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -62,6 +63,13 @@ void LogWriteV(Channel channel, Level level, const char* fmt, va_list args) noex
 
 // Name shown in the thread column (e.g. "boot", "guest-main"). Default: "t<n>" in order of first use.
 void LogSetThreadName(const char* name) noexcept;
+
+// (added by io, M2) Observer of every line that passes the level check, e.g. the kernel trace ring
+// buffer of core/trace.h (design 5.4). Called before the line is written, outside the log lock, with
+// the complete line (prefix included, ending in '\n', `size` without the terminating NUL). Must be
+// fast, noexcept and must not log. nullptr removes the tap. One tap per process.
+using LogTap = void (*)(Channel channel, Level level, const char* line, std::size_t size) noexcept;
+void SetLogTap(LogTap tap) noexcept;
 
 const char* ChannelName(Channel channel) noexcept;  // "CORE", "KRNL", ...
 const char* LevelName(Level level) noexcept;        // "error", ...

@@ -82,4 +82,10 @@ std::string StatusText(NTSTATUS status);  // "STATUS_..." or "0x........"
 // Used for \Device\CdRom0 when no disc image is configured (design 6, M1: "CdRom0 als Geraet ohne Dateien").
 std::shared_ptr<Device> CreateEmptyDevice(const char* kind);
 
+// (M2, VFS trace) Why a name the guest looks up does not exist, if that is documented in the analysis
+// (files.md 1.2/3.2/4.1: FutPAL05.img ends the archive mount loop, Video/*.txt is optional, ...);
+// nullptr for an undocumented miss. `devicePath` "\Device\CdRom0", `relativePath` "\FutPAL05.img".
+// Table in vfs_known_missing.cpp.
+const char* DocumentedMissReason(std::string_view devicePath, std::string_view relativePath) noexcept;
+
 }  // namespace vfs::detail

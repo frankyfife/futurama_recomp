@@ -3,7 +3,7 @@
 // Sources:   analysis/retail_eu_export/functions.tsv, tools/gen/extra_function_starts.tsv
 //
 // Initializer rows for guest::FunctionInfo (core/guest.h), sorted by address.
-// 7013 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
+// 7014 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
 // { address, size, flags (0 ghidra, 1 extra start, 2 synthetic range), name },
 { 0x00011000u, 0x69u, 0, "FUN_00011000" },
 { 0x00011070u, 0x69u, 0, "FUN_00011070" },
@@ -3101,6 +3101,7 @@
 { 0x000F2BF0u, 0x6Eu, 0, "FUN_000f2bf0" },
 { 0x000F2C60u, 0x8Fu, 0, "FUN_000f2c60" },
 { 0x000F2CF0u, 0x2DCu, 0, "FUN_000f2cf0" },
+{ 0x000F2FD0u, 0xD9u, 1, "DiscErrorScreen_vf0" },
 { 0x000F30B0u, 0x321u, 0, "FUN_000f30b0" },
 { 0x000F33E0u, 0x560u, 0, "FUN_000f33e0" },
 { 0x000F3940u, 0xBEu, 0, "FUN_000f3940" },

@@ -39,7 +39,7 @@ void LogControlOnce(const char* api, const std::string& path, ULONG code, NTSTAT
 // SCSI pass-through with CDB 0x5A/0xAD on \Device\CdRom0; the result is ignored at 0x0F931E) and
 // FUN_000f946d (FATX format via XMountUtilityDrive, 0x70000/0x74004; replaced by the core hook).
 // Design 2.1/4.3 + Anhang A: every IOCTL fails with STATUS_INVALID_DEVICE_REQUEST (logged).
-NTSTATUS __stdcall NtDeviceIoControlFile(HANDLE FileHandle, HANDLE /*Event*/, io::IoApcRoutine /*ApcRoutine*/,
+NTSTATUS __stdcall NtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, io::IoApcRoutine ApcRoutine,
                                          void* /*ApcContext*/, xbox::IO_STATUS_BLOCK* /*IoStatusBlock*/,
                                          ULONG IoControlCode, void* /*InputBuffer*/,
                                          ULONG /*InputBufferLength*/, void* /*OutputBuffer*/,
@@ -51,9 +51,16 @@ NTSTATUS __stdcall NtDeviceIoControlFile(HANDLE FileHandle, HANDLE /*Event*/, io
                      static_cast<unsigned long>(IoControlCode));
             return STATUS_INVALID_HANDLE;
         }
+        Ref<EventObject> event;
+        if (const NTSTATUS es = io::ReferenceEvent("NtDeviceIoControlFile", Event, event); !NT_SUCCESS(es)) {
+            return es;
+        }
+        // Fails synchronously: no IoStatusBlock, no event, no APC (io_common.h CompleteIo).
         const NTSTATUS status = STATUS_INVALID_DEVICE_REQUEST;
         LogControlOnce("NtDeviceIoControlFile", file->FullPath(), IoControlCode, status);
-        return status;
+        return io::CompleteIo(
+            io::IoRequest{"NtDeviceIoControlFile", file.get(), event.get(), ApcRoutine, nullptr, nullptr},
+            status, 0);
     }
     FUT_HLE_CATCH("NtDeviceIoControlFile")
 }
@@ -74,9 +81,14 @@ NTSTATUS __stdcall NtFsControlFile(HANDLE FileHandle, HANDLE Event, io::IoApcRou
         if (!file) {
             return STATUS_INVALID_HANDLE;
         }
+        Ref<EventObject> event;
+        if (const NTSTATUS es = io::ReferenceEvent("NtFsControlFile", Event, event); !NT_SUCCESS(es)) {
+            return es;
+        }
         LogControlOnce("NtFsControlFile", file->FullPath(), FsControlCode, STATUS_SUCCESS);
-        return io::CompleteIo("NtFsControlFile", Event, ApcRoutine, ApcContext, IoStatusBlock, STATUS_SUCCESS,
-                              0);
+        return io::CompleteIo(
+            io::IoRequest{"NtFsControlFile", file.get(), event.get(), ApcRoutine, ApcContext, IoStatusBlock},
+            STATUS_SUCCESS, 0);
     }
     FUT_HLE_CATCH("NtFsControlFile")
 }
