@@ -164,7 +164,7 @@ std::atomic<std::uint32_t> g_defaultNoImage{0}, g_defaultUnreadable{0}, g_defaul
     g_defaultNotLoaded{0};
 
 bool IsPowerOfTwo(std::uint32_t v) noexcept {
-    return v != 0 && (v & (v - 1)) == 0;  // = the bit loops of FUN_0015E010 (0x15E0B5..0x15E0D8)
+    return v != 0 && (v & (v - 1)) == 0;  // = the bit loops of FUN_0015E010 (0x15E087..0x15E0C1)
 }
 
 void FillDefaultTextureInfo(NiPCTextureData* data) noexcept {
@@ -177,9 +177,9 @@ void FillDefaultTextureInfo(NiPCTextureData* data) noexcept {
     }
 }
 
-// Size and format of a source texture in the order of FUN_0015E010 (0x15E04B..0x15E0F0):
-//   1. image = the file at +0x30 if a path is set, read through the game's NiImageConverter (singleton
-//      [0x30EF64], vf2 = ReadImageFile, thiscall (path, 0); the result has refcount 0), else the
+// Size and format of a source texture in the order of FUN_0015E010 (0x15E05B..0x15E0E0):
+//   1. image = the file at +0x30 if a path is set, read through the game's NiImageConverter (FUN_001511D0
+//      = singleton [0x30EF64], vf2 = ReadImageFile, thiscall (path, 0); the result has refcount 0), else the
 //      NiPixelData at +0x34 - a path wins even if +0x34 is set;
 //   2. no image, or width/height of mip 0 not a power of two -> the renderer's default texture (8x8).
 // The game sees the result through NiSourceTexture::vf11/vf12 (GetWidth/GetHeight 0x118000/0x118020 ->
