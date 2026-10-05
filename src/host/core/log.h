@@ -40,6 +40,9 @@ bool LogInit(const LogOptions& options, std::string* error = nullptr) noexcept;
 void LogShutdown() noexcept;
 void LogFlush() noexcept;
 const std::filesystem::path& LogFilePath() noexcept;
+// Message text (without timestamp/thread/channel prefix) of the most recent error-level line, "" if
+// none was logged. Used to report stage failures outside the log file (core/host_main.cpp).
+std::string LogLastError();
 
 void LogSetLevel(Channel channel, Level level) noexcept;
 void LogSetAllLevels(Level level) noexcept;

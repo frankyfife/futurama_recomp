@@ -74,10 +74,14 @@ struct Registrar {
     }
 };
 
-// Called by every generated stub: logs "UNIMPLEMENTED Ord <n> <Name>(args) ret=<caller>" once per
-// return address (warn), honours [kernel] strict, returns STATUS_NOT_IMPLEMENTED.
+// Called by every generated stub: logs "UNIMPLEMENTED Ord <n> <Name>(args) ret=<caller> -> <value>"
+// once per return address (warn), aborts for stubFatal slots and with [kernel] strict, and returns
+// UnimplementedResult(ret kind of the slot).
 std::uint32_t ReportUnimplemented(std::uint32_t slot, const std::uint32_t* args, std::uint32_t argCount,
                                   void* returnAddress) noexcept;
+// Failure value of a generated stub (design 5.4): STATUS_NOT_IMPLEMENTED for NTSTATUS exports,
+// 0 (NULL / FALSE / 0) for pointer, BOOLEAN, ULONG and void exports.
+std::uint32_t UnimplementedResult(gen::Ret ret) noexcept;
 // Called if the guest calls an ADDR placeholder: logs and aborts (convention unknown).
 [[noreturn]] void ReportAddrPlaceholderCall(std::uint32_t slot, void* returnAddress) noexcept;
 

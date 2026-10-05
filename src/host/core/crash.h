@@ -17,6 +17,14 @@
 
 namespace core {
 
+// Exception code as the DWORD of EXCEPTION_RECORD::ExceptionCode. With WIN32_NO_STATUS + <ntstatus.h>
+// (shared/win32.h) the EXCEPTION_* macros are negative NTSTATUS values; comparing them with a DWORD
+// or using them as case labels of a DWORD switch is a sign mismatch / narrowing for clang-cl.
+template <class T>
+constexpr DWORD ExceptionCode(T code) noexcept {
+    return static_cast<DWORD>(code);
+}
+
 // HostMain stage (right after config/log).
 bool StageInstallCrashHandlers(const Config& config);
 

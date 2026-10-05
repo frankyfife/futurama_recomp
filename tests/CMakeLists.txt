@@ -10,6 +10,6 @@ if(EXISTS ${FUT_DOCTEST_DIR}/doctest.h AND FUT_TEST_SOURCES)
     target_include_directories(fut_tests PRIVATE ${FUT_DOCTEST_DIR})
     target_link_libraries(fut_tests PRIVATE fut_host_obj "$<LINK_LIBRARY:WHOLE_ARCHIVE,fut_game>")
     target_link_options(fut_tests PRIVATE /SAFESEH:NO)
-    enable_testing()
+    # enable_testing() is in the top-level CMakeLists.txt (ctest from the build root).
     add_test(NAME fut_tests COMMAND fut_tests)
 endif()

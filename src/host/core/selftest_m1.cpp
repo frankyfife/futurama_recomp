@@ -363,7 +363,8 @@ FUT_SELFTEST(GuestSehIsBadReadPtr, AdoptedThread) {
     const BOOL bad = isBadReadPtr(page, 4);
     const std::uint64_t after = GuestExceptionCount();
     GuestException last{};
-    const bool recorded = RecentGuestExceptions(&last, 1) == 1 && last.code == EXCEPTION_ACCESS_VIOLATION &&
+    const bool recorded = RecentGuestExceptions(&last, 1) == 1 &&
+                          last.code == ExceptionCode(EXCEPTION_ACCESS_VIOLATION) &&
                           last.info1 == guest::Addr(page) && guest::InXbeImage(last.eip);
     VirtualFree(page, 0, MEM_RELEASE);
     const std::uint32_t readable[4] = {1, 2, 3, 4};

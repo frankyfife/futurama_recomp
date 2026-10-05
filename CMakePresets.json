@@ -26,10 +26,35 @@
       "displayName": "x86 RelWithDebInfo (MSVC)",
       "inherits": "x86-base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "x86-clang-base",
+      "hidden": true,
+      "description": "clang-cl 32-bit + MASM (ml.exe) + Ninja: second CI build for warnings (design 5.2). Links with MSVC link.exe (a DLL from lld-link 23 fails inside LoadLibrary). Needs the vcvars32 environment for headers, libraries, ml.exe and link.exe; build.cmd <dir> <config> all clang does the same.",
+      "inherits": "x86-base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
+        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
+        "CMAKE_C_COMPILER_TARGET": "i686-pc-windows-msvc",
+        "CMAKE_CXX_COMPILER_TARGET": "i686-pc-windows-msvc",
+        "CMAKE_ASM_MASM_COMPILER": "ml.exe",
+        "CMAKE_LINKER": "link.exe"
+      }
+    },
+    {
+      "name": "x86-clang-debug",
+      "displayName": "x86 Debug (clang-cl)",
+      "inherits": "x86-clang-base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
     }
   ],
   "buildPresets": [
     { "name": "x86-debug", "configurePreset": "x86-debug" },
-    { "name": "x86-relwithdebinfo", "configurePreset": "x86-relwithdebinfo" }
+    { "name": "x86-relwithdebinfo", "configurePreset": "x86-relwithdebinfo" },
+    { "name": "x86-clang-debug", "configurePreset": "x86-clang-debug" }
+  ],
+  "testPresets": [
+    { "name": "x86-debug", "configurePreset": "x86-debug", "output": { "outputOnFailure": true } },
+    { "name": "x86-relwithdebinfo", "configurePreset": "x86-relwithdebinfo", "output": { "outputOnFailure": true } }
   ]
 }

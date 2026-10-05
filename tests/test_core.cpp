@@ -15,7 +15,11 @@
 #include <intrin.h>
 
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -159,6 +163,117 @@ TEST_CASE("core: [hooks] disable matches name, prefix* and 0xADDR (design 3.2)")
     CHECK(core::IsHookDisabled(desc, cfg));
     cfg.hooksDisable = {"Other::*", "0x13F251"};
     CHECK_FALSE(core::IsHookDisabled(desc, cfg));
+    // Review finding 2: the log prints addresses as 0x%08X; such entries must match by value.
+    cfg.hooksDisable = {"0x0013F250"};
+    CHECK(core::IsHookDisabled(desc, cfg));
+    cfg.hooksDisable = {"0x0013f250"};
+    CHECK(core::IsHookDisabled(desc, cfg));
+    cfg.hooksDisable = {"1307216"};  // decimal 0x13F250
+    CHECK(core::IsHookDisabled(desc, cfg));
+    cfg.hooksDisable = {"0x13F250x", "0x", "0x1FFFFFFFF"};
+    CHECK_FALSE(core::IsHookDisabled(desc, cfg));
+    guest::GuestAddr a = 0;
+    CHECK(core::ParseHookAddressEntry("0x000F641B", a));
+    CHECK(a == 0xF641Bu);
+    CHECK_FALSE(core::ParseHookAddressEntry("probe:*", a));
+    CHECK_FALSE(core::ParseHookAddressEntry("0xZZ", a));
+}
+
+TEST_CASE("core: [hooks] disable entries without a registered hook are reported (review finding 2/8)") {
+    core::Config cfg;
+    cfg.hooksDisable = {"XAPILIB::QueryPerformanceCounter",
+                        "0x000F641B",
+                        "probe:*",
+                        "prob:*",
+                        "0x12345",
+                        "XAPILIB::NoSuchHook"};
+    const std::vector<std::string> unmatched = core::UnmatchedHookDisableEntries(cfg);
+    CHECK(unmatched == std::vector<std::string>{"prob:*", "0x12345", "XAPILIB::NoSuchHook"});
+}
+
+namespace {
+
+std::filesystem::path WriteTestIni(const char* name, const std::string& text) {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / ("fut_cfg_" + std::to_string(GetCurrentProcessId()));
+    std::filesystem::create_directories(dir);
+    const std::filesystem::path file = dir / name;
+    std::ofstream(file, std::ios::binary) << text;
+    return file;
+}
+
+bool LoadTestConfig(const std::filesystem::path& ini, core::Config& cfg, std::string& error,
+                    const std::wstring& extra = L"") {
+    const std::wstring cmd = L"futurama.exe \"--config=" + ini.wstring() + L"\"" + extra;
+    return core::LoadConfig(cmd.c_str(), L"C:\\nowhere\\futurama.exe", cfg, error);
+}
+
+}  // namespace
+
+TEST_CASE("core: INI inline comments follow the configparser rule (review finding 4)") {
+    const auto ini =
+        WriteTestIni("inline.ini", "[paths]\r\n"
+                                   "userdata = C:\\fut\\ud   ; per-test user data (config.h style)\r\n"
+                                   "iso = \"C:\\a ;b\\x.iso\" ; quoted values keep ' ;'\r\n"
+                                   "xbe = C:\\x;y\\default.xbe\r\n"
+                                   "[debug]  ; section comment\r\n"
+                                   "stop_at  = main            ; or 0x<guest address>\r\n"
+                                   "selftest = 1   # run the self-tests\r\n"
+                                   "timeout = 60\t; seconds\r\n"
+                                   "[hooks]\r\n"
+                                   "disable = probe:*, 0x000F641B ; two entries\r\n");
+    core::Config cfg;
+    std::string error;
+    REQUIRE_MESSAGE(LoadTestConfig(ini, cfg, error), error);
+    CHECK(cfg.userdata == std::filesystem::path(L"C:\\fut\\ud"));
+    CHECK(cfg.iso == std::filesystem::path(L"C:\\a ;b\\x.iso"));
+    CHECK(cfg.xbe == std::filesystem::path(L"C:\\x;y\\default.xbe"));  // no blank before ';'
+    CHECK(cfg.stopAt == "main");
+    CHECK(cfg.selftest);
+    CHECK(cfg.GetU32("debug", "timeout", 0) == 60);
+    CHECK(cfg.hooksDisable == std::vector<std::string>{"probe:*", "0x000F641B"});
+    CHECK(cfg.warnings.empty());
+}
+
+TEST_CASE("core: unknown keys and invalid values are configuration errors (review finding 8)") {
+    core::Config cfg;
+    std::string error;
+    CHECK_FALSE(LoadTestConfig(WriteTestIni("typo.ini", "[debug]\nstop-at = main\n"), cfg, error));
+    CHECK(error.find("stop-at") != std::string::npos);
+    CHECK_FALSE(LoadTestConfig(WriteTestIni("unit.ini", "[debug]\ntimeout = 60s\n"), cfg, error));
+    CHECK(error.find("timeout") != std::string::npos);
+    CHECK_FALSE(
+        LoadTestConfig(WriteTestIni("bool.ini", "[debug]\nselftest = 1 ; ok\nmsgbox = maybe\n"), cfg, error));
+    CHECK(error.find("msgbox") != std::string::npos);
+    CHECK_FALSE(LoadTestConfig(WriteTestIni("set.ini", "[kernel]\nstrict = 0\n"), cfg, error,
+                               L" --set=hooks.disabel=x"));
+    CHECK(error.find("disabel") != std::string::npos);
+    CHECK_FALSE(LoadTestConfig(WriteTestIni("nosection.ini", "bogus = 1\n"), cfg, error));
+    // section-less known keys still work; unknown sections only warn
+    REQUIRE_MESSAGE(
+        LoadTestConfig(WriteTestIni("sect.ini", "selftest = 1\n[gfx]\nbackend = d3d11\n"), cfg, error),
+        error);
+    CHECK(cfg.selftest);
+    REQUIRE(cfg.warnings.size() == 1);
+    CHECK(cfg.warnings[0].find("[gfx]") != std::string::npos);
+    CHECK(core::IsKnownConfigKey("Debug", "Timeout"));
+    CHECK_FALSE(core::IsKnownConfigKey("debug", "stop-at"));
+}
+
+TEST_CASE("core: an overlong userdata path without long path support is rejected (review finding 11)") {
+    if (core::ProcessLongPathsEnabled()) {
+        MESSAGE("process is long-path aware - check not applicable");
+        return;
+    }
+    core::Config cfg;
+    std::string error;
+    const std::string ud = "C:\\" + std::string(230, 'x');
+    CHECK_FALSE(LoadTestConfig(WriteTestIni("long.ini", "[paths]\nuserdata = " + ud + "\n"), cfg, error));
+    CHECK(error.find("characters long") != std::string::npos);
+    REQUIRE_MESSAGE(
+        LoadTestConfig(WriteTestIni("short.ini", "[paths]\nuserdata = C:\\" + std::string(150, 'x') + "\n"),
+                       cfg, error),
+        error);
 }
 
 TEST_CASE("core: M1 hook targets are hookable function starts (design 3.2, Anhang B)") {
@@ -184,9 +299,9 @@ TEST_CASE("core: M1 boot probe targets leave room for their stolen bytes (xapi/b
         guest::GuestAddr address;
         std::uint32_t stolen;
     };
-    const Probe probes[] = {{guest::kXapiInitProcess, 6},          {guest::kXapiRtInit, 7},
-                            {guest::kXapiCInit, 5},                {guest::kXapiXGetDiskClusterSizeA, 6},
-                            {guest::kGameMemoryPoolInit, 6},       {guest::kXapiBootToDash, 9}};
+    const Probe probes[] = {{guest::kXapiInitProcess, 6},    {guest::kXapiRtInit, 7},
+                            {guest::kXapiCInit, 5},          {guest::kXapiXGetDiskClusterSizeA, 6},
+                            {guest::kGameMemoryPoolInit, 6}, {guest::kXapiBootToDash, 9}};
     for (const Probe& p : probes) {
         CAPTURE(p.address);
         const guest::FunctionInfo* f = guest::FindFunctionStart(p.address);

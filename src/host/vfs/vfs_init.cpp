@@ -51,11 +51,10 @@ bool StageInitVfs(const core::Config& config) {
         // UDATA exist on a formatted Xbox HDD; XAPI only creates the title directories below them.
         const std::filesystem::path partition1 = config.Partition1Directory();
         for (const char* sub : {"TDATA", "UDATA"}) {
-            std::error_code ec;
-            std::filesystem::create_directories(partition1 / sub, ec);
-            if (ec) {
+            std::string error;
+            if (!CreateHostDirectories(partition1 / sub, error)) {  // "\\?\" form: no MAX_PATH limit
                 FUT_LOGE(Vfs, "cannot create %s: %s", core::WideToUtf8((partition1 / sub).wstring()).c_str(),
-                         ec.message().c_str());
+                         error.c_str());
                 return false;
             }
         }

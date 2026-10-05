@@ -50,7 +50,9 @@ void __cdecl IgnoreInvalidParameter(const wchar_t*, const wchar_t*, const wchar_
 // (terminate 0x169D5E via the CRT filter 0x16ED1E), 0 (0x169FBE doexit, fiber trampoline 0x1708A9);
 // startup.md 8; design 1.11: log code + backtrace (core crash API), then abort (exit code 3).
 // Frame pointers are forced on so that [ebp] of this function is the guest caller's EBP.
+#if defined(_MSC_VER) && !defined(__clang__)
 #pragma optimize("y", off)
+#endif
 void __stdcall KeBugCheck(ULONG BugCheckCode) noexcept {
     void** returnSlot = static_cast<void**>(_AddressOfReturnAddress());
     const std::uint32_t eip = guest::Addr(*returnSlot);
@@ -62,7 +64,9 @@ void __stdcall KeBugCheck(ULONG BugCheckCode) noexcept {
     core::LogBacktrace(ebp, eip);
     core::Fatal("KeBugCheck(0x%08lX: %s) from %s", BugCheckCode, BugCheckName(BugCheckCode), caller.c_str());
 }
+#if defined(_MSC_VER) && !defined(__clang__)
 #pragma optimize("", on)
+#endif
 KRNL_FUNC(KeBugCheck, &KeBugCheck);
 
 // DbgPrint - slot 98, Ord 8, cdecl variadic: ULONG (PCSZ Format, ...) -> STATUS_SUCCESS.

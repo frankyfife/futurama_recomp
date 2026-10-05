@@ -236,6 +236,34 @@ TEST_CASE("vfs namespace: devices, symbolic links, resolution") {
 }
 
 // =================================================================================================
+TEST_CASE("vfs: host directories beyond MAX_PATH (review finding 11)") {
+    const fs::path dir = TempDir("longpath");
+    fs::path deep = dir;
+    for (int i = 0; i < 8; ++i) {
+        deep /= std::wstring(40, static_cast<wchar_t>(L'a' + i));  // > 330 characters in total
+    }
+    REQUIRE(deep.wstring().size() > MAX_PATH);
+    std::string error;
+    REQUIRE_MESSAGE(vfs::CreateHostDirectories(deep / "hdd" / "partition1" / "TDATA", error), error);
+    CHECK(vfs::CreateHostDirectories(deep / "hdd" / "partition1" / "TDATA", error));  // already exists
+    auto hdd = vfs::CreateHostDirDevice(deep / "hdd" / "partition1", false);
+    REQUIRE(hdd);
+    const std::wstring native = L"\\\\?\\" + (deep / "hdd" / "partition1" / "TDATA").wstring();
+    const DWORD attrs = GetFileAttributesW(native.c_str());
+    CHECK(attrs != INVALID_FILE_ATTRIBUTES);
+    CHECK((attrs & FILE_ATTRIBUTE_DIRECTORY) != 0);
+    // a file in the way is reported, not ignored
+    const std::wstring file = L"\\\\?\\" + (deep / "file").wstring();
+    const HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+    REQUIRE(h != INVALID_HANDLE_VALUE);
+    CloseHandle(h);
+    CHECK_FALSE(vfs::CreateHostDirectories(deep / "file" / "sub", error));
+    CHECK_FALSE(error.empty());
+    std::error_code ec;
+    fs::remove_all(fs::path(L"\\\\?\\" + dir.wstring()), ec);
+}
+
+// =================================================================================================
 TEST_CASE("xdvdfs: synthetic image (offset 0)") {
     const fs::path dir = TempDir("xdvdfs_synthetic");
     const fs::path imagePath = dir / "synthetic.iso";

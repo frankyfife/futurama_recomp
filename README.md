@@ -28,6 +28,10 @@ tools/          Python-Tools (XDVDFS, .img, XBE-Header, Strings, Ghidra-Starter)
 orig/proto/     default.xbe + Dateilisten + extrahierte Skripte/Textdateien (Prototyp)
 orig/retail_eu/ default.xbe + Dateilisten (Retail EU)
 ghidra/         Ghidra-Projekt "Futurama" (/proto, /retail_eu)
+src/            Loader: Launcher, Host-DLL (core, kernel, vfs, xapi), gemeinsame Gast-Strukturen
+tests/          Unit-Tests des Loaders (doctest)
+docs/           Loader-Design und Meilenstein-Berichte
+run/            Benutzerdaten und Logs der Testläufe (eine INI pro Lauf)
 ```
 
 Spieldaten und XBEs gehören nicht in ein öffentliches Repository.
@@ -66,6 +70,22 @@ Manuelle Arbeit in der Ghidra-Oberfläche geht bei einem Neubau verloren. Dauerh
 - Renderer-Schnittstelle: `NiRenderer` (72 virtuelle Methoden) und `NiXBoxRenderer` (75 Methoden, 1744 Byte).
 - Spielklassen mit NiRTTI: `PhysicController`, `AimController`, `LightSource`/`LightTarget`, `LMSource`/`LMTarget`, `MasterPropertyAccumulator`.
 - Eintrittspunkt `entry` (0xF84DD) startet einen Thread bei 0xF8469, `XapiInitProcess` liegt bei 0xF92C0.
+
+## Loader (PC-Port, Meilenstein M1 erreicht)
+
+Der Loader führt das Original-XBE nativ auf Windows aus. `futurama.exe` ist ein Launcher mit fester Basis 0x10000. `futurama_host.dll` stellt den xboxkrnl-Kernel als HLE bereit, mappt `default.xbe` direkt aus dem eigenen ISO und startet es. Stand M1: Der Original-Bootpfad läuft bis `main` (0xD29B0).
+
+- Design: [`docs/loader_design.md`](docs/loader_design.md) (Entscheidungen E1–E12, Abweichungen in Abschnitt 8)
+- Stand, Bauen, Konfiguration und Prüfung: [`docs/m1_report.md`](docs/m1_report.md) (Abschnitt 3)
+- Schnittstellen für Entwickler: [`src/INTERFACES.md`](src/INTERFACES.md)
+
+Kurzfassung (MSVC x86, CMake, Ninja; `build.cmd` immer mit vollem Pfad aufrufen):
+
+```
+cmd /c "D:\FuturamaDecomp\build.cmd" build\x86-debug Debug
+build\x86-debug\bin\futurama.exe --config=<eigene futurama.ini>     (ISO-Pfad und userdata in der INI)
+python tools\m1_check.py --exe build\x86-debug\bin\futurama.exe --config <ini> --runs 10 --xbe orig\retail_eu\default.xbe
+```
 
 ## Port-Strategie (Vorschlag)
 

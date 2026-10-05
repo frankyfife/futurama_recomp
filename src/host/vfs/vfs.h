@@ -140,6 +140,10 @@ bool ReadIsoFile(const std::filesystem::path& image, std::string_view path, std:
 // ---- device factories ------------------------------------------------------------------------
 std::shared_ptr<Device> CreateIsoDevice(std::shared_ptr<XdvdfsImage> image);
 std::shared_ptr<Device> CreateHostDirDevice(const std::filesystem::path& root, bool readOnly);
+// Creates `dir` and all missing parents through the "\\?\" form of the path, so the MAX_PATH limit
+// does not apply (review finding 11; HostDirDevice opens its files the same way). Returns false with
+// a message if a component cannot be created or is not a directory.
+bool CreateHostDirectories(const std::filesystem::path& dir, std::string& error);
 
 // ---- object namespace (design 4.1) -----------------------------------------------------------
 // Device objects, e.g. AddDevice("\\Device\\CdRom0", iso). Names are case-insensitive.

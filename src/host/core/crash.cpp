@@ -76,37 +76,37 @@ bool SafeRead(std::uint32_t address, void* out, std::size_t size) noexcept {
 
 const char* ExceptionName(DWORD code) noexcept {
     switch (code) {
-    case EXCEPTION_ACCESS_VIOLATION:
+    case ExceptionCode(EXCEPTION_ACCESS_VIOLATION):
         return "access violation";
-    case EXCEPTION_ILLEGAL_INSTRUCTION:
+    case ExceptionCode(EXCEPTION_ILLEGAL_INSTRUCTION):
         return "illegal instruction";
-    case EXCEPTION_PRIV_INSTRUCTION:
+    case ExceptionCode(EXCEPTION_PRIV_INSTRUCTION):
         return "privileged instruction";
-    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+    case ExceptionCode(EXCEPTION_INT_DIVIDE_BY_ZERO):
         return "integer divide by zero";
-    case EXCEPTION_INT_OVERFLOW:
+    case ExceptionCode(EXCEPTION_INT_OVERFLOW):
         return "integer overflow";
-    case EXCEPTION_STACK_OVERFLOW:
+    case ExceptionCode(EXCEPTION_STACK_OVERFLOW):
         return "stack overflow";
-    case EXCEPTION_BREAKPOINT:
+    case ExceptionCode(EXCEPTION_BREAKPOINT):
         return "breakpoint";
-    case EXCEPTION_SINGLE_STEP:
+    case ExceptionCode(EXCEPTION_SINGLE_STEP):
         return "single step";
-    case EXCEPTION_IN_PAGE_ERROR:
+    case ExceptionCode(EXCEPTION_IN_PAGE_ERROR):
         return "in-page error";
-    case EXCEPTION_GUARD_PAGE:
+    case ExceptionCode(EXCEPTION_GUARD_PAGE):
         return "guard page";
-    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+    case ExceptionCode(EXCEPTION_FLT_DIVIDE_BY_ZERO):
         return "float divide by zero";
-    case EXCEPTION_FLT_INVALID_OPERATION:
+    case ExceptionCode(EXCEPTION_FLT_INVALID_OPERATION):
         return "float invalid operation";
-    case EXCEPTION_DATATYPE_MISALIGNMENT:
+    case ExceptionCode(EXCEPTION_DATATYPE_MISALIGNMENT):
         return "datatype misalignment";
-    case EXCEPTION_NONCONTINUABLE_EXCEPTION:
+    case ExceptionCode(EXCEPTION_NONCONTINUABLE_EXCEPTION):
         return "noncontinuable exception";
-    case 0xE06D7363:
+    case 0xE06D7363u:
         return "C++ exception";
-    case 0xC0000409:
+    case 0xC0000409u:
         return "stack buffer overrun / fail fast";
     default:
         return "exception";
@@ -219,7 +219,7 @@ LONG CALLBACK VectoredHandler(EXCEPTION_POINTERS* ep) noexcept {
     ring.count = ring.count < kRingSize ? ring.count + 1 : kRingSize;
     ++g_guestExceptions;
 
-    const bool mmio = r.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && InMmioTrap(e.info1);
+    const bool mmio = r.ExceptionCode == ExceptionCode(EXCEPTION_ACCESS_VIOLATION) && InMmioTrap(e.info1);
     if (mmio || LogEnabled(Channel::Core, Level::Debug)) {
         char where[192];
         DescribeAddress(e.eip, where, sizeof(where));
@@ -227,7 +227,7 @@ LONG CALLBACK VectoredHandler(EXCEPTION_POINTERS* ep) noexcept {
             LogWrite(Channel::Core, Level::Error,
                      "MMIO trap: guest %s of 0x%08X (Xbox hardware register) at %s", AccessName(e.info0),
                      e.info1, where);
-        } else if (r.ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+        } else if (r.ExceptionCode == ExceptionCode(EXCEPTION_ACCESS_VIOLATION)) {
             LogWrite(Channel::Core, Level::Debug,
                      "first-chance guest exception #%u 0x%08lX (%s, %s 0x%08X) at %s", e.sequence,
                      r.ExceptionCode, ExceptionName(r.ExceptionCode), AccessName(e.info0), e.info1, where);
@@ -249,7 +249,7 @@ LONG WINAPI UnhandledFilter(EXCEPTION_POINTERS* ep) noexcept {
     char where[192];
     DescribeAddress(static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(r.ExceptionAddress)), where,
                     sizeof(where));
-    if (r.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r.NumberParameters >= 2) {
+    if (r.ExceptionCode == ExceptionCode(EXCEPTION_ACCESS_VIOLATION) && r.NumberParameters >= 2) {
         const auto type = static_cast<std::uint32_t>(r.ExceptionInformation[0]);
         const auto address = static_cast<std::uint32_t>(r.ExceptionInformation[1]);
         Fatal("unhandled exception 0x%08lX (%s: %s of 0x%08X%s) at %s", r.ExceptionCode,

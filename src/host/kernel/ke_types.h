@@ -72,8 +72,11 @@ static_assert(offsetof(MEMORY_BASIC_INFORMATION, RegionSize) == 0x0C);
 static_assert(offsetof(MEMORY_BASIC_INFORMATION, State) == 0x10);
 static_assert(sizeof(MEMORY_BASIC_INFORMATION) == sizeof(::MEMORY_BASIC_INFORMATION));
 
-// XBOX_HARDWARE_INFO (slot 64 DATA). Byte +0 = Flags (bits 0x1/0x2/0x8 tested by XAPI/XPP),
-// +1 GPU revision bit 0x2 (D3D 0x23C84C), +5 compared with 0xA1 (XPP 0x28C8FB); kernel.md 5.
+// XBOX_HARDWARE_INFO (slot 64 DATA), kernel.md 5. Accesses in this XBE:
+//   Flags byte 0: bits 0x1/0x2/0x8 tested by XAPI/XPP.
+//   Flags byte 1 bit 1 (= Flags & 0x200) tested by D3D 0x23C84C (mov edx,[0x293660];
+//     test byte ptr [edx+1],2) - part of Flags, not a GPU revision. Stays 0 (data_exports.cpp).
+//   GpuRevision +4; McpRevision +5 compared with 0xA1 by XPP 0x28C8FB (cmp byte ptr [eax+5],0xA1).
 struct XBOX_HARDWARE_INFO {
     std::uint32_t Flags;       // +0x00 bit 3 MUST be 0 (files.md 5.5.7, design 1.5)
     std::uint8_t GpuRevision;  // +0x04

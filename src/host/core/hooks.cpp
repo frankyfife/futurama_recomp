@@ -6,7 +6,9 @@
 #include "core/xbe_loader.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -209,23 +211,58 @@ void RegisterHook(const HookDesc& desc) noexcept {
     }
 }
 
+bool ParseHookAddressEntry(std::string_view entry, guest::GuestAddr& address) noexcept {
+    // Numeric entries only (a hook name never starts with a digit). Base 0: "0x000F641B", "0xf641b"
+    // and decimal all compare by value, so addresses copied from the log (0x%08X) match.
+    if (entry.empty() || entry.size() > 24 || entry.front() < '0' || entry.front() > '9') {
+        return false;
+    }
+    char buf[32] = {};
+    entry.copy(buf, entry.size());
+    char* end = nullptr;
+    errno = 0;
+    const unsigned long long v = std::strtoull(buf, &end, 0);
+    if (end == buf || *end != 0 || errno != 0 || v > 0xFFFFFFFFull) {
+        return false;
+    }
+    address = static_cast<guest::GuestAddr>(v);
+    return true;
+}
+
+bool HookDisableEntryMatches(const HookDesc& desc, std::string_view entry) noexcept {
+    if (entry.empty()) {
+        return false;
+    }
+    const std::string_view name = desc.name != nullptr ? std::string_view(desc.name) : std::string_view();
+    if (entry == name) {
+        return true;
+    }
+    if (entry.back() == '*' && name.substr(0, entry.size() - 1) == entry.substr(0, entry.size() - 1)) {
+        return true;
+    }
+    guest::GuestAddr address = 0;
+    return ParseHookAddressEntry(entry, address) && address == desc.address;
+}
+
 bool IsHookDisabled(const HookDesc& desc, const Config& config) {
     for (const std::string& entry : config.hooksDisable) {
-        if (entry == desc.name) {
-            return true;
-        }
-        if (!entry.empty() && entry.back() == '*' &&
-            std::string_view(desc.name).substr(0, entry.size() - 1) ==
-                std::string_view(entry).substr(0, entry.size() - 1)) {
-            return true;
-        }
-        char addr[16];
-        std::snprintf(addr, sizeof(addr), "0x%X", desc.address);
-        if (_stricmp(entry.c_str(), addr) == 0) {
+        if (HookDisableEntryMatches(desc, entry)) {
             return true;
         }
     }
     return false;
+}
+
+std::vector<std::string> UnmatchedHookDisableEntries(const Config& config) {
+    std::vector<std::string> unmatched;
+    for (const std::string& entry : config.hooksDisable) {
+        const bool used = std::any_of(Registry().begin(), Registry().end(),
+                                      [&](const HookDesc& d) { return HookDisableEntryMatches(d, entry); });
+        if (!used) {
+            unmatched.push_back(entry);
+        }
+    }
+    return unmatched;
 }
 
 bool StageInstallHooks(const Config& config) {
@@ -244,6 +281,17 @@ bool StageInstallHooks(const Config& config) {
             ++installed;
         } else {
             ok = false;
+        }
+    }
+    // Review finding 2/8: a typo in [hooks] disable must not silently leave a hook active.
+    for (const std::string& entry : UnmatchedHookDisableEntries(config)) {
+        guest::GuestAddr address = 0;
+        if (ParseHookAddressEntry(entry, address)) {
+            FUT_LOGW(Hook, "[hooks] disable entry '%s' (0x%08X) matches no registered hook", entry.c_str(),
+                     address);
+        } else {
+            FUT_LOGW(Hook, "[hooks] disable entry '%s' matches no registered hook (name, prefix* or 0xADDR)",
+                     entry.c_str());
         }
     }
     FUT_LOGI(Hook, "hooks: %zu installed, %zu disabled, %zu registered", installed, disabled, hooks.size());

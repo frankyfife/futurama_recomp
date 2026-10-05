@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Merged by CMake/mt.exe with the default UAC manifest (asInvoker) of futurama.exe.
+     longPathAware: Win32 file APIs of the whole process (host DLL included) accept paths longer than
+     MAX_PATH when HKLM\SYSTEM\CurrentControlSet\Control\FileSystem LongPathsEnabled = 1
+     (review finding 11; the VFS additionally uses \\?\ paths and does not depend on it). -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+      <ws2:longPathAware>true</ws2:longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

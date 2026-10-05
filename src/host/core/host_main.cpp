@@ -42,14 +42,38 @@ extern "C" std::uint32_t __cdecl fut_asm_probe(void);  // asm/asm_probe.asm
 namespace core {
 namespace {
 
-void ReportStartupError(const std::string& message) noexcept {
-    const std::string line = "futurama_host: " + message + "\n";
-    OutputDebugStringA(line.c_str());
-    const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
-    DWORD written = 0;
-    if (err == nullptr || err == INVALID_HANDLE_VALUE ||
-        !WriteFile(err, line.data(), static_cast<DWORD>(line.size()), &written, nullptr)) {
-        MessageBoxA(nullptr, message.c_str(), "Futurama - startup error", MB_OK | MB_ICONERROR);
+// Reports an error that ends the start outside the log file: stderr if the process has one (console,
+// pipe, file), otherwise - or additionally with [debug] msgbox = 1 - a message box. A GUI start
+// (SUBSYSTEM:WINDOWS, no console) would otherwise end silently (review finding 5).
+void ReportStartupError(const std::string& message, bool forceMessageBox = false) noexcept {
+    try {
+        const std::string line = "futurama: " + message + "\n";
+        OutputDebugStringA(line.c_str());
+        const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+        DWORD written = 0;
+        const bool toStderr = err != nullptr && err != INVALID_HANDLE_VALUE &&
+                              GetFileType(err) != FILE_TYPE_UNKNOWN &&
+                              WriteFile(err, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
+        if (!toStderr || forceMessageBox) {
+            MessageBoxA(nullptr, message.c_str(), "Futurama - startup error", MB_OK | MB_ICONERROR);
+        }
+    } catch (...) {
+    }
+}
+
+// Stage failure: the error the stage logged (LogLastError() before the "stage failed" line) plus the
+// log file location.
+void ReportStageFailure(const char* stage, int exitCode, bool msgbox, const std::string& cause) noexcept {
+    try {
+        std::string message =
+            std::string("stage ") + stage + " failed (exit code " + std::to_string(exitCode) + ")";
+        if (!cause.empty()) {
+            message += ": " + cause;
+        }
+        const std::filesystem::path& log = LogFilePath();
+        message += log.empty() ? std::string("\nno log file") : "\nlog file: " + WideToUtf8(log.wstring());
+        ReportStartupError(message, msgbox);
+    } catch (...) {
     }
 }
 
@@ -104,15 +128,18 @@ bool InitConfigAndLog(const LauncherInfo* info) {
     if (!logOk) {
         FUT_LOGW(Core, "log file unavailable: %s", logError.c_str());
     }
+    for (const std::string& w : c.warnings) {
+        FUT_LOGW(Core, "config: %s", w.c_str());
+    }
     FUT_LOGI(Core, "exe       %s", WideToUtf8(c.exePath.wstring()).c_str());
     FUT_LOGI(Core, "config    %s",
              c.configFile.empty() ? "(none; defaults)" : WideToUtf8(c.configFile.wstring()).c_str());
     FUT_LOGI(Core, "userdata  %s", WideToUtf8(c.userdata.wstring()).c_str());
     FUT_LOGI(Core, "iso       %s", c.iso.empty() ? "(not set)" : WideToUtf8(c.iso.wstring()).c_str());
     FUT_LOGI(Core, "xbe       %s", c.xbe.empty() ? "(not set)" : WideToUtf8(c.xbe.wstring()).c_str());
-    FUT_LOGI(Core, "options   stop_at=%s selftest=%d strict=%d log=%s",
+    FUT_LOGI(Core, "options   stop_at=%s selftest=%d strict=%d log=%s long_paths=%d",
              c.stopAt.empty() ? "-" : c.stopAt.c_str(), c.selftest ? 1 : 0, c.strict ? 1 : 0,
-             c.logLevel.c_str());
+             c.logLevel.c_str(), ProcessLongPathsEnabled() ? 1 : 0);
     FUT_LOGI(Core,
              "launcher  TLS slots S_TLS=%lu S_KTHREAD=%lu S_PRCB=%lu S_IRQL=%lu S_DPC=%lu, XBE space "
              "0x%08lX+0x%lX",
@@ -178,8 +205,11 @@ int RunHost(const LauncherInfo* info) noexcept {
             ++index;
             FUT_LOGI(Core, "stage %2d/%zu %s", index, std::size(stages) + 1, stage.name);
             if (!stage.run()) {
+                const std::string cause = LogLastError();
                 FUT_LOGE(Core, "stage %s failed - exiting with code %d", stage.name, kExitStageFailed);
                 LogFlush();
+                // The log line above is now the last error; report the cause logged by the stage.
+                ReportStageFailure(stage.name, kExitStageFailed, cfg.msgbox, cause);
                 return kExitStageFailed;
             }
         }

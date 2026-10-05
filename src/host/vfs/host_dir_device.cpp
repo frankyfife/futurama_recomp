@@ -590,16 +590,58 @@ std::wstring NativeRoot(const std::filesystem::path& root) {
     return L"\\\\?\\" + s;
 }
 
+bool IsDirectory(const std::wstring& native) {
+    const DWORD attrs = GetFileAttributesW(native.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
 }  // namespace
+
+bool CreateHostDirectories(const std::filesystem::path& dir, std::string& error) {
+    try {
+        const std::wstring native = NativeRoot(dir);
+        // Separator that ends the root: "\\?\D:\" or "\\?\UNC\server\share\".
+        size_t rootEnd = std::wstring::npos;
+        if (native.rfind(L"\\\\?\\UNC\\", 0) == 0) {
+            const size_t server = native.find(L'\\', 8);
+            rootEnd = server == std::wstring::npos ? server : native.find(L'\\', server + 1);
+        } else {
+            rootEnd = native.find(L'\\', 4);
+        }
+        if (rootEnd != std::wstring::npos && rootEnd + 1 < native.size()) {
+            for (size_t pos = native.find(L'\\', rootEnd + 1);; pos = native.find(L'\\', pos + 1)) {
+                const std::wstring part = native.substr(0, pos);
+                if (!CreateDirectoryW(part.c_str(), nullptr)) {
+                    const DWORD e = GetLastError();
+                    if (e != ERROR_ALREADY_EXISTS && !IsDirectory(part)) {
+                        error = "cannot create " + core::WideToUtf8(part) + ": " +
+                                std::system_category().message(static_cast<int>(e));
+                        return false;
+                    }
+                }
+                if (pos == std::wstring::npos) {
+                    break;
+                }
+            }
+        }
+        if (!IsDirectory(native)) {
+            error = core::WideToUtf8(native) + " is not a directory";
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        error = e.what();
+        return false;
+    }
+}
 
 std::shared_ptr<Device> CreateHostDirDevice(const std::filesystem::path& root, bool readOnly) {
     try {
         if (!readOnly) {
-            std::error_code ec;
-            std::filesystem::create_directories(root, ec);
-            if (ec) {
+            std::string error;
+            if (!CreateHostDirectories(root, error)) {
                 FUT_LOGE(Vfs, "cannot create host directory %s: %s", core::WideToUtf8(root.wstring()).c_str(),
-                         ec.message().c_str());
+                         error.c_str());
                 return nullptr;
             }
         }

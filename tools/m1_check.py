@@ -1,8 +1,9 @@
 """M1 exit-criteria check (docs/loader_design.md section 6, M1).
 
-Runs futurama.exe N times with a test configuration (--stop-at=main --selftest are expected in the
-INI), keeps every log, checks the six M1 exit criteria and compares the logs after masking
-timestamps and addresses (criterion 6).
+Runs futurama.exe N times with a test configuration plus --selftest --stop-at=main, keeps every log,
+checks the six M1 exit criteria and compares the logs after masking timestamps and addresses
+(criterion 6). A missing or empty log fails every criterion; the userdata directory the exe really
+used (log header line "userdata  ...") must be the one read from the INI.
 
 Usage (paths with spaces belong in the INI, not on the command line):
     python tools/m1_check.py --exe build/x86-debug/bin/futurama.exe --config run/integ/futurama.ini
@@ -14,6 +15,7 @@ Exit code 0 when all criteria pass.
 """
 import argparse
 import configparser
+import os
 import re
 import shutil
 import struct
@@ -26,9 +28,12 @@ XTIMAGE_VA, XTIMAGE_SIZE = 0x3178C0, 0x2800
 
 
 def read_userdata(config: Path) -> Path:
+    # Same comment rule as core/config.cpp: ';' / '#' after whitespace starts an inline comment.
     cp = configparser.ConfigParser(inline_comment_prefixes=(";", "#"), interpolation=None)
     cp.read(config, encoding="utf-8-sig")
     value = cp.get("paths", "userdata", fallback="").strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        value = value[1:-1]
     if not value:
         sys.exit("m1_check: [paths] userdata must be set in the test config (never %LOCALAPPDATA% in tests)")
     p = Path(value)
@@ -68,8 +73,36 @@ def normalize(line: str) -> str:
     return line
 
 
-def check_run(log: str, partition1: Path, xtimage: bytes | None) -> list[tuple[str, bool, str]]:
+CRITERIA = [
+    "1 self-tests (IsBadReadPtr via guest SEH)",
+    "2 XapiInitProcess, no XapiBootToDash/HalReturnToFirmware",
+    "3 TDATA/UDATA title dirs, TitleMeta.xbx (UTF-16), TitleImage.xbx == $$XTIMAGE",
+    "4 _cinit: 38 MiB pool, XGetDiskClusterSizeA(\"U:\\\") = 0x4000",
+    "5 main hook reached",
+    "log without error/warn/UNIMPLEMENTED/TRAP",
+]
+
+
+def log_userdata(lines: list[str]) -> str | None:
+    """userdata path from the log header line 'CORE INFO  userdata  <path>'."""
+    for ln in lines[:40]:
+        m = re.search(r" userdata  (.+)$", ln)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def check_run(log: str, partition1: Path, xtimage: bytes | None,
+              userdata: Path | None = None) -> list[tuple[str, bool, str]]:
     lines = log.splitlines()
+    # Review finding 9: no log means nothing was checked - every criterion fails.
+    if not lines:
+        return [(name, False, "log file missing or empty") for name in CRITERIA]
+    if userdata is not None:
+        used = log_userdata(lines)
+        if used is None or os.path.normcase(os.path.normpath(used)) != os.path.normcase(os.path.normpath(userdata)):
+            why = f"exe used userdata {used!r}, expected {str(userdata)!r} (INI parsed differently?)"
+            return [(name, False, why) for name in CRITERIA]
 
     def has(rx: str) -> bool:
         return any(re.search(rx, ln) for ln in lines)
@@ -82,12 +115,12 @@ def check_run(log: str, partition1: Path, xtimage: bytes | None) -> list[tuple[s
     passes = [ln for ln in lines if "SELFTEST PASS" in ln]
     fails = [ln for ln in lines if "SELFTEST FAIL" in ln]
     seh = has(r"SELFTEST PASS GuestSehIsBadReadPtr") and has(r"SELFTEST PASS GuestIsBadReadPtrNull")
-    results.append(("1 self-tests (IsBadReadPtr via guest SEH)", not fails and seh and len(passes) >= 18,
+    results.append((CRITERIA[0], not fails and seh and len(passes) >= 18,
                     f"{len(passes)} PASS, {len(fails)} FAIL, SEH test {'ok' if seh else 'missing'}"))
     # 2 XapiInitProcess without XapiBootToDash / HalReturnToFirmware
     xip = has(r"boot: XapiInitProcess .*start") and has(r"boot: XapiInitProcess done")
     dash = has(r"XapiBootToDash\(") or has(r"HalReturnToFirmware\(") or has(r"XLaunchNewImageA\(")
-    results.append(("2 XapiInitProcess, no XapiBootToDash/HalReturnToFirmware", xip and not dash,
+    results.append((CRITERIA[1], xip and not dash,
                     f"XapiInitProcess start+done {'yes' if xip else 'no'}, dashboard/firmware {'yes' if dash else 'no'}"))
     # 3 partition1 contents
     tdata = partition1 / "TDATA" / TITLE_ID
@@ -97,21 +130,20 @@ def check_run(log: str, partition1: Path, xtimage: bytes | None) -> list[tuple[s
         meta.read_bytes().decode("utf-16").startswith("TitleName=")
     image_ok = image.is_file() and image.stat().st_size == XTIMAGE_SIZE and \
         (xtimage is None or image.read_bytes() == xtimage)
-    results.append(("3 TDATA/UDATA title dirs, TitleMeta.xbx (UTF-16), TitleImage.xbx == $$XTIMAGE",
-                    tdata.is_dir() and meta_ok and image_ok,
+    results.append((CRITERIA[2], tdata.is_dir() and meta_ok and image_ok,
                     f"TDATA dir {tdata.is_dir()}, TitleMeta {meta_ok}, TitleImage {image_ok}"
                     + ("" if xtimage is not None else " (size only, no --xbe)")))
     # 4 _cinit: pool + cluster size
     pool = first(r"game memory pool .*0x2600000 bytes \(38 MiB\)")
     cluster = has(r'XGetDiskClusterSizeA\("U:\\"\) = 0x4000')
     cinit = has(r"boot: _cinit done")
-    results.append(("4 _cinit: 38 MiB pool, XGetDiskClusterSizeA(\"U:\\\") = 0x4000", bool(pool) and cluster and cinit,
+    results.append((CRITERIA[3], bool(pool) and cluster and cinit,
                     f"pool {'yes' if pool else 'no'}, cluster 0x4000 {'yes' if cluster else 'no'}, _cinit done {'yes' if cinit else 'no'}"))
     # 5 main hook + exit 0 (exit code checked by the caller)
-    results.append(("5 main hook reached", has(r"STOP-AT 0x000D29B0 .* reached"), strip_timestamp(first(r"STOP-AT"))))
+    results.append((CRITERIA[4], has(r"STOP-AT 0x000D29B0 .* reached"), strip_timestamp(first(r"STOP-AT"))))
     # general M1 rule: no error lines, no UNIMPLEMENTED, no TRAP
     bad = [ln for ln in lines if re.search(r" (ERROR|WARN) |UNIMPLEMENTED|TRAP ", ln)]
-    results.append(("log without error/warn/UNIMPLEMENTED/TRAP", not bad, bad[0][:160] if bad else "clean"))
+    results.append((CRITERIA[5], not bad, bad[0][:160] if bad else "clean"))
     return results
 
 
@@ -139,16 +171,21 @@ def main() -> int:
         if args.fresh or i == 1:
             for sub in ("hdd", "cache", "logs"):
                 shutil.rmtree(userdata / sub, ignore_errors=True)
-        proc = subprocess.run([str(args.exe.resolve()), f"--config={config}"], cwd=userdata,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=args.timeout)
         log_path = userdata / "logs" / "futurama.log"
+        log_path.unlink(missing_ok=True)  # never evaluate the log of an earlier run
+        proc = subprocess.run([str(args.exe.resolve()), f"--config={config}", "--selftest", "--stop-at=main"],
+                              cwd=userdata, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                              timeout=args.timeout)
         log = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
         (out_dir / f"run_{i:02d}.log").write_text(log, encoding="utf-8")
-        results = check_run(log, userdata / "hdd" / "partition1", xtimage)
+        results = check_run(log, userdata / "hdd" / "partition1", xtimage, userdata)
         results.insert(4, ("5 exit code 0", proc.returncode == 0, f"exit code {proc.returncode}"))
         run_ok = all(ok for _, ok, _ in results)
         all_ok &= run_ok
         print(f"run {i:2d}: exit {proc.returncode}, {'OK' if run_ok else 'FAILED'}")
+        stderr = proc.stderr.decode("utf-8", errors="replace").strip()
+        if not run_ok and stderr:
+            print("    stderr: " + stderr.splitlines()[-1][:200])
         if i == 1 or not run_ok:
             for name, ok, detail in results:
                 print(f"    [{'PASS' if ok else 'FAIL'}] {name}: {detail}")
@@ -164,6 +201,10 @@ def main() -> int:
             diffs.append(f"run {i} differs from run 1 at line {n + 1} ({len(run)} vs {len(ref)} lines): "
                          f"{run[n] if n < len(run) else '<eof>'!r} vs {ref[n] if n < len(ref) else '<eof>'!r}")
     (out_dir / "normalized_run_01.log").write_text("\n".join(ref) + "\n", encoding="utf-8")
+    if not ref:
+        diffs.append("run 1 has no log lines")
+    elif not any("STOP-AT" in ln for ln in ref):
+        diffs.append("reference log (run 1) has no STOP-AT line")
     ok6 = not diffs
     all_ok &= ok6
     print(f"[{'PASS' if ok6 else 'FAIL'}] 6 {args.runs} runs give identical logs after masking timestamps/addresses"

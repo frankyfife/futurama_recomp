@@ -28,9 +28,10 @@ inline constexpr std::uint32_t kXbeSizeOfHeaders = 0x968;   // header bytes copi
 inline constexpr std::uint32_t kXbeSizeOfImage = 0x30A300;  // header field 0x10C
 inline constexpr GuestAddr kXbeImageEnd = kXbeBase + kXbeSizeOfImage;  // 0x31A300
 inline constexpr GuestAddr kXbeSectionsBegin = FUT_XBE_SPACE_ADDRESS;  // 0x11000 (.text)
-inline constexpr GuestAddr kXbeSectionsEnd = 0x0031A2F8;    // end of .XTLID (last section)
+inline constexpr GuestAddr kXbeSectionsEnd = 0x0031A2F8;               // end of .XTLID (last section)
 inline constexpr GuestAddr kXbeSpaceEnd = FUT_XBE_SPACE_ADDRESS + FUT_XBE_SPACE_SIZE;  // 0x31B000
-inline constexpr std::uint32_t kXbeProtectSize = 0x30B000;  // VirtualProtect(0x10000, ...) (design 1.4 step 3)
+// VirtualProtect(0x10000, kXbeProtectSize, ...) (design 1.4 step 3)
+inline constexpr std::uint32_t kXbeProtectSize = 0x30B000;
 inline constexpr std::uint32_t kXbeSectionCount = 10;
 inline constexpr std::uint32_t kXbeFileSize = 2973696;
 inline constexpr char kXbeSha1[] = "58f76de5bc739bf016d74c1d7f23e348f65ea4b4";  // design 1.4 step 1
@@ -62,11 +63,11 @@ struct SectionLayout {
     std::uint32_t rawSize;
 };
 inline constexpr SectionLayout kSections[kXbeSectionCount] = {
-    {".text", 0x011000, 0x2232C0, 0x2232C0},   {"D3D", 0x2342C0, 0x12A38, 0xF5D0},
-    {"DSOUND", 0x246D00, 0x1D654, 0x1D40C},    {"XMV", 0x264360, 0x27B6C, 0x27B5C},
-    {"XPP", 0x28BEE0, 0x767C, 0x767C},         {".rdata", 0x293560, 0x2A97C, 0x2A96C},
-    {".data", 0x2BDEE0, 0x52858, 0x1B558},     {"DOLBY", 0x310740, 0x7180, 0x716C},
-    {"$$XTIMAGE", 0x3178C0, 0x2800, 0x2800},   {".XTLID", 0x31A0C0, 0x238, 0x238},
+    {".text", 0x011000, 0x2232C0, 0x2232C0}, {"D3D", 0x2342C0, 0x12A38, 0xF5D0},
+    {"DSOUND", 0x246D00, 0x1D654, 0x1D40C},  {"XMV", 0x264360, 0x27B6C, 0x27B5C},
+    {"XPP", 0x28BEE0, 0x767C, 0x767C},       {".rdata", 0x293560, 0x2A97C, 0x2A96C},
+    {".data", 0x2BDEE0, 0x52858, 0x1B558},   {"DOLBY", 0x310740, 0x7180, 0x716C},
+    {"$$XTIMAGE", 0x3178C0, 0x2800, 0x2800}, {".XTLID", 0x31A0C0, 0x238, 0x238},
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -80,23 +81,23 @@ inline constexpr std::uint32_t kKernelThunkOrdinalFlag = 0x80000000;
 // ---------------------------------------------------------------------------------------------
 // Boot path (startup.md 1, design 1.10)
 // ---------------------------------------------------------------------------------------------
-inline constexpr GuestAddr kEntryPoint = 0x000F84DD;          // entry (XOR-decoded header field)
-inline constexpr GuestAddr kMainThreadRoutine = 0x000F8469;   // StartContext1 of the main thread
-inline constexpr GuestAddr kXapiThreadStartup = 0x000F99DA;   // SystemRoutine of PsCreateSystemThreadEx
+inline constexpr GuestAddr kEntryPoint = 0x000F84DD;         // entry (XOR-decoded header field)
+inline constexpr GuestAddr kMainThreadRoutine = 0x000F8469;  // StartContext1 of the main thread
+inline constexpr GuestAddr kXapiThreadStartup = 0x000F99DA;  // SystemRoutine of PsCreateSystemThreadEx
 inline constexpr GuestAddr kXapiCreateThread = 0x000F9A72;
-inline constexpr GuestAddr kXapiKernelHotfix = 0x000F9804;    // FUN_000f9804 (XboxKrnlVersion check)
+inline constexpr GuestAddr kXapiKernelHotfix = 0x000F9804;  // FUN_000f9804 (XboxKrnlVersion check)
 inline constexpr GuestAddr kXapiInitProcess = 0x000F92C0;
-inline constexpr GuestAddr kXapiRtInit = 0x000F97DB;          // _rtinit
-inline constexpr GuestAddr kXapiCInit = 0x000F9783;           // _cinit
-inline constexpr GuestAddr kGameMain = 0x000D29B0;            // main (cdecl, 3 args), --stop-at=main hook
+inline constexpr GuestAddr kXapiRtInit = 0x000F97DB;  // _rtinit
+inline constexpr GuestAddr kXapiCInit = 0x000F9783;   // _cinit
+inline constexpr GuestAddr kGameMain = 0x000D29B0;    // main (cdecl, 3 args), --stop-at=main hook
 inline constexpr GuestAddr kXapiBootToDash = 0x000F8FCA;
 inline constexpr GuestAddr kXapiUnhandledExceptionFilter = 0x000F999E;
-inline constexpr GuestAddr kXapiRebootRoutine = 0x000F829C;   // FUN_000f829c -> HalReturnToFirmware
+inline constexpr GuestAddr kXapiRebootRoutine = 0x000F829C;  // FUN_000f829c -> HalReturnToFirmware
 
 // TLS (cpu.md 2.2, startup.md 6)
 inline constexpr GuestAddr kTlsDirectory = 0x002A5D2C;
-inline constexpr GuestAddr kTlsIndexVar = 0x002F3D18;     // _tls_index, entry writes -9
-inline constexpr GuestAddr kTlsDataSizeVar = 0x00310394;  // TlsDataSize, entry writes 0x24
+inline constexpr GuestAddr kTlsIndexVar = 0x002F3D18;       // _tls_index, entry writes -9
+inline constexpr GuestAddr kTlsDataSizeVar = 0x00310394;    // TlsDataSize, entry writes 0x24
 inline constexpr GuestAddr kCrtGlobalPtdSlot = 0x00310734;  // _getptd fallback when KTHREAD.TlsData == 0
 
 // ---------------------------------------------------------------------------------------------
@@ -105,20 +106,20 @@ inline constexpr GuestAddr kCrtGlobalPtdSlot = 0x00310734;  // _getptd fallback 
 inline constexpr GuestAddr kXapiQueryPerformanceCounter = 0x000F641B;    // stdcall 1, rdtsc
 inline constexpr GuestAddr kXapiQueryPerformanceFrequency = 0x000F642C;  // stdcall 1, 733333333
 inline constexpr GuestAddr kXapiOutputDebugStringA = 0x000F3DE0;
-inline constexpr GuestAddr kXapiXMountUtilityDrive = 0x000F7F7C;         // stdcall 1
+inline constexpr GuestAddr kXapiXMountUtilityDrive = 0x000F7F7C;  // stdcall 1
 inline constexpr GuestAddr kXapiXLaunchNewImageA = 0x000F82E3;
-inline constexpr GuestAddr kXapiSwitchToFiber = 0x0017094F;              // 63 bytes (M2, MASM replacement)
+inline constexpr GuestAddr kXapiSwitchToFiber = 0x0017094F;  // 63 bytes (M2, MASM replacement)
 inline constexpr GuestAddr kXapiCreateFiber = 0x001708B0;
 inline constexpr GuestAddr kXapiDeleteFiber = 0x0017093C;
 inline constexpr GuestAddr kXapiConvertThreadToFiber = 0x0017098E;
 inline constexpr GuestAddr kXapiFiberStartRoutine = 0x0017086B;
-inline constexpr GuestAddr kXapiIsBadReadPtr = 0x001709C9;               // stdcall 2, self-test (design 1.4.8)
+inline constexpr GuestAddr kXapiIsBadReadPtr = 0x001709C9;  // stdcall 2, self-test (design 1.4.8)
 inline constexpr GuestAddr kXapiReadFileEx = 0x000F7603;
 inline constexpr GuestAddr kXapiCreateFileA = 0x000F76E0;
-inline constexpr GuestAddr kXapiProcessHeapVar = 0x0031039C;             // XapiProcessHeap
+inline constexpr GuestAddr kXapiProcessHeapVar = 0x0031039C;  // XapiProcessHeap
 
 // CRT / SEH (cpu.md 2.1/2.5)
-inline constexpr GuestAddr kCrtExceptHandler3 = 0x00168DCC;  // _except_handler3
+inline constexpr GuestAddr kCrtExceptHandler3 = 0x00168DCC;   // _except_handler3
 inline constexpr GuestAddr kCrtCxxFrameHandler = 0x00166977;  // ___CxxFrameHandler
 
 // Data used by XapiInitProcess / AutoPowerDown (kernel.md 8.6/8.7)
@@ -139,9 +140,9 @@ inline constexpr GuestAddr kNiXBoxRendererCreate = 0x0014C170;
 inline constexpr GuestAddr kXbeCodeBegin = 0x00011000;
 inline constexpr GuestAddr kXbeCodeEnd = 0x00293560;
 // XAPI functions called by the AdoptedThread self-tests (functions.tsv; fs-patched, cpu.md 2.3).
-inline constexpr GuestAddr kXapiGetLastError = 0x000F6E54;       // stdcall 0, reads [TLS+4] via fs:[4]
-inline constexpr GuestAddr kXapiSetLastError = 0x000F6E7C;       // stdcall 1, writes [TLS+4] via fs:[4]
-inline constexpr GuestAddr kXapiGetCurrentThreadId = 0x000F9AE0; // stdcall 0, [fs:[0x28]+0x12C]
+inline constexpr GuestAddr kXapiGetLastError = 0x000F6E54;        // stdcall 0, reads [TLS+4] via fs:[4]
+inline constexpr GuestAddr kXapiSetLastError = 0x000F6E7C;        // stdcall 1, writes [TLS+4] via fs:[4]
+inline constexpr GuestAddr kXapiGetCurrentThreadId = 0x000F9AE0;  // stdcall 0, [fs:[0x28]+0x12C]
 // MMIO trap reservation (design 1.2 debug option, cpu.md 4): NV2A 0xFD000000, APU 0xFE800000,
 // AC97 0xFEC00000, OHCI 0xFED00000 - reserved PAGE_NOACCESS so that a stray access faults clearly.
 inline constexpr GuestAddr kMmioTrapBase = 0xFD000000;
@@ -216,17 +217,17 @@ struct FunctionInfo {  // row of gen/xbe_functions.gen.inc
 
 struct FsPatchSite {  // row of gen/fs_patch_table.gen.inc (design 1.6)
     GuestAddr address;
-    std::uint8_t length;       // 6, 7 or 8
-    std::uint8_t original[8];  // original instruction bytes (zero padded)
-    std::uint8_t dispOffset;   // position of the disp32 in the instruction (2, 3 or 4)
+    std::uint8_t length;         // 6, 7 or 8
+    std::uint8_t original[8];    // original instruction bytes (zero padded)
+    std::uint8_t dispOffset;     // position of the disp32 in the instruction (2, 3 or 4)
     std::uint32_t originalDisp;  // 0x04, 0x20, 0x24, 0x28 or 0x58
-    std::uint32_t tlsSlot;     // FutTlsSlot: new disp = 0xE10 + 4 * TlsSlotIndex(tlsSlot)
+    std::uint32_t tlsSlot;       // FutTlsSlot: new disp = 0xE10 + 4 * TlsSlotIndex(tlsSlot)
     const char* function;
     const char* library;
 };
 
-std::span<const FunctionInfo> Functions() noexcept;      // sorted by address
-std::span<const FsPatchSite> FsPatchSites() noexcept;    // 38 entries, sorted by address
+std::span<const FunctionInfo> Functions() noexcept;    // sorted by address
+std::span<const FsPatchSite> FsPatchSites() noexcept;  // 38 entries, sorted by address
 // Function whose [address, address+size) contains addr (nullptr if none).
 const FunctionInfo* FindFunctionContaining(GuestAddr addr) noexcept;
 // Entry whose start is exactly addr (nullptr if none or a synthetic range).

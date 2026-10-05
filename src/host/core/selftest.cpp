@@ -84,7 +84,15 @@ bool StageRunSelfTests(const Config& config) {
         FUT_LOGD(Core, "self-tests disabled (use --selftest)");
         return true;
     }
-    const int failures = RunSelfTests(SelfTestPhase::Host) + RunSelfTests(SelfTestPhase::Mapped);
+    // Sequenced on purpose (review finding 7): the order of the operands of '+' is unspecified, and
+    // MSVC Debug and RelWithDebInfo evaluated them differently. Host tests need no mapped XBE and run
+    // first; a host failure skips the mapped phase.
+    int failures = RunSelfTests(SelfTestPhase::Host);
+    if (failures != 0) {
+        FUT_LOGE(Core, "SELFTEST host phase failed - mapped phase skipped");
+        return false;
+    }
+    failures += RunSelfTests(SelfTestPhase::Mapped);
     return failures == 0;
 }
 

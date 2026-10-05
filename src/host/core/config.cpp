@@ -18,8 +18,9 @@ LauncherInfo g_emptyLauncherInfo{};
 
 std::string Lower(std::string_view s) {
     std::string r(s);
-    std::transform(r.begin(), r.end(), r.begin(),
-                   [](unsigned char c) { return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c); });
+    std::transform(r.begin(), r.end(), r.begin(), [](unsigned char c) {
+        return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+    });
     return r;
 }
 
@@ -89,6 +90,117 @@ std::vector<std::string> SplitList(std::string_view text) {
     return out;
 }
 
+// Inline comment rule (review finding 4, same as Python configparser with
+// inline_comment_prefixes=(";", "#")): ';' or '#' starts a comment when it is preceded by a space or
+// tab and is not inside double quotes. Values that contain " ;" or " #" must be quoted.
+std::string_view StripInlineComment(std::string_view line) {
+    bool quoted = false;
+    for (size_t i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+        if (c == '"') {
+            quoted = !quoted;
+        } else if (!quoted && (c == ';' || c == '#') && i > 0 &&
+                   (line[i - 1] == ' ' || line[i - 1] == '\t')) {
+            return Trim(line.substr(0, i));
+        }
+    }
+    return line;
+}
+
+// Every key the host reads (review finding 8). A module that reads a new key adds it here. A key
+// that is not listed is a configuration error in a known section (typos such as "stop-at" or
+// "timeout = 60s" must not be ignored silently); an unknown section only produces a warning.
+enum class KeyType : std::uint8_t { String, Bool, U32, List, Path };
+struct KnownKey {
+    const char* section;
+    const char* key;
+    KeyType type;
+};
+constexpr KnownKey kKnownKeys[] = {
+    {"paths", "iso", KeyType::Path},
+    {"paths", "xbe", KeyType::Path},
+    {"paths", "userdata", KeyType::Path},
+    {"paths", "disc_dir", KeyType::Path},
+    {"debug", "stop_at", KeyType::String},
+    {"debug", "selftest", KeyType::Bool},
+    {"debug", "trace", KeyType::List},
+    {"debug", "msgbox", KeyType::Bool},
+    {"debug", "timeout", KeyType::U32},
+    {"debug", "crash_test", KeyType::Bool},
+    {"debug", "minidump", KeyType::Bool},
+    {"debug", "mmio_trap", KeyType::Bool},
+    {"kernel", "strict", KeyType::Bool},
+    {"kernel", "min_guest_stack", KeyType::U32},
+    {"log", "level", KeyType::String},
+    {"log", "console", KeyType::Bool},
+    {"log", "debugger", KeyType::Bool},
+    {"hooks", "disable", KeyType::List},
+    {"settings", "language", KeyType::String},
+    {"settings", "game_region", KeyType::U32},
+    {"settings", "av_region", KeyType::U32},
+    {"settings", "video_flags", KeyType::U32},
+    {"settings", "audio_flags", KeyType::U32},
+    {"settings", "av_pack", KeyType::U32},
+    {"saves", "key_mode", KeyType::String},
+    {"saves", "signature_key", KeyType::String},
+    {"saves", "xbox_cert_key", KeyType::String},
+};
+
+bool IsKnownSection(std::string_view section) {
+    for (const KnownKey& k : kKnownKeys) {
+        if (section == k.section) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Section-less keys (outside any [section]) match the key name in any section.
+const KnownKey* FindKnownKey(std::string_view section, std::string_view key) {
+    for (const KnownKey& k : kKnownKeys) {
+        if (key == k.key && (section.empty() || section == k.section)) {
+            return &k;
+        }
+    }
+    return nullptr;
+}
+
+// Checks every stored "section.key" against kKnownKeys and its type. Unknown sections -> warnings.
+bool ValidateKeys(const std::map<std::string, std::string, std::less<>>& values,
+                  std::vector<std::string>& warnings, std::string& error) {
+    for (const auto& [fullKey, value] : values) {
+        const size_t dot = fullKey.find('.');
+        const std::string_view full(fullKey);
+        const std::string_view section = dot == std::string::npos ? std::string_view() : full.substr(0, dot);
+        const std::string_view key = dot == std::string::npos ? full : full.substr(dot + 1);
+        if (!section.empty() && !IsKnownSection(section)) {
+            warnings.push_back("unknown config section [" + std::string(section) + "] (key '" +
+                               std::string(key) + "' ignored)");
+            continue;
+        }
+        const KnownKey* known = FindKnownKey(section, key);
+        if (known == nullptr) {
+            error = section.empty() ? "unknown config key '" + std::string(key) + "' outside any section"
+                                    : "unknown config key '" + std::string(key) + "' in [" +
+                                          std::string(section) + "] (known keys: see core/config.h)";
+            return false;
+        }
+        const std::string where = "[" + std::string(known->section) + "] " + known->key;
+        bool b = false;
+        std::uint32_t u = 0;
+        if (known->type == KeyType::Bool && !ParseBool(value, b)) {
+            error = "invalid boolean for " + where + ": '" + value +
+                    "' (expected 0/1, true/false, yes/no, on/off)";
+            return false;
+        }
+        if (known->type == KeyType::U32 && !ParseU32(value, u)) {
+            error = "invalid number for " + where + ": '" + value + "' (expected decimal or 0x hex, no unit)";
+            return false;
+        }
+    }
+    return true;
+}
+
 std::filesystem::path ResolvePath(const std::string& value, const std::filesystem::path& base) {
     std::filesystem::path p(Utf8ToWide(value));
     if (p.is_relative() && !base.empty()) {
@@ -118,10 +230,11 @@ bool ReadIni(const std::filesystem::path& file, std::map<std::string, std::strin
     int lineNo = 0;
     while (std::getline(lines, rawLine)) {
         ++lineNo;
-        const std::string_view line = Trim(rawLine);
+        std::string_view line = Trim(rawLine);
         if (line.empty() || line.front() == ';' || line.front() == '#') {
             continue;
         }
+        line = StripInlineComment(line);
         if (line.front() == '[') {
             if (line.back() != ']') {
                 error = WideToUtf8(file.wstring()) + ":" + std::to_string(lineNo) + ": bad section header";
@@ -289,6 +402,22 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
         }
         out.userdata = std::filesystem::path(buf) / L"FuturamaPC";
     }
+    // Review finding 11: the VFS uses "\\?\" paths, but the log, minidumps and std::filesystem users
+    // rely on Win32 long path support (launcher manifest longPathAware + LongPathsEnabled = 1).
+    // Without it, keep every derived path below MAX_PATH instead of failing later.
+    {
+        std::error_code absEc;
+        const std::filesystem::path abs = std::filesystem::absolute(out.userdata, absEc);
+        const size_t length = (absEc ? out.userdata : abs).wstring().size();
+        if (!ProcessLongPathsEnabled() && length > kMaxUserdataWithoutLongPaths) {
+            error =
+                "[paths] userdata is " + std::to_string(length) + " characters long; without Windows long " +
+                "path support at most " + std::to_string(kMaxUserdataWithoutLongPaths) +
+                " are allowed (logs, minidumps and saves lie up to 57 characters deeper). Choose a shorter " +
+                "directory or set HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem LongPathsEnabled = 1";
+            return false;
+        }
+    }
     out.stopAt = Lower(out.GetString("debug", "stop_at"));
     out.selftest = out.GetBool("debug", "selftest", false);
     out.trace = out.GetList("debug", "trace");
@@ -305,19 +434,26 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
     out.logConsole = out.GetBool("log", "console", kDebugBuild);
     out.logDebugger = out.GetBool("log", "debugger", kDebugBuild);
     const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
-    const bool hasStderr = err != nullptr && err != INVALID_HANDLE_VALUE && GetFileType(err) != FILE_TYPE_UNKNOWN;
+    const bool hasStderr =
+        err != nullptr && err != INVALID_HANDLE_VALUE && GetFileType(err) != FILE_TYPE_UNKNOWN;
     out.msgbox = out.GetBool("debug", "msgbox", !hasStderr);
     out.hooksDisable = out.GetList("hooks", "disable");
 
-    for (const char* boolKey : {"debug.selftest", "kernel.strict", "log.console", "log.debugger", "debug.msgbox"}) {
-        auto it = out.values.find(boolKey);
-        bool dummy = false;
-        if (it != out.values.end() && !ParseBool(it->second, dummy)) {
-            error = std::string("invalid boolean for ") + boolKey + ": '" + it->second + "'";
-            return false;
-        }
-    }
-    return true;
+    return ValidateKeys(out.values, out.warnings, error);
+}
+
+bool IsKnownConfigKey(std::string_view section, std::string_view key) {
+    return FindKnownKey(Lower(section), Lower(key)) != nullptr;
+}
+
+bool ProcessLongPathsEnabled() noexcept {
+    // ntdll!RtlAreLongPathsEnabled (Windows 10 1607+): TRUE if the system setting is on AND the
+    // process manifest declares longPathAware (src/launcher/futurama.manifest).
+    using Fn = BOOLEAN(NTAPI*)();
+    const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    const auto fn =
+        ntdll != nullptr ? reinterpret_cast<Fn>(GetProcAddress(ntdll, "RtlAreLongPathsEnabled")) : nullptr;
+    return fn != nullptr && fn() != FALSE;
 }
 
 const Config& GetConfig() noexcept {
@@ -333,7 +469,9 @@ void SetConfig(Config config) {
     }
 }
 
-void SetLauncherInfo(const LauncherInfo* info) noexcept { g_launcherInfo = info; }
+void SetLauncherInfo(const LauncherInfo* info) noexcept {
+    g_launcherInfo = info;
+}
 
 const LauncherInfo& GetLauncherInfo() noexcept {
     return g_launcherInfo != nullptr ? *g_launcherInfo : g_emptyLauncherInfo;
@@ -350,7 +488,8 @@ std::string WideToUtf8(std::wstring_view text) {
     const int n = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0,
                                       nullptr, nullptr);
     std::string out(static_cast<size_t>(n), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), n, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), n, nullptr,
+                        nullptr);
     return out;
 }
 

@@ -449,6 +449,49 @@ TEST_CASE("kernel: data exports have the design 1.5 values") {
     }
 }
 
+TEST_CASE("kernel: generated stubs return the failure value of their return kind (design 5.4)") {
+    // Review finding 1: 0xC0000002 must only reach callers that expect an NTSTATUS.
+    static_assert(krnl::exp::MmCreateKernelStack::ret == krnl::gen::Ret::Pointer);
+    static_assert(krnl::exp::HalIsResetOrShutdownPending::ret == krnl::gen::Ret::Boolean);
+    static_assert(krnl::exp::NtCreateFile::ret == krnl::gen::Ret::Ntstatus);
+    CHECK(krnl::detail::UnimplementedResult(krnl::gen::Ret::Ntstatus) == 0xC0000002u);
+    for (krnl::gen::Ret r :
+         {krnl::gen::Ret::Void, krnl::gen::Ret::Pointer, krnl::gen::Ret::Boolean, krnl::gen::Ret::Ulong}) {
+        CHECK(krnl::detail::UnimplementedResult(r) == 0u);
+    }
+    // The stubs themselves (always the generated function, also once a slot is implemented).
+    using Fn0 = std::uint32_t(__stdcall*)();
+    using Fn2 = std::uint32_t(__stdcall*)(std::uint32_t, std::uint32_t);
+    using Fn6 = std::uint32_t(__stdcall*)(std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
+                                          std::uint32_t, std::uint32_t);
+    const auto ioCreateDevice =
+        reinterpret_cast<Fn6>(krnl::gen::StubAddress(krnl::exp::IoCreateDevice::slot));
+    const auto exAllocatePool =
+        reinterpret_cast<Fn2>(krnl::gen::StubAddress(krnl::exp::ExAllocatePoolWithTag::slot));
+    const auto halIsReset =
+        reinterpret_cast<Fn0>(krnl::gen::StubAddress(krnl::exp::HalIsResetOrShutdownPending::slot));
+    REQUIRE(ioCreateDevice != nullptr);
+    REQUIRE(exAllocatePool != nullptr);
+    REQUIRE(halIsReset != nullptr);
+    CHECK(ioCreateDevice(0, 0, 0, 0, 0, 0) == 0xC0000002u);  // NTSTATUS
+    CHECK(exAllocatePool(0x10, 0x74736554) == 0u);           // PVOID -> NULL
+    CHECK(halIsReset() == 0u);                               // BOOLEAN -> FALSE
+
+    // Every FUNC export has a return kind; only 107/108 abort without [kernel] strict (until M2).
+    std::uint32_t fatal = 0;
+    for (const auto& e : krnl::gen::kExports) {
+        CAPTURE(e.name);
+        if (e.kind != krnl::gen::Kind::Func) {
+            CHECK(e.ret == krnl::gen::Ret::Void);
+            CHECK_FALSE(e.stubFatal);
+        }
+        fatal += e.stubFatal ? 1u : 0u;
+    }
+    CHECK(fatal == 2u);
+    CHECK(krnl::gen::kExports[krnl::exp::MmCreateKernelStack::slot].stubFatal);
+    CHECK(krnl::gen::kExports[krnl::exp::MmDeleteKernelStack::slot].stubFatal);
+}
+
 TEST_CASE("kernel: [saves] key_mode = xbox derives the keys from the certificate (design 4.5)") {
     // Needs the header page 0x10000 (certificate at 0x10180) - free in the test process normally.
     void* page =

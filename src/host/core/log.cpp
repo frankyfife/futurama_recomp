@@ -39,6 +39,7 @@ std::atomic<int> g_threadCounter{0};
 LARGE_INTEGER g_qpcStart{};
 LARGE_INTEGER g_qpcFreq{};
 thread_local char t_threadName[24] = {};
+char g_lastError[512] = {};  // body of the most recent error-level line (guarded by g_lock)
 
 void EnsureClock() noexcept {
     if (g_qpcFreq.QuadPart == 0) {
@@ -54,7 +55,9 @@ const char* ThreadName() noexcept {
     return t_threadName;
 }
 
-bool ValidHandle(HANDLE h) noexcept { return h != nullptr && h != INVALID_HANDLE_VALUE; }
+bool ValidHandle(HANDLE h) noexcept {
+    return h != nullptr && h != INVALID_HANDLE_VALUE;
+}
 
 void WriteAll(HANDLE h, const char* data, size_t size) noexcept {
     while (size > 0) {
@@ -161,6 +164,12 @@ void FormatAndEmit(Channel channel, Level level, const char* fmt, va_list args) 
     line[size] = 0;
     AcquireSRWLockExclusive(&g_lock);
     EmitLocked(line, size);
+    if (level == Level::Error) {
+        const size_t body = size - 1 - static_cast<size_t>(prefix);  // without prefix and newline
+        const size_t n = body < sizeof(g_lastError) - 1 ? body : sizeof(g_lastError) - 1;
+        std::memcpy(g_lastError, line + prefix, n);
+        g_lastError[n] = 0;
+    }
     ReleaseSRWLockExclusive(&g_lock);
 }
 
@@ -234,6 +243,13 @@ void LogFlush() noexcept {
     ReleaseSRWLockExclusive(&g_lock);
 }
 
+std::string LogLastError() {
+    AcquireSRWLockShared(&g_lock);
+    std::string text(g_lastError);
+    ReleaseSRWLockShared(&g_lock);
+    return text;
+}
+
 const std::filesystem::path& LogFilePath() noexcept {
     static const std::filesystem::path empty;
     return g_filePath != nullptr ? *g_filePath : empty;
@@ -277,7 +293,7 @@ const char* ChannelName(Channel channel) noexcept {
 
 const char* LevelName(Level level) noexcept {
     return static_cast<int>(level) <= static_cast<int>(Level::Trace) ? kLevelNames[static_cast<int>(level)]
-                                                                       : "?";
+                                                                     : "?";
 }
 
 namespace {
@@ -287,8 +303,10 @@ bool IEquals(std::string_view a, std::string_view b) noexcept {
     }
     for (size_t i = 0; i < a.size(); ++i) {
         char x = a[i], y = b[i];
-        if (x >= 'A' && x <= 'Z') x = static_cast<char>(x - 'A' + 'a');
-        if (y >= 'A' && y <= 'Z') y = static_cast<char>(y - 'A' + 'a');
+        if (x >= 'A' && x <= 'Z')
+            x = static_cast<char>(x - 'A' + 'a');
+        if (y >= 'A' && y <= 'Z')
+            y = static_cast<char>(y - 'A' + 'a');
         if (x != y) {
             return false;
         }
@@ -321,9 +339,13 @@ bool ParseLevel(std::string_view text, Level& out) noexcept {
     return false;
 }
 
-void SetFatalHook(FatalHook hook) noexcept { g_fatalHook = hook; }
+void SetFatalHook(FatalHook hook) noexcept {
+    g_fatalHook = hook;
+}
 
-void SetFatalMessageBox(bool enabled) noexcept { g_fatalMessageBox = enabled; }
+void SetFatalMessageBox(bool enabled) noexcept {
+    g_fatalMessageBox = enabled;
+}
 
 void FatalV(const char* fmt, va_list args) noexcept {
     if (g_fatalEntered.fetch_add(1) != 0) {
@@ -336,6 +358,25 @@ void FatalV(const char* fmt, va_list args) noexcept {
         g_fatalHook(message);
     }
     LogFlush();
+    if (!g_toConsole) {
+        // Without the console sink the message would otherwise only be in the log file (finding 5).
+        const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+        if (ValidHandle(err) && GetFileType(err) != FILE_TYPE_UNKNOWN) {
+            try {
+                const std::string logPath =
+                    g_filePath != nullptr ? g_filePath->string() : std::string("(none)");
+                char line[1400];
+                const int n = std::snprintf(line, sizeof(line), "futurama: FATAL: %s\nlog file: %s\n",
+                                            message, logPath.c_str());
+                if (n > 0) {
+                    WriteAll(err, line,
+                             static_cast<size_t>(n) < sizeof(line) ? static_cast<size_t>(n)
+                                                                   : sizeof(line) - 1);
+                }
+            } catch (...) {
+            }
+        }
+    }
     if (g_fatalMessageBox) {
         MessageBoxA(nullptr, message, "Futurama - fatal error", MB_OK | MB_ICONERROR);
     }

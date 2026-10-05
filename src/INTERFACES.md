@@ -8,10 +8,11 @@ documents are German.
 
 | What | How |
 |---|---|
-| Build | `cmd /c "D:\FuturamaDecomp\build.cmd" [builddir] [Debug\|RelWithDebInfo] [target]` (always the FULL path; cmd AutoRun changes the working directory). Default `build\x86-debug Debug`, all targets. Every agent uses **its own** build dir, e.g. `build\core`, `build\kernel`, `build\io`. |
+| Build | `cmd /c "D:\FuturamaDecomp\build.cmd" [builddir] [Debug\|RelWithDebInfo] [target\|all] [msvc\|clang]` (always the FULL path; cmd AutoRun changes the working directory). Default `build\x86-debug Debug`, all targets. Every agent uses **its own** build dir, e.g. `build\core`, `build\kernel`, `build\io`. |
 | Targets | `fut_launcher` (futurama.exe), `fut_host` (futurama_host.dll), `fut_game` (static), `fut_tests` (only if `third_party\doctest\doctest.h` exists), `fut_gen` (checks generated files, needs Python). |
 | Output | `<builddir>\bin\futurama.exe`, `futurama_host.dll`, PDBs. |
-| Presets | `CMakePresets.json`: `x86-debug`, `x86-relwithdebinfo` (Ninja + cl, needs a vcvars32 environment). |
+| Presets | `CMakePresets.json`: `x86-debug`, `x86-relwithdebinfo` (Ninja + cl), `x86-clang-debug` (clang-cl 32-bit + ml.exe + link.exe, second build for warnings, design 5.2); all need a vcvars32 environment. `build.cmd <dir> Debug all clang` does the same as the clang preset. Extra cache options via the environment variable `FUT_CMAKE_ARGS` (e.g. `-DFUT_WERROR=ON`). |
+| Tests | `ctest` from the build root: `fut_tests`; with `-DFUT_TEST_CONFIG=<test INI>` also `fut_selftest` (`futurama.exe --config=... --selftest --stop-at=main`) and `fut_m1_check` (`tools\m1_check.py`, 10 runs). |
 | New source files | Just add them. `src\host\<module>\**\*.cpp/.h/.inc/.asm` (modules core kernel vfs xapi platform asm gen gfx audio video input), `src\game\**`, `tests\*.cpp` are collected with `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)`. No CMake edit needed. |
 | Warnings | Host C++: `/std:c++20 /W4 /permissive- /utf-8 /EHsc`, `shared\win32.h` is force-included. Your files must build **without warnings** (`-DFUT_WERROR=ON` turns them into errors). |
 
@@ -54,7 +55,7 @@ PsCreateSystemThreadEx -> XapiThreadStartup -> 0xF8469 -> XapiInitProcess -> _rt
 
 **M1 exit check (phase 3 integration)**: `python tools\m1_check.py --exe build\x86-debug\bin\futurama.exe
 --config run\integ\futurama.ini --runs 10 --xbe orig\retail_eu\default.xbe [--fresh]` runs the loader N times
-(the INI must set `userdata`, `stop_at = main`, `selftest = 1`), checks the six M1 exit criteria of design
+(the INI must set `userdata`; the script adds `--selftest --stop-at=main` and fails on a missing log or a different userdata), checks the six M1 exit criteria of design
 section 6 per run (self-tests, boot probes, partition1 files, pool + cluster size, main hook + exit 0, log
 without error/warn/UNIMPLEMENTED/TRAP) and compares the logs after masking timestamps and 8-digit addresses.
 Logs of every run: `<userdata>\m1_check\`. Integration configs: `run\integ` (Debug), `run\integ-rel`
@@ -131,6 +132,12 @@ Channels `Core Krnl Vfs Xapi Gfx Snd Vid Inp Hook Game`; levels `Error Warn Info
 = `<userdata>\hdd\partition1`, `CacheDirectory()`). Module-specific keys need no header change:
 `cfg.GetString("settings", "language", "english")`, `GetBool`, `GetU32` (dec/0x), `GetList`, `GetPath`
 (relative to the INI). Any key can be overridden with `--set=section.key=value`.
+Phase 5: inline comments (`;`/`#` after a blank, outside quotes; same rule as Python configparser) are
+allowed. Every key must be listed in `kKnownKeys` (`core\config.cpp`) - a new module key is added there;
+unknown keys in a known section and invalid booleans/numbers are configuration errors (exit code 1),
+unknown sections only a warning (`Config::warnings`, logged after the log opens). A userdata path longer
+than 200 characters is rejected when the process has no Win32 long path support
+(`core::ProcessLongPathsEnabled()`).
 `core::WideToUtf8` / `core::Utf8ToWide` convert strings.
 
 ### 4.4 Guest addresses and memory - `core\guest.h`
@@ -198,7 +205,10 @@ KRNL_ADDR(NtUserIoApcDispatcher, &NtUserIoApcDispatcher);
   log at trace), `KRNL_DATA` / `KRNL_ADDR` = data / address exports.
 - Unregistered slots: FUNC -> generated stub with exact convention and purge, logs
   `UNIMPLEMENTED Ord <n> <Name>(0x..., ...) ret=0x000F9C9C FUN_...+0x..` once per return address (KRNL/warn),
-  returns `STATUS_NOT_IMPLEMENTED`; with `[kernel] strict=1` debug break + `core::Fatal`.
+  returns the failure value of the export's return kind (phase 5, review finding 1): `STATUS_NOT_IMPLEMENTED`
+  only for NTSTATUS exports, 0 (NULL/FALSE) for pointer/BOOLEAN/ULONG/void exports (`gen::ExportInfo::ret`,
+  table `RETURN_KIND` in `tools\gen\gen_kernel_table.py`); with `[kernel] strict=1` debug break + `core::Fatal`.
+  Slots in `FATAL_STUBS` (`stubFatal`: 107 MmCreateKernelStack, 108 MmDeleteKernelStack until M2) abort always.
   DATA -> zeroed writable 0x400-byte placeholder; ADDR -> routine that aborts when called.
 - Registration of the same slot twice is reported by `krnl::ValidateRegistry()` (error).
 - Resolution API (core): `krnl::ExportAt(slot)`, `krnl::FindExportByOrdinal(ord)`, `krnl::GetBinding(slot)`
@@ -252,7 +262,8 @@ core::InstallHookNow(core::HookDesc{guest::kGameMain, core::detail::CodeAddress(
 ```
 
 Validation (design 3.2): known function start, size >= 5, no overlap with other hooks or fs patch sites,
-expected bytes. `[hooks] disable = name, 0xADDR, prefix*`. Member functions: `core::detail::CodeAddress(&C::f)`.
+expected bytes. `[hooks] disable = name, 0xADDR, prefix*`; addresses compare by value (`0xF641B` = `0x000F641B`),
+entries without a matching hook are logged as warnings. Member functions: `core::detail::CodeAddress(&C::f)`.
 
 Probe hooks (phase 3, log + call the original; design "Abweichungen in M1"):
 
@@ -362,3 +373,12 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-04 | io | `src\host\vfs\vfs.h` | added `XdvdfsImage::VolumeTimestamp()`, `PartitionSize()`, `EntryCount()`; free functions `vfs::MatchFileMask(name, mask)` (NtQueryDirectoryFile masks) and `vfs::ResetNamespace()` (unit tests only). `vfs\vfs_stubs.cpp` deleted (real implementation in `vfs\*.cpp`). |
 | 2026-10-04 | io | (io-owned APIs, listed for the other agents) | **APC contract (design 1.7)**: `kernel\io_apc.h` - NtReadFile/NtWriteFile with an ApcRoutine do the I/O synchronously, return STATUS_PENDING and queue {ApcRoutine, ApcContext, IoStatusBlock, status, information} for the calling thread. The kernel agent's alertable waits (`KeDelayExecutionThread`/`NtWaitForSingleObjectEx` with Alertable = TRUE) must call `krnl::io::DeliverIoApcs()` and return STATUS_USER_APC (0xC0) if it returned > 0; delivery writes the IoStatusBlock, then calls `ApcRoutine(ApcContext, IoStatusBlock, 0)` (= kernel's NtUserIoApcDispatcher; verified end to end in `tests\vfs_tests.cpp`). Also `PendingIoApcCount()`, `GetIoApcStats()` (M2 exit 5). `kernel\io_exports.h` declares the io kernel exports (callable from host code/tests), `kernel\io_file_object.h` the guest file object (`krnl::io::LookupFile`). New config key `[paths] disc_dir` = extracted disc as read-only `\Device\CdRom0` when no `iso` is set (design 4.1 DirDevice). Without iso/disc_dir, CdRom0 is a device without files. Tests: `tests\vfs_tests.cpp` (ISO via `%FUT_TEST_ISO%`, temp dir `%FUT_TEST_TMP%`, both with defaults). |
 | 2026-10-04 | kernel | (claim + kernel-owned APIs, no shared edit) | **Slots registered by the kernel agent** (`kernel\*.cpp` except `io_*`; please do not define them elsewhere): 0 KfLowerIrql, 1 KeRaiseIrqlToDpcLevel, 3 RtlInitAnsiString, 4 KeSetEvent, 5 KeWaitForSingleObject, 6 KeInitializeTimerEx, 7 KeInitializeDpc, 8 IoInvalidDeviceRequest (ADDR), 9/10/14 Rtl*CriticalSection, 11/12/15 Nt*VirtualMemory, 13 RtlCompareMemoryUlong, 16 RtlRaiseException + 105 RtlUnwind (slot = ntdll's own function), 17 ExQueryNonVolatileSetting, 18/30/31/32/47/53/64/73/75/87/110 (all DATA), 20 NtWaitForSingleObjectEx, 21 KeDelayExecutionThread, 23 KeQuerySystemTime, 24 RtlNtStatusToDosError, 27-29 XcSHA*, 33 NtWaitForSingleObject, 39 NtUserIoApcDispatcher (ADDR), 42/44 Mm*SystemMemory, 51/52/54/56/57 Mm*ContiguousMemory*/MmQueryAllocationSize, 55 HalReturnToFirmware, 58/59 Mm*AddressProtect, 60 KeSetTimer, 61 KeCancelTimer, 72 XcVerifyPKCS1Signature, 74 HalRegisterShutdownNotification, 76 PsTerminateSystemThread, 77 PsCreateSystemThreadEx, 78 HalInitiateShutdown, 80 KfRaiseIrql, 84 RtlEqualString, 85/86 XeLoad/UnloadSection, 98 DbgPrint, 106 KeBugCheck, 109 DbgBreakPoint (62 slots). Still generated stubs: 49/50 (M7), 107/108 MmCreate/DeleteKernelStack (M2), the replaced-library slots. **APIs**: `kernel\kernel_hle.h`: `krnl::NtStatusToDosError` (= guest RtlNtStatusToDosError), `TimeoutToMilliseconds`, `CurrentIrql`, `GuestThreadsExitedEvent()` (manual-reset event, signaled when the last PsCreateSystemThreadEx thread called PsTerminateSystemThread - the process does NOT end by itself; the core message loop may wait on it), `LiveGuestThreadCount`, `OnXbeMapped()` (idempotent; derives `[saves] key_mode = xbox` keys from the mapped certificate; PsCreateSystemThreadEx calls it), `NtUserIoApcDispatcher`. `kernel\kernel_exports.h` declares every kernel-agent export (callable from host code/tests); `kernel\ke_thread.h` `krnl::ThreadObject` (guest thread handle object: `HostHandle`, `ThreadId`, `KThread`, `ExitStatus`; owns fake KTHREAD + TlsData, adopted with `core::AdoptCurrentThreadWith`, SystemRoutine called via `core::CallGuest`). **APC contract implemented** (`kernel\ke_wait.cpp`): alertable KeDelayExecutionThread / NtWaitForSingleObject(Ex) call `io::DeliverIoApcs()` before and after waiting and return STATUS_USER_APC if it delivered; waits on file handles return at once (synchronous I/O), thread handles wait on the host thread. **Exit paths**: HalReturnToFirmware -> `core::ExitHostProcess(kExitGuestShutdown)` (routine 4 -> core::Fatal); KeBugCheck -> `core::LogBacktrace` + `core::Fatal`. **Config keys** (`kernel\kernel_settings.h`): `[settings] language` (english\|german\|french\|spanish\|italian\|... or 1..9, default english), `game_region` (4), `av_region` (0x00800300), `video_flags`, `audio_flags` (0), `av_pack` (6); `[saves] key_mode` (fixed\|xbox), `signature_key`, `xbox_cert_key`; `[kernel] min_guest_stack` (0x200000). Self-tests `KernelStatusTableMatchesNtdll`, `KernelSha1KnownAnswer`, `KernelSlotsRegistered` (Host), `KernelIrqlRoundTrip` (AdoptedThread); unit tests `tests\kernel_tests.cpp`. |
+| 2026-10-04 | integration (phase 3) | `src\host\core\hooks.h/.cpp`, `src\host\core\selftest_m1.cpp`, new `src\host\xapi\boot_probes.cpp` | Probe hooks: `HookDesc::trampolineBytes` (default 0), `InstalledHook::trampoline/trampolineBytes`, `core::HookTrampoline(addr)`, macro `FUT_PROBE(addr, fn, conv, name, prologueHex, stolenBytes)` (section 4.9). Self-test `HooksInstalled` also verifies the trampolines. Six M1 boot probes (`probe:*`, default on) make exit criteria 2 and 4 visible on log level info: `boot: XapiInitProcess start/done`, `_rtinit`, `_cinit`, `game memory pool ... 0x2600000 bytes (38 MiB)`, `XGetDiskClusterSizeA("U:\") = 0x4000`, `XapiBootToDash(...)` (warn). |
+| 2026-10-04 | integration (phase 3) | `src\host\core\guest.h` | added `kXapiXGetDiskClusterSizeA` 0xF8081, `kGameSaveClusterSizeVar` 0x2EDB0C, `kGameMemoryPool` 0x2E7D60 (+ `kGameMemoryPoolBeginOffset` 0x0C / `kGameMemoryPoolEndOffset` 0x10), `kGameMemoryPoolInit` 0xA4920, `kGameMemoryPoolSize` 0x2600000 (evidence in the header). |
+| 2026-10-04 | integration (phase 3) | `src\shared\nt_status.h` | `NtStatusName` knows `STATUS_INSUFFICIENT_RESOURCES`, `STATUS_MEDIA_WRITE_PROTECTED`, `STATUS_CANNOT_DELETE` (io agent's open point). |
+| 2026-10-04 | integration (phase 3) | `src\host\xapi\xapi_hooks.cpp`, `src\host\kernel\ke_timer.cpp` | formatting only: blocks mangled by clang-format (`FUT_HLE_TRY{` with stray `// namespace` comments) rewritten as `try { ... } FUT_HLE_CATCH(...)` (same expansion). |
+| 2026-10-04 | integration (phase 3) | `src\INTERFACES.md` | fixed the escaped paths in the core Changelog row (`core\xbe_loader.h`, `core\fs_patcher.h`); M1 exit check `tools\m1_check.py` (section 1), probe hooks (section 4.9). New tool `tools\m1_check.py`, test `tests\test_core.cpp` case "M1 boot probe targets". |
+| 2026-10-05 | phase 5 (review fixes) | `kernel\kernel_api.h/.cpp`, `tools\gen\gen_kernel_table.py`, `kernel\gen\*` | `gen::Ret` + `ExportInfo::ret/stubFatal`, `krnl::exp::<Name>::ret`, `krnl::detail::UnimplementedResult(ret)`; generated stubs return 0 for non-NTSTATUS exports, 107/108 abort (finding 1). |
+| 2026-10-05 | phase 5 (review fixes) | `core\config.h/.cpp`, `core\log.h/.cpp`, `core\hooks.h/.cpp`, `core\host_main.cpp`, `core\selftest.cpp`, `core\crash.h` | INI inline comments, `kKnownKeys` validation, `Config::warnings`, `core::IsKnownConfigKey`, `core::ProcessLongPathsEnabled`, `kMaxUserdataWithoutLongPaths`; `core::LogLastError()`; stage failures and `core::Fatal` are reported on stderr / message box with the log path; `core::HookDisableEntryMatches`, `ParseHookAddressEntry`, `UnmatchedHookDisableEntries`; self-test phases run Host then Mapped; `core::ExceptionCode(EXCEPTION_*)` (DWORD form for clang). |
+| 2026-10-05 | phase 5 (review fixes) | `vfs\vfs.h`, `vfs\host_dir_device.cpp`, `vfs\vfs_init.cpp`, `launcher\futurama.manifest` | `vfs::CreateHostDirectories(dir, error)` (`\\?\` form, no MAX_PATH limit); launcher manifest `longPathAware`. |
+| 2026-10-05 | phase 5 (review fixes) | `CMakeLists.txt`, `CMakePresets.json`, `build.cmd`, `tests\CMakeLists.txt`, `tools\m1_check.py` | `enable_testing()` at the top level, `FUT_TEST_CONFIG` -> tests `fut_selftest`, `fut_m1_check`; preset `x86-clang-debug`, `build.cmd ... clang`, `FUT_CMAKE_ARGS`; m1_check passes `--selftest --stop-at=main`, fails on a missing/empty log and on a userdata mismatch. |

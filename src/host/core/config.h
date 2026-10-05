@@ -1,35 +1,54 @@
 // Host configuration: futurama.ini (next to futurama.exe, or --config=<file>) + command line.
 //
-// INI format: UTF-8, [section] headers, key = value, comment lines start with ';' or '#',
-// values may be quoted ("..."). Section and key names are case-insensitive. Relative paths in the
-// INI are resolved against the INI file's directory, on the command line against the current
-// directory. Pass paths with spaces/commas/parentheses (e.g. the ISO) through the INI file.
+// INI format: UTF-8, [section] headers, key = value. Section and key names are case-insensitive.
+// Comments: a line that starts with ';' or '#', and an inline comment that starts with ';' or '#'
+// preceded by a space or tab outside double quotes (the rule of Python configparser with
+// inline_comment_prefixes, used by tools/m1_check.py). Values may be quoted ("..."); quote a value
+// that itself contains " ;" or " #". Relative paths in the INI are resolved against the INI file's
+// directory, on the command line against the current directory. Pass paths with spaces/commas/
+// parentheses (e.g. the ISO) through the INI file.
+//
+// Every key is checked against the table kKnownKeys in config.cpp: an unknown key in a known section
+// and a value that is not a valid boolean/number are configuration errors (exit code 1); an unknown
+// section only produces a warning in the log. Known keys:
 //
 //   [paths]
 //   iso      = Y:\xbox games\...\Futurama (Europe) (En,Fr,De,Es,It).iso   ; disc image (D:, default.xbe)
 //   xbe      = D:\FuturamaDecomp\orig\retail_eu\default.xbe              ; optional extracted XBE
 //   userdata = D:\FuturamaDecomp\run\myagent         ; default %LOCALAPPDATA%\FuturamaPC
+//   disc_dir = D:\extracted_disc                     ; optional D: from a directory (without iso)
 //   [debug]
 //   stop_at  = main            ; or 0x<guest address>; hook logs and exits with code 0
 //   selftest = 1               ; run the self-tests of design 1.4 step 8
 //   trace    = krnl,vfs        ; channels raised to level trace ("all" = every channel)
-//   msgbox   = 0               ; message box on fatal errors (default: only without stderr)
+//   msgbox   = 0               ; message box on fatal and stage errors (default: only without stderr)
+//   timeout  = 60              ; watchdog in seconds, 0 = off (exit code 5)
+//   minidump = 1               ; minidump on fatal errors (default 1)
+//   mmio_trap = 1              ; reserve the Xbox MMIO range 0xFD000000.. as NOACCESS (default 1)
+//   crash_test = 0             ; unhandled guest AV right before entry (tests the crash path)
 //   [kernel]
 //   strict   = 1               ; UNIMPLEMENTED kernel stub -> debug break + abort
+//   min_guest_stack = 0x200000 ; stack reserve of guest threads (design 1.7)
 //   [log]
 //   level    = info            ; default level of all channels
 //   console  = 1               ; stderr/parent console (default 1 in Debug builds)
 //   debugger = 1               ; OutputDebugString (default 1 in Debug builds)
 //   [hooks]
-//   disable  = 0x13F250,NiUDSStream::*   ; design 3.2 (consumed by core/hooks)
+//   disable  = 0x13F250,NiUDSStream::*   ; design 3.2: name, prefix* or address (any 0x form)
+//   [settings]
+//   language = english         ; english|german|french|spanish|italian|... or 1..9
+//   game_region / av_region / video_flags / audio_flags / av_pack = <number>
+//   [saves]
+//   key_mode = fixed           ; fixed | xbox (design 4.5)
+//   signature_key / xbox_cert_key = <32 hex digits>
 //
 // Command line (wins over the INI):
 //   --config=<file> --userdata=<dir> --iso=<file> --xbe=<file> --stop-at=<main|0xADDR> --selftest
-//   --trace=<channels> --strict --log-level=<level> --set=<section>.<key>=<value> (any key)
+//   --trace=<channels> --strict --log-level=<level> --set=<section>.<key>=<value> (any known key)
 //
-// Other modules read their own keys generically, e.g.
+// Other modules read their keys generically, e.g.
 //   core::GetConfig().GetString("settings", "language", "english")
-// without changing this header.
+// A new key must be added to kKnownKeys in config.cpp.
 #pragma once
 
 #include "shared/launcher_info.h"
@@ -45,7 +64,7 @@
 namespace core {
 
 struct Config {
-    std::filesystem::path exePath;     // futurama.exe
+    std::filesystem::path exePath;  // futurama.exe
     std::filesystem::path exeDir;
     std::filesystem::path configFile;  // INI actually loaded (empty if none)
 
@@ -55,7 +74,7 @@ struct Config {
     std::filesystem::path userdata;  // always set (default %LOCALAPPDATA%\FuturamaPC)
 
     // [debug]
-    std::string stopAt;              // "", "main" or "0x..." (validated by core)
+    std::string stopAt;  // "", "main" or "0x..." (validated by core)
     bool selftest = false;
     std::vector<std::string> trace;  // lower-case channel names or "all"
     bool msgbox = false;
@@ -71,6 +90,9 @@ struct Config {
     // [hooks]
     std::vector<std::string> hooksDisable;
 
+    // Warnings found while loading (unknown sections); logged by HostMain once the log is open.
+    std::vector<std::string> warnings;
+
     // Every key from INI and command line: "section.key" (lower case) -> raw value.
     // Keys outside any section are stored without prefix ("key").
     std::map<std::string, std::string, std::less<>> values;
@@ -79,8 +101,10 @@ struct Config {
     bool Has(std::string_view section, std::string_view key) const;
     std::string GetString(std::string_view section, std::string_view key, std::string_view def = {}) const;
     bool GetBool(std::string_view section, std::string_view key, bool def) const;
-    std::uint32_t GetU32(std::string_view section, std::string_view key, std::uint32_t def) const;  // dec or 0x
-    std::vector<std::string> GetList(std::string_view section, std::string_view key) const;  // comma separated
+    std::uint32_t GetU32(std::string_view section, std::string_view key,
+                         std::uint32_t def) const;  // dec or 0x
+    std::vector<std::string> GetList(std::string_view section,
+                                     std::string_view key) const;  // comma separated
     // Relative values are resolved against the INI directory (or the exe directory without INI).
     std::filesystem::path GetPath(std::string_view section, std::string_view key,
                                   const std::filesystem::path& def = {}) const;
@@ -95,6 +119,15 @@ struct Config {
 // missing --config file, unreadable INI, bad value).
 bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath, Config& out,
                 std::string& error);
+
+// True if [section] key is in the table of known keys (config.cpp kKnownKeys).
+bool IsKnownConfigKey(std::string_view section, std::string_view key);
+
+// Win32 long path support of this process (LongPathsEnabled = 1 and the launcher manifest's
+// longPathAware). Without it LoadConfig rejects a userdata path longer than this many characters,
+// because log files, minidumps and saves lie up to 57 characters deeper (review finding 11).
+bool ProcessLongPathsEnabled() noexcept;
+inline constexpr std::size_t kMaxUserdataWithoutLongPaths = 200;
 
 // Process-wide configuration, valid after HostMain stage 1 (core/host_main.cpp).
 const Config& GetConfig() noexcept;

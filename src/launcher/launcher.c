@@ -18,11 +18,18 @@
 
 #include "shared/launcher_info.h"
 
+#if defined(__clang__)
+/* clang-cl puts code into ".text" (cl.exe: ".text$mn"). When the linker merges the grouped sections,
+ * ".text" sorts before ".text$a" and would push the placeholder off 0x11000 (seen with lld-link:
+ * 0x11500). Keep the launcher code behind the placeholder explicitly (review finding 6). */
+#pragma code_seg(".text$mn")
+#endif
+
 /* Defined in placeholder.asm (.text$a). */
 extern unsigned char xbe_space[];
 extern unsigned char xbe_space_end[];
 
-static LauncherInfo g_info;          /* zero-initialised (.bss) */
+static LauncherInfo g_info; /* zero-initialised (.bss) */
 static wchar_t g_exePath[MAX_PATH * 4];
 static wchar_t g_dllPath[MAX_PATH * 4 + 32];
 static char g_msg[1024];
@@ -31,7 +38,8 @@ static void Fail(int exitCode, const char* msg) {
     HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
     DWORD written = 0;
     OutputDebugStringA(msg);
-    if (err == NULL || err == INVALID_HANDLE_VALUE || !WriteFile(err, msg, (DWORD)lstrlenA(msg), &written, NULL)) {
+    if (err == NULL || err == INVALID_HANDLE_VALUE ||
+        !WriteFile(err, msg, (DWORD)lstrlenA(msg), &written, NULL)) {
         /* No console/pipe (double-click start): show the error. */
         MessageBoxA(NULL, msg, "Futurama launcher", MB_OK | MB_ICONERROR);
     }

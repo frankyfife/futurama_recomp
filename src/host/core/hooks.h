@@ -37,6 +37,8 @@
 
 #include <cstdint>
 #include <cstring>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -82,7 +84,14 @@ std::vector<InstalledHook> InstalledHookList();
 // is no installed probe hook at that address.
 guest::GuestAddr HookTrampoline(guest::GuestAddr address) noexcept;
 // True if `desc` matches an entry of [hooks] disable (exact name, 0xADDR, or "prefix*").
+// Address entries compare by value: "0xF641B", "0x000F641B" (log format 0x%08X) and "0xf641b" match
+// the same hook.
 bool IsHookDisabled(const HookDesc& desc, const Config& config);
+bool HookDisableEntryMatches(const HookDesc& desc, std::string_view entry) noexcept;
+// Numeric [hooks] disable entry (strtoul base 0, must start with a digit) -> address.
+bool ParseHookAddressEntry(std::string_view entry, guest::GuestAddr& address) noexcept;
+// Entries of [hooks] disable that match no registered hook (StageInstallHooks logs a warning each).
+std::vector<std::string> UnmatchedHookDisableEntries(const Config& config);
 
 namespace detail {
 // Code address of a function pointer or (single-inheritance) member function pointer.

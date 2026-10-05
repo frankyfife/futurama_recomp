@@ -36,20 +36,44 @@ std::unordered_set<std::uint64_t>& SeenSet() {
 
 const char* MilestoneName(gen::Milestone m) noexcept {
     switch (m) {
-    case gen::Milestone::M1: return "M1";
-    case gen::Milestone::M2: return "M2";
-    case gen::Milestone::M7: return "M7";
-    case gen::Milestone::Defensive: return "defensive";
-    case gen::Milestone::ReplacedLibs: return "replaced-libs";
+    case gen::Milestone::M1:
+        return "M1";
+    case gen::Milestone::M2:
+        return "M2";
+    case gen::Milestone::M7:
+        return "M7";
+    case gen::Milestone::Defensive:
+        return "defensive";
+    case gen::Milestone::ReplacedLibs:
+        return "replaced-libs";
+    }
+    return "?";
+}
+
+const char* RetName(gen::Ret r) noexcept {
+    switch (r) {
+    case gen::Ret::Void:
+        return "void";
+    case gen::Ret::Ntstatus:
+        return "NTSTATUS";
+    case gen::Ret::Pointer:
+        return "pointer";
+    case gen::Ret::Boolean:
+        return "BOOLEAN";
+    case gen::Ret::Ulong:
+        return "ULONG";
     }
     return "?";
 }
 
 const char* KindName(gen::Kind k) noexcept {
     switch (k) {
-    case gen::Kind::Func: return "FUNC";
-    case gen::Kind::Data: return "DATA";
-    case gen::Kind::Addr: return "ADDR";
+    case gen::Kind::Func:
+        return "FUNC";
+    case gen::Kind::Data:
+        return "DATA";
+    case gen::Kind::Addr:
+        return "ADDR";
     }
     return "?";
 }
@@ -80,7 +104,9 @@ Binding GetBinding(std::uint32_t slot) noexcept {
     return Binding{gen::StubAddress(slot), ImplStatus::Unimpl, "<generated stub>", nullptr};
 }
 
-bool IsImplemented(std::uint32_t slot) noexcept { return slot < gen::kSlotCount && g_entries[slot].count > 0; }
+bool IsImplemented(std::uint32_t slot) noexcept {
+    return slot < gen::kSlotCount && g_entries[slot].count > 0;
+}
 
 bool ValidateRegistry() noexcept {
     bool ok = g_badRegistrations == 0;
@@ -119,13 +145,15 @@ std::uint32_t LogBindingSummary() noexcept {
             FUT_LOGW(Krnl, "slot %3u Ord %3u %-32s %s still a generated %s (plan M1)", s, x.ordinal, x.name,
                      KindName(x.kind), x.kind == gen::Kind::Func ? "stub" : "placeholder");
         } else {
-            FUT_LOGI(Krnl, "slot %3u Ord %3u %-32s %s still a generated %s (plan %s)", s, x.ordinal, x.name,
+            FUT_LOGI(Krnl, "slot %3u Ord %3u %-32s %s still a generated %s (plan %s)%s", s, x.ordinal, x.name,
                      KindName(x.kind), x.kind == gen::Kind::Func ? "stub" : "placeholder",
-                     MilestoneName(x.milestone));
+                     MilestoneName(x.milestone), x.stubFatal ? ", aborts when called" : "");
         }
     }
-    FUT_LOGI(Krnl, "kernel exports: %u impl, %u stub_ok, %u generated stubs/placeholders (%u of them planned for M1)",
-             impl, stubOk, unimpl, unimplM1);
+    FUT_LOGI(
+        Krnl,
+        "kernel exports: %u impl, %u stub_ok, %u generated stubs/placeholders (%u of them planned for M1)",
+        impl, stubOk, unimpl, unimplM1);
     return unimpl;
 }
 
@@ -149,10 +177,18 @@ void Register(std::uint32_t slot, std::uintptr_t address, ImplStatus status, con
     ++e.count;
 }
 
+std::uint32_t UnimplementedResult(gen::Ret ret) noexcept {
+    // Design 5.4 (review finding 1): only NTSTATUS exports report STATUS_NOT_IMPLEMENTED. For a
+    // pointer/BOOLEAN/ULONG result 0xC0000002 would read as success (non-NULL, al = 2 = TRUE), so the
+    // stub returns 0 (NULL/FALSE) and the guest takes its own failure path.
+    return ret == gen::Ret::Ntstatus ? static_cast<std::uint32_t>(STATUS_NOT_IMPLEMENTED) : 0u;
+}
+
 std::uint32_t ReportUnimplemented(std::uint32_t slot, const std::uint32_t* args, std::uint32_t argCount,
                                   void* returnAddress) noexcept {
     const gen::ExportInfo& x = ExportAt(slot);
     const guest::GuestAddr ret = guest::Addr(returnAddress);
+    const std::uint32_t result = UnimplementedResult(x.ret);
     try {
         bool first;
         AcquireSRWLockExclusive(&g_seenLock);
@@ -166,23 +202,30 @@ std::uint32_t ReportUnimplemented(std::uint32_t slot, const std::uint32_t* args,
             char argText[24 * 12] = {};
             size_t pos = 0;
             for (std::uint32_t i = 0; i < argCount && pos + 14 < sizeof(argText); ++i) {
-                pos += static_cast<size_t>(std::snprintf(argText + pos, sizeof(argText) - pos, "%s0x%08X",
-                                                         i ? ", " : "", args[i]));
+                pos += static_cast<size_t>(
+                    std::snprintf(argText + pos, sizeof(argText) - pos, "%s0x%08X", i ? ", " : "", args[i]));
             }
             const std::string sym = guest::Symbolize(ret);
             core::LogWrite(core::Channel::Krnl, first ? core::Level::Warn : core::Level::Trace,
-                           "UNIMPLEMENTED Ord %u %s(%s) ret=%s", x.ordinal, x.name, argText, sym.c_str());
+                           "UNIMPLEMENTED Ord %u %s(%s) ret=%s -> 0x%08X (%s)", x.ordinal, x.name, argText,
+                           sym.c_str(), result, RetName(x.ret));
         }
     } catch (...) {
+    }
+    if (x.stubFatal) {
+        // No return value lets this caller continue safely (gen_kernel_table.py FATAL_STUBS).
+        core::Fatal("UNIMPLEMENTED kernel export Ord %u %s has no safe failure value (ret=0x%08X); "
+                    "it is planned for %s",
+                    x.ordinal, x.name, ret, MilestoneName(x.milestone));
     }
     if (core::GetConfig().strict) {
         if (IsDebuggerPresent()) {
             __debugbreak();
         }
-        core::Fatal("UNIMPLEMENTED kernel export Ord %u %s called with [kernel] strict=1 (ret=0x%08X)", x.ordinal,
-                    x.name, ret);
+        core::Fatal("UNIMPLEMENTED kernel export Ord %u %s called with [kernel] strict=1 (ret=0x%08X)",
+                    x.ordinal, x.name, ret);
     }
-    return static_cast<std::uint32_t>(STATUS_NOT_IMPLEMENTED);
+    return result;
 }
 
 void ReportAddrPlaceholderCall(std::uint32_t slot, void* returnAddress) noexcept {

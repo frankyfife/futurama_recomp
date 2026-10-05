@@ -1,5 +1,6 @@
 # fut_launcher -> futurama.exe (design 1.3, 5.2). No CRT, fixed base 0x10000, MASM placeholder first.
-add_executable(fut_launcher placeholder.asm launcher.c)
+# futurama.manifest (longPathAware) is merged into the default manifest by CMake.
+add_executable(fut_launcher placeholder.asm launcher.c futurama.manifest)
 set_target_properties(fut_launcher PROPERTIES
     OUTPUT_NAME futurama
     LINKER_LANGUAGE C)

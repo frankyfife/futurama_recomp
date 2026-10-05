@@ -45,7 +45,8 @@ std::uint32_t g_HalDiskCachePartitionCount = 3;
 // (0xF9409/0xF9459), FUN_000f81bb sets it before a relaunch.
 std::uint32_t g_LaunchDataPage = 0;
 // slot 64 XboxHardwareInfo: Flags = 0 (bit 3 MUST be 0, otherwise no D: link and no NV queries,
-// files.md 5.5.7; bit 1 selects the kernel-hotfix address in FUN_000f9804), other bytes 0 (design 1.5).
+// files.md 5.5.7; bit 1 selects the kernel-hotfix address in FUN_000f9804; bit 9 = 0x200 is tested
+// by D3D 0x23C84C and stays 0 as well), other bytes 0 (design 1.5).
 guestdef::XBOX_HARDWARE_INFO g_XboxHardwareInfo = {0, 0, 0, {0, 0}};
 // slot 73 XePublicKeyData: only passed to XcVerifyPKCS1Signature by FUN_000f902f -> zeroed dummy
 // (an Xbox RSA public key blob is 0x11C bytes).

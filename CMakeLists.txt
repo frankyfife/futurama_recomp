@@ -40,14 +40,25 @@ set(CMAKE_C_STANDARD_LIBRARIES "")
 
 # Compiler options of all host-side C++ targets (design 5.2/5.3): C++20, /W4 /permissive- /utf-8 /EHsc.
 # shared/win32.h is force-included so that every TU sees the same <windows.h>/<ntstatus.h> setup.
+# clang-cl (second build for warnings, build.cmd ... clang): /Oy- keeps frame pointers everywhere,
+# because KeBugCheck reads the guest caller's EBP next to its return address and clang has no
+# equivalent of MSVC's #pragma optimize("y", off).
 function(fut_apply_host_options target)
     target_compile_options(${target} PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:/W4 /permissive- /utf-8 /EHsc /Zc:__cplusplus /Zc:inline /FI${FUT_SRC_DIR}/shared/win32.h>
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:Clang>>:/Oy->
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<BOOL:${FUT_WERROR}>>:/WX>)
     target_compile_definitions(${target} PRIVATE
         WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
     target_include_directories(${target} PRIVATE ${FUT_SRC_DIR} ${FUT_SRC_DIR}/host)
 endfunction()
+
+# ctest from the build root (review finding 10). Tests: fut_tests (unit tests, tests/CMakeLists.txt)
+# and, when FUT_TEST_CONFIG names a test INI with the user's ISO and a userdata directory under run/,
+# fut_selftest (design 5.2: futurama.exe --selftest --stop-at=main) and fut_m1_check (tools/m1_check.py,
+# all six M1 exit criteria over 10 runs).
+enable_testing()
+set(FUT_TEST_CONFIG "" CACHE FILEPATH "Test INI for fut_selftest/fut_m1_check ([paths] iso + userdata under run/); empty = not registered")
 
 add_subdirectory(src/shared)
 add_subdirectory(src/game)
@@ -55,8 +66,29 @@ add_subdirectory(src/host)
 add_subdirectory(src/launcher)
 add_subdirectory(tests)
 
-# fut_gen: verify that the checked-in generated files are current (needs Python; not part of ALL).
 find_package(Python3 COMPONENTS Interpreter QUIET)
+
+# fut_selftest / fut_m1_check (see enable_testing above).
+if(FUT_TEST_CONFIG)
+    add_test(NAME fut_selftest
+        COMMAND fut_launcher --config=${FUT_TEST_CONFIG} --selftest --stop-at=main)
+    set_tests_properties(fut_selftest PROPERTIES TIMEOUT 120)
+    if(Python3_FOUND)
+        # Optional local copy of the original XBE (never in the repo) for the TitleImage comparison.
+        set(fut_m1_xbe_args "")
+        if(EXISTS ${CMAKE_SOURCE_DIR}/orig/retail_eu/default.xbe)
+            set(fut_m1_xbe_args --xbe ${CMAKE_SOURCE_DIR}/orig/retail_eu/default.xbe)
+        endif()
+        add_test(NAME fut_m1_check
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/m1_check.py
+                    --exe $<TARGET_FILE:fut_launcher> --config ${FUT_TEST_CONFIG} --runs 10 ${fut_m1_xbe_args})
+        set_tests_properties(fut_m1_check PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
+        # Both tests write into the same userdata directory.
+        set_tests_properties(fut_selftest PROPERTIES RUN_SERIAL TRUE)
+    endif()
+endif()
+
+# fut_gen: verify that the checked-in generated files are current (needs Python; not part of ALL).
 if(Python3_FOUND)
     add_custom_target(fut_gen
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen/gen_all.py --check
