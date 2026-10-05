@@ -1,12 +1,15 @@
-// Window and message loop (design 1.1 UI/boot thread, 1.10 steps 4 and 6). Owned by the core agent.
+// Window and message loop (design 1.1 UI/boot thread, 1.10 steps 4 and 6). Owned by the core agent until
+// M2, by the M3 backend agent from M3 on (GFX_CONTRACT.md 10; the window itself: platform/window.h).
 #pragma once
 
 #include "core/config.h"
 
 namespace platform {
 
-// HostMain stage "CreateWindow": main window, invisible until the first Present (needed from M3 on;
-// in M1 it only prepares the message loop: quit event, [debug] timeout watchdog).
+// HostMain stage "CreateWindow": prepares the message loop (quit event, [debug] timeout watchdog) and, with
+// [render] backend = d3d11 (M3), creates the main window (platform/window.h: hidden until the first
+// Present, [render] window_scale / fullscreen). A failed window creation is logged (CORE/error) and the
+// stage still succeeds (MainWindow() stays nullptr; the renderer falls back to the null renderer).
 bool StageCreateWindow(const core::Config& config);
 
 // HostMain final stage: message loop on the UI/boot thread until the process ends. Returns the

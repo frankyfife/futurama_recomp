@@ -147,9 +147,10 @@ struct SamplerDesc {
 
 // ---- fixed-function pipeline state -------------------------------------------------------------------
 
+// Constant/InvConstant = the dynamic blend factor (CommandContext::SetBlendFactor).
 enum class BlendFactor : std::uint8_t {
     Zero, One, SrcColor, InvSrcColor, SrcAlpha, InvSrcAlpha, DestAlpha, InvDestAlpha, DestColor,
-    InvDestColor, SrcAlphaSat, BlendFactor, InvBlendFactor
+    InvDestColor, SrcAlphaSat, Constant, InvConstant
 };
 enum class BlendOp : std::uint8_t { Add, Subtract, RevSubtract, Min, Max };
 struct BlendDesc {

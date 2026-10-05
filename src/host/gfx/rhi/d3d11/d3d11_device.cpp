@@ -1,0 +1,1287 @@
+// D3D11 backend: device, resources, caches, Present, read-backs, debug layer (d3d11_device.h).
+#include "gfx/rhi/d3d11/d3d11_internal.h"
+
+#include "core/host_main.h"
+#include "core/log.h"
+
+#include "d3d11_clear_vs.h"  // gen_shaders/ (fut_add_shader, block "backend agent" in src/host/CMakeLists.txt)
+#include "d3d11_diag_color_ps.h"
+#include "d3d11_diag_texture_ps.h"
+#include "d3d11_diag_tint_ps.h"
+#include "d3d11_diag_vs.h"
+
+#include <algorithm>
+#include <atomic>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+
+// WKPDID_D3DDebugObjectName, DXGI_DEBUG_DXGI (DEFINE_GUID without INITGUID -> dxguid.lib).
+#pragma comment(lib, "dxguid.lib")
+
+namespace gfx::rhi::d3d11 {
+namespace {
+
+// ---- process-wide debug-layer state (exit criterion 2) ----------------------------------------------------
+
+struct GlobalDebug {
+    std::mutex mutex;  // guards layer / haveWindowLayer
+    DebugLayerInfo layer;
+    bool haveWindowLayer = false;
+    std::atomic<std::uint32_t> devices{0};
+    std::atomic<std::uint32_t> errors{0};
+    std::atomic<std::uint32_t> warnings{0};
+    std::atomic<std::uint32_t> corruption{0};
+    std::atomic<std::uint32_t> other{0};
+    std::atomic<int> lastLive{-1};
+};
+
+GlobalDebug& Global() noexcept {
+    static GlobalDebug g;
+    return g;
+}
+
+constexpr std::size_t kMaxPendingMessages = 256;
+constexpr std::uint32_t kMaxLinesPerMessageId = 10;
+
+const char* SeverityName(DebugSeverity s) noexcept {
+    switch (s) {
+    case DebugSeverity::Corruption:
+        return "corruption";
+    case DebugSeverity::Error:
+        return "error";
+    case DebugSeverity::Warning:
+        return "warning";
+    case DebugSeverity::Info:
+        return "info";
+    case DebugSeverity::Message:
+        return "message";
+    }
+    return "?";
+}
+
+// D3D11_MESSAGE_SEVERITY and DXGI_INFO_QUEUE_MESSAGE_SEVERITY share the values 0 corruption .. 4 message.
+DebugSeverity SeverityOf(int s) noexcept {
+    switch (s) {
+    case 0:
+        return DebugSeverity::Corruption;
+    case 1:
+        return DebugSeverity::Error;
+    case 2:
+        return DebugSeverity::Warning;
+    case 3:
+        return DebugSeverity::Info;
+    default:
+        return DebugSeverity::Message;
+    }
+}
+
+std::string Narrow(const wchar_t* w) {
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) {
+        return {};
+    }
+    std::string s(static_cast<std::size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
+    return s;
+}
+
+const char* FeatureLevelName(D3D_FEATURE_LEVEL level) noexcept {
+    switch (level) {
+    case D3D_FEATURE_LEVEL_11_1:
+        return "D3D11 feature level 11_1";
+    case D3D_FEATURE_LEVEL_11_0:
+        return "D3D11 feature level 11_0";
+    case D3D_FEATURE_LEVEL_10_1:
+        return "D3D11 feature level 10_1";
+    case D3D_FEATURE_LEVEL_10_0:
+        return "D3D11 feature level 10_0";
+    default:
+        return "D3D11 feature level ?";
+    }
+}
+
+std::uint32_t MaxMipLevels(std::uint32_t w, std::uint32_t h) noexcept {
+    std::uint32_t n = 1;
+    std::uint32_t m = w > h ? w : h;
+    while (m > 1) {
+        m >>= 1;
+        ++n;
+    }
+    return n;
+}
+
+std::uint32_t MipSize(std::uint32_t size, std::uint32_t level) noexcept {
+    const std::uint32_t s = level < 32 ? size >> level : 0;
+    return s != 0 ? s : 1;
+}
+
+}  // namespace
+
+// ---- public helpers ----------------------------------------------------------------------------------------
+
+ShaderBytecode BuiltinShaderCode(BuiltinShader shader) noexcept {
+    switch (shader) {
+    case BuiltinShader::ClearVS:
+        return {ShaderFormat::Dxbc, g_d3d11_clear_vs, sizeof(g_d3d11_clear_vs)};
+    case BuiltinShader::DiagVS:
+        return {ShaderFormat::Dxbc, g_d3d11_diag_vs, sizeof(g_d3d11_diag_vs)};
+    case BuiltinShader::DiagColorPS:
+        return {ShaderFormat::Dxbc, g_d3d11_diag_color_ps, sizeof(g_d3d11_diag_color_ps)};
+    case BuiltinShader::DiagTexturePS:
+        return {ShaderFormat::Dxbc, g_d3d11_diag_texture_ps, sizeof(g_d3d11_diag_texture_ps)};
+    case BuiltinShader::DiagTintPS:
+        return {ShaderFormat::Dxbc, g_d3d11_diag_tint_ps, sizeof(g_d3d11_diag_tint_ps)};
+    }
+    return {};
+}
+
+VertexLayoutDesc DiagVertexLayout() noexcept {
+    VertexLayoutDesc l;
+    l.attributes[0] = {VertexSemantic::Position, 0, VertexFormat::Float3, 0, 0};
+    l.attributes[1] = {VertexSemantic::Color, 0, VertexFormat::Float4, 0, 12};
+    l.attributes[2] = {VertexSemantic::TexCoord, 0, VertexFormat::Float2, 0, 28};
+    l.attributeCount = 3;
+    l.streamStrides[0] = static_cast<std::uint16_t>(kDiagVertexStride);
+    return l;
+}
+
+DebugLayerTotals GetDebugLayerTotals() noexcept {
+    GlobalDebug& g = Global();
+    DebugLayerTotals t;
+    try {
+        std::lock_guard<std::mutex> lock(g.mutex);
+        t.layer = g.layer;
+    } catch (...) {
+    }
+    t.devices = g.devices.load();
+    t.errors = g.errors.load();
+    t.warnings = g.warnings.load();
+    t.corruption = g.corruption.load();
+    t.other = g.other.load();
+    return t;
+}
+
+const char* DebugLayerStateName(const DebugLayerInfo& layer) noexcept {
+    if (layer.enabled) {
+        return "enabled";
+    }
+    if (!layer.requested) {
+        return "off";
+    }
+    return layer.available ? "unavailable" : "not installed";
+}
+
+void LogDebugLayerSummary() noexcept {
+    try {
+        const DebugLayerTotals t = GetDebugLayerTotals();
+        FUT_LOGI(Gfx, "D3D11 debug layer: %s - %u errors, %u warnings, %u corruption (%u device%s%s%s)",
+                 DebugLayerStateName(t.layer), t.errors, t.warnings, t.corruption, t.devices,
+                 t.devices == 1 ? "" : "s", t.layer.note.empty() ? "" : "; ", t.layer.note.c_str());
+    } catch (...) {
+    }
+}
+
+int LastTeardownLiveObjects() noexcept {
+    return Global().lastLive.load();
+}
+
+// ---- device ------------------------------------------------------------------------------------------------
+
+D3D11Device::D3D11Device() noexcept : context_(*this) {}
+
+D3D11Device::~D3D11Device() {
+    try {
+        PumpDebugMessages();
+        context_.Release();
+        pipelines_.clear();
+        pipelineCache_.clear();
+        samplers_.clear();
+        samplerCache_.clear();
+        layouts_.clear();
+        buffers_.Clear();
+        textures_.Clear();
+        shaders_.Clear();
+        captureStaging_.Reset();
+        depthDsv_.Reset();
+        depthBuffer_.Reset();
+        backBufferRtv_.Reset();
+        backBuffer_.Reset();
+        swapChain_.Reset();
+        if (immediate_ != nullptr) {
+            immediate_->ClearState();
+            immediate_->Flush();
+        }
+        PumpDebugMessages();
+        immediate_.Reset();
+        ReportLiveObjects();
+        if (dxgiInfoQueue_ != nullptr) {
+            dxgiInfoQueue_->PopStorageFilter(DXGI_DEBUG_DXGI);  // the queue is process-wide
+        }
+        dxgiInfoQueue_.Reset();
+        infoQueue_.Reset();
+        factory_.Reset();
+        device_.Reset();
+    } catch (...) {
+    }
+}
+
+bool D3D11Device::Init(const DeviceDesc& desc, std::string* error) noexcept {
+    try {
+        if (desc.width == 0 || desc.height == 0 || desc.width > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+            desc.height > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
+            *error = "invalid back buffer size";
+            return false;
+        }
+        if (desc.backBufferFormat != Format::BGRA8_UNorm && desc.backBufferFormat != Format::RGBA8_UNorm) {
+            *error = std::string("unsupported back buffer format ") + GetFormatInfo(desc.backBufferFormat).name;
+            return false;
+        }
+        if (desc.depthFormat != Format::Unknown && desc.depthFormat != Format::D24_UNorm_S8_UInt &&
+            desc.depthFormat != Format::D32_Float) {
+            *error = std::string("unsupported depth format ") + GetFormatInfo(desc.depthFormat).name;
+            return false;
+        }
+        debugLayer_.requested = desc.debugLayer;
+        if (!CreateFactoryAndDevice(desc, error)) {
+            return false;
+        }
+        SetUpDebugLayer();
+        if (desc.nativeWindow != nullptr) {
+            if (!CreateSwapChain(desc, error)) {
+                return false;
+            }
+        } else if (!CreateOffscreenTargets(desc, error)) {
+            return false;
+        }
+        if (!CreateDepthBuffer(desc, error)) {
+            return false;
+        }
+        info_.backend = Backend::D3D11;
+        info_.headless = desc.nativeWindow == nullptr;
+        info_.backBufferWidth = desc.width;
+        info_.backBufferHeight = desc.height;
+        info_.backBufferFormat = desc.backBufferFormat;
+        info_.depthFormat = desc.depthFormat;
+        context_.Init(immediate_.Get());
+        context_.BindDefaultTargets();
+
+        GlobalDebug& g = Global();
+        {
+            std::lock_guard<std::mutex> lock(g.mutex);
+            if (desc.nativeWindow != nullptr || !g.haveWindowLayer) {
+                g.layer = debugLayer_;
+                g.haveWindowLayer = g.haveWindowLayer || desc.nativeWindow != nullptr;
+            }
+        }
+        g.devices.fetch_add(1);
+        if (desc.nativeWindow != nullptr) {
+            static std::once_flag reporter;
+            std::call_once(reporter, [] { core::AddExitReporter("d3d11", &LogDebugLayerSummary); });
+        }
+        if (desc.debugLayer && !debugLayer_.enabled) {
+            FUT_LOGW(Gfx, "D3D11 debug layer requested but %s: %s", DebugLayerStateName(debugLayer_),
+                     debugLayer_.note.c_str());
+        }
+        FUT_LOGI(Gfx, "d3d11: device on \"%s\" (%s%s), %s %ux%u %s, depth %s, debug layer %s",
+                 info_.adapterName.c_str(), info_.apiVersion.c_str(), info_.softwareAdapter ? ", software" : "",
+                 info_.headless ? "headless" : "swap chain", desc.width, desc.height,
+                 GetFormatInfo(desc.backBufferFormat).name, GetFormatInfo(desc.depthFormat).name,
+                 DebugLayerStateName(debugLayer_));
+        PumpDebugMessages();
+        return true;
+    } catch (...) {
+        try {
+            *error = "out of memory while creating the D3D11 device";
+        } catch (...) {
+        }
+        return false;
+    }
+}
+
+bool D3D11Device::CreateFactoryAndDevice(const DeviceDesc& desc, std::string* error) noexcept {
+    try {
+        ComPtr<IDXGIFactory2> factory;
+        HRESULT hr = CreateDXGIFactory2(desc.debugLayer ? DXGI_CREATE_FACTORY_DEBUG : 0u, IID_PPV_ARGS(&factory));
+        bool dxgiDebugMissing = false;
+        if (FAILED(hr) && desc.debugLayer) {
+            dxgiDebugMissing = true;  // dxgidebug.dll (Graphics Tools) missing
+            hr = CreateDXGIFactory2(0, IID_PPV_ARGS(&factory));
+        }
+        if (FAILED(hr)) {
+            *error = "CreateDXGIFactory2 failed: " + HresultText(hr);
+            return false;
+        }
+        ComPtr<IDXGIAdapter1> adapter;
+        if (desc.softwareAdapter) {
+            ComPtr<IDXGIFactory4> f4;
+            if (SUCCEEDED(factory.As(&f4))) {
+                f4->EnumWarpAdapter(IID_PPV_ARGS(&adapter));
+            }
+        } else {
+            ComPtr<IDXGIFactory6> f6;
+            if (SUCCEEDED(factory.As(&f6))) {
+                f6->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
+            }
+            if (adapter == nullptr) {
+                factory->EnumAdapters1(0, &adapter);
+            }
+        }
+        const D3D_DRIVER_TYPE type = adapter != nullptr ? D3D_DRIVER_TYPE_UNKNOWN
+                                     : desc.softwareAdapter ? D3D_DRIVER_TYPE_WARP
+                                                            : D3D_DRIVER_TYPE_HARDWARE;
+        static constexpr D3D_FEATURE_LEVEL kLevels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0,
+                                                        D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0};
+        UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | (desc.debugLayer ? D3D11_CREATE_DEVICE_DEBUG : 0u);
+        ComPtr<ID3D11Device> device;
+        ComPtr<ID3D11DeviceContext> context;
+        D3D_FEATURE_LEVEL level{};
+        auto create = [&]() {
+            HRESULT r = D3D11CreateDevice(adapter.Get(), type, nullptr, flags, kLevels, 4, D3D11_SDK_VERSION, &device,
+                                          &level, &context);
+            if (r == E_INVALIDARG) {  // runtime without 11_1
+                r = D3D11CreateDevice(adapter.Get(), type, nullptr, flags, kLevels + 1, 3, D3D11_SDK_VERSION,
+                                      &device, &level, &context);
+            }
+            return r;
+        };
+        hr = create();
+        if (hr == DXGI_ERROR_SDK_COMPONENT_MISSING && (flags & D3D11_CREATE_DEVICE_DEBUG) != 0) {
+            debugLayer_.available = false;
+            debugLayer_.note = "D3D11 SDK layers not installed (DXGI_ERROR_SDK_COMPONENT_MISSING; Windows optional "
+                               "feature \"Graphics Tools\")";
+            flags &= ~static_cast<UINT>(D3D11_CREATE_DEVICE_DEBUG);
+            hr = create();
+        } else if (desc.debugLayer) {
+            debugLayer_.available = true;
+        }
+        if (FAILED(hr)) {
+            *error = "D3D11CreateDevice failed: " + HresultText(hr);
+            return false;
+        }
+        if (level < D3D_FEATURE_LEVEL_10_0) {
+            *error = "feature level below 10_0";
+            return false;
+        }
+        if (FAILED(device.As(&device_)) || FAILED(context.As(&immediate_))) {
+            *error = "the D3D11.1 runtime is required (ID3D11Device1 / ID3D11DeviceContext1)";
+            return false;
+        }
+        debugLayer_.enabled = (flags & D3D11_CREATE_DEVICE_DEBUG) != 0;
+        if (debugLayer_.enabled && dxgiDebugMissing) {
+            debugLayer_.note = "DXGI debug layer (dxgidebug.dll) missing: D3D11 messages only";
+        }
+        info_.apiVersion = FeatureLevelName(level);
+
+        // The swap chain must come from the factory of the device's adapter.
+        ComPtr<IDXGIDevice> dxgiDevice;
+        ComPtr<IDXGIAdapter> deviceAdapter;
+        if (FAILED(device_.As(&dxgiDevice)) || FAILED(dxgiDevice->GetAdapter(&deviceAdapter)) ||
+            FAILED(deviceAdapter->GetParent(IID_PPV_ARGS(&factory_)))) {
+            *error = "cannot get the DXGI factory of the D3D11 device";
+            return false;
+        }
+        ComPtr<IDXGIAdapter1> adapter1;
+        DXGI_ADAPTER_DESC1 ad{};
+        if (SUCCEEDED(deviceAdapter.As(&adapter1)) && SUCCEEDED(adapter1->GetDesc1(&ad))) {
+            info_.adapterName = Narrow(ad.Description);
+            info_.softwareAdapter = desc.softwareAdapter || (ad.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0;
+        } else {
+            info_.adapterName = "?";
+            info_.softwareAdapter = desc.softwareAdapter;
+        }
+        // Keep the CPU at most two frames ahead of the GPU (the 50 Hz limiter paces anyway).
+        ComPtr<IDXGIDevice1> dxgiDevice1;
+        if (SUCCEEDED(device_.As(&dxgiDevice1))) {
+            dxgiDevice1->SetMaximumFrameLatency(2);
+        }
+        return true;
+    } catch (...) {
+        *error = "out of memory while creating the D3D11 device";
+        return false;
+    }
+}
+
+bool D3D11Device::SetUpDebugLayer() noexcept {
+    if (!debugLayer_.enabled) {
+        return false;
+    }
+    if (SUCCEEDED(device_.As(&infoQueue_))) {
+        infoQueue_->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, FALSE);
+        infoQueue_->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR, FALSE);
+        infoQueue_->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_WARNING, FALSE);
+        infoQueue_->SetMessageCountLimit(4096);
+        D3D11_MESSAGE_SEVERITY deny[] = {D3D11_MESSAGE_SEVERITY_INFO, D3D11_MESSAGE_SEVERITY_MESSAGE};
+        D3D11_INFO_QUEUE_FILTER filter{};
+        filter.DenyList.NumSeverities = 2;
+        filter.DenyList.pSeverityList = deny;
+        infoQueue_->PushStorageFilter(&filter);
+    }
+    ComPtr<IDXGIInfoQueue> q;
+    if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&q)))) {
+        q->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, FALSE);
+        q->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, FALSE);
+        q->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_WARNING, FALSE);
+        DXGI_INFO_QUEUE_MESSAGE_SEVERITY deny[] = {DXGI_INFO_QUEUE_MESSAGE_SEVERITY_INFO,
+                                                   DXGI_INFO_QUEUE_MESSAGE_SEVERITY_MESSAGE};
+        DXGI_INFO_QUEUE_FILTER filter{};
+        filter.DenyList.NumSeverities = 2;
+        filter.DenyList.pSeverityList = deny;
+        q->PushStorageFilter(DXGI_DEBUG_DXGI, &filter);
+        // The DXGI queue is process-wide: drop what other (earlier) devices left behind.
+        q->ClearStoredMessages(DXGI_DEBUG_DXGI);
+        dxgiInfoQueue_ = q;
+    }
+    return infoQueue_ != nullptr;
+}
+
+bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) noexcept {
+    try {
+        const HWND hwnd = static_cast<HWND>(desc.nativeWindow);
+        ComPtr<IDXGIFactory5> f5;
+        BOOL tearing = FALSE;
+        if (SUCCEEDED(factory_.As(&f5)) &&
+            SUCCEEDED(f5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing, sizeof(tearing)))) {
+            tearingSupported_ = tearing != FALSE;
+        }
+        DXGI_SWAP_CHAIN_DESC1 sd{};
+        sd.Width = desc.width;
+        sd.Height = desc.height;
+        sd.Format = static_cast<DXGI_FORMAT>(DxgiFormatOf(desc.backBufferFormat));
+        sd.Stereo = FALSE;
+        sd.SampleDesc.Count = 1;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.BufferCount = std::clamp<std::uint32_t>(desc.bufferCount, 2, 16);
+        sd.Scaling = DXGI_SCALING_STRETCH;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+        sd.Flags = tearingSupported_ ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u;
+        HRESULT hr = factory_->CreateSwapChainForHwnd(device_.Get(), hwnd, &sd, nullptr, nullptr, &swapChain_);
+        const char* effect = "flip discard";
+        if (FAILED(hr)) {  // FLIP_DISCARD needs Windows 10
+            sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+            sd.Flags = 0;
+            tearingSupported_ = false;
+            effect = "flip sequential";
+            hr = factory_->CreateSwapChainForHwnd(device_.Get(), hwnd, &sd, nullptr, nullptr, &swapChain_);
+        }
+        if (FAILED(hr)) {
+            *error = "CreateSwapChainForHwnd failed: " + HresultText(hr);
+            PumpDebugMessages();
+            return false;
+        }
+        factory_->MakeWindowAssociation(hwnd, DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER);
+        hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(&backBuffer_));
+        if (SUCCEEDED(hr)) {
+            hr = device_->CreateRenderTargetView(backBuffer_.Get(), nullptr, &backBufferRtv_);
+        }
+        if (FAILED(hr)) {
+            *error = "swap chain back buffer: " + HresultText(hr);
+            return false;
+        }
+        FUT_LOGD(Gfx, "d3d11: swap chain for window %p: %ux%u, %u buffers, %s, stretch, tearing %s", desc.nativeWindow,
+                 sd.Width, sd.Height, sd.BufferCount, effect, tearingSupported_ ? "supported" : "no");
+        return true;
+    } catch (...) {
+        *error = "out of memory while creating the swap chain";
+        return false;
+    }
+}
+
+bool D3D11Device::CreateOffscreenTargets(const DeviceDesc& desc, std::string* error) noexcept {
+    try {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = desc.width;
+        td.Height = desc.height;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = static_cast<DXGI_FORMAT>(DxgiFormatOf(desc.backBufferFormat));
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        HRESULT hr = device_->CreateTexture2D(&td, nullptr, &backBuffer_);
+        if (SUCCEEDED(hr)) {
+            hr = device_->CreateRenderTargetView(backBuffer_.Get(), nullptr, &backBufferRtv_);
+        }
+        if (FAILED(hr)) {
+            *error = "offscreen back buffer: " + HresultText(hr);
+            return false;
+        }
+        SetName(backBuffer_.Get(), "rhi offscreen back buffer");
+        return true;
+    } catch (...) {
+        *error = "out of memory";
+        return false;
+    }
+}
+
+bool D3D11Device::CreateDepthBuffer(const DeviceDesc& desc, std::string* error) noexcept {
+    if (desc.depthFormat == Format::Unknown) {
+        return true;
+    }
+    try {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = desc.width;
+        td.Height = desc.height;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = TextureFormatsOf(desc.depthFormat, kTextureDepthStencil).dsv;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+        HRESULT hr = device_->CreateTexture2D(&td, nullptr, &depthBuffer_);
+        if (SUCCEEDED(hr)) {
+            hr = device_->CreateDepthStencilView(depthBuffer_.Get(), nullptr, &depthDsv_);
+        }
+        if (FAILED(hr)) {
+            *error = "depth buffer: " + HresultText(hr);
+            return false;
+        }
+        SetName(depthBuffer_.Get(), "rhi back buffer depth");
+        return true;
+    } catch (...) {
+        *error = "out of memory";
+        return false;
+    }
+}
+
+void D3D11Device::SetName(ID3D11DeviceChild* object, const char* name) noexcept {
+    if (object != nullptr && name != nullptr && name[0] != 0) {
+        object->SetPrivateData(WKPDID_D3DDebugObjectName, static_cast<UINT>(std::strlen(name)), name);
+    }
+}
+
+bool D3D11Device::FailText(const char* text) noexcept {
+    try {
+        lastError_ = text;
+    } catch (...) {
+    }
+    FUT_LOGD(Gfx, "d3d11: %s", text);
+    return false;
+}
+
+bool D3D11Device::Fail(const char* what, HRESULT hr) noexcept {
+    try {
+        lastError_ = std::string(what) + " failed: " + HresultText(hr);
+        if ((hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) && device_ != nullptr) {
+            lastError_ += " (device removed reason " + HresultText(device_->GetDeviceRemovedReason()) + ")";
+        }
+    } catch (...) {
+    }
+    FUT_LOGD(Gfx, "d3d11: %s", lastError_.c_str());
+    PumpDebugMessages();
+    return false;
+}
+
+// ---- debug messages ------------------------------------------------------------------------------------------
+
+void D3D11Device::HandleDebugMessage(DebugSeverity severity, std::int32_t id, bool dxgi, const char* text) noexcept {
+    GlobalDebug& g = Global();
+    switch (severity) {
+    case DebugSeverity::Corruption:
+        ++stats_.debugErrors;
+        g.corruption.fetch_add(1);
+        break;
+    case DebugSeverity::Error:
+        ++stats_.debugErrors;
+        g.errors.fetch_add(1);
+        break;
+    case DebugSeverity::Warning:
+        ++stats_.debugWarnings;
+        g.warnings.fetch_add(1);
+        break;
+    case DebugSeverity::Info:
+    case DebugSeverity::Message:
+        g.other.fetch_add(1);
+        break;
+    }
+    const char* prefix = dxgi ? "DXGI " : "";
+    try {
+        const std::int64_t key = (dxgi ? (std::int64_t{1} << 32) : 0) | static_cast<std::uint32_t>(id);
+        const std::uint32_t n = ++messageCounts_[key];
+        if (n <= kMaxLinesPerMessageId) {
+            const core::Level level = severity == DebugSeverity::Corruption || severity == DebugSeverity::Error
+                                          ? core::Level::Error
+                                      : severity == DebugSeverity::Warning ? core::Level::Warn
+                                                                           : core::Level::Debug;
+            if (core::LogEnabled(core::Channel::Gfx, level)) {
+                core::LogWrite(core::Channel::Gfx, level, "D3D11 debug: %s #%d: %s%s", SeverityName(severity), id,
+                               prefix, text != nullptr ? text : "");
+                if (n == kMaxLinesPerMessageId) {
+                    core::LogWrite(core::Channel::Gfx, level,
+                                   "D3D11 debug: further %s#%d messages are counted but not logged", prefix, id);
+                }
+            }
+        }
+        if (pendingMessages_.size() >= kMaxPendingMessages) {
+            pendingMessages_.erase(pendingMessages_.begin());
+        }
+        DebugMessage m;
+        m.severity = severity;
+        m.id = id;
+        m.text = std::string(prefix) + (text != nullptr ? text : "");
+        pendingMessages_.push_back(std::move(m));
+    } catch (...) {
+    }
+}
+
+void D3D11Device::PumpDebugMessages() noexcept {
+    try {
+        std::vector<std::uint8_t> buffer;
+        if (infoQueue_ != nullptr) {
+            const UINT64 n = infoQueue_->GetNumStoredMessagesAllowedByRetrievalFilter();
+            for (UINT64 i = 0; i < n; ++i) {
+                SIZE_T len = 0;
+                if (FAILED(infoQueue_->GetMessage(i, nullptr, &len)) || len < sizeof(D3D11_MESSAGE)) {
+                    continue;
+                }
+                buffer.resize(len);
+                auto* m = reinterpret_cast<D3D11_MESSAGE*>(buffer.data());
+                if (SUCCEEDED(infoQueue_->GetMessage(i, m, &len))) {
+                    HandleDebugMessage(SeverityOf(m->Severity), static_cast<std::int32_t>(m->ID), false,
+                                       m->pDescription);
+                }
+            }
+            infoQueue_->ClearStoredMessages();
+        }
+        if (dxgiInfoQueue_ != nullptr) {
+            const UINT64 n = dxgiInfoQueue_->GetNumStoredMessagesAllowedByRetrievalFilters(DXGI_DEBUG_DXGI);
+            for (UINT64 i = 0; i < n; ++i) {
+                SIZE_T len = 0;
+                if (FAILED(dxgiInfoQueue_->GetMessage(DXGI_DEBUG_DXGI, i, nullptr, &len)) ||
+                    len < sizeof(DXGI_INFO_QUEUE_MESSAGE)) {
+                    continue;
+                }
+                buffer.resize(len);
+                auto* m = reinterpret_cast<DXGI_INFO_QUEUE_MESSAGE*>(buffer.data());
+                if (SUCCEEDED(dxgiInfoQueue_->GetMessage(DXGI_DEBUG_DXGI, i, m, &len))) {
+                    HandleDebugMessage(SeverityOf(m->Severity), static_cast<std::int32_t>(m->ID), true,
+                                       m->pDescription);
+                }
+            }
+            dxgiInfoQueue_->ClearStoredMessages(DXGI_DEBUG_DXGI);
+        }
+    } catch (...) {
+    }
+}
+
+std::size_t D3D11Device::DrainDebugMessages(std::vector<DebugMessage>& out) noexcept {
+    PumpDebugMessages();
+    const std::size_t n = pendingMessages_.size();
+    try {
+        for (DebugMessage& m : pendingMessages_) {
+            out.push_back(std::move(m));
+        }
+    } catch (...) {
+    }
+    pendingMessages_.clear();
+    return n;
+}
+
+void D3D11Device::ReportLiveObjects() noexcept {
+    if (!debugLayer_.enabled || infoQueue_ == nullptr || device_ == nullptr) {
+        return;
+    }
+    try {
+        infoQueue_->ClearStoredMessages();
+        ComPtr<ID3D11Debug> debug;
+        if (FAILED(device_.As(&debug))) {
+            return;
+        }
+        infoQueue_->PushEmptyStorageFilter();
+        debug->ReportLiveDeviceObjects(D3D11_RLDO_DETAIL | D3D11_RLDO_IGNORE_INTERNAL);
+        debug.Reset();
+        int live = 0;
+        std::vector<std::uint8_t> buffer;
+        const UINT64 n = infoQueue_->GetNumStoredMessagesAllowedByRetrievalFilter();
+        for (UINT64 i = 0; i < n; ++i) {
+            SIZE_T len = 0;
+            if (FAILED(infoQueue_->GetMessage(i, nullptr, &len)) || len < sizeof(D3D11_MESSAGE)) {
+                continue;
+            }
+            buffer.resize(len);
+            auto* m = reinterpret_cast<D3D11_MESSAGE*>(buffer.data());
+            if (FAILED(infoQueue_->GetMessage(i, m, &len)) || m->pDescription == nullptr) {
+                continue;
+            }
+            // Measured format (Windows 11 SDK layers): "Live ID3D11Device at 0x..., Refcount: 4" for the device,
+            // then one "\tLive ID3D11Buffer at 0x..., [Name: ..., ]Refcount: 1, IntRef: 0" per object. Count the
+            // objects the caller still references (Refcount > 0); the device is alive by definition.
+            const char* text = m->pDescription;
+            while (*text == '\t' || *text == ' ') {
+                ++text;
+            }
+            if (std::strncmp(text, "Live ", 5) != 0 || std::strncmp(text, "Live ID3D11Device ", 18) == 0) {
+                continue;
+            }
+            const char* rc = std::strstr(text, "Refcount: ");
+            if (rc != nullptr && std::atoi(rc + 10) > 0) {
+                ++live;
+                FUT_LOGD(Gfx, "d3d11 teardown: %s", text);
+            }
+        }
+        infoQueue_->ClearStoredMessages();
+        infoQueue_->PopStorageFilter();
+        Global().lastLive.store(live);
+        if (live > 0) {
+            FUT_LOGW(Gfx, "d3d11 teardown: %d objects still referenced after the device was released", live);
+        }
+    } catch (...) {
+    }
+}
+
+// ---- resources -----------------------------------------------------------------------------------------------
+
+bool D3D11Device::IsFormatSupported(Format format, std::uint8_t usage) const noexcept {
+    const FormatInfo& info = GetFormatInfo(format);
+    const TextureFormats f = TextureFormatsOf(format, usage);
+    if (f.resource == DXGI_FORMAT_UNKNOWN || usage == 0 || device_ == nullptr) {
+        return false;
+    }
+    if (info.depth && (usage & kTextureRenderTarget) != 0) {
+        return false;
+    }
+    if (!info.depth && (usage & kTextureDepthStencil) != 0) {
+        return false;
+    }
+    auto has = [&](DXGI_FORMAT fmt, UINT bits) {
+        UINT support = 0;
+        return fmt != DXGI_FORMAT_UNKNOWN && SUCCEEDED(device_->CheckFormatSupport(fmt, &support)) &&
+               (support & bits) == bits;
+    };
+    if ((usage & kTextureSampled) != 0 &&
+        !has(f.srv, D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_SHADER_SAMPLE)) {
+        return false;
+    }
+    if ((usage & kTextureRenderTarget) != 0 && !has(f.rtv, D3D11_FORMAT_SUPPORT_RENDER_TARGET)) {
+        return false;
+    }
+    if ((usage & kTextureDepthStencil) != 0 && !has(f.dsv, D3D11_FORMAT_SUPPORT_DEPTH_STENCIL)) {
+        return false;
+    }
+    return true;
+}
+
+BufferHandle D3D11Device::CreateBuffer(const BufferDesc& desc) noexcept {
+    try {
+        const bool constant = (desc.bind & kBindConstant) != 0;
+        if (desc.size == 0 || (desc.bind & (kBindVertex | kBindIndex | kBindConstant)) == 0) {
+            FailText("CreateBuffer: size 0 or no bind flag");
+            return {};
+        }
+        if (constant && ((desc.bind & ~kBindConstant) != 0 || desc.size % 16 != 0 ||
+                         desc.size > D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT * 16)) {
+            FailText("CreateBuffer: a constant buffer must be bound alone and be a multiple of 16 bytes (<= 64 KiB)");
+            return {};
+        }
+        const bool dynamic = constant || desc.usage == BufferUsage::Dynamic;
+        if (!dynamic && desc.initialData == nullptr) {
+            FailText("CreateBuffer: a static buffer needs initial data");
+            return {};
+        }
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = desc.size;
+        bd.Usage = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_IMMUTABLE;
+        bd.BindFlags = ((desc.bind & kBindVertex) != 0 ? D3D11_BIND_VERTEX_BUFFER : 0u) |
+                       ((desc.bind & kBindIndex) != 0 ? D3D11_BIND_INDEX_BUFFER : 0u) |
+                       (constant ? D3D11_BIND_CONSTANT_BUFFER : 0u);
+        bd.CPUAccessFlags = dynamic ? D3D11_CPU_ACCESS_WRITE : 0u;
+        D3D11_SUBRESOURCE_DATA init{};
+        init.pSysMem = desc.initialData;
+        BufferRecord rec;
+        const HRESULT hr = device_->CreateBuffer(&bd, desc.initialData != nullptr ? &init : nullptr, &rec.buffer);
+        if (FAILED(hr)) {
+            Fail("CreateBuffer", hr);
+            return {};
+        }
+        SetName(rec.buffer.Get(), desc.debugName);
+        rec.size = desc.size;
+        rec.bind = desc.bind;
+        rec.usage = dynamic ? BufferUsage::Dynamic : BufferUsage::Static;
+        const std::uint32_t id = buffers_.Add(std::move(rec));
+        if (id == 0) {
+            FailText("CreateBuffer: too many buffers");
+        }
+        return BufferHandle{id};
+    } catch (...) {
+        FailText("CreateBuffer: out of memory");
+        return {};
+    }
+}
+
+std::uint32_t D3D11Device::AddTransientBuffer(ComPtr<ID3D11Buffer> buffer, std::uint32_t size,
+                                              std::uint8_t bind) noexcept {
+    try {
+        BufferRecord rec;
+        rec.buffer = std::move(buffer);
+        rec.size = size;
+        rec.bind = bind;
+        rec.usage = BufferUsage::Dynamic;
+        rec.transient = true;
+        return buffers_.Add(std::move(rec));
+    } catch (...) {
+        return 0;
+    }
+}
+
+void D3D11Device::RemoveTransientBuffer(std::uint32_t id) noexcept {
+    try {
+        buffers_.Remove(id);
+    } catch (...) {
+    }
+}
+
+TextureHandle D3D11Device::CreateTexture(const TextureDesc& desc, const SubresourceData* levels) noexcept {
+    try {
+        const FormatInfo& info = GetFormatInfo(desc.format);
+        const TextureFormats f = TextureFormatsOf(desc.format, desc.usage);
+        if (f.resource == DXGI_FORMAT_UNKNOWN) {
+            FailText("CreateTexture: unknown format");
+            return {};
+        }
+        if (desc.width == 0 || desc.height == 0 || desc.width > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+            desc.height > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION || desc.mipLevels == 0 ||
+            desc.mipLevels > MaxMipLevels(desc.width, desc.height)) {
+            FailText("CreateTexture: invalid size or mip level count");
+            return {};
+        }
+        if ((desc.usage & (kTextureSampled | kTextureRenderTarget | kTextureDepthStencil)) == 0 ||
+            (info.depth && (desc.usage & kTextureRenderTarget) != 0) ||
+            (!info.depth && (desc.usage & kTextureDepthStencil) != 0) ||
+            (info.compressed && (desc.usage & ~kTextureSampled) != 0)) {
+            FailText("CreateTexture: usage does not fit the format");
+            return {};
+        }
+        if (info.compressed && (desc.width % 4 != 0 || desc.height % 4 != 0)) {
+            FailText("CreateTexture: block-compressed level 0 must be a multiple of 4 in both dimensions");
+            return {};
+        }
+        if (info.depth && levels != nullptr) {
+            FailText("CreateTexture: depth textures take no initial data");
+            return {};
+        }
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = desc.width;
+        td.Height = desc.height;
+        td.MipLevels = desc.mipLevels;
+        td.ArraySize = 1;
+        td.Format = f.resource;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = ((desc.usage & kTextureSampled) != 0 ? D3D11_BIND_SHADER_RESOURCE : 0u) |
+                       ((desc.usage & kTextureRenderTarget) != 0 ? D3D11_BIND_RENDER_TARGET : 0u) |
+                       ((desc.usage & kTextureDepthStencil) != 0 ? D3D11_BIND_DEPTH_STENCIL : 0u);
+        std::vector<D3D11_SUBRESOURCE_DATA> init;
+        std::uint64_t bytes = 0;
+        for (std::uint32_t l = 0; l < desc.mipLevels; ++l) {
+            bytes += LevelSize(desc.format, MipSize(desc.width, l), MipSize(desc.height, l));
+        }
+        if (levels != nullptr) {
+            init.resize(desc.mipLevels);
+            for (std::uint32_t l = 0; l < desc.mipLevels; ++l) {
+                if (levels[l].data == nullptr) {
+                    FailText("CreateTexture: a mip level has no data");
+                    return {};
+                }
+                const std::uint32_t w = MipSize(desc.width, l);
+                const std::uint32_t h = MipSize(desc.height, l);
+                init[l].pSysMem = levels[l].data;
+                init[l].SysMemPitch = levels[l].rowPitch != 0 ? levels[l].rowPitch : RowPitch(desc.format, w);
+                init[l].SysMemSlicePitch = levels[l].slicePitch != 0 ? levels[l].slicePitch : LevelSize(desc.format, w, h);
+            }
+        }
+        TextureRecord rec;
+        HRESULT hr = device_->CreateTexture2D(&td, levels != nullptr ? init.data() : nullptr, &rec.texture);
+        if (FAILED(hr)) {
+            Fail("CreateTexture2D", hr);
+            return {};
+        }
+        SetName(rec.texture.Get(), desc.debugName);
+        if ((desc.usage & kTextureSampled) != 0) {
+            D3D11_SHADER_RESOURCE_VIEW_DESC sv{};
+            sv.Format = f.srv;
+            sv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            sv.Texture2D.MostDetailedMip = 0;
+            sv.Texture2D.MipLevels = desc.mipLevels;
+            hr = device_->CreateShaderResourceView(rec.texture.Get(), &sv, &rec.srv);
+            if (FAILED(hr)) {
+                Fail("CreateShaderResourceView", hr);
+                return {};
+            }
+        }
+        if ((desc.usage & kTextureRenderTarget) != 0) {
+            D3D11_RENDER_TARGET_VIEW_DESC rv{};
+            rv.Format = f.rtv;
+            rv.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+            hr = device_->CreateRenderTargetView(rec.texture.Get(), &rv, &rec.rtv);
+            if (FAILED(hr)) {
+                Fail("CreateRenderTargetView", hr);
+                return {};
+            }
+        }
+        if ((desc.usage & kTextureDepthStencil) != 0) {
+            D3D11_DEPTH_STENCIL_VIEW_DESC dv{};
+            dv.Format = f.dsv;
+            dv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+            hr = device_->CreateDepthStencilView(rec.texture.Get(), &dv, &rec.dsv);
+            if (FAILED(hr)) {
+                Fail("CreateDepthStencilView", hr);
+                return {};
+            }
+        }
+        rec.width = desc.width;
+        rec.height = desc.height;
+        rec.mipLevels = desc.mipLevels;
+        rec.format = desc.format;
+        rec.usage = desc.usage;
+        rec.bytes = bytes;
+        const std::uint32_t id = textures_.Add(std::move(rec));
+        if (id == 0) {
+            FailText("CreateTexture: too many textures");
+            return {};
+        }
+        stats_.textureBytes += bytes;
+        return TextureHandle{id};
+    } catch (...) {
+        FailText("CreateTexture: out of memory");
+        return {};
+    }
+}
+
+bool D3D11Device::UpdateTexture(TextureHandle texture, std::uint32_t level, const SubresourceData& data) noexcept {
+    TextureRecord* rec = textures_.Get(texture.id);
+    if (rec == nullptr) {
+        return FailText("UpdateTexture: invalid texture handle");
+    }
+    if (level >= rec->mipLevels || data.data == nullptr || GetFormatInfo(rec->format).depth) {
+        return FailText("UpdateTexture: invalid level/data or a depth texture");
+    }
+    const std::uint32_t w = MipSize(rec->width, level);
+    const std::uint32_t h = MipSize(rec->height, level);
+    immediate_->UpdateSubresource(rec->texture.Get(), D3D11CalcSubresource(level, 0, rec->mipLevels), nullptr,
+                                  data.data, data.rowPitch != 0 ? data.rowPitch : RowPitch(rec->format, w),
+                                  data.slicePitch != 0 ? data.slicePitch : LevelSize(rec->format, w, h));
+    return true;
+}
+
+ShaderHandle D3D11Device::CreateShader(ShaderStage stage, const ShaderBytecode& code, const char* debugName) noexcept {
+    try {
+        if (code.format != ShaderFormat::Dxbc || code.data == nullptr || code.size < 4 ||
+            std::memcmp(code.data, "DXBC", 4) != 0) {
+            FailText("CreateShader: the D3D11 backend takes DXBC bytecode only");
+            return {};
+        }
+        ShaderRecord rec;
+        rec.stage = stage;
+        HRESULT hr;
+        if (stage == ShaderStage::Vertex) {
+            hr = device_->CreateVertexShader(code.data, code.size, nullptr, &rec.vs);
+            if (SUCCEEDED(hr)) {
+                SetName(rec.vs.Get(), debugName);
+                const auto* p = static_cast<const std::uint8_t*>(code.data);
+                rec.code.assign(p, p + code.size);
+            }
+        } else {
+            hr = device_->CreatePixelShader(code.data, code.size, nullptr, &rec.ps);
+            if (SUCCEEDED(hr)) {
+                SetName(rec.ps.Get(), debugName);
+            }
+        }
+        if (FAILED(hr)) {
+            Fail(stage == ShaderStage::Vertex ? "CreateVertexShader" : "CreatePixelShader", hr);
+            return {};
+        }
+        return ShaderHandle{shaders_.Add(std::move(rec))};
+    } catch (...) {
+        FailText("CreateShader: out of memory");
+        return {};
+    }
+}
+
+void D3D11Device::Destroy(BufferHandle buffer) noexcept {
+    BufferRecord* rec = buffers_.Get(buffer.id);
+    if (rec == nullptr || rec->transient) {
+        FailText("Destroy: invalid buffer handle (or a transient ring buffer)");
+        return;
+    }
+    try {
+        buffers_.Remove(buffer.id);
+    } catch (...) {
+    }
+}
+
+void D3D11Device::Destroy(TextureHandle texture) noexcept {
+    TextureRecord* rec = textures_.Get(texture.id);
+    if (rec == nullptr) {
+        FailText("Destroy: invalid texture handle");
+        return;
+    }
+    context_.OnDestroyTexture(texture.id);
+    stats_.textureBytes -= rec->bytes;
+    try {
+        textures_.Remove(texture.id);
+    } catch (...) {
+    }
+}
+
+void D3D11Device::Destroy(ShaderHandle shader) noexcept {
+    try {
+        if (!shaders_.Remove(shader.id)) {
+            FailText("Destroy: invalid shader handle");
+        }
+    } catch (...) {
+    }
+}
+
+SamplerHandle D3D11Device::GetSampler(const SamplerDesc& desc) noexcept {
+    try {
+        std::vector<std::uint32_t>& bucket = samplerCache_[HashOf(desc)];
+        for (std::uint32_t id : bucket) {
+            if (samplers_[id - 1].first == desc) {
+                return SamplerHandle{id};
+            }
+        }
+        const D3D11_SAMPLER_DESC sd = SamplerDescOf(desc);
+        ComPtr<ID3D11SamplerState> state;
+        const HRESULT hr = device_->CreateSamplerState(&sd, &state);
+        if (FAILED(hr)) {
+            Fail("CreateSamplerState", hr);
+            return {};
+        }
+        samplers_.emplace_back(desc, std::move(state));
+        const auto id = static_cast<std::uint32_t>(samplers_.size());
+        bucket.push_back(id);
+        return SamplerHandle{id};
+    } catch (...) {
+        FailText("GetSampler: out of memory");
+        return {};
+    }
+}
+
+ID3D11SamplerState* D3D11Device::GetSamplerState(std::uint32_t id) const noexcept {
+    return id != 0 && id <= samplers_.size() ? samplers_[id - 1].second.Get() : nullptr;
+}
+
+const PipelineRecord* D3D11Device::GetPipelineRecord(std::uint32_t id) const noexcept {
+    return id != 0 && id <= pipelines_.size() ? pipelines_[id - 1].get() : nullptr;
+}
+
+PipelineHandle D3D11Device::GetPipeline(const PipelineDesc& desc, const char* debugName) noexcept {
+    try {
+        std::vector<std::uint32_t>& bucket = pipelineCache_[HashOf(desc)];
+        for (std::uint32_t id : bucket) {
+            if (pipelines_[id - 1]->desc == desc) {
+                return PipelineHandle{id};
+            }
+        }
+        ShaderRecord* vs = shaders_.Get(desc.vertexShader.id);
+        if (vs == nullptr || vs->stage != ShaderStage::Vertex) {
+            FailText("GetPipeline: invalid vertex shader handle");
+            return {};
+        }
+        ShaderRecord* ps = nullptr;
+        if (desc.pixelShader) {
+            ps = shaders_.Get(desc.pixelShader.id);
+            if (ps == nullptr || ps->stage != ShaderStage::Pixel) {
+                FailText("GetPipeline: invalid pixel shader handle");
+                return {};
+            }
+        }
+        if (desc.layout.attributeCount > kMaxVertexAttributes) {
+            FailText("GetPipeline: too many vertex attributes");
+            return {};
+        }
+        auto rec = std::make_unique<PipelineRecord>();
+        rec->desc = desc;
+        rec->vs = vs->vs;
+        rec->ps = ps != nullptr ? ps->ps : nullptr;
+        rec->topology = TopologyOf(desc.topology);
+        if (desc.layout.attributeCount != 0) {
+            for (const LayoutEntry& e : layouts_) {
+                if (e.vertexShader == desc.vertexShader.id && e.layout == desc.layout) {
+                    rec->layout = e.object;
+                    break;
+                }
+            }
+            if (rec->layout == nullptr) {
+                D3D11_INPUT_ELEMENT_DESC elements[kMaxVertexAttributes]{};
+                for (std::uint32_t i = 0; i < desc.layout.attributeCount; ++i) {
+                    const VertexAttribute& a = desc.layout.attributes[i];
+                    if (a.stream >= kMaxVertexStreams) {
+                        FailText("GetPipeline: vertex attribute stream out of range");
+                        return {};
+                    }
+                    elements[i].SemanticName = SemanticNameOf(a.semantic);
+                    elements[i].SemanticIndex = a.semanticIndex;
+                    elements[i].Format = VertexFormatOf(a.format);
+                    elements[i].InputSlot = a.stream;
+                    elements[i].AlignedByteOffset = a.offset;
+                    elements[i].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+                    elements[i].InstanceDataStepRate = 0;
+                }
+                const HRESULT hr = device_->CreateInputLayout(elements, desc.layout.attributeCount, vs->code.data(),
+                                                              vs->code.size(), &rec->layout);
+                if (FAILED(hr)) {
+                    Fail("CreateInputLayout", hr);
+                    return {};
+                }
+                SetName(rec->layout.Get(), debugName);
+                layouts_.push_back({desc.vertexShader.id, desc.layout, rec->layout});
+            }
+        }
+        // D3D11 returns the same object for equal state descriptions, so per-pipeline creation is cheap.
+        const D3D11_BLEND_DESC bd = BlendDescOf(desc.blend);
+        const D3D11_DEPTH_STENCIL_DESC dd = DepthStencilDescOf(desc.depthStencil);
+        const D3D11_RASTERIZER_DESC rd = RasterDescOf(desc.raster);
+        HRESULT hr = device_->CreateBlendState(&bd, &rec->blend);
+        if (FAILED(hr)) {
+            Fail("CreateBlendState", hr);
+            return {};
+        }
+        hr = device_->CreateDepthStencilState(&dd, &rec->depthStencil);
+        if (FAILED(hr)) {
+            Fail("CreateDepthStencilState", hr);
+            return {};
+        }
+        hr = device_->CreateRasterizerState(&rd, &rec->raster);
+        if (FAILED(hr)) {
+            Fail("CreateRasterizerState", hr);
+            return {};
+        }
+        pipelines_.push_back(std::move(rec));
+        const auto id = static_cast<std::uint32_t>(pipelines_.size());
+        bucket.push_back(id);
+        return PipelineHandle{id};
+    } catch (...) {
+        FailText("GetPipeline: out of memory");
+        return {};
+    }
+}
+
+// ---- frame -------------------------------------------------------------------------------------------------
+
+PresentResult D3D11Device::Present(const PresentDesc& desc) noexcept {
+    ++stats_.presents;
+    PresentResult result = PresentResult::Ok;
+    if (swapChain_ != nullptr) {
+        const UINT sync = desc.syncInterval > 4 ? 4u : desc.syncInterval;
+        const UINT flags = sync == 0 && tearingSupported_ ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+        const HRESULT hr = swapChain_->Present(sync, flags);
+        result = PresentResultFromHresult(hr);
+        if (result == PresentResult::DeviceLost || result == PresentResult::Failed) {
+            Fail("IDXGISwapChain::Present", hr);
+        }
+    }
+    context_.OnPresent();
+    PumpDebugMessages();
+    return result;
+}
+
+bool D3D11Device::CopyToImage(ID3D11Texture2D* source, std::uint32_t level, Format format, std::uint32_t width,
+                              std::uint32_t height, ComPtr<ID3D11Texture2D>* cachedStaging, Image& out) noexcept {
+    try {
+        D3D11_TEXTURE2D_DESC sd{};
+        source->GetDesc(&sd);
+        const std::uint32_t w = MipSize(width, level);
+        const std::uint32_t h = MipSize(height, level);
+        // The staging texture mirrors the whole source (all levels): a standalone texture of a small BC
+        // level (2x2, 1x1) would be invalid, and level-to-level copies need no box.
+        ComPtr<ID3D11Texture2D> staging;
+        if (cachedStaging != nullptr && *cachedStaging != nullptr) {
+            D3D11_TEXTURE2D_DESC cd{};
+            (*cachedStaging)->GetDesc(&cd);
+            if (cd.Width == sd.Width && cd.Height == sd.Height && cd.MipLevels == sd.MipLevels && cd.Format == sd.Format) {
+                staging = *cachedStaging;
+            }
+        }
+        if (staging == nullptr) {
+            D3D11_TEXTURE2D_DESC td{};
+            td.Width = sd.Width;
+            td.Height = sd.Height;
+            td.MipLevels = sd.MipLevels;
+            td.ArraySize = 1;
+            td.Format = sd.Format;
+            td.SampleDesc.Count = 1;
+            td.Usage = D3D11_USAGE_STAGING;
+            td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            const HRESULT hr = device_->CreateTexture2D(&td, nullptr, &staging);
+            if (FAILED(hr)) {
+                return Fail("CreateTexture2D (staging)", hr);
+            }
+            if (cachedStaging != nullptr) {
+                *cachedStaging = staging;
+            }
+        }
+        const UINT subresource = D3D11CalcSubresource(level, 0, sd.MipLevels);
+        immediate_->CopySubresourceRegion(staging.Get(), subresource, 0, 0, 0, source, subresource, nullptr);
+        D3D11_MAPPED_SUBRESOURCE m{};
+        const HRESULT hr = immediate_->Map(staging.Get(), subresource, D3D11_MAP_READ, 0, &m);
+        if (FAILED(hr)) {
+            return Fail("Map (staging read)", hr);
+        }
+        const FormatInfo& info = GetFormatInfo(format);
+        const std::uint32_t rows = (h + info.blockHeight - 1) / info.blockHeight;
+        const std::uint32_t rowBytes = RowPitch(format, w);
+        out.format = format;
+        out.width = w;
+        out.height = h;
+        out.rowPitch = rowBytes;
+        out.pixels.resize(static_cast<std::size_t>(rowBytes) * rows);
+        for (std::uint32_t y = 0; y < rows; ++y) {
+            std::memcpy(out.pixels.data() + static_cast<std::size_t>(y) * rowBytes,
+                        static_cast<const std::uint8_t*>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch, rowBytes);
+        }
+        immediate_->Unmap(staging.Get(), subresource);
+        return true;
+    } catch (...) {
+        return FailText("read-back: out of memory");
+    }
+}
+
+bool D3D11Device::CaptureBackBuffer(Image& out) noexcept {
+    if (backBuffer_ == nullptr) {
+        return FailText("CaptureBackBuffer: no back buffer");
+    }
+    return CopyToImage(backBuffer_.Get(), 0, info_.backBufferFormat, info_.backBufferWidth, info_.backBufferHeight,
+                       &captureStaging_, out);
+}
+
+bool D3D11Device::ReadTexture(TextureHandle texture, std::uint32_t level, Image& out) noexcept {
+    TextureRecord* rec = textures_.Get(texture.id);
+    if (rec == nullptr || level >= rec->mipLevels) {
+        return FailText("ReadTexture: invalid texture handle or level");
+    }
+    return CopyToImage(rec->texture.Get(), level, rec->format, rec->width, rec->height, nullptr, out);
+}
+
+DeviceStats D3D11Device::Stats() const noexcept {
+    DeviceStats s = stats_;
+    s.pipelines = static_cast<std::uint32_t>(pipelines_.size());
+    s.samplers = static_cast<std::uint32_t>(samplers_.size());
+    s.buffers = buffers_.Live();
+    s.textures = textures_.Live();
+    return s;
+}
+
+// ---- factory ---------------------------------------------------------------------------------------------------
+
+std::unique_ptr<Device> CreateDevice(const DeviceDesc& desc, std::string* error) noexcept {
+    std::string reason;
+    try {
+        auto device = std::make_unique<D3D11Device>();
+        if (device->Init(desc, &reason)) {
+            return device;
+        }
+    } catch (...) {
+        reason = "out of memory";
+    }
+    if (error != nullptr) {
+        try {
+            *error = reason;
+        } catch (...) {
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace gfx::rhi::d3d11

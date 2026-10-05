@@ -1,12 +1,16 @@
-// Window + message loop (design 1.1, 1.10 steps 4 and 6). Owned by the core agent.
-// M1: no window yet; the boot thread waits here after entry returned until the guest ends the
-// process (design 1.7: "Die Rueckkehr von entry ... geht danach in die Message-Loop").
+// Window + message loop (design 1.1, 1.10 steps 4 and 6). Owned by the core agent until M2, by the M3
+// backend agent from M3 on (GFX_CONTRACT.md 10).
+// The boot thread waits here after entry returned until the guest ends the process (design 1.7: "Die
+// Rueckkehr von entry ... geht danach in die Message-Loop"); from M3 on it also owns the main window
+// (platform/window.h, created in stage 12 when [render] backend = d3d11) and pumps its messages.
 #include "platform/platform.h"
 
 #include "core/crash.h"
 #include "core/host_main.h"
 #include "core/log.h"
+#include "gfx/gfx_config.h"
 #include "kernel/kernel_hle.h"
+#include "platform/window.h"
 
 #include <atomic>
 #include <cstdint>
@@ -30,7 +34,22 @@ bool StageCreateWindow(const core::Config& config) {
         return false;
     }
     g_timeoutSeconds = config.GetU32("debug", "timeout", 0);
-    FUT_LOGD(Core, "CreateWindow: no window before M3; watchdog %u s", g_timeoutSeconds);
+    const gfx::Settings& settings = gfx::GetSettings();
+    if (settings.backend != gfx::RenderBackend::D3D11) {
+        FUT_LOGD(Core, "CreateWindow: [render] backend = null - no window; watchdog %u s", g_timeoutSeconds);
+        return true;
+    }
+    // M3: the window the D3D11 swap chain presents into (hidden until the first presented frame). A failure
+    // is logged and the game continues without a window (the renderer then falls back to the null renderer).
+    WindowOptions options;
+    options.scale = settings.windowScale;
+    options.fullscreen = settings.fullscreen;
+    const char* error = nullptr;
+    if (!CreateMainWindow(options, &error)) {
+        FUT_LOGE(Core, "CreateWindow: %s (error %lu) - continuing without a window", error != nullptr ? error : "?",
+                 GetLastError());
+    }
+    FUT_LOGD(Core, "CreateWindow: watchdog %u s", g_timeoutSeconds);
     return true;
 }
 

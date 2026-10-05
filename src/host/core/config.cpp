@@ -157,6 +157,17 @@ constexpr KnownKey kKnownKeys[] = {
     {"render", "frame_rate", KeyType::U32},       // DisplayFrame pacing in Hz, 0 = unthrottled (default 50)
     {"render", "d3d_traps", KeyType::Choice, "abort|log"},  // default abort
     {"render", "load_textures", KeyType::Bool},   // slot 65 reads texture files for their size (default 1)
+    // gfx (M3 phase 1, GFX_CONTRACT.md 8): window + D3D11 renderer
+    {"render", "backend", KeyType::Choice, "null|d3d11"},      // default null until the M3 integration
+    {"render", "vsync", KeyType::Bool},                        // default 1
+    {"render", "debug_layer", KeyType::Choice, "auto|on|off"}, // default auto (on in Debug builds)
+    {"render", "adapter", KeyType::Choice, "hardware|warp"},   // default hardware
+    {"render", "window_scale", KeyType::U32},                  // client area = 640x480 * N (default 2)
+    {"render", "fullscreen", KeyType::Bool},                   // borderless full-monitor window (default 0)
+    {"render", "screenshot_dir", KeyType::Path},               // default <userdata>\screenshots
+    {"render", "screenshot_frames", KeyType::List},            // displayed-frame numbers with a screenshot
+    {"render", "trace_frames", KeyType::List},                 // displayed-frame numbers whose draws are logged
+    {"render", "validate", KeyType::Bool},                     // null renderer runs ni_extract/texconv (default 0)
     // xdk (M2, src/host/audio/dsound_stubs.h): DirectSoundCreateStream returns stub streams instead of NULL
     {"audio", "dummy_streams", KeyType::Bool},  // default 0
 };

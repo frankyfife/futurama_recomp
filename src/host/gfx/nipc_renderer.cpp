@@ -13,6 +13,7 @@
 #include "gfx/gfx_abi.h"
 #include "gfx/gfx_config.h"
 #include "gfx/guest_memory.h"
+#include "gfx/nipc_validate.h"
 #include "gfx/purge_probe.h"
 
 #include <intrin.h>
@@ -52,6 +53,17 @@ struct HostRenderer {
 
 HostRenderer* Host(const NiPCRenderer* r) noexcept {
     return reinterpret_cast<HostRenderer*>(static_cast<std::uintptr_t>(r->host));
+}
+
+// Size of the current render target (slot 21/22 rule) for the M3 validation harness.
+validate::TargetInfo Target(const HostRenderer* h) noexcept {
+    validate::TargetInfo t;
+    if (h != nullptr) {
+        t.width = h->renderTarget != 0 ? h->targetWidth : h->width;
+        t.height = h->renderTarget != 0 ? h->targetHeight : h->height;
+        t.leftRightSwap = h->leftRightSwap;
+    }
+    return t;
 }
 
 // ---- statistics -----------------------------------------------------------------------------------
@@ -239,6 +251,9 @@ void FillSourceTextureInfo(NiPCTextureData* data, std::uint32_t texture) noexcep
         ReleaseRefObject(pixels);  // a file image with refcount 0 is freed here (the original leaks it)
         return;
     }
+    if (GetSettings().validate) {
+        validate::OnSourceTexture(pixels);  // M3 phase-2 harness: texconv on the selected image
+    }
     data->width = width;
     data->height = height;
     data->revision = Read(pixels + 0x48);
@@ -352,6 +367,9 @@ std::uint32_t __fastcall SlotDisplayFrame(NiPCRenderer* self, void*) noexcept {
     NoteCall(16, _ReturnAddress());
     const HostRenderer* h = Host(self);
     if (h != nullptr && h->renderTarget == 0) {
+        if (GetSettings().validate) {
+            validate::OnFrameDisplayed(FramesDisplayed() + 1);
+        }
         OnFrameDisplayed();
     }
     return 0;
@@ -543,6 +561,79 @@ std::uint32_t __fastcall SlotEndScene(NiPCRenderer* self, void*) noexcept {
     return 0;
 }
 
+// slot 47 - SetCameraData(loc, dir, up, right, const NiFrustum&, const NiRect<float>& port) (0x1469E0,
+// ret 0x18; NiCamera::Click FUN_00100C50 passes cam +0xA0/+0x110/+0x11C/+0x128/+0x134/+0x14C). Null renderer:
+// nothing to do; [render] validate = 1 runs ni::ExtractCamera (M3 phase-2 harness, nipc_validate.h).
+std::uint32_t __fastcall SlotSetCameraData(NiPCRenderer* self, void*, std::uint32_t location, std::uint32_t direction,
+                                           std::uint32_t up, std::uint32_t right, std::uint32_t frustum,
+                                           std::uint32_t port) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(47, _ReturnAddress());
+    if (GetSettings().validate) {
+        validate::OnSetCameraData(location, direction, up, right, frustum, port, Target(Host(self)));
+    }
+    return 0;
+}
+
+// slots 48 RenderShape(NiTriShapeData*, NiSkinInstance*, const NiTransform&, const NiBound&) (0x14C4F0,
+// ret 0x10) and 51 RenderTristrips(NiTriStripsData*, ...) (same implementation in the original); slots 49
+// RenderTriangles / 50 RenderTriStrip(data, const NiTransform&, const NiBound&) (0x14B590, ret 0xC). The
+// geometry's vf33 wrote renderer +0x0C/+0x10 before the call. The original draws only inside a scene
+// (+0x500). Null renderer: nothing drawn; [render] validate = 1 runs ni_extract.
+template <std::uint32_t Slot, ni::DrawKind Kind>
+std::uint32_t __fastcall SlotRenderSkinnable(NiPCRenderer* self, void*, std::uint32_t data, std::uint32_t skin,
+                                             std::uint32_t transform, std::uint32_t bound) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(Slot, _ReturnAddress());
+    const HostRenderer* h = Host(self);
+    if (GetSettings().validate && h != nullptr && h->inScene) {
+        validate::OnGeometry(Kind, data, skin, transform, bound, self->propertyState, self->effectState, Target(h));
+    }
+    return 0;
+}
+template <std::uint32_t Slot, ni::DrawKind Kind>
+std::uint32_t __fastcall SlotRenderUnskinned(NiPCRenderer* self, void*, std::uint32_t data, std::uint32_t transform,
+                                             std::uint32_t bound) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(Slot, _ReturnAddress());
+    const HostRenderer* h = Host(self);
+    if (GetSettings().validate && h != nullptr && h->inScene) {
+        validate::OnGeometry(Kind, data, 0, transform, bound, self->propertyState, self->effectState, Target(h));
+    }
+    return 0;
+}
+
+// slot 54 - RenderScreenPolygon(NiScreenPolygon*) (0x14B5F0, ret 4; FUN_00106AF0 set +0x0C = poly +0x08,
+// +0x10 = 0) and slot 55 - RenderScreenTexture(NiScreenTexture*) (0x14C570, ret 4). Both draw only in a scene.
+std::uint32_t __fastcall SlotRenderScreenPolygon(NiPCRenderer* self, void*, std::uint32_t polygon) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(54, _ReturnAddress());
+    const HostRenderer* h = Host(self);
+    if (GetSettings().validate && h != nullptr && h->inScene && polygon != 0) {
+        validate::OnScreenPolygon(polygon, Target(h));
+    }
+    return 0;
+}
+std::uint32_t __fastcall SlotRenderScreenTexture(NiPCRenderer* self, void*, std::uint32_t screenTexture) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(55, _ReturnAddress());
+    const HostRenderer* h = Host(self);
+    if (GetSettings().validate && h != nullptr && h->inScene && screenTexture != 0) {
+        validate::OnScreenTexture(screenTexture, Target(h));
+    }
+    return 0;
+}
+
 // slot 65 - CreateSourceTextureRendererData(NiSourceTexture*) (0x147350, ret 4). Must return TRUE, else
 // NiSourceTexture::Create (FUN_00118600/FUN_00118520 via the broadcast FUN_00117FC0) returns NULL.
 // Existing data -> TRUE (like the original). New data: NiPCTextureData (0x70, layout of
@@ -700,6 +791,20 @@ const void* SlotEntry() noexcept {
         return Checked<Slot>(&SlotBeginScene);
     } else if constexpr (Slot == 46) {
         return Checked<Slot>(&SlotEndScene);
+    } else if constexpr (Slot == 47) {
+        return Checked<Slot>(&SlotSetCameraData);
+    } else if constexpr (Slot == 48) {
+        return Checked<Slot>(&SlotRenderSkinnable<48, ni::DrawKind::Shape>);
+    } else if constexpr (Slot == 49) {
+        return Checked<Slot>(&SlotRenderUnskinned<49, ni::DrawKind::Triangles>);
+    } else if constexpr (Slot == 50) {
+        return Checked<Slot>(&SlotRenderUnskinned<50, ni::DrawKind::TriStrip>);
+    } else if constexpr (Slot == 51) {
+        return Checked<Slot>(&SlotRenderSkinnable<51, ni::DrawKind::TriStrips>);
+    } else if constexpr (Slot == 54) {
+        return Checked<Slot>(&SlotRenderScreenPolygon);
+    } else if constexpr (Slot == 55) {
+        return Checked<Slot>(&SlotRenderScreenTexture);
     } else if constexpr (Slot == 65) {
         return Checked<Slot>(&SlotCreateSourceTextureData);
     } else if constexpr (Slot == 66) {
@@ -1056,6 +1161,9 @@ void LogRendererStatistics() noexcept {
     }
     if (used != 0) {
         FUT_LOGI(Gfx, "NiPCRenderer slot calls (slot:count):%s", line);
+    }
+    if (GetSettings().validate) {
+        validate::LogSummary();
     }
     d3d::LogShimState();
     d3d::LogTrapStatistics();

@@ -23,6 +23,61 @@ target_link_libraries(fut_host_obj PUBLIC
     # design 5.2 (used from M3/M4/M5 on; unused import libraries add no runtime dependency)
     d3d11.lib dxgi.lib xaudio2.lib xinput.lib)
 
+# ---- gfx: HLSL shaders compiled at build time (M3, GFX_CONTRACT.md 6; owned by the shader agent) ----------
+# fxc comes with the Windows SDK (vcvars32 puts its x86 bin directory on PATH). Each fut_add_shader call
+# compiles one entry point into <build>/src/host/gen_shaders/<name>.h (`const BYTE g_<name>[]`, DXBC), which
+# is a source of fut_host_obj, so it is generated before the C++ files that include it. The headers stay in
+# the build tree (no checked-in generated file, nothing for tools/gen/gen_all.py); the runtime needs no
+# d3dcompiler DLL. Shader model 4.0 (vs_4_0/ps_4_0) = D3D feature level 10_0 and higher.
+#   fut_add_shader(<name> <file in gfx/shaders> <entry> <profile> [DEFINE=VALUE ...])
+find_program(FUT_FXC NAMES fxc
+    HINTS "$ENV{WindowsSdkVerBinPath}x86" "$ENV{WindowsSdkVerBinPath}x64"
+          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86"
+    REQUIRED)
+set(FUT_SHADER_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/gen_shaders)
+file(MAKE_DIRECTORY ${FUT_SHADER_GEN_DIR})
+file(GLOB FUT_SHADER_DEPS CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/gfx/shaders/*.hlsl
+    ${CMAKE_CURRENT_SOURCE_DIR}/gfx/shaders/*.hlsli
+    ${CMAKE_CURRENT_SOURCE_DIR}/gfx/shaders/*.h)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(FUT_FXC_CONFIG_FLAGS /Od /Zi)
+else()
+    set(FUT_FXC_CONFIG_FLAGS /O3 /Qstrip_debug /Qstrip_reflect)
+endif()
+function(fut_add_shader name file entry profile)
+    set(out ${FUT_SHADER_GEN_DIR}/${name}.h)
+    set(defines "")
+    foreach(define IN LISTS ARGN)
+        list(APPEND defines /D${define})
+    endforeach()
+    add_custom_command(OUTPUT ${out}
+        COMMAND ${FUT_FXC} /nologo /WX /T ${profile} /E ${entry} /Vn g_${name} ${FUT_FXC_CONFIG_FLAGS} ${defines}
+                /Fh ${out} ${CMAKE_CURRENT_SOURCE_DIR}/gfx/shaders/${file}
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gfx/shaders/${file} ${FUT_SHADER_DEPS}
+        COMMENT "fxc gfx/shaders/${file} ${entry} (${profile}) -> gen_shaders/${name}.h"
+        VERBATIM)
+    target_sources(fut_host_obj PRIVATE ${out})
+endfunction()
+target_include_directories(fut_host_obj PRIVATE ${FUT_SHADER_GEN_DIR})
+# Backend agent (M3 phase 2, gfx/rhi/d3d11/**): built-in shaders of the D3D11 backend (rectangle
+# depth/stencil clear, diagnostic shaders of the headless RHI tests); `file` is relative to gfx/shaders.
+fut_add_shader(d3d11_clear_vs ../rhi/d3d11/d3d11_builtin.hlsl ClearVS vs_4_0)
+fut_add_shader(d3d11_diag_vs ../rhi/d3d11/d3d11_builtin.hlsl DiagVS vs_4_0)
+fut_add_shader(d3d11_diag_color_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagColorPS ps_4_0)
+fut_add_shader(d3d11_diag_texture_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagTexturePS ps_4_0)
+fut_add_shader(d3d11_diag_tint_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagTintPS ps_4_0)
+# Phase-1 stubs, kept for the RHI tests (gfx::ff::StubShaderBytecode); moved to ff_stub.hlsl in phase 2.
+fut_add_shader(ff_stub_vs ff_stub.hlsl VSMain vs_4_0)
+fut_add_shader(ff_stub_ps ff_stub.hlsl PSMain ps_4_0)
+# Fixed-function ubershader permutations (FF_FEATURE_VS/PS_COMPILE_MASK in gfx/shaders/ff_shared.h; selected
+# by gfx::ff::VertexShaderBytecode / PixelShaderBytecode in gfx/ff_pipeline.cpp).
+fut_add_shader(ff_vs_pretransformed ff_ubershader.hlsl VSMain vs_4_0 FF_PERM_PRETRANSFORMED=1)
+fut_add_shader(ff_vs_transformed ff_ubershader.hlsl VSMain vs_4_0 FF_PERM_LIGHTING=0)
+fut_add_shader(ff_vs_lit ff_ubershader.hlsl VSMain vs_4_0 FF_PERM_LIGHTING=1)
+fut_add_shader(ff_ps_smooth ff_ubershader.hlsl PSMain ps_4_0 FF_PERM_FLAT=0)
+fut_add_shader(ff_ps_flat ff_ubershader.hlsl PSMain ps_4_0 FF_PERM_FLAT=1)
+
 add_library(fut_host SHARED ${CMAKE_CURRENT_SOURCE_DIR}/futurama_host.def)
 set_target_properties(fut_host PROPERTIES OUTPUT_NAME futurama_host LINKER_LANGUAGE CXX)
 target_link_libraries(fut_host PRIVATE fut_host_obj "$<LINK_LIBRARY:WHOLE_ARCHIVE,fut_game>")

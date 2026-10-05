@@ -53,6 +53,17 @@
 //                              ; anything else: exit code 1)
 //   load_textures = 1          ; NiPCRenderer slot 65 reads texture files like FUN_0015E010 (0: such
 //                              ; textures get the 8x8 default texture)
+//   backend = null             ; (M3) null | d3d11 - null = M2 null renderer, d3d11 = window + D3D11
+//   vsync = 1                  ; (M3) Present with sync interval 1
+//   debug_layer = auto         ; (M3) auto | on | off (auto: on in Debug builds if installed)
+//   adapter = hardware         ; (M3) hardware | warp
+//   window_scale = 2           ; (M3) initial client area = 640x480 * N (1..8)
+//   fullscreen = 0             ; (M3) borderless window on the whole monitor
+//   screenshot_dir = <dir>     ; (M3) PNG screenshots, default <userdata>\screenshots
+//   screenshot_frames = 100, 900 ; (M3) automatic screenshots at these displayed frames
+//   trace_frames = 900         ; (M3) log every draw call of these displayed frames (GFX/info)
+//   validate = 0               ; (M3 phase 2) the null renderer runs ni_extract/texconv on every call and
+//                              ; logs result counts at the end (real-data check without D3D)
 //   [audio]                    ; (M2, src/host/audio/dsound_stubs.h)
 //   dummy_streams = 0          ; 1: DirectSoundCreateStream returns stub streams (packets complete after
 //                              ;    their play time) instead of NULL; 0 = design default *ppStream = NULL

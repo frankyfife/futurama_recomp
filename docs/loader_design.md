@@ -575,6 +575,8 @@ Jeder Meilenstein endet mit überprüfbaren Kriterien. Alle Kriterien gelten zus
 
 **Exit-Kriterien:**
 1. Splash (`NI_Splash_PAL.nif`), Legal-Bild und Frontend-Menü erscheinen vollständig; Sichtvergleich mit xemu-Screenshots derselben Szenen.
+   - **Referenzaufnahmen (vorhanden seit 2026-10-05):** `run\xemu_ref\` (git-ignoriert), erzeugt mit `tools\xemu_capture.py` aus dem Original in xemu (Retail EU, EEPROM-Sprache Deutsch, interne Auflösung 2× = 1280×960). `scenes.tsv` ordnet Zeitpunkte den Szenen zu (Legal 12–15 s, Splash 63 s, Frontend 75–132 s, Attract ab 138 s); je Szene liegt ein Referenzbild `ref_<szene>.png` vor, alle Einzelbilder als `t<sekunden>s.png` (Intervall 3 s), dazu `contact_sheet.png`. In frühen Bildern überdeckt die xemu-Menüleiste die obersten etwa 24 Pixel; Vergleiche ignorieren diesen Streifen. Filmszenen (XMV) sind erst ab M6 vergleichbar.
+   - Neue Aufnahmen: `python tools\xemu_capture.py --exe F:\emulatoren\xemu-win-release\xemu.exe --out run\xemu_ref --duration 180 --interval 3` (nutzt die xemu-Konfiguration des Nutzers unverändert; öffnet ein Fenster mit Ton).
 2. Kein D3D-Debug-Layer-Fehler.
 3. `--frames=3000` ohne Absturz, Bildrate ≥ 50.
 
