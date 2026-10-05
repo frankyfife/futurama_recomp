@@ -2,6 +2,7 @@
 // (WARP), present statistics and the 50 Hz pacer, PNG screenshots through WIC.
 #include "doctest.h"
 
+#include "gfx/rhi/d3d11/d3d11_device.h"
 #include "gfx/rhi/rhi.h"
 #include "platform/frame_pacer.h"
 #include "platform/screenshot.h"
@@ -172,6 +173,28 @@ TEST_CASE("platform: the 50 Hz pacer holds the frame period") {
     CHECK(platform::GetPresentStatistics().frames == 0);
 }
 
+TEST_CASE("platform: frame work statistics (review M3 finding 3)") {
+    platform::ResetFramePacer();
+    platform::NoteFrameWorkDone();  // no frame started yet: no sample
+    CHECK(platform::GetPresentStatistics().workFrames == 0);
+    for (int i = 0; i < 3; ++i) {
+        platform::PaceFrame(0);  // frame start
+        Sleep(3);
+        platform::NoteFrameWorkDone();
+        platform::NoteFrameWorkDone();  // one sample per frame
+    }
+    const platform::PresentStatistics s = platform::GetPresentStatistics();
+    CHECK(s.workFrames == 3);
+    CHECK(s.workAverageMs >= 2.5);
+    CHECK(s.workAverageMs < 100.0);
+    CHECK(s.workP99Ms >= s.workAverageMs - 0.1);
+    CHECK(s.workLongestMs >= s.workAverageMs);
+    CHECK(s.workOverPeriod == 0);  // no pacing period (hz 0)
+    platform::LogPresentStatistics();
+    platform::ResetFramePacer();
+    CHECK(platform::GetPresentStatistics().workFrames == 0);
+}
+
 TEST_CASE("platform: PNG screenshots through WIC") {
     const fs::path dir = TempDir("platform_png");
     gfx::rhi::Image image;
@@ -303,6 +326,97 @@ TEST_CASE("platform: main window with a D3D11 flip-model swap chain (WARP)") {
         }
         CHECK(device->Stats().debugErrors == 0);
     }
+    // Present pass (review M3 findings 2/8/11): every scaling mode, a resized window (ResizeBuffers in
+    // Present), and the context's own bindings survive Present (pipeline, texture slot 0, viewport).
+    for (gfx::rhi::PresentScaling scaling : {gfx::rhi::PresentScaling::Linear, gfx::rhi::PresentScaling::Point,
+                                             gfx::rhi::PresentScaling::Integer}) {
+        gfx::rhi::DeviceDesc desc;
+        desc.backend = gfx::rhi::Backend::D3D11;
+        desc.nativeWindow = view;
+        desc.softwareAdapter = true;
+        desc.debugLayer = true;
+        desc.scaling = scaling;
+        std::string reason;
+        auto device = gfx::rhi::CreateDevice(desc, &reason);
+        REQUIRE_MESSAGE(device != nullptr, reason);
+        gfx::rhi::CommandContext& ctx = device->Context();
+        const gfx::rhi::ShaderHandle vs = device->CreateShader(
+            gfx::rhi::ShaderStage::Vertex, gfx::rhi::d3d11::BuiltinShaderCode(gfx::rhi::d3d11::BuiltinShader::DiagVS),
+            "diag vs");
+        const gfx::rhi::ShaderHandle ps = device->CreateShader(
+            gfx::rhi::ShaderStage::Pixel,
+            gfx::rhi::d3d11::BuiltinShaderCode(gfx::rhi::d3d11::BuiltinShader::DiagTexturePS), "diag texture ps");
+        REQUIRE(vs);
+        REQUIRE(ps);
+        gfx::rhi::PipelineDesc pd;
+        pd.vertexShader = vs;
+        pd.pixelShader = ps;
+        pd.layout = gfx::rhi::d3d11::DiagVertexLayout();
+        pd.depthStencil.depthEnable = false;
+        const gfx::rhi::PipelineHandle pipeline = device->GetPipeline(pd, "present pass test");
+        REQUIRE(pipeline);
+        const std::uint8_t texel[4] = {0x40, 0x80, 0xC0, 0xFF};  // B, G, R, A
+        gfx::rhi::TextureDesc td;
+        td.width = 1;
+        td.height = 1;
+        td.format = gfx::rhi::Format::BGRA8_UNorm;
+        gfx::rhi::SubresourceData level;
+        level.data = texel;
+        const gfx::rhi::TextureHandle texture = device->CreateTexture(td, &level);
+        REQUIRE(texture);
+        // Clip-space quad over the whole target (DiagVS: position, color, uv), color 1.
+        const float quad[6][9] = {{-1, 1, 0, 1, 1, 1, 1, 0, 0}, {1, 1, 0, 1, 1, 1, 1, 1, 0},  {-1, -1, 0, 1, 1, 1, 1, 0, 1},
+                                  {-1, -1, 0, 1, 1, 1, 1, 0, 1}, {1, 1, 0, 1, 1, 1, 1, 1, 0}, {1, -1, 0, 1, 1, 1, 1, 1, 1}};
+        gfx::rhi::BufferDesc vb;
+        vb.size = sizeof(quad);
+        vb.bind = gfx::rhi::kBindVertex;
+        vb.initialData = quad;
+        const gfx::rhi::BufferHandle vertices = device->CreateBuffer(vb);
+        REQUIRE(vertices);
+        ctx.SetPipeline(pipeline);
+        ctx.SetVertexBuffer(0, vertices, 0, 36);
+        ctx.SetTexture(0, texture);
+        ctx.SetSampler(0, device->GetSampler(gfx::rhi::SamplerDesc{}));
+        ctx.SetViewport(gfx::rhi::Viewport{0.0f, 0.0f, 320.0f, 240.0f, 0.0f, 1.0f});  // top-left quarter
+        const float black[4] = {0, 0, 0, 1};
+        for (int n = 0; n < 3; ++n) {
+            if (n == 1) {  // a resized window: the next Present resizes the swap chain
+                RECT sized{0, 0, 800 + 64 * static_cast<int>(scaling), 600};
+                AdjustWindowRectEx(&sized, WS_OVERLAPPEDWINDOW, FALSE, 0);
+                SetWindowPos(platform::MainFrameWindow(), nullptr, 0, 0, sized.right - sized.left,
+                             sized.bottom - sized.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                PumpMessages();
+            }
+            ctx.Clear(gfx::rhi::kClearColor, black, 1.0f, 0, nullptr);
+            ctx.Draw(6, 0);  // no re-binding after Present: the context restored its state
+            gfx::rhi::Image image;
+            REQUIRE(device->CaptureBackBuffer(image));
+            CHECK(image.width == 640);
+            const std::uint8_t* inside = image.pixels.data() + 100 * image.rowPitch + 100 * 4;
+            const std::uint8_t* outside = image.pixels.data() + 400 * image.rowPitch + 500 * 4;
+            CHECK_MESSAGE(inside[2] == 0xC0, "frame " << n << " scaling " << static_cast<int>(scaling));
+            CHECK(inside[1] == 0x80);
+            CHECK(outside[2] == 0x00);
+            const gfx::rhi::PresentResult r = device->Present(gfx::rhi::PresentDesc{0});
+            CHECK((r == gfx::rhi::PresentResult::Ok || r == gfx::rhi::PresentResult::Occluded));
+            PumpMessages();
+        }
+        device->Destroy(texture);
+        device->Destroy(vertices);
+        std::vector<gfx::rhi::DebugMessage> messages;
+        device->DrainDebugMessages(messages);
+        for (const auto& m : messages) {
+            MESSAGE("debug message #" << m.id << ": " << m.text);
+        }
+        CHECK(device->Stats().debugErrors == 0);
+        CHECK(device->Stats().debugWarnings == 0);
+    }
+    // WM_CLOSE only requests the end (review M3 findings 5/10): the renderer ends the process after its next
+    // frame on the guest main thread. DestroyMainWindow right after also removes the 3 s fallback timer.
+    CHECK_FALSE(platform::CloseRequested());
+    SendMessageW(platform::MainFrameWindow(), WM_CLOSE, 0, 0);
+    CHECK(platform::CloseRequested());
+    CHECK(platform::MainWindow() != nullptr);  // the window stays
     platform::DestroyMainWindow();
     PumpMessages();
     CHECK(platform::MainWindow() == nullptr);

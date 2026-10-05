@@ -1054,3 +1054,26 @@ TEST_CASE("extract: arena memory is guest-visible") {
     arena.Reset();
     CHECK(arena.Generation() == generation + 1);
 }
+
+TEST_CASE("extract: PurgeLight drops an enabled light like FUN_0015B9E0 (slot 60)") {
+    StateShadow s;
+    s.lights.count = 3;
+    s.lights.lights[0].niLight = 0x1000;
+    s.lights.lights[0].index = 1;
+    s.lights.lights[1].niLight = 0x2000;
+    s.lights.lights[1].index = 2;
+    s.lights.lights[2].niLight = 0x3000;
+    s.lights.lights[2].index = 3;
+    s.lastEffectState = 0x4000;
+    CHECK(PurgeLight(&s, 0x2000) == 1);
+    CHECK(s.lights.count == 2);
+    CHECK(s.lights.lights[0].niLight == 0x1000);
+    CHECK(s.lights.lights[1].niLight == 0x3000);
+    CHECK(s.lights.lights[1].index == 3);
+    CHECK(s.lastEffectState == 0x4000);  // the light manager's last effect state stays (+0x3C)
+    CHECK(s.counters.lightsPurged == 1);
+    CHECK(PurgeLight(&s, 0x2000) == 0);  // not enabled (any more)
+    CHECK(PurgeLight(&s, 0) == 0);
+    CHECK(PurgeLight(nullptr, 0x1000) == 0);
+    CHECK(s.lights.count == 2);
+}

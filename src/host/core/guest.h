@@ -209,6 +209,21 @@ inline constexpr GuestAddr kGameScreenOffsetZero = 0x000A1920;
 // NiImageConverter singleton (static initializer, initstubs_00230000.c) and its vf2 ReadImageFile
 // (thiscall 2 args: path, 0 -> NiPixelData* with refcount 0) as used by FUN_0015E010 0x15E06A.
 inline constexpr GuestAddr kNiImageConverterPtr = 0x0030EF64;
+// --- added in M3 phase 5 (review fixes; see Changelog in src/INTERFACES.md) ----------------------
+// NiPixelData "free the pixel buffer" FUN_001511B0 (thiscall ecx = NiPixelData, no stack args, plain ret
+// 0x1511C7): FUN_000A3880([+0x30]), then +0x30 = 0. FUN_0015E010 calls it at 0x15E1DD after the upload
+// (M3 review finding 1).
+inline constexpr GuestAddr kNiPixelDataFreePixels = 0x001511B0;
+// NiLight::ms_RTTI (retail_eu_ni_classes.json); NiXBoxRenderer::vf60 0x146E57 walks the RTTI chain
+// (GetRTTI vf1, base RTTI at +8) looking for it (M3 review finding 4).
+inline constexpr GuestAddr kNiLightRtti = 0x0030EBAC;
+// memory.cpp game pool counters (pool object kGameMemoryPool below): +0x00 bytes in use, +0x04 bytes free
+// (FUN_000A4520 0xA4682 adds/subtracts size + 4; FUN_000A3880 the reverse), DAT_002E8D38 peak bytes in
+// use (0xA4697), DAT_002E8D35 "pool initialized" (FUN_000A4920 sets it, FUN_000A4520 tests it).
+inline constexpr std::uint32_t kGameMemoryPoolUsedOffset = 0x00;
+inline constexpr std::uint32_t kGameMemoryPoolFreeOffset = 0x04;
+inline constexpr GuestAddr kGameMemoryPoolPeak = 0x002E8D38;
+inline constexpr GuestAddr kGameMemoryPoolInitialized = 0x002E8D35;
 // D3D8 functions the game calls directly (design 2.2 shim table, d3d.md 3.1/3.2/4.3; ret per
 // d3d_functions.tsv). All stdcall.
 inline constexpr GuestAddr kD3DDeviceAddRef = 0x00234440;                 // ret 0

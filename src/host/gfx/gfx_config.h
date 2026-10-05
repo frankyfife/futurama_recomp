@@ -20,6 +20,8 @@
 //   [render] adapter = hardware hardware | warp (software rasterizer, tests)
 //   [render] window_scale = 2   initial client area = Create size (640x480) * N
 //   [render] fullscreen = 0     borderless window on the whole monitor
+//   [render] scaling = linear   linear | point | integer: how Present maps the 640x480 back buffer onto the
+//                               window (rhi::PresentScaling; M3 review finding 11)
 //   [render] screenshot_dir     PNG screenshots (default <userdata>\screenshots)
 //   [render] screenshot_frames  list of displayed-frame numbers that get an automatic screenshot
 //   [render] trace_frames       list of displayed-frame numbers whose draw calls are logged one by one
@@ -30,6 +32,8 @@
 // The section is [render], not [gfx]: tests/test_core.cpp uses [gfx] as its example of an unknown
 // section (a known section would turn its unknown key into an error).
 #pragma once
+
+#include "gfx/rhi/rhi.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -53,6 +57,7 @@ struct Settings {
     bool softwareAdapter = false;
     std::uint32_t windowScale = 2;
     bool fullscreen = false;
+    rhi::PresentScaling scaling = rhi::PresentScaling::Linear;
     std::filesystem::path screenshotDir;          // default <userdata>\screenshots
     std::vector<std::uint32_t> screenshotFrames;  // sorted, unique
     std::vector<std::uint32_t> traceFrames;       // sorted, unique

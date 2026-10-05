@@ -191,7 +191,10 @@ public:
     // Device-internal.
     void Init(ID3D11DeviceContext1* context) noexcept;
     void BindDefaultTargets() noexcept;  // back buffer + depth, full viewport
-    void OnPresent() noexcept;           // re-bind targets (flip model unbinds them), new transient frame
+    // After Present (the device's present pass changed shaders, states, targets, viewport, PS t0/s0 and
+    // moved to the next back buffer): re-bind the current back buffer (if it is the color target) and
+    // everything the context had bound, start a new transient frame.
+    void OnPresent() noexcept;
     void OnDestroyTexture(std::uint32_t id) noexcept;
     void Release() noexcept;             // ClearState, drop references and the transient chunks
 
@@ -238,6 +241,7 @@ private:
     std::uint8_t stencilRef_ = 0;
     float blendFactor_[4] = {0, 0, 0, 0};
     std::array<std::uint32_t, kMaxTextureSlots> textures_{};  // TextureHandle ids bound to PS t#
+    std::array<ID3D11SamplerState*, kMaxSamplerSlots> samplers_{};  // bound PS s# (owned by the device)
 
     // Rectangle depth/stencil clear (lazily created).
     ComPtr<ID3D11VertexShader> clearVs_;
@@ -289,7 +293,8 @@ public:
     TextureRecord* GetTexture(std::uint32_t id) noexcept { return textures_.Get(id); }
     const PipelineRecord* GetPipelineRecord(std::uint32_t id) const noexcept;
     ID3D11SamplerState* GetSamplerState(std::uint32_t id) const noexcept;
-    ID3D11RenderTargetView* BackBufferRtv() const noexcept { return backBufferRtv_.Get(); }
+    // The current one of the persistent back buffers (rotated by Present).
+    ID3D11RenderTargetView* BackBufferRtv() const noexcept { return backBufferRtvs_[currentBackBuffer_].Get(); }
     ID3D11DepthStencilView* BackBufferDsv() const noexcept { return depthDsv_.Get(); }
     std::uint32_t AddTransientBuffer(ComPtr<ID3D11Buffer> buffer, std::uint32_t size, std::uint8_t bind) noexcept;
     void RemoveTransientBuffer(std::uint32_t id) noexcept;
@@ -304,7 +309,10 @@ private:
     bool CreateFactoryAndDevice(const DeviceDesc& desc, std::string* error) noexcept;
     bool SetUpDebugLayer() noexcept;
     bool CreateSwapChain(const DeviceDesc& desc, std::string* error) noexcept;
-    bool CreateOffscreenTargets(const DeviceDesc& desc, std::string* error) noexcept;
+    bool CreateBackBuffers(const DeviceDesc& desc, std::string* error) noexcept;
+    bool CreatePresentPass(std::string* error) noexcept;
+    bool UpdateSwapChainSize() noexcept;  // ResizeBuffers to the window's client size (render thread)
+    void DrawPresentPass() noexcept;      // current back buffer -> swap chain buffer (scaling_)
     bool CreateDepthBuffer(const DeviceDesc& desc, std::string* error) noexcept;
     void SetName(ID3D11DeviceChild* object, const char* name) noexcept;
     void HandleDebugMessage(DebugSeverity severity, std::int32_t id, bool dxgi, const char* text) noexcept;
@@ -324,8 +332,26 @@ private:
     ComPtr<IDXGIInfoQueue> dxgiInfoQueue_;
     ComPtr<IDXGISwapChain1> swapChain_;
     bool tearingSupported_ = false;
-    ComPtr<ID3D11Texture2D> backBuffer_;
-    ComPtr<ID3D11RenderTargetView> backBufferRtv_;
+    void* window_ = nullptr;  // HWND of the swap chain
+    std::uint32_t swapWidth_ = 0, swapHeight_ = 0;
+    UINT swapFlags_ = 0;
+    ComPtr<ID3D11RenderTargetView> swapRtv_;  // buffer 0 of the swap chain (released for ResizeBuffers)
+    // Persistent back buffers (DeviceDesc::bufferCount, rotated by Present; review M3 findings 2/8).
+    static constexpr std::uint32_t kMaxBackBuffers = 3;
+    ComPtr<ID3D11Texture2D> backBuffers_[kMaxBackBuffers];
+    ComPtr<ID3D11RenderTargetView> backBufferRtvs_[kMaxBackBuffers];
+    ComPtr<ID3D11ShaderResourceView> backBufferSrvs_[kMaxBackBuffers];
+    std::uint32_t backBufferCount_ = 1;
+    std::uint32_t currentBackBuffer_ = 0;
+    // Present pass (window only).
+    PresentScaling scaling_ = PresentScaling::Linear;
+    ComPtr<ID3D11VertexShader> presentVs_;
+    ComPtr<ID3D11PixelShader> presentPs_;
+    ComPtr<ID3D11SamplerState> presentPoint_, presentLinear_;
+    ComPtr<ID3D11RasterizerState> presentRaster_;
+    ComPtr<ID3D11DepthStencilState> presentDepth_;
+    ComPtr<ID3D11BlendState> presentBlend_;
+    std::uint64_t swapResizes_ = 0;
     ComPtr<ID3D11Texture2D> depthBuffer_;
     ComPtr<ID3D11DepthStencilView> depthDsv_;
     ComPtr<ID3D11Texture2D> captureStaging_;

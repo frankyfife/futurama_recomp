@@ -11,6 +11,7 @@
 #include "doctest.h"
 
 #include "gfx/ff_pipeline.h"
+#include "gfx/nipc_gpu.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -1222,6 +1223,31 @@ TEST_CASE("ff render: screen camera of RenderScreenPolygon (slot 54)") {
     CheckPixel(h.Read(8, 56), {0, 1, 0, 1});   // bottom-left quadrant (y up)
     CheckPixel(h.Read(8, 8), {0, 0, 0, 0});
     CheckPixel(h.Read(56, 56), {0, 0, 0, 0});
+}
+
+TEST_CASE("ff render: transformed vertices snap to 1/16 pixel like the NV2A (review M3 finding 9)") {
+    Harness h;
+    if (!h.Ok()) return;
+    ni::CameraDesc camera;
+    camera.view = camera.projection = camera.screenProjection = IdentityMatrix();
+    camera.viewport = {0.0f, 0.0f, 64.0f, 64.0f, 0.0f, 1.0f};
+    HalfPixelShift(&camera.projection, 64.0f, 64.0f);  // what GpuRenderer hands to the pipeline (B19)
+    h.SetCamera(camera);
+    auto ndcY = [](float pixel) { return 1.0f - pixel / 32.0f; };  // D3D8 pixel row -> NDC (64 rows)
+    // Top edge 0.004 pixel below the centers of row 20 (D3D8 pixels, the "Neues Spiel" case): D3D11 alone
+    // would leave row 20 uncovered (20.504 > 20.5 after the shift); snapped to 20.0 the edge lies on the
+    // centers and the top-left rule covers the row, as on the original.
+    const Quad onRow(0.5f, {0, 1, 0, 1}, -1.0f, ndcY(20.004f), 1.0f, ndcY(40.0f));
+    h.Clear();
+    REQUIRE(h.Draw(onRow.Item()) == ff::DrawResult::Drawn);
+    CheckPixel(h.Read(32, 20), {0, 1, 0, 1});
+    CheckPixel(h.Read(32, 19), {0, 0, 0, 0});
+    // 0.07 pixel below snaps to 20.0625: row 20 stays uncovered, row 21 is the first one.
+    const Quad below(0.5f, {0, 1, 0, 1}, -1.0f, ndcY(20.07f), 1.0f, ndcY(40.0f));
+    h.Clear();
+    REQUIRE(h.Draw(below.Item()) == ff::DrawResult::Drawn);
+    CheckPixel(h.Read(32, 20), {0, 0, 0, 0});
+    CheckPixel(h.Read(32, 21), {0, 1, 0, 1});
 }
 
 TEST_CASE("ff render: D3D8 cull modes, strips with cuts, depth test") {

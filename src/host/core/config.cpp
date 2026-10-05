@@ -164,6 +164,7 @@ constexpr KnownKey kKnownKeys[] = {
     {"render", "adapter", KeyType::Choice, "hardware|warp"},   // default hardware
     {"render", "window_scale", KeyType::U32},                  // client area = 640x480 * N (default 2)
     {"render", "fullscreen", KeyType::Bool},                   // borderless full-monitor window (default 0)
+    {"render", "scaling", KeyType::Choice, "linear|point|integer"},  // present scaling (M3 review, default linear)
     {"render", "screenshot_dir", KeyType::Path},               // default <userdata>\screenshots
     {"render", "screenshot_frames", KeyType::List},            // displayed-frame numbers with a screenshot
     {"render", "trace_frames", KeyType::List},                 // displayed-frame numbers whose draws are logged

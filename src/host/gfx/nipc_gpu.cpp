@@ -144,7 +144,19 @@ struct GpuRenderer::Impl {
                   occluded = 0, screenshots = 0, texturesCreated = 0, texturesDestroyed = 0,
                   textureFailures = 0;
     std::uint32_t frameClears = 0;
+    bool frameColorCleared = false;
+    std::uint64_t framesWithoutDraw = 0, framesWithoutColorClear = 0, framesUnchanged = 0;
+    // Origin of the picture in each of the device's persistent back buffers (rotated by Present): the last
+    // frame that drew into it or cleared its color. A frame without either shows the picture of that frame
+    // (two presents ago) - "draw summary" names it.
+    struct Picture {
+        std::uint32_t frame = 0, draws = 0, drawn = 0;
+    };
+    static constexpr std::uint32_t kBackBuffers = 2;  // rhi::DeviceDesc::bufferCount in Create
+    Picture pictures[kBackBuffers];
+    std::uint32_t backBuffer = 0;  // index of the current back buffer
     std::size_t arenaPeak = 0;
+    DWORD renderThread = 0;  // creator / DisplayFrame thread
     bool loggedPresentFailure = false;
     bool loggedTextureFailure = false;
 
@@ -191,9 +203,55 @@ struct GpuRenderer::Impl {
     void Count(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome, bool haveItem) noexcept;
     void Submit(ni::DrawKind kind, ni::GuestPtr object, ni::ExtractStatus status) noexcept;
     void TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome, bool haveItem) noexcept;
-    void LogFrameSummary(std::uint32_t frame) noexcept;
+    void LogFrameSummary(std::uint32_t frame, const Picture& shown) noexcept;
     void PrepareFrame(std::uint32_t frame) noexcept;
 };
+
+// Screen-space bounding box of a draw in D3D8 pixel coordinates (pixel centers on integers, i.e. before the
+// half-pixel shift of B19): world * view * projection (or the screen projection of slot 54), perspective
+// divide, viewport; pre-transformed vertices are already pixels. Diagnostics of the draw trace (review M3
+// finding 9: which pixel row an edge falls on). false if no vertex has w > 0.
+namespace {
+bool ScreenBounds(const ni::DrawItem& item, const ni::CameraDesc& camera, float* x0, float* y0, float* x1,
+                  float* y1) noexcept {
+    const ni::GeometryDesc& g = item.geometry;
+    if (g.positions.data == nullptr || g.vertexCount == 0) {
+        return false;
+    }
+    const Matrix4 viewProj = item.useScreenCamera ? camera.screenProjection
+                                                  : Multiply(camera.view, camera.projection);
+    const Matrix4 m = Multiply(item.world, viewProj);
+    const rhi::Viewport& v = camera.viewport;
+    bool any = false;
+    for (std::uint32_t i = 0; i < g.vertexCount; ++i) {
+        const auto* p = reinterpret_cast<const float*>(static_cast<const std::uint8_t*>(g.positions.data) +
+                                                       static_cast<std::size_t>(i) * g.positions.stride);
+        float sx, sy;
+        if (g.pretransformed) {
+            sx = p[0];
+            sy = p[1];
+        } else {
+            const Float4 c = TransformFloat4(Float4{p[0], p[1], p[2], 1.0f}, m);
+            if (!(c.w > 0.0f)) {
+                continue;
+            }
+            sx = v.x + (c.x / c.w * 0.5f + 0.5f) * v.width;
+            sy = v.y + (0.5f - c.y / c.w * 0.5f) * v.height;
+        }
+        if (!any) {
+            *x0 = *x1 = sx;
+            *y0 = *y1 = sy;
+            any = true;
+        } else {
+            *x0 = std::min(*x0, sx);
+            *x1 = std::max(*x1, sx);
+            *y0 = std::min(*y0, sy);
+            *y1 = std::max(*y1, sy);
+        }
+    }
+    return any;
+}
+}  // namespace
 
 void GpuRenderer::Impl::TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome,
                                   bool haveItem) noexcept {
@@ -208,9 +266,14 @@ void GpuRenderer::Impl::TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOu
     const ni::GeometryDesc& g = item.geometry;
     const ni::RenderStateDesc& s = item.state;
     const ni::TextureStageDesc& st0 = s.stages[0];
+    float bx0 = 0.0f, by0 = 0.0f, bx1 = 0.0f, by1 = 0.0f;
+    ni::CameraDesc applied = camera;
+    applied.viewport = viewport;  // the viewport on the context (ClearBuffer may have changed it)
+    const bool bounds = ScreenBounds(item, applied, &bx0, &by0, &bx1, &by1);
     FUT_LOGI(
         Gfx,
-        "draw trace frame %u #%u: %s 0x%08X -> %s%s%s: %u vertices, %u indices, %u triangles (%s%s%s%s), "
+        "draw trace frame %u #%u: %s 0x%08X -> %s%s%s: screen %s(%.3f, %.3f)-(%.3f, %.3f), "
+        "%u vertices, %u indices, %u triangles (%s%s%s%s), "
         "%u stages (%s; stage 0 op %u/%u, NiTexture 0x%08X -> host %u, addr %u/%u, filter %u/%u/%u, uv %u), "
         "lighting %d (%u lights, "
         "sources d%u a%u e%u), colors %d, blend %d (%u/%u), alpha test %d (func %u ref %u), z func %u write "
@@ -219,7 +282,7 @@ void GpuRenderer::Impl::TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOu
         "%.2f "
         "%.2f), global ambient (%.2f %.2f %.2f)",
         frame, drawIndex, DrawKindName(kind), object, DrawOutcomeName(outcome), *note != 0 ? ": " : "", note,
-        g.vertexCount, g.indexCount, g.primitiveCount,
+        bounds ? "" : "(none) ", bx0, by0, bx1, by1, g.vertexCount, g.indexCount, g.primitiveCount,
         g.topology == ni::Topology::TriangleStrip ? "strip" : "list",
         g.pretransformed ? ", pre-transformed" : "", item.useScreenCamera ? ", screen camera" : "",
         g.skinned ? ", skinned" : "", s.stageCount, TexturePathName(s.texturePath),
@@ -276,7 +339,7 @@ void GpuRenderer::Impl::Submit(ni::DrawKind kind, ni::GuestPtr object, ni::Extra
     Count(kind, object, OutcomeOf(result), true);
 }
 
-void GpuRenderer::Impl::LogFrameSummary(std::uint32_t frame) noexcept {
+void GpuRenderer::Impl::LogFrameSummary(std::uint32_t frame, const Picture& shown) noexcept {
     char line[768];
     std::size_t used = 0;
     line[0] = 0;
@@ -316,8 +379,13 @@ void GpuRenderer::Impl::LogFrameSummary(std::uint32_t frame) noexcept {
         }
         used += static_cast<std::size_t>(w);
     }
-    FUT_LOGI(Gfx, "draw summary frame %u: %u draw calls, %u drawn, %u not drawn, %u clears%s%s", frame,
-             issued, drawn, issued - drawn, frameClears, used != 0 ? "; " : "", line);
+    char picture[96] = "";
+    if (shown.frame != frame) {
+        std::snprintf(picture, sizeof(picture), "; shows the picture of frame %u (%u draw calls, %u drawn)",
+                      shown.frame, shown.draws, shown.drawn);
+    }
+    FUT_LOGI(Gfx, "draw summary frame %u: %u draw calls, %u drawn, %u not drawn, %u clears%s%s%s", frame,
+             issued, drawn, issued - drawn, frameClears, used != 0 ? "; " : "", line, picture);
 }
 
 void GpuRenderer::Impl::PrepareFrame(std::uint32_t frame) noexcept {
@@ -326,6 +394,7 @@ void GpuRenderer::Impl::PrepareFrame(std::uint32_t frame) noexcept {
     summaryFrame = traceFrame || Listed(s.screenshotFrames, frame);
     drawIndex = 0;
     frameClears = 0;
+    frameColorCleared = false;
     std::memset(frameCounts, 0, sizeof(frameCounts));
 }
 
@@ -363,11 +432,13 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
     desc.nativeWindow = params.window;
     desc.width = params.width;
     desc.height = params.height;
-    desc.bufferCount = 2;
+    desc.bufferCount = Impl::kBackBuffers;
     desc.backBufferFormat = rhi::Format::BGRA8_UNorm;
     desc.depthFormat = rhi::Format::D24_UNorm_S8_UInt;  // Create gets D3DFMT_D24S8 (0x4B, auto depth/stencil)
     desc.debugLayer = params.debugLayer;
     desc.softwareAdapter = params.softwareAdapter;
+    desc.scaling = params.scaling;
+    d.renderThread = GetCurrentThreadId();
     d.device = rhi::CreateDevice(desc, error);
     if (d.device == nullptr) {
         return nullptr;
@@ -462,9 +533,10 @@ void GpuRenderer::ClearBuffer(const ni::NiRectF* rect, std::uint32_t mode, std::
         ++d.clearsSkipped;
         return;
     }
-    // 0x146538: D3DDevice_SetViewport(whole target) before the clear; not restored.
+    // 0x14659E..0x1465B9: viewport width/height (+0x41C/+0x420) = target size, X/Y keep their 0 from
+    // FUN_00147CD0, D3DDevice_SetViewport(+0x414) before the clear; not restored.
     d.ApplyViewport(d.FullViewport());
-    // 0x146558..: Xbox D3DCLEAR_TARGET (0xF0) for mode bit 1, D3DCLEAR_ZBUFFER for bit 4 and
+    // 0x14654D..0x14659C: Xbox D3DCLEAR_TARGET (0xF0) for mode bit 1, D3DCLEAR_ZBUFFER for bit 4 and
     // D3DCLEAR_STENCIL for bit 2 - both only with a depth surface (the back buffer has the D24S8 one) and
     // stencil only with the caps bit 7 of +0x2D8 (GetFlags 0xED: set).
     std::uint8_t flags = 0;
@@ -490,6 +562,9 @@ void GpuRenderer::ClearBuffer(const ni::NiRectF* rect, std::uint32_t mode, std::
         return;
     }
     d.Ctx().Clear(flags, color, depth, static_cast<std::uint8_t>(stencil & 0xFF), hasRect ? &r : nullptr);
+    if ((flags & rhi::kClearColor) != 0) {
+        d.frameColorCleared = true;
+    }
 }
 
 void GpuRenderer::BeginScene() noexcept {
@@ -565,11 +640,32 @@ void GpuRenderer::CountNotInScene(ni::DrawKind kind, ni::GuestPtr object) noexce
     impl_->Count(kind, object, DrawOutcome::NotInScene, false);
 }
 
+std::uint32_t GpuRenderer::PurgeLight(ni::GuestPtr niLight) noexcept {
+    return ni::PurgeLight(&impl_->shadow, niLight);
+}
+
 void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
     Impl& d = *impl_;
     const Settings& s = GetSettings();
+    d.renderThread = GetCurrentThreadId();
+    platform::NoteFrameWorkDone();  // guest + renderer work of this frame (before screenshots and Present)
+    // Frames that leave the back buffer as it was (its picture of two presents ago, review M3 finding 8).
+    std::uint32_t issued = 0, drawn = 0;
+    for (std::uint32_t k = 0; k < kDrawKindCount; ++k) {
+        for (std::uint32_t o = 0; o < kDrawOutcomeCount; ++o) {
+            issued += d.frameCounts[k][o];
+        }
+        drawn += d.frameCounts[k][static_cast<std::uint32_t>(DrawOutcome::Drawn)];
+    }
+    d.framesWithoutDraw += issued == 0 ? 1 : 0;
+    d.framesWithoutColorClear += d.frameColorCleared ? 0 : 1;
+    d.framesUnchanged += issued == 0 && !d.frameColorCleared ? 1 : 0;
+    Impl::Picture& picture = d.pictures[d.backBuffer];
+    if (issued != 0 || d.frameColorCleared) {
+        picture = Impl::Picture{frame, issued, drawn};
+    }
     if (d.summaryFrame) {
-        d.LogFrameSummary(frame);
+        d.LogFrameSummary(frame, picture);
     }
     const bool hotkey = (platform::ConsumeHotkeys() & platform::kHotkeyScreenshot) != 0;
     if (hotkey || Listed(s.screenshotFrames, frame)) {
@@ -596,6 +692,7 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
         }
         break;
     }
+    d.backBuffer = (d.backBuffer + 1) % Impl::kBackBuffers;  // the device moved on (rhi Device::Present)
     platform::NotePresentedFrame();  // first call: shows the window, registers the "present" reporter
     d.arenaPeak = std::max(d.arenaPeak, d.arena.BytesUsed());
     d.arena.Reset();
@@ -641,8 +738,17 @@ rhi::TextureHandle GpuRenderer::BlackTexture() const noexcept {
     return impl_->blackTexture;
 }
 
+bool GpuRenderer::OnRenderThread() const noexcept {
+    return impl_->renderThread == GetCurrentThreadId();
+}
+
 void GpuRenderer::LogStatistics() noexcept {
     Impl& d = *impl_;
+    if (!OnRenderThread()) {
+        FUT_LOGI(Gfx, "d3d11 statistics skipped: the process ends on thread %lu while the render thread %lu may "
+                 "still draw (its counters are not atomic)", GetCurrentThreadId(), d.renderThread);
+        return;
+    }
     for (std::uint32_t k = 0; k < kDrawKindCount; ++k) {
         std::uint64_t calls = 0;
         for (std::uint32_t o = 0; o < kDrawOutcomeCount; ++o) {
@@ -664,11 +770,13 @@ void GpuRenderer::LogStatistics() noexcept {
     }
     FUT_LOGI(
         Gfx,
-        "d3d11 frames: %llu presents (%llu occluded), %llu screenshots, %llu scenes, %llu cameras, %llu "
-        "clears "
-        "(%llu on texture targets skipped, %llu empty rectangles); textures %llu created, %llu destroyed, "
-        "%llu failed; arena peak %zu bytes",
+        "d3d11 frames: %llu presents (%llu occluded; %llu without a draw, %llu without a color clear, %llu "
+        "with neither = the back buffer of two presents ago), %llu screenshots, %llu scenes, %llu cameras, "
+        "%llu clears (%llu on texture targets skipped, %llu empty rectangles); textures %llu created, %llu "
+        "destroyed, %llu failed; arena peak %zu bytes",
         static_cast<unsigned long long>(d.presents), static_cast<unsigned long long>(d.occluded),
+        static_cast<unsigned long long>(d.framesWithoutDraw), static_cast<unsigned long long>(d.framesWithoutColorClear),
+        static_cast<unsigned long long>(d.framesUnchanged),
         static_cast<unsigned long long>(d.screenshots), static_cast<unsigned long long>(d.scenes),
         static_cast<unsigned long long>(d.cameras), static_cast<unsigned long long>(d.clears),
         static_cast<unsigned long long>(d.clearsSkipped), static_cast<unsigned long long>(d.emptyClearRects),
@@ -692,14 +800,14 @@ void GpuRenderer::LogStatistics() noexcept {
         Gfx,
         "ni_extract: %llu states, %llu multi-map approximated, %llu with texture effects, %llu light "
         "evaluations (%llu lights dropped, %llu unknown types), %llu skinned draws (%llu deforms, %llu cache "
-        "hits), %llu invalid map modes, %llu unresolved textures",
+        "hits), %llu invalid map modes, %llu unresolved textures, %llu enabled lights purged (slot 60)",
         static_cast<unsigned long long>(e.states), static_cast<unsigned long long>(e.multiMapApproximated),
         static_cast<unsigned long long>(e.textureEffectDraws),
         static_cast<unsigned long long>(e.lightEvaluations), static_cast<unsigned long long>(e.lightsDropped),
         static_cast<unsigned long long>(e.unknownLightTypes), static_cast<unsigned long long>(e.skinnedDraws),
         static_cast<unsigned long long>(e.skinDeforms), static_cast<unsigned long long>(e.skinCacheHits),
         static_cast<unsigned long long>(e.invalidMapModes),
-        static_cast<unsigned long long>(e.unresolvedTextures));
+        static_cast<unsigned long long>(e.unresolvedTextures), static_cast<unsigned long long>(e.lightsPurged));
     const rhi::DeviceStats ds = d.device->Stats();
     FUT_LOGI(Gfx,
              "d3d11 device: %llu draws, %llu primitives, %llu presents, %llu MiB transient, %u pipelines, %u "

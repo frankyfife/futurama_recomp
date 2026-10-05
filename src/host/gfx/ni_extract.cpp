@@ -547,6 +547,23 @@ void BeginScene(StateShadow* shadow) noexcept {
     shadow->lastEffectState = 0;
 }
 
+std::uint32_t PurgeLight(StateShadow* shadow, GuestPtr niLight) noexcept {
+    if (shadow == nullptr || niLight == 0) {
+        return 0;
+    }
+    LightSetDesc& set = shadow->lights;
+    std::uint32_t kept = 0;
+    for (std::uint32_t i = 0; i < set.count && i < kMaxLights; ++i) {
+        if (set.lights[i].niLight != niLight) {
+            set.lights[kept++] = set.lights[i];
+        }
+    }
+    const std::uint32_t removed = set.count - kept;
+    set.count = kept;
+    shadow->counters.lightsPurged += removed;
+    return removed;
+}
+
 // ---- camera -----------------------------------------------------------------------------------------------
 
 CameraDesc ExtractCamera(const CameraInput& input) noexcept {

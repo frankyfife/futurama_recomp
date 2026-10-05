@@ -9,6 +9,9 @@
 //   DiagColorPS    interpolated color
 //   DiagTexturePS  t0/s0 sample * color
 //   DiagTintPS     color * b0.tint (constant buffer test)
+//   PresentVS      present pass (review M3 findings 2/8/11): a triangle over the viewport (= destination
+//                  rectangle in the swap chain) with texture coordinates 0..1 over that rectangle
+//   PresentPS      t0/s0 sample of the offscreen back buffer (point or linear sampler, [render] scaling)
 // The Diag* shaders are used by the headless unit tests (tests/rhi_d3d11_tests.cpp) and are available
 // to host diagnostics; the game's draws use the fixed-function shaders of gfx/shaders/.
 
@@ -63,4 +66,28 @@ cbuffer DiagConstants : register(b0)
 float4 DiagTintPS(DiagVertexOutput input) : SV_Target
 {
     return input.color * g_diagTint;
+}
+
+struct PresentOutput
+{
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+PresentOutput PresentVS(uint id : SV_VertexID)
+{
+    // Same triangle as ClearVS; uv (0, 0) top-left .. (1, 1) bottom-right of the viewport.
+    const float2 t = float2((id << 1) & 2, id & 2);
+    PresentOutput o;
+    o.position = float4(t * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
+    o.uv = t;
+    return o;
+}
+
+Texture2D g_presentSource : register(t0);
+SamplerState g_presentSampler : register(s0);
+
+float4 PresentPS(PresentOutput input) : SV_Target
+{
+    return float4(g_presentSource.Sample(g_presentSampler, input.uv).rgb, 1.0f);
 }

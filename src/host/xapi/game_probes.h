@@ -12,7 +12,9 @@
 //   probe:XAPILIB::XGetLanguage 0xF6440      "XGetLanguage() = 3 (german)" when the value changes
 //   trap:Game::DiscErrorScreen 0xF2FD0       TRAP + core::Fatal (the original loops forever)
 //
-// The exit reporter "game" logs the summary line "game summary: ..." at every orderly process end.
+// The exit reporter "game" logs the summary line "game summary: ..." at every orderly process end, and
+// (M3 review finding 1) "game memory pool: N KiB in use, F KiB free, peak P KiB in use" from the memory.cpp
+// pool counters once the pool exists.
 #pragma once
 
 #include <cstdint>
@@ -44,7 +46,7 @@ std::vector<std::string> ContextHistory();
 // "english", "japanese", "german", "french", "spanish", "italian", "korean", "chinese", "portuguese"
 // for the XC_LANGUAGE values 1..9 (XGetLanguage, design 2.1 settings row); "?" otherwise.
 const char* XboxLanguageName(std::uint32_t value) noexcept;
-// Logs "game summary: ..." (GAME/info). Exit reporter "game".
+// Logs "game summary: ..." and "game memory pool: ..." (GAME/info). Exit reporter "game".
 void LogGameSummary() noexcept;
 
 }  // namespace xapi

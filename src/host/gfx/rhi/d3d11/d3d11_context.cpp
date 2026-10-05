@@ -373,6 +373,7 @@ void D3D11Context::SetSampler(std::uint32_t slot, SamplerHandle sampler) noexcep
     if (sampler && s == nullptr) {
         device_.FailText("SetSampler: invalid sampler handle");
     }
+    samplers_[slot] = s;
     ctx_->PSSetSamplers(slot, 1, &s);
 }
 
@@ -550,8 +551,20 @@ void D3D11Context::OnPresent() noexcept {
             c.discardNext = true;
         }
     }
-    // The flip model unbinds the back buffer from the output merger at Present.
+    // Present moved on to the next persistent back buffer and its present pass (window) replaced the
+    // shaders, states, targets, viewport and PS t0/s0: bind everything of this context again.
+    if (colorTarget_ == 0) {
+        rtv_ = device_.BackBufferRtv();
+    }
     ApplyTargets();
+    ApplyViewport();
+    ApplyPipeline(true);
+    ID3D11ShaderResourceView* srv = nullptr;
+    if (TextureRecord* rec = device_.GetTexture(textures_[0])) {
+        srv = rec->srv.Get();
+    }
+    ctx_->PSSetShaderResources(0, 1, &srv);
+    ctx_->PSSetSamplers(0, 1, &samplers_[0]);
 }
 
 void D3D11Context::OnDestroyTexture(std::uint32_t id) noexcept {
@@ -589,6 +602,7 @@ void D3D11Context::Release() noexcept {
     }
     rtv_ = nullptr;
     dsv_ = nullptr;
+    samplers_.fill(nullptr);
     applied_ = nullptr;
     pipeline_ = 0;
     textures_.fill(0);

@@ -14,7 +14,9 @@
 // [render] backend = null (M2): nothing is drawn. [render] backend = d3d11 (M3): the Create detour also
 // creates a gfx::GpuRenderer (gfx/nipc_gpu.h) for the main window and the slots 15, 16, 17, 45, 47-51,
 // 54, 55 and 65 draw through ni_extract -> ff_pipeline -> RHI (D3D11); without a window or when the
-// device cannot be created the renderer stays the null renderer (GFX/error).
+// device cannot be created the renderer stays the null renderer (GFX/error). M3 phase 5: slot 65 frees the
+// NiPixelData pixel buffer after the upload like FUN_0015E010 (both backends), slot 60 PurgeEffect takes a
+// destroyed NiLight out of the enabled lights (FUN_0015B9E0).
 #pragma once
 
 #include <cstddef>

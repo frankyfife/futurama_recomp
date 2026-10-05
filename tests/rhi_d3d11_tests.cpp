@@ -834,3 +834,32 @@ TEST_CASE("rhi d3d11: teardown releases every object") {
     CHECK(d3d11::LastTeardownLiveObjects() == 1);
     leaked.Reset();
 }
+
+TEST_CASE("rhi d3d11: persistent back buffers keep the picture of bufferCount presents ago (Xbox flip)") {
+    // Review M3 findings 2/8: a frame that draws nothing shows the back buffer of two presents ago, like the
+    // Xbox flip with BackBufferCount 1 (front + back buffer); the contents are defined on every driver.
+    const float red[4] = {1, 0, 0, 1};
+    const float green[4] = {0, 1, 0, 1};
+    for (std::uint32_t count : {1u, 2u, 3u}) {
+        DeviceDesc d;
+        d.backend = Backend::D3D11;
+        d.softwareAdapter = true;
+        d.debugLayer = true;
+        d.width = 16;
+        d.height = 16;
+        d.bufferCount = count;
+        std::string error;
+        auto device = CreateDevice(d, &error);
+        REQUIRE_MESSAGE(device != nullptr, error);
+        CommandContext& ctx = device->Context();
+        CHECK(Pixel(Capture(*device), 0, 0) == 0xFF000000u);  // starts black
+        ctx.Clear(kClearColor, red, 1.0f, 0, nullptr);
+        CHECK(device->Present(PresentDesc{}) == PresentResult::Ok);
+        ctx.Clear(kClearColor, green, 1.0f, 0, nullptr);
+        CHECK(device->Present(PresentDesc{}) == PresentResult::Ok);
+        // The third frame draws nothing.
+        const std::uint32_t expected = count == 1 ? 0xFF00FF00u : count == 2 ? 0xFFFF0000u : 0xFF000000u;
+        CHECK_MESSAGE(Pixel(Capture(*device), 5, 5) == expected, "bufferCount " << count);
+        CHECK(DebugErrors(*device) == 0);
+    }
+}

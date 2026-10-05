@@ -316,7 +316,8 @@ Files: `platform/**` (window, message loop integration, hotkeys, PNG screenshots
   `MainWindowClientSize`, `ConsumeHotkeys()` (`kHotkeyScreenshot` = F12 / Print Screen). Stage 12 creates
   the window (class, title "Futurama", client area 640x480 * `window_scale`, hidden; borderless full monitor
   with `fullscreen`) only when `[render] backend = d3d11`. WM_CLOSE -> `core::ExitHostProcess(0, "window
-  closed")`. Stage 14 keeps pumping messages (existing loop, watchdog unchanged).
+  closed")` (**phase 5:** WM_CLOSE only sets `CloseRequested()`; see "Phase-5 results" in section 9). Stage 14
+  keeps pumping messages (existing loop, watchdog unchanged).
 - `platform/frame_pacer.h`: `PaceFrame(hz)` (the M2 algorithm moved from nipc_renderer.cpp),
   `NotePresentedFrame()`, `GetPresentStatistics()`, `LogPresentStatistics()` -> exit reporter line
   `present: N frames in T s (average A Hz, slowest 1 s window W Hz, longest frame L ms)`.
@@ -335,6 +336,7 @@ Configuration (`[render]`, registered in `core/config.cpp` in phase 1, parsed in
 | `adapter` | `hardware` | `hardware` / `warp` |
 | `window_scale` | 2 | 1..8 |
 | `fullscreen` | 0 | borderless full-monitor window |
+| `scaling` | `linear` | phase 5: `linear` / `point` / `integer` - how Present maps the 640x480 back buffer onto the window (`rhi::PresentScaling`) |
 | `screenshot_dir` | `<userdata>\screenshots` | PNG target (test runs: under `run\<name>\`) |
 | `screenshot_frames` | empty | displayed-frame numbers with an automatic screenshot |
 | `trace_frames` | empty | displayed-frame numbers whose draw calls are logged (kind, guest object, counts, textures, state summary, result) |
@@ -463,6 +465,48 @@ extract/ff failures).
   `run\xemu_ref`). Configs: `run\m3\futurama.ini` (Debug), `run\m3\rel\futurama.ini` (RelWithDebInfo,
   `debug_layer = on`), regressions `run\m3\m1`, `run\m3\m2` (d3d11), `run\m3\m2-null`.
 
+**Phase-5 results (review fixes, `docs\m3_report.md` section 8; supersede the marked points of sections 5, 8, 9
+and 11):**
+- **Slot 65 step 4** (finding 1): after the upload FUN_0015E010 frees the NiPixelData pixel buffer in the game
+  pool (0x15E1A6..0x15E1DD: image not the default texture, NiSourceTexture +0x3C != 0, level 0 <= 512 x 512 ->
+  FUN_001511B0, `guest::kNiPixelDataFreePixels`); both backends do the same (the null renderer as if the upload
+  had succeeded). `ni::kNiSourceTextureStatic` (+0x38), `ni::kNiSourceTextureDiscardPixelsHint` (+0x3C). The
+  resolver skips a revision re-upload whose buffer is gone (counted). Exit lines `NiPCRenderer pixel buffers
+  (...): N freed after the upload (K KiB of the game pool), ...` and (exit reporter "game") `game memory pool: U
+  KiB in use, F KiB free, peak P KiB in use`. Frontend run: 115 buffers, 2558 KiB; pool at exit 5839 KiB instead
+  of 8295 KiB, peak 6855 KiB instead of 8892 KiB.
+- **Persistent back buffers and the present pass** (findings 2, 8, 11; supersedes the swap-chain points of the
+  phase-2 results in section 8): the device renders into `DeviceDesc::bufferCount` (NiPCRenderer: 2) offscreen
+  back buffers in rotation; after Present the back buffer holds the picture of two presents ago like the Xbox flip
+  (Create gets D3DSWAPEFFECT_DISCARD = 1 from FUN_00146260 with BackBufferCount 1). Frames that draw nothing or clear
+  only depth (legal screen / tech notice: 0, 6 or 12 draws per frame) therefore show defined pictures on every
+  driver. Present draws the current back buffer into a window-size FLIP_DISCARD swap chain (ResizeBuffers when the
+  view's physical client size changes; the size is read in the view's DPI context) with `[render] scaling`.
+  Screenshots read the current back buffer (always 640x480). `draw summary frame N` names the frame whose picture
+  a frame without draws shows (`shows the picture of frame M (K draw calls, D drawn)`); `d3d11 frames:` counts
+  frames without a draw / without a color clear / with neither.
+- **Vertex snapping** (finding 9; extends the half-pixel correction of the phase-3 results): the ubershader snaps
+  transformed vertices to 1/16 pixel in D3D8 pixel coordinates (`SnapToSubpixelGrid`, round to nearest; NV2A
+  precision) before the D3D11 rasterizer (8 fractional bits) sees them. The "Neues Spiel" button top edge lies at
+  y = 189.000..189.008: without snapping row 189 stayed uncovered. Static frontend pixels exactly equal to xemu:
+  93.0-93.8 % -> 98.0-98.8 % (mean difference 0.07-0.28 -> 0.011-0.015; truncation instead of rounding: 89 %).
+- **Slot 60 PurgeEffect** (finding 4): IsKindOf(NiLight) through the RTTI chain (`guest::kNiLightRtti`) ->
+  `ni::PurgeLight` removes the light from `StateShadow::lights` (FUN_0015B9E0; `lastEffectState` stays).
+- **Close and exit** (findings 5, 10): WM_CLOSE sets `platform::CloseRequested()`; the next DisplayFrame ends the
+  process on the guest main thread (`window closed - ending after frame N`), so the exit reporters run on the
+  render thread; a 3 s timer of the UI thread is the fallback. The "d3d11" reporter pumps the device's info queue
+  once more when it runs on the render thread; `GpuRenderer::LogStatistics` logs only a note on another thread.
+- **Frame work** (finding 3): `platform::NoteFrameWorkDone()` (DisplayFrame, before screenshots and Present) ->
+  third `present:` line `present: frame work N frames: average A ms, 99th percentile P ms, longest L ms (W frames
+  longer than one pacing period) -> sustainable S Hz`. `m3_check` M3-3: P <= 20 ms and average presented rate >=
+  49.5 Hz (a pacer schedule reset costs ~0.017 Hz forever).
+- **Draw trace** adds the screen bounds of each draw in D3D8 pixels (`screen (x0, y0)-(x1, y1)`).
+- **xemu references**: `run\xemu_ref` and `run\xemu_ref_steam` are 2x nearest-neighbour window grabs of a 1x
+  rendering (every 2x2 block equal) - not a 2x internal resolution. `run\xemu_ref_steam` (0.62 s interval) shows
+  the steam cloud at the right pipe in all phases of its 1 s cycle; the 3 s captures of `run\xemu_ref` always hit
+  the invisible phase (finding 7). `m3_check` builds the frontend's static mask from both directories and masks the
+  steam region explicitly.
+
 ## 10. Ownership (phase 2)
 
 Edit only your files. Shared files: add-only changes, each logged in `src/INTERFACES.md` section 8.
@@ -510,3 +554,7 @@ Report deviations from this contract in your result instead of silently divergin
 - NiPalette entry byte order and PAL alpha: ASSUMPTION until verified with game data.
 - The pipeline's base-map stage setup lives partly in Ghidra gap code (0x164360..0x1650F0).
 - Window resize keeps a 640x480 back buffer (stretched); native resolution and widescreen are M10.
+  **Phase 5:** the present pass scales it (`[render] scaling = linear | point | integer`); higher internal
+  resolution and widescreen stay M10.
+- **Phase 5:** transformed vertices are snapped to 1/16 pixel (NV2A precision, section 9 "Phase-5 results");
+  pre-transformed quads (slot 55) are not snapped (integer coordinates in the scenes measured).

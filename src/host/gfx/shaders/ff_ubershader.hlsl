@@ -228,6 +228,25 @@ void LightVertex(float3 P, float3 N, float4 vertexColor, out float4 diffuseOut, 
                                  : float4(0.0f, 0.0f, 0.0f, 0.0f);
 }
 
+// NV2A vertex snapping (M3 review finding 9): the rasterizer of the original sees screen positions with 4
+// fractional bits (1/16 pixel), D3D11 with 8. Without it an edge that the original puts exactly on a row of
+// pixel centers (the "Neues Spiel" button top edge at y = 189.000 .. 189.008 in D3D8 pixels) falls just below
+// the centers on the PC and the row stays uncovered. The clip position already carries the +0.5 pixel shift
+// of B19 (GpuRenderer::HalfPixelShift); the snap works on D3D8 pixels of the render target (pretransform
+// maps them to NDC) and keeps w (perspective-correct interpolation).
+float4 SnapToSubpixelGrid(float4 clip)
+{
+    float4 result = clip;
+    if (clip.w > 0.0f && g_frame.pretransform.x != 0.0f && g_frame.pretransform.y != 0.0f)
+    {
+        const float2 ndc = clip.xy / clip.w;
+        const float2 pixel = (ndc - g_frame.pretransform.zw) / g_frame.pretransform.xy - 0.5f;
+        const float2 snapped = round(pixel * 16.0f) / 16.0f;
+        result.xy = ((snapped + 0.5f) * g_frame.pretransform.xy + g_frame.pretransform.zw) * clip.w;
+    }
+    return result;
+}
+
 FFVertexOutput VSMain(FFVertexInput input)
 {
     FFVertexOutput o;
@@ -244,7 +263,7 @@ FFVertexOutput VSMain(FFVertexInput input)
     o.fogDepth = 1.0f;  // w = 1 / rhw
 #else
     const float4 position = float4(input.position, 1.0f);
-    o.position = mul(position, g_draw.worldViewProjection);
+    o.position = SnapToSubpixelGrid(mul(position, g_draw.worldViewProjection));
     const float3 viewPosition = mul(position, g_draw.worldView).xyz;
     float3 viewNormal = mul(input.normal, (float3x3)g_draw.normalMatrix);
     if (HasFeature(FF_FEATURE_NORMALIZE))

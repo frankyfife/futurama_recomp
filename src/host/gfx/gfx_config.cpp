@@ -63,6 +63,10 @@ Settings Load() {
         s.windowScale = 2;
     }
     s.fullscreen = cfg.GetBool("render", "fullscreen", false);
+    const std::string scaling = Lower(cfg.GetString("render", "scaling", "linear"));
+    s.scaling = scaling == "point"     ? rhi::PresentScaling::Point
+                : scaling == "integer" ? rhi::PresentScaling::Integer
+                                       : rhi::PresentScaling::Linear;
     s.screenshotDir = cfg.GetPath("render", "screenshot_dir", cfg.userdata / "screenshots");
     s.screenshotFrames = FrameList(cfg, "screenshot_frames");
     s.traceFrames = FrameList(cfg, "trace_frames");

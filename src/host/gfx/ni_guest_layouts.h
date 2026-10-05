@@ -366,6 +366,17 @@ inline constexpr std::uint32_t kTextureDataMipLevels = 0x50;
 // (vtable 0x2A9EB0, 0x141E40/0x13FFD0) returns +0x2C/+0x30.
 inline constexpr GuestPtr kNiSourceTextureVtable = 0x002A8034;
 inline constexpr GuestPtr kNiRenderedTextureVtable = 0x002A9EB0;
+// NiSourceTexture +0x38: "static" byte (ctor 0x1184A0 0x1184F9 sets 1); the texture manager FUN_0015F930
+// runs the revision check FUN_0015E260 on every use of a texture whose byte is 0.
+inline constexpr std::uint32_t kNiSourceTextureStatic = 0x38;
+// NiSourceTexture +0x3C: DWORD read from the NIF stream by vf3 LoadBinary 0x118B3D..0x118B41 (stream
+// version >= 4.1.0.13, string 0x2A6E28; ctor 0x1184F6 sets 0). FUN_0015E010 frees the NiPixelData pixel
+// buffer after the upload when it is != 0 (0x15E1B9, M3 review finding 1).
+// ASSUMPTION: the meaning ("the renderer may discard the application copy", like the later Gamebryo
+// load-direct-to-renderer hint) is inferred from that single use; nothing else reads the field.
+inline constexpr std::uint32_t kNiSourceTextureDiscardPixelsHint = 0x3C;
+// FUN_0015E010 frees the buffer only for images up to 512 x 512 (0x15E1C9 / 0x15E1D3 `cmp .., 0x200; ja`).
+inline constexpr std::uint32_t kDiscardPixelsMaxSize = 0x200;
 inline constexpr std::uint32_t kNiRenderedTextureWidth = 0x2C;
 inline constexpr std::uint32_t kNiRenderedTextureHeight = 0x30;
 

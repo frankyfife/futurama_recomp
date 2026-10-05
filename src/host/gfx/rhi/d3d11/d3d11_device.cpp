@@ -9,9 +9,13 @@
 #include "d3d11_diag_texture_ps.h"
 #include "d3d11_diag_tint_ps.h"
 #include "d3d11_diag_vs.h"
+#include "d3d11_present_ps.h"
+#include "d3d11_present_vs.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -25,9 +29,13 @@ namespace {
 // ---- process-wide debug-layer state (exit criterion 2) ----------------------------------------------------
 
 struct GlobalDebug {
-    std::mutex mutex;  // guards layer / haveWindowLayer
+    std::mutex mutex;  // guards layer / haveWindowLayer / windowDevice
     DebugLayerInfo layer;
     bool haveWindowLayer = false;
+    // The device of the window and the thread of its last Present: the exit line pumps that device's
+    // queues once more when the exit runs on that thread (M3 review findings 5/10).
+    D3D11Device* windowDevice = nullptr;
+    std::atomic<DWORD> presentThread{0};
     std::atomic<std::uint32_t> devices{0};
     std::atomic<std::uint32_t> errors{0};
     std::atomic<std::uint32_t> warnings{0};
@@ -174,10 +182,30 @@ const char* DebugLayerStateName(const DebugLayerInfo& layer) noexcept {
 
 void LogDebugLayerSummary() noexcept {
     try {
+        // Collect what the layer queued since the last Present (only on the render thread: the device and
+        // its info queue belong to it; the window device cannot be destroyed while that thread is here).
+        GlobalDebug& g = Global();
+        D3D11Device* device = nullptr;
+        bool otherThread = false;
+        {
+            std::lock_guard<std::mutex> lock(g.mutex);
+            if (g.windowDevice != nullptr) {
+                if (g.presentThread.load() == GetCurrentThreadId()) {
+                    device = g.windowDevice;
+                } else {
+                    otherThread = true;
+                }
+            }
+        }
+        if (device != nullptr) {
+            device->PumpDebugMessages();
+        }
         const DebugLayerTotals t = GetDebugLayerTotals();
-        FUT_LOGI(Gfx, "D3D11 debug layer: %s - %u errors, %u warnings, %u corruption (%u device%s%s%s)",
+        FUT_LOGI(Gfx, "D3D11 debug layer: %s - %u errors, %u warnings, %u corruption (%u device%s%s%s%s)",
                  DebugLayerStateName(t.layer), t.errors, t.warnings, t.corruption, t.devices,
-                 t.devices == 1 ? "" : "s", t.layer.note.empty() ? "" : "; ", t.layer.note.c_str());
+                 t.devices == 1 ? "" : "s", t.layer.note.empty() ? "" : "; ", t.layer.note.c_str(),
+                 otherThread ? "; messages since the last Present not collected: the exit runs on another thread"
+                             : "");
     } catch (...) {
     }
 }
@@ -192,6 +220,13 @@ D3D11Device::D3D11Device() noexcept : context_(*this) {}
 
 D3D11Device::~D3D11Device() {
     try {
+        {
+            GlobalDebug& g = Global();
+            std::lock_guard<std::mutex> lock(g.mutex);
+            if (g.windowDevice == this) {
+                g.windowDevice = nullptr;
+            }
+        }
         PumpDebugMessages();
         context_.Release();
         pipelines_.clear();
@@ -205,8 +240,19 @@ D3D11Device::~D3D11Device() {
         captureStaging_.Reset();
         depthDsv_.Reset();
         depthBuffer_.Reset();
-        backBufferRtv_.Reset();
-        backBuffer_.Reset();
+        for (std::uint32_t i = 0; i < kMaxBackBuffers; ++i) {
+            backBufferSrvs_[i].Reset();
+            backBufferRtvs_[i].Reset();
+            backBuffers_[i].Reset();
+        }
+        presentVs_.Reset();
+        presentPs_.Reset();
+        presentPoint_.Reset();
+        presentLinear_.Reset();
+        presentRaster_.Reset();
+        presentDepth_.Reset();
+        presentBlend_.Reset();
+        swapRtv_.Reset();
         swapChain_.Reset();
         if (immediate_ != nullptr) {
             immediate_->ClearState();
@@ -247,11 +293,12 @@ bool D3D11Device::Init(const DeviceDesc& desc, std::string* error) noexcept {
             return false;
         }
         SetUpDebugLayer();
-        if (desc.nativeWindow != nullptr) {
-            if (!CreateSwapChain(desc, error)) {
-                return false;
-            }
-        } else if (!CreateOffscreenTargets(desc, error)) {
+        info_.backBufferWidth = desc.width;
+        info_.backBufferHeight = desc.height;
+        if (!CreateBackBuffers(desc, error)) {
+            return false;
+        }
+        if (desc.nativeWindow != nullptr && (!CreateSwapChain(desc, error) || !CreatePresentPass(error))) {
             return false;
         }
         if (!CreateDepthBuffer(desc, error)) {
@@ -273,6 +320,10 @@ bool D3D11Device::Init(const DeviceDesc& desc, std::string* error) noexcept {
                 g.layer = debugLayer_;
                 g.haveWindowLayer = g.haveWindowLayer || desc.nativeWindow != nullptr;
             }
+            if (desc.nativeWindow != nullptr) {
+                g.windowDevice = this;
+                g.presentThread.store(GetCurrentThreadId());
+            }
         }
         g.devices.fetch_add(1);
         if (desc.nativeWindow != nullptr) {
@@ -283,11 +334,17 @@ bool D3D11Device::Init(const DeviceDesc& desc, std::string* error) noexcept {
             FUT_LOGW(Gfx, "D3D11 debug layer requested but %s: %s", DebugLayerStateName(debugLayer_),
                      debugLayer_.note.c_str());
         }
-        FUT_LOGI(Gfx, "d3d11: device on \"%s\" (%s%s), %s %ux%u %s, depth %s, debug layer %s",
+        char target[96];
+        if (info_.headless) {
+            std::snprintf(target, sizeof(target), "headless");
+        } else {
+            std::snprintf(target, sizeof(target), "swap chain %ux%u, scaling %s", swapWidth_, swapHeight_,
+                          PresentScalingName(scaling_));
+        }
+        FUT_LOGI(Gfx, "d3d11: device on \"%s\" (%s%s), %s, %u back buffers %ux%u %s, depth %s, debug layer %s",
                  info_.adapterName.c_str(), info_.apiVersion.c_str(), info_.softwareAdapter ? ", software" : "",
-                 info_.headless ? "headless" : "swap chain", desc.width, desc.height,
-                 GetFormatInfo(desc.backBufferFormat).name, GetFormatInfo(desc.depthFormat).name,
-                 DebugLayerStateName(debugLayer_));
+                 target, backBufferCount_, desc.width, desc.height, GetFormatInfo(desc.backBufferFormat).name,
+                 GetFormatInfo(desc.depthFormat).name, DebugLayerStateName(debugLayer_));
         PumpDebugMessages();
         return true;
     } catch (...) {
@@ -435,24 +492,62 @@ bool D3D11Device::SetUpDebugLayer() noexcept {
     return infoQueue_ != nullptr;
 }
 
+namespace {
+
+// Client size of the swap chain's window (the 4:3 view of platform/window.h) in physical pixels; 0 x 0 while
+// minimized. The view is per-monitor DPI aware (V2), the calling (guest main) thread is not: GetClientRect
+// would return DPI-virtualized sizes (e.g. 1169 x 876 for 2631 x 1973 at 225 %), so the query runs in the
+// window's DPI awareness context.
+void ClientSize(void* window, std::uint32_t* w, std::uint32_t* h) noexcept {
+    RECT rc{};
+    const HWND hwnd = static_cast<HWND>(window);
+    DPI_AWARENESS_CONTEXT previous = nullptr;
+    if (hwnd != nullptr) {
+        previous = SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(hwnd));
+    }
+    const BOOL ok = hwnd != nullptr && GetClientRect(hwnd, &rc);
+    if (previous != nullptr) {
+        SetThreadDpiAwarenessContext(previous);
+    }
+    if (ok) {
+        *w = static_cast<std::uint32_t>(rc.right > rc.left ? rc.right - rc.left : 0);
+        *h = static_cast<std::uint32_t>(rc.bottom > rc.top ? rc.bottom - rc.top : 0);
+    } else {
+        *w = 0;
+        *h = 0;
+    }
+}
+
+}  // namespace
+
 bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) noexcept {
     try {
         const HWND hwnd = static_cast<HWND>(desc.nativeWindow);
+        window_ = desc.nativeWindow;
+        scaling_ = desc.scaling;
         ComPtr<IDXGIFactory5> f5;
         BOOL tearing = FALSE;
         if (SUCCEEDED(factory_.As(&f5)) &&
             SUCCEEDED(f5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing, sizeof(tearing)))) {
             tearingSupported_ = tearing != FALSE;
         }
+        // The swap chain has the window's size: the present pass scales the back buffer into it (review M3
+        // finding 11). It is redrawn completely every Present, so FLIP_DISCARD is fine - the persistent back
+        // buffers (CreateBackBuffers) keep the Xbox contents (review M3 findings 2 and 8).
+        ClientSize(window_, &swapWidth_, &swapHeight_);
+        if (swapWidth_ == 0 || swapHeight_ == 0) {
+            swapWidth_ = desc.width;
+            swapHeight_ = desc.height;
+        }
         DXGI_SWAP_CHAIN_DESC1 sd{};
-        sd.Width = desc.width;
-        sd.Height = desc.height;
+        sd.Width = swapWidth_;
+        sd.Height = swapHeight_;
         sd.Format = static_cast<DXGI_FORMAT>(DxgiFormatOf(desc.backBufferFormat));
         sd.Stereo = FALSE;
         sd.SampleDesc.Count = 1;
         sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        sd.BufferCount = std::clamp<std::uint32_t>(desc.bufferCount, 2, 16);
-        sd.Scaling = DXGI_SCALING_STRETCH;
+        sd.BufferCount = 2;
+        sd.Scaling = DXGI_SCALING_STRETCH;  // only between a window resize and the next Present
         sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
         sd.Flags = tearingSupported_ ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u;
@@ -470,17 +565,20 @@ bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) no
             PumpDebugMessages();
             return false;
         }
+        swapFlags_ = sd.Flags;
         factory_->MakeWindowAssociation(hwnd, DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER);
-        hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(&backBuffer_));
+        ComPtr<ID3D11Texture2D> buffer;
+        hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(&buffer));
         if (SUCCEEDED(hr)) {
-            hr = device_->CreateRenderTargetView(backBuffer_.Get(), nullptr, &backBufferRtv_);
+            hr = device_->CreateRenderTargetView(buffer.Get(), nullptr, &swapRtv_);
         }
         if (FAILED(hr)) {
-            *error = "swap chain back buffer: " + HresultText(hr);
+            *error = "swap chain buffer: " + HresultText(hr);
             return false;
         }
-        FUT_LOGD(Gfx, "d3d11: swap chain for window %p: %ux%u, %u buffers, %s, stretch, tearing %s", desc.nativeWindow,
-                 sd.Width, sd.Height, sd.BufferCount, effect, tearingSupported_ ? "supported" : "no");
+        FUT_LOGD(Gfx, "d3d11: swap chain for window %p: %ux%u, %u buffers, %s, scaling %s, tearing %s",
+                 desc.nativeWindow, sd.Width, sd.Height, sd.BufferCount, effect, PresentScalingName(scaling_),
+                 tearingSupported_ ? "supported" : "no");
         return true;
     } catch (...) {
         *error = "out of memory while creating the swap chain";
@@ -488,8 +586,10 @@ bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) no
     }
 }
 
-bool D3D11Device::CreateOffscreenTargets(const DeviceDesc& desc, std::string* error) noexcept {
+bool D3D11Device::CreateBackBuffers(const DeviceDesc& desc, std::string* error) noexcept {
     try {
+        backBufferCount_ = std::clamp<std::uint32_t>(desc.bufferCount, 1, kMaxBackBuffers);
+        currentBackBuffer_ = 0;
         D3D11_TEXTURE2D_DESC td{};
         td.Width = desc.width;
         td.Height = desc.height;
@@ -499,20 +599,174 @@ bool D3D11Device::CreateOffscreenTargets(const DeviceDesc& desc, std::string* er
         td.SampleDesc.Count = 1;
         td.Usage = D3D11_USAGE_DEFAULT;
         td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-        HRESULT hr = device_->CreateTexture2D(&td, nullptr, &backBuffer_);
-        if (SUCCEEDED(hr)) {
-            hr = device_->CreateRenderTargetView(backBuffer_.Get(), nullptr, &backBufferRtv_);
+        static constexpr float kBlack[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        for (std::uint32_t i = 0; i < backBufferCount_; ++i) {
+            HRESULT hr = device_->CreateTexture2D(&td, nullptr, &backBuffers_[i]);
+            if (SUCCEEDED(hr)) {
+                hr = device_->CreateRenderTargetView(backBuffers_[i].Get(), nullptr, &backBufferRtvs_[i]);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = device_->CreateShaderResourceView(backBuffers_[i].Get(), nullptr, &backBufferSrvs_[i]);
+            }
+            if (FAILED(hr)) {
+                *error = "back buffer: " + HresultText(hr);
+                return false;
+            }
+            char name[32];
+            std::snprintf(name, sizeof(name), "rhi back buffer %u", i);
+            SetName(backBuffers_[i].Get(), name);
+            // Defined start contents (black; the game clears every buffer itself, FUN_0002A660).
+            immediate_->ClearRenderTargetView(backBufferRtvs_[i].Get(), kBlack);
         }
-        if (FAILED(hr)) {
-            *error = "offscreen back buffer: " + HresultText(hr);
-            return false;
-        }
-        SetName(backBuffer_.Get(), "rhi offscreen back buffer");
         return true;
     } catch (...) {
         *error = "out of memory";
         return false;
     }
+}
+
+bool D3D11Device::CreatePresentPass(std::string* error) noexcept {
+    try {
+        HRESULT hr = device_->CreateVertexShader(g_d3d11_present_vs, sizeof(g_d3d11_present_vs), nullptr, &presentVs_);
+        if (SUCCEEDED(hr)) {
+            hr = device_->CreatePixelShader(g_d3d11_present_ps, sizeof(g_d3d11_present_ps), nullptr, &presentPs_);
+        }
+        for (int linear = 0; linear < 2 && SUCCEEDED(hr); ++linear) {
+            D3D11_SAMPLER_DESC sd{};
+            sd.Filter = linear != 0 ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_POINT;
+            sd.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+            sd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+            sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+            sd.MaxAnisotropy = 1;
+            sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
+            sd.MaxLOD = D3D11_FLOAT32_MAX;
+            hr = device_->CreateSamplerState(&sd, linear != 0 ? &presentLinear_ : &presentPoint_);
+        }
+        if (SUCCEEDED(hr)) {
+            D3D11_RASTERIZER_DESC rd{};
+            rd.FillMode = D3D11_FILL_SOLID;
+            rd.CullMode = D3D11_CULL_NONE;
+            rd.DepthClipEnable = TRUE;
+            hr = device_->CreateRasterizerState(&rd, &presentRaster_);
+        }
+        if (SUCCEEDED(hr)) {
+            D3D11_DEPTH_STENCIL_DESC dd{};
+            dd.DepthEnable = FALSE;
+            dd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+            dd.DepthFunc = D3D11_COMPARISON_ALWAYS;
+            dd.StencilEnable = FALSE;
+            hr = device_->CreateDepthStencilState(&dd, &presentDepth_);
+        }
+        if (SUCCEEDED(hr)) {
+            D3D11_BLEND_DESC bd{};
+            bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+            bd.RenderTarget[0].DestBlend = D3D11_BLEND_ZERO;
+            bd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+            bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+            bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+            bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+            bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+            hr = device_->CreateBlendState(&bd, &presentBlend_);
+        }
+        if (FAILED(hr)) {
+            *error = "present pass: " + HresultText(hr);
+            return false;
+        }
+        return true;
+    } catch (...) {
+        *error = "out of memory";
+        return false;
+    }
+}
+
+// ResizeBuffers when the window's client size changed (the UI thread lays the view out; GetClientRect is a
+// plain read of the window state). Minimized (0 x 0): the old buffers stay. Only swapRtv_ references them.
+bool D3D11Device::UpdateSwapChainSize() noexcept {
+    std::uint32_t w = 0, h = 0;
+    ClientSize(window_, &w, &h);
+    w = std::min<std::uint32_t>(w, D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION);
+    h = std::min<std::uint32_t>(h, D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION);
+    if (w == 0 || h == 0 || (w == swapWidth_ && h == swapHeight_ && swapRtv_ != nullptr)) {
+        return true;
+    }
+    immediate_->OMSetRenderTargets(0, nullptr, nullptr);
+    swapRtv_.Reset();
+    const HRESULT hr = swapChain_->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, swapFlags_);
+    if (FAILED(hr)) {
+        Fail("IDXGISwapChain::ResizeBuffers", hr);  // keeps the old size and buffers
+    } else {
+        swapWidth_ = w;
+        swapHeight_ = h;
+        ++swapResizes_;
+    }
+    ComPtr<ID3D11Texture2D> buffer;
+    HRESULT hr2 = swapChain_->GetBuffer(0, IID_PPV_ARGS(&buffer));
+    if (SUCCEEDED(hr2)) {
+        hr2 = device_->CreateRenderTargetView(buffer.Get(), nullptr, &swapRtv_);
+    }
+    if (FAILED(hr2)) {
+        return Fail("swap chain buffer after ResizeBuffers", hr2);
+    }
+    FUT_LOGD(Gfx, "d3d11: swap chain resized to %ux%u (scaling %s)", swapWidth_, swapHeight_,
+             PresentScalingName(scaling_));
+    return SUCCEEDED(hr);
+}
+
+namespace {
+
+// Destination rectangle of the back buffer (srcW x srcH) in the swap chain buffer (dstW x dstH).
+D3D11_VIEWPORT PresentRect(PresentScaling scaling, std::uint32_t srcW, std::uint32_t srcH, std::uint32_t dstW,
+                           std::uint32_t dstH) noexcept {
+    double w = dstW;
+    double h = dstH;
+    const std::uint32_t factor = srcW != 0 && srcH != 0 ? std::min(dstW / srcW, dstH / srcH) : 0;
+    if (scaling == PresentScaling::Integer && factor >= 1) {
+        w = static_cast<double>(srcW) * factor;
+        h = static_cast<double>(srcH) * factor;
+    } else if (static_cast<double>(dstW) * srcH > static_cast<double>(dstH) * srcW) {
+        w = std::floor(static_cast<double>(dstH) * srcW / srcH + 0.5);  // pillarbox
+    } else if (srcW != 0) {
+        h = std::floor(static_cast<double>(dstW) * srcH / srcW + 0.5);  // letterbox
+    }
+    D3D11_VIEWPORT v{};
+    v.TopLeftX = static_cast<float>(std::floor((dstW - w) / 2.0));
+    v.TopLeftY = static_cast<float>(std::floor((dstH - h) / 2.0));
+    v.Width = static_cast<float>(w);
+    v.Height = static_cast<float>(h);
+    v.MinDepth = 0.0f;
+    v.MaxDepth = 1.0f;
+    return v;
+}
+
+}  // namespace
+
+// The current back buffer -> swap chain buffer 0 (black borders, scaling_). Leaves the immediate context with
+// the present pass state; D3D11Context::OnPresent restores the context's own bindings afterwards.
+void D3D11Device::DrawPresentPass() noexcept {
+    if (swapRtv_ == nullptr) {
+        return;
+    }
+    static constexpr float kBlack[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    ID3D11RenderTargetView* rtv = swapRtv_.Get();
+    immediate_->OMSetRenderTargets(1, &rtv, nullptr);  // unbinds the back buffer before it is sampled
+    immediate_->ClearRenderTargetView(rtv, kBlack);
+    const D3D11_VIEWPORT v = PresentRect(scaling_, info_.backBufferWidth, info_.backBufferHeight, swapWidth_,
+                                         swapHeight_);
+    immediate_->RSSetViewports(1, &v);
+    immediate_->RSSetState(presentRaster_.Get());
+    immediate_->OMSetBlendState(presentBlend_.Get(), nullptr, 0xFFFFFFFFu);
+    immediate_->OMSetDepthStencilState(presentDepth_.Get(), 0);
+    immediate_->IASetInputLayout(nullptr);
+    immediate_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    immediate_->VSSetShader(presentVs_.Get(), nullptr, 0);
+    immediate_->PSSetShader(presentPs_.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* srv = backBufferSrvs_[currentBackBuffer_].Get();
+    immediate_->PSSetShaderResources(0, 1, &srv);
+    ID3D11SamplerState* sampler = scaling_ == PresentScaling::Linear ? presentLinear_.Get() : presentPoint_.Get();
+    immediate_->PSSetSamplers(0, 1, &sampler);
+    immediate_->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    immediate_->PSSetShaderResources(0, 1, &none);  // the next back buffer becomes a render target
 }
 
 bool D3D11Device::CreateDepthBuffer(const DeviceDesc& desc, std::string* error) noexcept {
@@ -1163,7 +1417,11 @@ PipelineHandle D3D11Device::GetPipeline(const PipelineDesc& desc, const char* de
 PresentResult D3D11Device::Present(const PresentDesc& desc) noexcept {
     ++stats_.presents;
     PresentResult result = PresentResult::Ok;
+    context_.EndTransient();
     if (swapChain_ != nullptr) {
+        Global().presentThread.store(GetCurrentThreadId());
+        UpdateSwapChainSize();
+        DrawPresentPass();
         const UINT sync = desc.syncInterval > 4 ? 4u : desc.syncInterval;
         const UINT flags = sync == 0 && tearingSupported_ ? DXGI_PRESENT_ALLOW_TEARING : 0u;
         const HRESULT hr = swapChain_->Present(sync, flags);
@@ -1172,6 +1430,8 @@ PresentResult D3D11Device::Present(const PresentDesc& desc) noexcept {
             Fail("IDXGISwapChain::Present", hr);
         }
     }
+    // The next persistent back buffer: it still holds the picture of backBufferCount_ presents ago.
+    currentBackBuffer_ = (currentBackBuffer_ + 1) % backBufferCount_;
     context_.OnPresent();
     PumpDebugMessages();
     return result;
@@ -1239,10 +1499,11 @@ bool D3D11Device::CopyToImage(ID3D11Texture2D* source, std::uint32_t level, Form
 }
 
 bool D3D11Device::CaptureBackBuffer(Image& out) noexcept {
-    if (backBuffer_ == nullptr) {
+    ID3D11Texture2D* current = backBuffers_[currentBackBuffer_].Get();
+    if (current == nullptr) {
         return FailText("CaptureBackBuffer: no back buffer");
     }
-    return CopyToImage(backBuffer_.Get(), 0, info_.backBufferFormat, info_.backBufferWidth, info_.backBufferHeight,
+    return CopyToImage(current, 0, info_.backBufferFormat, info_.backBufferWidth, info_.backBufferHeight,
                        &captureStaging_, out);
 }
 

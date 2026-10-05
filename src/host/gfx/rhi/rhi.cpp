@@ -150,6 +150,18 @@ const char* BackendName(Backend backend) noexcept {
     return "unknown";
 }
 
+const char* PresentScalingName(PresentScaling scaling) noexcept {
+    switch (scaling) {
+    case PresentScaling::Linear:
+        return "linear";
+    case PresentScaling::Point:
+        return "point";
+    case PresentScaling::Integer:
+        return "integer";
+    }
+    return "unknown";
+}
+
 std::unique_ptr<Device> CreateDevice(const DeviceDesc& desc, std::string* error) noexcept {
     try {
         switch (desc.backend) {

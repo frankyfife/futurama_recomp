@@ -5,14 +5,21 @@
 // color clears). Adapter: DeviceDesc::softwareAdapter -> WARP (IDXGIFactory4::EnumWarpAdapter), else the
 // high-performance adapter (IDXGIFactory6) or adapter 0.
 //
+// Back buffers (M3 phase 5, review findings 2/8): DeviceDesc::bufferCount (1..3, NiPCRenderer: 2) persistent
+// offscreen BGRA8 textures of the DeviceDesc size (= NiXBoxRenderer::Create size, 640x480) plus one depth
+// buffer. The game draws into the current one; Present moves on to the next, which still holds the picture
+// of bufferCount presents ago - the contents the Xbox flip (D3DSWAPEFFECT_DISCARD, BackBufferCount 1 =
+// front + back buffer) leaves in the back buffer. Frames that draw nothing or only clear depth (legal
+// screen, tech notice) therefore show defined pictures on every driver.
 // Window (DeviceDesc::nativeWindow, an HWND of another thread - platform/window.h): DXGI flip-model swap
-// chain (FLIP_DISCARD, fallback FLIP_SEQUENTIAL), DeviceDesc::bufferCount buffers, B8G8R8A8_UNORM,
-// DXGI_SCALING_STRETCH of the fixed back buffer (DeviceDesc size = NiXBoxRenderer::Create size, 640x480)
-// to the window's client area, DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER (the window handles
-// Alt+Enter itself), DXGI_PRESENT_ALLOW_TEARING for sync interval 0 when supported. Present re-binds the
-// render targets (flip model unbinds the back buffer). Headless (nativeWindow == nullptr): an offscreen
-// BGRA8 color target + depth of the same size; Present counts, drains the debug messages and resets the
-// transient ring.
+// chain (FLIP_DISCARD, fallback FLIP_SEQUENTIAL), 2 buffers, B8G8R8A8_UNORM, of the window's client size
+// (ResizeBuffers in Present when the size changed). Present first draws the current back buffer into it
+// with the present pass (built-in PresentVS/PresentPS): DeviceDesc::scaling linear (bilinear) | point |
+// integer (whole factor, centered), black borders; then Present, DXGI_MWA_NO_WINDOW_CHANGES |
+// DXGI_MWA_NO_ALT_ENTER (the window handles Alt+Enter itself), DXGI_PRESENT_ALLOW_TEARING for sync interval
+// 0 when supported; the context re-binds its targets and state afterwards. Headless (nativeWindow ==
+// nullptr): no swap chain; Present rotates the back buffers, counts, drains the debug messages and resets
+// the transient ring. CaptureBackBuffer always reads the current back buffer (DeviceDesc size).
 //
 // Debug layer: DeviceDesc::debugLayer -> DXGI_CREATE_FACTORY_DEBUG + D3D11_CREATE_DEVICE_DEBUG. If the SDK
 // layers are not installed (DXGI_ERROR_SDK_COMPONENT_MISSING) the device is created without them and

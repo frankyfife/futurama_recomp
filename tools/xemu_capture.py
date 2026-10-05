@@ -6,7 +6,11 @@ directory under run\\ (git-ignored). The xemu configuration is never modified.
 
 Usage:
   python tools/xemu_capture.py --exe F:\\emulatoren\\xemu-win-release\\xemu.exe \\
-      --out run\\xemu_ref --duration 180 --interval 2 [--dvd <iso>]
+      --out run\\xemu_ref --duration 180 --interval 2 [--start 70] [--dvd <iso>]
+
+--start skips the captures before that second. Choose an interval that is not a multiple of an animation
+period: the frontend's steam cloud repeats every 50 frames (1.0 s), so a 3 s interval samples the same phase
+in every capture (M3 review finding 7); e.g. --interval 0.62 walks through all phases.
 """
 import argparse
 import ctypes
@@ -89,6 +93,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--duration", type=float, default=180)
     ap.add_argument("--interval", type=float, default=2)
+    ap.add_argument("--start", type=float, default=0.0, help="first capture time in seconds (default 0)")
     ap.add_argument("--dvd", help="optional DVD image override (-dvd_path)")
     args = ap.parse_args()
 
@@ -106,7 +111,7 @@ def main():
 
     index = []
     try:
-        next_t = 0.0
+        next_t = args.start
         while time.monotonic() - start < args.duration and proc.poll() is None:
             t = time.monotonic() - start
             if t < next_t:

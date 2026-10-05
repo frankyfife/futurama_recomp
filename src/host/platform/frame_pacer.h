@@ -12,6 +12,11 @@
 // and shows the main window (platform::ShowMainWindow - "visible from the first Present"):
 //   "present: N frames in T s (average A Hz, slowest 1 s window W Hz, longest frame L ms)"
 //   "present: pacing P Hz, R schedule resets (more than one frame late), S frames longer than 1.5 periods"
+//   "present: frame work N frames: average A ms, 99th percentile P ms, longest L ms (W frames longer than one
+//    pacing period) -> sustainable S Hz"
+// The third line (M3 review finding 3) separates the renderer's throughput from the pacing: "frame work" is
+// the time from the end of the previous PaceFrame to NoteFrameWorkDone (guest logic + slot calls + D3D11
+// command submission; without Present, screenshots and the pacer wait); sustainable = 1000 / average.
 // average = (N - 1) / T over first..last presented frame; slowest 1 s window = the lowest rate
 // (intervals / span) over the frames of any trailing 1 s window after the first second (a window with a
 // single frame - a gap longer than 1 s - counts as 1 / gap); longest frame = the longest interval.
@@ -24,6 +29,9 @@ namespace platform {
 
 // Waits for the next 1/hz slot (hz = 0: returns at once). Call once per displayed frame, after Present.
 void PaceFrame(std::uint32_t hz) noexcept;
+
+// End of the frame's own work (before screenshots and Present; GpuRenderer::DisplayFrame). Guest main thread.
+void NoteFrameWorkDone() noexcept;
 
 // Records one presented frame (QPC time stamp) for the statistics below. Guest main thread.
 void NotePresentedFrame() noexcept;
@@ -38,6 +46,12 @@ struct PresentStatistics {
     std::uint32_t pacingHz = 0;          // last PaceFrame argument
     std::uint64_t scheduleResets = 0;    // PaceFrame started a new schedule (more than one frame late)
     std::uint64_t slowFrames = 0;        // intervals longer than 1.5 pacing periods (0 without pacing)
+    // Frame work (third line; NoteFrameWorkDone).
+    std::uint64_t workFrames = 0;
+    double workAverageMs = 0.0;
+    double workP99Ms = 0.0;              // 99th percentile (0.1 ms buckets up to 100 ms)
+    double workLongestMs = 0.0;
+    std::uint64_t workOverPeriod = 0;    // frames whose work alone exceeded one pacing period
 };
 PresentStatistics GetPresentStatistics() noexcept;  // thread-safe
 void LogPresentStatistics() noexcept;               // thread-safe (exit reporter)

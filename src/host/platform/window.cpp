@@ -22,6 +22,11 @@ std::atomic<std::uint32_t> g_hotkeys{0};
 std::atomic<std::uint32_t> g_viewWidth{0};
 std::atomic<std::uint32_t> g_viewHeight{0};
 std::atomic<bool> g_shown{false};
+std::atomic<bool> g_closeRequested{false};
+// WM_CLOSE fallback: end the process from the UI thread if the guest main thread displays no frame within
+// this time after the close request (loading hang, no renderer).
+constexpr UINT_PTR kCloseTimer = 1;
+constexpr UINT kCloseFallbackMs = 3000;
 // UI thread only.
 bool g_fullscreen = false;
 RECT g_windowedRect{};
@@ -81,8 +86,21 @@ LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         LayoutView(hwnd);
         return 0;
     case WM_CLOSE:
-        // Orderly end (exit reporters run, exit code 0); never returns.
-        core::ExitHostProcess(core::kExitOk, "window closed");
+        // Orderly end on the guest main thread (M3 review findings 5/10): the renderer ends the process at
+        // its next DisplayFrame (CloseRequested), so the exit reporters run on the render thread instead of
+        // racing with it. Fallback timer for a guest that displays no frame any more.
+        if (!g_closeRequested.exchange(true)) {
+            FUT_LOGI(Core, "window: close requested - the process ends after the next displayed frame");
+            SetTimer(hwnd, kCloseTimer, kCloseFallbackMs, nullptr);
+        }
+        return 0;
+    case WM_TIMER:
+        if (wp == kCloseTimer) {
+            KillTimer(hwnd, kCloseTimer);
+            // Never returns (exit reporters run here, on the UI thread).
+            core::ExitHostProcess(core::kExitOk, "window closed (no frame displayed within 3 s of the close request)");
+        }
+        break;
     case WM_KEYDOWN:
         if (wp == VK_F12 && (HIWORD(lp) & KF_REPEAT) == 0) {
             g_hotkeys.fetch_or(kHotkeyScreenshot);
@@ -262,6 +280,7 @@ bool CreateMainWindow(const WindowOptions& options, const char** error) noexcept
     g_frame.store(frame);
     g_shown.store(false);
     g_hotkeys.store(0);
+    g_closeRequested.store(false);
     LayoutView(frame);
     if (options.fullscreen) {
         SetFullscreen(frame, true);
@@ -313,6 +332,10 @@ void MainWindowClientSize(std::uint32_t* width, std::uint32_t* height) noexcept 
     if (height != nullptr) {
         *height = g_view.load() != nullptr ? g_viewHeight.load() : 0;
     }
+}
+
+bool CloseRequested() noexcept {
+    return g_closeRequested.load();
 }
 
 std::uint32_t ConsumeHotkeys() noexcept {

@@ -6,15 +6,18 @@
 // pumps the window's messages while the guest main thread renders. The D3D11/DXGI swap chain is created
 // on the guest main thread for this HWND (allowed: a swap chain may use a window of another thread; the
 // UI thread must keep pumping messages, which StageMessageLoop does). The window is hidden until the first
-// presented frame (ShowMainWindow; platform::NotePresentedFrame calls it). Closing it ends the process
-// orderly: core::ExitHostProcess(0, "window closed") - exit reporters run, exit code 0.
+// presented frame (ShowMainWindow; platform::NotePresentedFrame calls it). Closing it (WM_CLOSE) sets
+// CloseRequested(); NiPCRenderer's DisplayFrame then ends the process orderly on the guest main thread
+// (core::ExitHostProcess(0, "window closed") - exit reporters run on the render thread, exit code 0; M3
+// review findings 5/10). If no frame is displayed within 3 s, the UI thread ends the process itself.
 //
 // Layout: a top-level frame window "Futurama" (resizable; client area 640x480 * [render] window_scale at 100 %
 // desktop scaling, i.e. * DPI / 96 in physical pixels, shrunk to the largest 4:3 area that fits the work
 // area; [render] fullscreen = borderless window on the whole monitor) with a
 // black background and one child "view" window that keeps the 4:3 aspect of the back buffer, centered
-// (letterbox/pillarbox). MainWindow() is the VIEW: the swap chain stretches the 640x480 back buffer onto it
-// (DXGI_SCALING_STRETCH), so resizing never needs ResizeBuffers. The view is transparent for the mouse
+// (letterbox/pillarbox). MainWindow() is the VIEW: the swap chain has its client size (the D3D11 backend
+// resizes it in Present) and the present pass scales the 640x480 back buffer onto it ([render] scaling =
+// linear | point | integer, gfx/rhi/rhi.h PresentScaling). The view is transparent for the mouse
 // (HTTRANSPARENT) and never takes the keyboard focus, so input goes to the frame.
 // Keys of the frame: F12 / Print Screen = screenshot (kHotkeyScreenshot), Alt+Enter = toggle borderless
 // fullscreen, Alt+F4 / close button = WM_CLOSE. Per-monitor DPI aware (V2): sizes are physical pixels.
@@ -50,7 +53,7 @@ void ShowMainWindow() noexcept;
 bool MainWindowShown() noexcept;
 
 // Client area size of the view in pixels (0, 0 without a window). The back buffer keeps the guest size
-// (NiXBoxRenderer::Create: 640x480) and is stretched to it by the swap chain.
+// (NiXBoxRenderer::Create: 640x480) and is scaled to it by the present pass.
 void MainWindowClientSize(std::uint32_t* width, std::uint32_t* height) noexcept;
 
 // Hotkeys pressed in the window since the last call, as a bit mask (thread-safe; the renderer polls it in
@@ -59,6 +62,10 @@ inline constexpr std::uint32_t kHotkeyScreenshot = 1;  // F12 (and Print Screen)
 std::uint32_t ConsumeHotkeys() noexcept;
 // Sets hotkey bits as if the keys had been pressed (tests, scripted runs).
 void PostHotkeys(std::uint32_t mask) noexcept;
+
+// The window received WM_CLOSE (close button, Alt+F4). Thread-safe; NiPCRenderer's DisplayFrame polls it
+// and ends the process on the guest main thread.
+bool CloseRequested() noexcept;
 
 // Largest rectangle of aspect aspectW:aspectH inside a client area of clientW x clientH, centered
 // (x, y, width, height). Used for the view layout; pure (tests).

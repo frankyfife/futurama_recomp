@@ -174,9 +174,6 @@ void UnlinkRendererData(std::uint32_t texture, std::uint32_t data) noexcept {
 // no D3D format (renderer.md 5.2; tex::SelectTextureSource). [+0x598] = table entry 5 A8R8G8B8 (texconv.h).
 inline constexpr std::uint32_t kDefaultTextureSize = 8;
 inline constexpr std::uint32_t kDefaultTextureBytes = kDefaultTextureSize * kDefaultTextureSize * 4;
-// NiSourceTexture +0x38: "static" byte (ctor 0x1184A0 sets 1). The texture manager FUN_0015F930 calls the
-// revision check FUN_0015E260 on every use of a texture whose byte is 0.
-inline constexpr std::uint32_t kNiSourceTextureStatic = 0x38;
 // NiPixelData (ctor 0x110FF0, FUN_00111260; ni::NiPixelData): +0x0C NiPixelFormat, +0x34 width[] /
 // +0x38 height[] per mip, +0x3C offsets[mips + 1], +0x40 mip count, +0x48 revision.
 inline constexpr std::uint32_t kNiPixelDataRevision = 0x48;
@@ -184,8 +181,11 @@ inline constexpr std::uint32_t kNiPixelDataRevision = 0x48;
 constexpr std::uint32_t kTextureSources = 8;  // tex::TextureSource
 std::atomic<std::uint32_t> g_textureSources[kTextureSources];
 std::atomic<std::uint32_t> g_convertFailures[6];  // tex::ConvertStatus (Ok unused)
-std::atomic<std::uint32_t> g_uploads{0}, g_reuploads{0}, g_resolveCreated{0}, g_resolveNoData{0},
-    g_resolveMovie{0}, g_resolveRendered{0}, g_resolveForeign{0};
+std::atomic<std::uint32_t> g_uploads{0}, g_reuploads{0}, g_reuploadsNoPixels{0}, g_resolveCreated{0},
+    g_resolveNoData{0}, g_resolveMovie{0}, g_resolveRendered{0}, g_resolveForeign{0};
+// Pixel buffers freed after the upload like FUN_0015E010 0x15E1A6..0x15E1DD (review finding 1).
+std::atomic<std::uint32_t> g_pixelBuffersFreed{0}, g_pixelBuffersKeptHint{0}, g_pixelBuffersKeptSize{0};
+std::atomic<std::uint64_t> g_pixelBytesFreed{0};
 std::atomic<std::uint32_t> g_uploadFormats[static_cast<std::uint32_t>(rhi::Format::Count)];
 std::atomic<std::uint64_t> g_uploadBytes{0};
 std::atomic<bool> g_convertReported[6];
@@ -326,6 +326,12 @@ bool UploadImage(HostRenderer* h, NiPCTextureData* data, std::uint32_t texture, 
 //      table +0x528) without an entry -> the renderer's default texture (8x8); tex::SelectTextureSource.
 //   3. GPU path: texconv + device texture; a format texconv cannot convert (bump maps, 8-bit RGB) also
 //      gets the default texture (the Xbox would show it - deviation, counted).
+//   4. 0x15E1A6..0x15E1DD: the image got a device texture (data +0x3C != 0), is not the default texture,
+//      NiSourceTexture +0x3C (ni::kNiSourceTextureDiscardPixelsHint) != 0 and level 0 is at most 512 x 512
+//      -> FUN_001511B0 frees the NiPixelData pixel buffer in the game pool (+0x30 = 0; the NiPixelData
+//      object with sizes, offsets and format stays). The d3d11 path frees after a successful upload, the
+//      null renderer whenever the image was chosen (the Xbox upload fails only without memory), so both
+//      keep the game pool at the Xbox level (design 8.3 B30).
 // The game sees the result through NiSourceTexture::vf11/vf12 (GetWidth/GetHeight 0x118000/0x118020 ->
 // renderer data vf2/vf3 = +0x48/+0x4C). `[render] load_textures = 0` skips the file read (default
 // texture, counted). The original falls back silently, so does this (GFX/debug only).
@@ -385,6 +391,16 @@ void FillSourceTextureData(HostRenderer* h, NiPCTextureData* data, std::uint32_t
         if (path != 0) {
             FUT_LOGT(Gfx, "texture '%.200s': %ux%u", guest::Ptr<const char>(path), data->width, data->height);
         }
+        // Step 4 (0x15E1A6..0x15E1DD), before the smart pointer below is released like at 0x15E1E2.
+        if (Read(texture + ni::kNiSourceTextureDiscardPixelsHint) == 0) {
+            g_pixelBuffersKeptHint.fetch_add(1, std::memory_order_relaxed);
+        } else if (in.width > ni::kDiscardPixelsMaxSize || in.height > ni::kDiscardPixelsMaxSize) {
+            g_pixelBuffersKeptSize.fetch_add(1, std::memory_order_relaxed);
+        } else if (pd->pixels != 0) {
+            core::CallGuestThiscall(guest::kNiPixelDataFreePixels, pixels);
+            g_pixelBuffersFreed.fetch_add(1, std::memory_order_relaxed);
+            g_pixelBytesFreed.fetch_add(data->sizeBytes, std::memory_order_relaxed);
+        }
     } else {
         FillDefaultTextureInfo(data);
         if (h != nullptr && h->gpu != nullptr) {
@@ -404,7 +420,9 @@ void FillSourceTextureData(HostRenderer* h, NiPCTextureData* data, std::uint32_t
         g_textureSources[s].fetch_add(1, std::memory_order_relaxed);
     }
     if (pixels != 0) {
-        ReleaseRefObject(pixels);  // a file image with refcount 0 is freed here (the original leaks it)
+        // 0x15E1E2..0x15E243: the smart pointer to the image is released; a file image (refcount 0 from
+        // ReadImageFile) is deleted here, the NiPixelData of +0x34 keeps the texture's reference.
+        ReleaseRefObject(pixels);
     }
 }
 
@@ -448,10 +466,17 @@ rhi::TextureHandle ResolveTexture(void* user, ni::GuestPtr niTexture) noexcept {
         g_resolveMovie.fetch_add(1, std::memory_order_relaxed);
         return h->gpu->BlackTexture();  // movie player texture: contents from M6
     }
-    if ((d->hostInfo & kHostOwnsTexture) != 0 && guest::Read<std::uint8_t>(niTexture + kNiSourceTextureStatic) == 0) {
+    if ((d->hostInfo & kHostOwnsTexture) != 0 &&
+        guest::Read<std::uint8_t>(niTexture + ni::kNiSourceTextureStatic) == 0) {
         // FUN_0015E260: NiSourceTexture +0x34 NiPixelData revision != data +0x60 -> convert and copy again.
         const std::uint32_t pixels = Read(niTexture + kNiSourceTexturePixelData);
-        if (pixels != 0 && Read(pixels + kNiPixelDataRevision) != d->revision) {
+        if (pixels != 0 && Read(pixels + kNiPixelDataRevision) != d->revision &&
+            guest::Ptr<const ni::NiPixelData>(pixels)->pixels == 0) {
+            // Buffer freed by step 4 of FUN_0015E010: the original would copy from NULL (FUN_0015DB00); the
+            // device texture keeps the uploaded image (never seen in the M3 runs, counted).
+            g_reuploadsNoPixels.fetch_add(1, std::memory_order_relaxed);
+            d->revision = Read(pixels + kNiPixelDataRevision);
+        } else if (pixels != 0 && Read(pixels + kNiPixelDataRevision) != d->revision) {
             const auto source = static_cast<tex::TextureSource>(d->hostInfo & 0xFF);
             if (UploadImage(h, d, niTexture, pixels, source)) {
                 d->revision = Read(pixels + kNiPixelDataRevision);
@@ -578,8 +603,8 @@ std::uint32_t __fastcall SlotDisplayFrame(NiPCRenderer* self, void*) noexcept {
 
 // slot 17 - ClearBuffer(const NiRect<float>* rect or NULL, unsigned mode) (0x146490, ret 8): mode bit 1
 // color (background +0x2CC), 4 depth (+0x2D0), 2 stencil (+0x2D4); D3D viewport = whole target first
-// (0x146538, not restored); the rectangle in target pixels (0x1464C2..0x14652B, ni::ClearRect). Returns
-// nothing (eax undefined; 0 here).
+// (0x14659E..0x1465B9, not restored); flags 0x14654D..0x14659C; the rectangle in target pixels
+// (0x1464C2..0x14652B, ni::ClearRect), D3DDevice_Clear 0x1465E0. Returns nothing (eax undefined; 0 here).
 std::uint32_t __fastcall SlotClearBuffer(NiPCRenderer* self, void*, std::uint32_t rect, std::uint32_t mode) noexcept {
     if (InPurgeProbe()) {
         return 0;
@@ -905,6 +930,43 @@ std::uint32_t __fastcall SlotRenderScreenTexture(NiPCRenderer* self, void*, std:
     return 0;
 }
 
+// slot 60 - PurgeEffect(NiDynamicEffect*) (0x146E40, ret 4; called by the NiDynamicEffect destructors
+// through the broadcast FUN_00140160): IsKindOf(NiLight) - GetRTTI (vf1) and the base chain (RTTI +8)
+// compared with NiLight::ms_RTTI 0x30EBAC (0x146E4C..0x146E65) - then the light manager (+0x5C4)
+// FUN_0015B9E0 takes the light out of the active list and disables its D3D light index at once
+// (0x15B9FF, 0x15BA0D LightEnable(+0xC4, FALSE)). GPU path: ni::PurgeLight on the state shadow (review M3
+// finding 4); null renderer: nothing to do. Returns nothing (eax undefined; 0 here).
+std::atomic<std::uint32_t> g_effectsPurged{0}, g_lightsPurged{0}, g_enabledLightsPurged{0};
+bool IsKindOfNiLight(std::uint32_t object) noexcept {
+    std::uint32_t rtti = core::CallGuestThiscall(Read(Read(object) + 4), object);  // vf1 GetRTTI
+    for (std::uint32_t depth = 0; rtti != 0 && depth < 64; ++depth) {
+        if (rtti == guest::kNiLightRtti) {
+            return true;
+        }
+        rtti = Read(rtti + 8);
+    }
+    return false;
+}
+std::uint32_t __fastcall SlotPurgeEffect(NiPCRenderer* self, void*, std::uint32_t effect) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(60, _ReturnAddress());
+    FUT_HLE_TRY {
+        g_effectsPurged.fetch_add(1, std::memory_order_relaxed);
+        if (effect == 0 || !IsKindOfNiLight(effect)) {
+            return 0;
+        }
+        g_lightsPurged.fetch_add(1, std::memory_order_relaxed);
+        HostRenderer* h = Host(self);
+        if (h != nullptr && h->gpu != nullptr && h->gpu->PurgeLight(effect) != 0) {
+            g_enabledLightsPurged.fetch_add(1, std::memory_order_relaxed);
+        }
+        return 0;
+    }
+    FUT_HLE_CATCH("NiPCRenderer slot 60 (PurgeEffect)")
+}
+
 // New NiPCTextureData (0x70, layout of NiXBoxSourceTextureData) for an NiSourceTexture, filled as
 // FUN_0015E010 does and appended to the chain at +0x20; 0 if the game's operator new fails.
 std::uint32_t CreateSourceData(NiPCRenderer* self, std::uint32_t texture) noexcept {
@@ -1086,6 +1148,8 @@ const void* SlotEntry() noexcept {
         return Checked<Slot>(&SlotRenderScreenPolygon);
     } else if constexpr (Slot == 55) {
         return Checked<Slot>(&SlotRenderScreenTexture);
+    } else if constexpr (Slot == 60) {
+        return Checked<Slot>(&SlotPurgeEffect);
     } else if constexpr (Slot == 65) {
         return Checked<Slot>(&SlotCreateSourceTextureData);
     } else if constexpr (Slot == 66) {
@@ -1288,6 +1352,12 @@ void OnFrameDisplayed() noexcept {
         // (core::AddExitReporter, run inside ExitHostProcess).
         core::ExitHostProcess(core::kExitOk, "frame limit reached");
     }
+    if (platform::CloseRequested()) {
+        // WM_CLOSE (platform/window.h): end on this thread, after the frame, like the frame limit - the exit
+        // reporters then see a renderer that is not drawing (M3 review findings 5/10).
+        FUT_LOGI(Gfx, "window closed - ending after frame %u", n);
+        core::ExitHostProcess(core::kExitOk, "window closed");
+    }
 }
 
 void CrashReport() noexcept {
@@ -1357,6 +1427,7 @@ std::uint32_t CreateRenderer(std::uint32_t width, std::uint32_t height, std::uin
             params.softwareAdapter = s.softwareAdapter;
             params.resolveTexture = &ResolveTexture;
             params.resolveUser = r;
+            params.scaling = s.scaling;
             std::string error;
             host->gpu = GpuRenderer::Create(params, &error);
             if (host->gpu == nullptr) {
@@ -1434,6 +1505,14 @@ void LogRendererStatistics() noexcept {
         src(tex::TextureSource::DefaultNoImage), src(tex::TextureSource::DefaultUnreadable),
         src(tex::TextureSource::DefaultNotPowerOfTwo), src(tex::TextureSource::DefaultNotLoaded),
         src(tex::TextureSource::DefaultNoXboxFormat), src(tex::TextureSource::DefaultUnsupported));
+    FUT_LOGI(Gfx,
+             "NiPCRenderer pixel buffers (FUN_0015E010 0x15E1DD): %u freed after the upload (%llu KiB of the game "
+             "pool), %u kept (NiSourceTexture +0x3C = 0), %u kept (larger than 512x512); %u revision re-uploads "
+             "without pixel buffer",
+             g_pixelBuffersFreed.load(), static_cast<unsigned long long>(g_pixelBytesFreed.load() >> 10),
+             g_pixelBuffersKeptHint.load(), g_pixelBuffersKeptSize.load(), g_reuploadsNoPixels.load());
+    FUT_LOGI(Gfx, "NiPCRenderer slot 60 PurgeEffect: %u effects, %u of them NiLights, %u enabled lights removed",
+             g_effectsPurged.load(), g_lightsPurged.load(), g_enabledLightsPurged.load());
     const std::uint32_t current = g_currentRenderer.load();
     HostRenderer* h = current != 0 ? Host(guest::Ptr<NiPCRenderer>(current)) : nullptr;
     if (h != nullptr && h->gpu != nullptr) {
@@ -1459,12 +1538,14 @@ void LogRendererStatistics() noexcept {
                  g_convertFailures[2].load(), g_convertFailures[3].load(), g_convertFailures[4].load(),
                  g_convertFailures[5].load(), g_resolveCreated.load(), g_resolveNoData.load(), g_resolveMovie.load(),
                  g_resolveRendered.load(), g_resolveForeign.load());
-        const StackProbeStats& p = g_stackProbe;
-        FUT_LOGI(Gfx,
-                 "NiPCRenderer slot 65 stack: %u new texture data on loading-fiber stacks, %u elsewhere; deepest use "
-                 "%u bytes below the slot entry, least headroom %u bytes of a %u-byte fiber stack",
-                 p.fiberCalls, p.otherCalls, p.deepest, p.fiberCalls != 0 ? p.leastHeadroom : 0u, p.stackBytes);
-        h->gpu->LogStatistics();
+        if (h->gpu->OnRenderThread()) {
+            const StackProbeStats& p = g_stackProbe;
+            FUT_LOGI(Gfx,
+                     "NiPCRenderer slot 65 stack: %u new texture data on loading-fiber stacks, %u elsewhere; deepest "
+                     "use %u bytes below the slot entry, least headroom %u bytes of a %u-byte fiber stack",
+                     p.fiberCalls, p.otherCalls, p.deepest, p.fiberCalls != 0 ? p.leastHeadroom : 0u, p.stackBytes);
+        }
+        h->gpu->LogStatistics();  // only the totals that are safe to read from another thread, if not there
     }
     char line[512];
     std::size_t used = 0;

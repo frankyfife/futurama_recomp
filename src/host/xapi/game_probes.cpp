@@ -484,6 +484,17 @@ void LogGameSummary() noexcept {
                  XboxLanguageName(s.language), s.languageCalls, s.archivesMounted, s.archiveMountFailures,
                  static_cast<unsigned long long>(s.archiveLookups),
                  static_cast<unsigned long long>(s.archiveHits), s.discErrorCalls);
+        // memory.cpp game pool (FUN_000A4520): bytes in use / free / peak in use, read from the guest
+        // counters (M3 review finding 1: the pool use must stay at the Xbox level).
+        if (guest::Read<std::uint8_t>(guest::kGameMemoryPoolInitialized) != 0) {
+            const std::uint32_t used =
+                guest::Read<std::uint32_t>(guest::kGameMemoryPool + guest::kGameMemoryPoolUsedOffset);
+            const std::uint32_t free =
+                guest::Read<std::uint32_t>(guest::kGameMemoryPool + guest::kGameMemoryPoolFreeOffset);
+            const std::uint32_t peak = guest::Read<std::uint32_t>(guest::kGameMemoryPoolPeak);
+            FUT_LOGI(Game, "game memory pool: %u KiB in use, %u KiB free, peak %u KiB in use (pool %u KiB)",
+                     used >> 10, free >> 10, peak >> 10, guest::kGameMemoryPoolSize >> 10);
+        }
     } catch (...) {
     }
 }

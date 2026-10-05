@@ -354,6 +354,7 @@ struct ExtractCounters {
     std::uint64_t skinCacheHits = 0;         // second draw of the same skin instance in a frame
     std::uint64_t invalidMapModes = 0;       // clamp > 3 or filter > 5 (out of REN's tables)
     std::uint64_t unresolvedTextures = 0;    // stage textures the resolver had no host texture for
+    std::uint64_t lightsPurged = 0;          // PurgeLight removed an enabled light (slot 60, review M3 #4)
 };
 
 // D3D8 state persistence between draws (GFX_CONTRACT.md 4.2, header comment above): REN's caches and the
@@ -421,6 +422,13 @@ struct StateShadow {
 // FUN_0015B990 disables every light (light manager +0x3C = 0), so the first draw of a scene re-evaluates
 // them. The integration calls it from slot 45 (the validation harness does not).
 void BeginScene(StateShadow* shadow) noexcept;
+
+// Slot 60 PurgeEffect (0x146E40) for an NiLight: the light manager FUN_0015B9E0 removes the light from the
+// list of active lights and disables its D3D light index at once (D3DDevice_LightEnable(+0xC4, FALSE),
+// 0x15BA0D); its "last effect state" (+0x3C) stays, so a later draw with the same effect state does not
+// re-evaluate the lights. Here: the light's entries leave StateShadow::lights (the enabled D3D lights),
+// lastEffectState stays. Returns the number of entries removed (0: the light was not enabled).
+std::uint32_t PurgeLight(StateShadow* shadow, GuestPtr niLight) noexcept;
 
 // Resolves the host texture of an NiTexture* (renderer data at +0x20, created on demand through texconv).
 // Supplied by the integration (gfx/nipc_renderer.cpp); nullptr -> TextureStageDesc::texture stays empty and

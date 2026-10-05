@@ -61,12 +61,15 @@ function(fut_add_shader name file entry profile)
 endfunction()
 target_include_directories(fut_host_obj PRIVATE ${FUT_SHADER_GEN_DIR})
 # Backend agent (M3 phase 2, gfx/rhi/d3d11/**): built-in shaders of the D3D11 backend (rectangle
-# depth/stencil clear, diagnostic shaders of the headless RHI tests); `file` is relative to gfx/shaders.
+# depth/stencil clear, diagnostic shaders of the headless RHI tests, the present pass of M3 phase 5);
+# `file` is relative to gfx/shaders.
 fut_add_shader(d3d11_clear_vs ../rhi/d3d11/d3d11_builtin.hlsl ClearVS vs_4_0)
 fut_add_shader(d3d11_diag_vs ../rhi/d3d11/d3d11_builtin.hlsl DiagVS vs_4_0)
 fut_add_shader(d3d11_diag_color_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagColorPS ps_4_0)
 fut_add_shader(d3d11_diag_texture_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagTexturePS ps_4_0)
 fut_add_shader(d3d11_diag_tint_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagTintPS ps_4_0)
+fut_add_shader(d3d11_present_vs ../rhi/d3d11/d3d11_builtin.hlsl PresentVS vs_4_0)
+fut_add_shader(d3d11_present_ps ../rhi/d3d11/d3d11_builtin.hlsl PresentPS ps_4_0)
 # Phase-1 stubs, kept for the RHI tests (gfx::ff::StubShaderBytecode); moved to ff_stub.hlsl in phase 2.
 fut_add_shader(ff_stub_vs ff_stub.hlsl VSMain vs_4_0)
 fut_add_shader(ff_stub_ps ff_stub.hlsl PSMain ps_4_0)

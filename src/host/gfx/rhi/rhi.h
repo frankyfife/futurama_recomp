@@ -282,8 +282,9 @@ class CommandContext {
 public:
     virtual ~CommandContext() = default;
 
-    // color = {} -> the swap chain back buffer (or the offscreen back buffer of a headless device) with
-    // its depth buffer when depth = {}; a texture target uses `depth` only if given.
+    // color = {} -> the current back buffer (DeviceDesc: one of `bufferCount` persistent offscreen
+    // buffers, see Device::Present) with its depth buffer when depth = {}; a texture target uses `depth`
+    // only if given.
     virtual void SetRenderTargets(TextureHandle color, TextureHandle depth) noexcept = 0;
     virtual void SetViewport(const Viewport& viewport) noexcept = 0;
     virtual void SetScissor(const Rect& rect) noexcept = 0;
@@ -320,12 +321,22 @@ public:
 enum class Backend : std::uint8_t { Null, D3D11 };
 const char* BackendName(Backend backend) noexcept;
 
+// How Present maps the back buffer (DeviceDesc size, 640x480) onto the window ([render] scaling, review M3
+// finding 11): Linear = bilinear to the largest 4:3 rectangle of the client area, Point = nearest texel
+// to the same rectangle, Integer = nearest texel with the largest whole factor that fits, centered with
+// black borders (falls back to Point when even factor 1 does not fit).
+enum class PresentScaling : std::uint8_t { Linear, Point, Integer };
+const char* PresentScalingName(PresentScaling scaling) noexcept;
+
 struct DeviceDesc {
     Backend backend = Backend::D3D11;
-    void* nativeWindow = nullptr;     // HWND; nullptr = headless device with an offscreen back buffer
-    std::uint32_t width = 640;        // back buffer size (= NiXBoxRenderer::Create size); the swap chain
-    std::uint32_t height = 480;       // is stretched to the window's client area when presented
+    void* nativeWindow = nullptr;     // HWND; nullptr = headless device (no swap chain)
+    std::uint32_t width = 640;        // back buffer size (= NiXBoxRenderer::Create size); Present scales it
+    std::uint32_t height = 480;       // to the window's client area (`scaling`)
+    // Persistent back buffers in rotation (1..3; the Xbox flip with BackBufferCount 1 = 2 buffers): after
+    // Present the back buffer holds what was rendered `bufferCount` presents ago (Device::Present).
     std::uint32_t bufferCount = 2;
+    PresentScaling scaling = PresentScaling::Linear;
     Format backBufferFormat = Format::BGRA8_UNorm;
     Format depthFormat = Format::D24_UNorm_S8_UInt;
     bool debugLayer = false;          // request the API validation layer (D3D11: D3D11_CREATE_DEVICE_DEBUG)
@@ -398,10 +409,15 @@ public:
     virtual SamplerHandle GetSampler(const SamplerDesc& desc) noexcept = 0;
     virtual PipelineHandle GetPipeline(const PipelineDesc& desc, const char* debugName) noexcept = 0;
 
-    // Shows the back buffer (vsync per desc). The caller paces to 50 Hz separately (platform/frame_pacer.h).
+    // Shows the current back buffer (vsync per desc) and moves on to the next of the `bufferCount`
+    // persistent back buffers, whose contents stay defined: like the Xbox flip (D3DSWAPEFFECT_DISCARD with
+    // BackBufferCount 1 flips two buffers, renderer.md 3.1), a frame that draws nothing shows the picture of
+    // `bufferCount` presents ago (review M3 findings 2/8). With a window the picture is copied into the swap
+    // chain (window size, DeviceDesc::scaling); the swap chain itself is redrawn completely every Present.
+    // The caller paces to 50 Hz separately (platform/frame_pacer.h).
     virtual PresentResult Present(const PresentDesc& desc) noexcept = 0;
-    // Copy of the current back buffer (BGRA8_UNorm); call before Present (flip-model buffers are
-    // undefined afterwards). Used by the screenshot key and [render] screenshot_frames.
+    // Copy of the current back buffer (BGRA8_UNorm, DeviceDesc size, independent of the window size). Used
+    // by the screenshot key and [render] screenshot_frames before Present.
     virtual bool CaptureBackBuffer(Image& out) noexcept = 0;
     virtual bool ReadTexture(TextureHandle texture, std::uint32_t level, Image& out) noexcept = 0;
 

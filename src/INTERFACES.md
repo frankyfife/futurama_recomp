@@ -596,6 +596,20 @@ implementations are stubs except where noted):
 - Check: `python tools\m3_check.py --exe build\m3\bin\futurama.exe --config run\m3\futurama.ini [--runs N]
   [--fresh] [--scene NAME=FRAME] [--xemu-ref DIR | --no-xemu-ref] [--min-hz 50]` (M3-1..4 + every M2 criterion;
   logs and screenshot copies in `<userdata>\m3_check\`).
+- **M3 phase 5 (review fixes, `docs\m3_report.md`):** `GpuRenderer::PurgeLight(niLight)` (slot 60),
+  `GpuRenderer::OnRenderThread()`, `CreateParams::scaling`; `ni::PurgeLight(StateShadow*, niLight)` +
+  `ExtractCounters::lightsPurged`; `ni::kNiSourceTextureStatic` (+0x38), `ni::kNiSourceTextureDiscardPixelsHint`
+  (+0x3C), `ni::kDiscardPixelsMaxSize`; `guest::kNiPixelDataFreePixels` 0x1511B0, `guest::kNiLightRtti` 0x30EBAC,
+  `guest::kGameMemoryPoolUsedOffset/FreeOffset`, `kGameMemoryPoolPeak` 0x2E8D38, `kGameMemoryPoolInitialized`
+  0x2E8D35. RHI: `rhi::PresentScaling` + `PresentScalingName`, `DeviceDesc::scaling`, `DeviceDesc::bufferCount`
+  = persistent back buffers in rotation (Present semantics in `rhi.h`). Platform: `platform::CloseRequested()`
+  (WM_CLOSE no longer ends the process on the UI thread), `platform::NoteFrameWorkDone()` +
+  `PresentStatistics::work*`. Config `[render] scaling = linear | point | integer`. New slot handler 60
+  (ret 4). Logs: `NiPCRenderer pixel buffers (...)`, `NiPCRenderer slot 60 PurgeEffect: ...`, `game memory pool:
+  ...`, `present: frame work ...`, `window closed - ending after frame N`, `draw summary frame N: ...; shows the
+  picture of frame M (K draw calls, D drawn)`, `draw trace frame N #i: ... screen (x0, y0)-(x1, y1)`.
+  `m3_check`: `--xemu-frontend DIR` (default `run\xemu_ref_steam` if present), `--min-hz` default 49.5,
+  `--max-work-ms` 20; `tools\xemu_capture.py --start S`.
 
 ## 5. Cross-module contracts
 
@@ -708,3 +722,7 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-05 | M3 phase 3 (integration) | `core\config.cpp`/`config.h`, `gfx\gfx_config.h/.cpp` | `[render] backend` default `d3d11` (was `null`); `gfx::Settings::backend` default `RenderBackend::D3D11`. |
 | 2026-10-05 | M3 phase 3 (integration) | `gfx\ni_guest_layouts.h` | `NiTextureFormatPrefs` field names fixed: +0x18 `mipMapped`, +0x1C `alphaFormat` (texconv finding; no reader of the old names). |
 | 2026-10-05 | M3 phase 3 (integration) | new `tools\m3_check.py`, `GFX_CONTRACT.md` section 9 addendum + section 11 note, `docs\loader_design.md` 8.3 (B19-B29) | M3 exit check (imports `m2_check`), run configs `run\m3\futurama.ini`, `run\m3\rel`, `run\m3\m1`, `run\m3\m2`, `run\m3\m2-null` (git-ignored). |
+| 2026-10-05 | M3 phase 5 (review fixes) | `gfx\nipc_renderer.cpp`, `gfx\nipc_gpu.h/.cpp`, `gfx\ni_extract.h/.cpp`, `gfx\ni_guest_layouts.h`, `core\guest.h`, `xapi\game_probes.*` | Slot 65 frees the NiPixelData pixel buffer after the upload like FUN_0015E010 0x15E1DD (both backends; finding 1); new slot handler 60 PurgeEffect (`ni::PurgeLight`, finding 4); exit line `game memory pool: ...`; `GpuRenderer::OnRenderThread`, frame counters without draw/color clear, picture origin in `draw summary`, screen bounds in `draw trace`; ClearBuffer evidence addresses 0x14654D..0x1465B9 (finding 6). Constants see section 4.18. |
+| 2026-10-05 | M3 phase 5 (review fixes) | `gfx\rhi\rhi.h/.cpp`, `gfx\rhi\d3d11\*`, `src\host\CMakeLists.txt` (two `fut_add_shader` lines `d3d11_present_vs/ps`), `gfx\shaders\ff_ubershader.hlsl` | Persistent back buffers in rotation + present pass into a window-size swap chain with `rhi::PresentScaling` (findings 2, 8, 11); `DeviceDesc::scaling`; the D3D11 context re-binds its state after Present; client size read in the view's DPI context; the "d3d11" exit reporter pumps the info queue on the render thread (finding 10); transformed vertices snapped to 1/16 pixel (`SnapToSubpixelGrid`, finding 9). |
+| 2026-10-05 | M3 phase 5 (review fixes) | `platform\window.h/.cpp`, `platform\frame_pacer.h/.cpp`, `core\config.cpp`, `gfx\gfx_config.*` | `platform::CloseRequested()` (WM_CLOSE -> end after the next frame on the guest main thread, 3 s fallback timer; findings 5/10); `platform::NoteFrameWorkDone()` + frame-work statistics line (finding 3); config key `[render] scaling` (Choice linear\|point\|integer). |
+| 2026-10-05 | M3 phase 5 (review fixes) | `tools\m3_check.py`, `tools\xemu_capture.py`, tests (`rhi_d3d11_tests`, `platform_tests`, `extract_tests`, `ff_render_tests`), `GFX_CONTRACT.md` section 9 "Phase-5 results" + section 11, `docs\loader_design.md` 8.3 (B30-B37), new `docs\m3_report.md` | M3-3 = frame work 99th percentile <= 20 ms + paced average >= 49.5 Hz (finding 3); frontend static mask from `run\xemu_ref` + `run\xemu_ref_steam` and the steam region masked (finding 7); frames without draws checked through the picture they show; `xemu_capture.py --start`. |

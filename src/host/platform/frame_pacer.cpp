@@ -5,6 +5,8 @@
 #include "core/log.h"
 #include "platform/window.h"
 
+#include <algorithm>
+#include <iterator>
 #include <mutex>
 
 namespace platform {
@@ -14,6 +16,15 @@ std::mutex g_paceMutex;
 LONGLONG g_nextFrame = 0;
 std::uint32_t g_pacingHz = 0;
 std::uint64_t g_scheduleResets = 0;
+LONGLONG g_paceEnd = 0;  // QPC when the last PaceFrame returned (start of the next frame's work)
+
+// Frame work histogram: 0.1 ms buckets up to 100 ms, the last bucket collects everything longer.
+constexpr std::uint32_t kWorkBuckets = 1001;
+std::uint32_t g_workHistogram[kWorkBuckets] = {};
+std::uint64_t g_workFrames = 0;
+double g_workSumMs = 0.0;
+double g_workLongestMs = 0.0;
+std::uint64_t g_workOverPeriod = 0;
 
 std::mutex g_statsMutex;
 PresentStatsAccumulator g_stats;
@@ -87,13 +98,11 @@ PresentStatistics PresentStatsAccumulator::Result() const noexcept {
 // Waits for the next 1/hz s slot like D3DDevice_Swap waits for the vertical blank (PresentationInterval
 // ONE from FUN_000D26A0). Falls back to a new schedule when the game is more than one frame late (the M2
 // algorithm of gfx/nipc_renderer.cpp, unchanged).
-void PaceFrame(std::uint32_t hz) noexcept {
-    if (hz == 0) {
-        return;
-    }
+namespace {
+
+void PaceFrameLocked(std::uint32_t hz) noexcept {
     static HANDLE timer =
         CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
-    std::lock_guard<std::mutex> lock(g_paceMutex);
     LARGE_INTEGER freq, now;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&now);
@@ -117,6 +126,37 @@ void PaceFrame(std::uint32_t hz) noexcept {
         }
     }
     g_nextFrame += period;
+}
+
+}  // namespace
+
+void PaceFrame(std::uint32_t hz) noexcept {
+    std::lock_guard<std::mutex> lock(g_paceMutex);
+    if (hz != 0) {
+        PaceFrameLocked(hz);
+    }
+    LARGE_INTEGER end;
+    QueryPerformanceCounter(&end);
+    g_paceEnd = end.QuadPart;
+}
+
+void NoteFrameWorkDone() noexcept {
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    std::lock_guard<std::mutex> lock(g_paceMutex);
+    if (g_paceEnd == 0) {
+        return;  // the first frame has no defined start; one sample per frame
+    }
+    const double ms = static_cast<double>(now.QuadPart - g_paceEnd) * 1000.0 / QpcFrequency();
+    const auto bucket = static_cast<std::uint32_t>(ms * 10.0);
+    ++g_workHistogram[bucket < kWorkBuckets ? bucket : kWorkBuckets - 1];
+    ++g_workFrames;
+    g_workSumMs += ms;
+    g_workLongestMs = ms > g_workLongestMs ? ms : g_workLongestMs;
+    if (g_pacingHz != 0 && ms > 1000.0 / g_pacingHz) {
+        ++g_workOverPeriod;
+    }
+    g_paceEnd = 0;
 }
 
 // ---- statistics ----------------------------------------------------------------------------------------------
@@ -155,6 +195,20 @@ PresentStatistics GetPresentStatistics() noexcept {
     std::lock_guard<std::mutex> lock(g_paceMutex);
     s.pacingHz = g_pacingHz;
     s.scheduleResets = g_scheduleResets;
+    s.workFrames = g_workFrames;
+    s.workAverageMs = g_workFrames != 0 ? g_workSumMs / static_cast<double>(g_workFrames) : 0.0;
+    s.workLongestMs = g_workLongestMs;
+    s.workOverPeriod = g_workOverPeriod;
+    // Upper edge of the bucket in which 99 % of the frames are reached.
+    const std::uint64_t target = (g_workFrames * 99 + 99) / 100;
+    std::uint64_t seen = 0;
+    for (std::uint32_t b = 0; b < kWorkBuckets && g_workFrames != 0; ++b) {
+        seen += g_workHistogram[b];
+        if (seen >= target) {
+            s.workP99Ms = b + 1 < kWorkBuckets ? (b + 1) / 10.0 : g_workLongestMs;
+            break;
+        }
+    }
     return s;
 }
 
@@ -165,6 +219,10 @@ void LogPresentStatistics() noexcept {
     FUT_LOGI(Gfx, "present: pacing %u Hz, %llu schedule resets (more than one frame late), %llu frames longer than "
              "1.5 periods", s.pacingHz, static_cast<unsigned long long>(s.scheduleResets),
              static_cast<unsigned long long>(s.slowFrames));
+    FUT_LOGI(Gfx, "present: frame work %llu frames: average %.2f ms, 99th percentile %.1f ms, longest %.1f ms (%llu "
+             "frames longer than one pacing period) -> sustainable %.0f Hz",
+             static_cast<unsigned long long>(s.workFrames), s.workAverageMs, s.workP99Ms, s.workLongestMs,
+             static_cast<unsigned long long>(s.workOverPeriod), s.workAverageMs > 0.0 ? 1000.0 / s.workAverageMs : 0.0);
 }
 
 void ResetFramePacer() noexcept {
@@ -173,6 +231,12 @@ void ResetFramePacer() noexcept {
         g_nextFrame = 0;
         g_pacingHz = 0;
         g_scheduleResets = 0;
+        g_paceEnd = 0;
+        std::fill(std::begin(g_workHistogram), std::end(g_workHistogram), 0u);
+        g_workFrames = 0;
+        g_workSumMs = 0.0;
+        g_workLongestMs = 0.0;
+        g_workOverPeriod = 0;
     }
     std::lock_guard<std::mutex> lock(g_statsMutex);
     g_stats = PresentStatsAccumulator{};
