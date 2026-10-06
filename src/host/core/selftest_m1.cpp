@@ -13,6 +13,7 @@
 #include "kernel/kernel_api.h"
 #include "shared/xbe_format.h"
 #include "shared/xbox_types.h"
+#include "xapi/game_timing.h"
 
 #include <intrin.h>
 
@@ -183,6 +184,11 @@ FUT_SELFTEST(MappingMatchesFile, Mapped) {
     }
     for (const auto& hook : InstalledHookList()) {
         patched.emplace_back(hook.address, 5u);
+    }
+    // (M3b) [game] tick_rate = 60: operand and .data patches of xapi/game_timing.cpp (checked byte by byte
+    // by the self-test GameTimingPatched).
+    for (const auto& row : xapi::AppliedTimingPatches()) {
+        patched.emplace_back(row.address, row.length);
     }
     for (const auto& [address, length] : patched) {
         std::memcpy(&expected[address - begin], guest::Ptr<const void>(address), length);

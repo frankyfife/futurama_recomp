@@ -287,6 +287,7 @@ Die vollständige Tabelle steht in [`loader_design.md` Abschnitt 8.3](loader_des
 
 ## 10. Bekannte Probleme und offene Punkte
 
+- **50-Hz-Takt (erledigt in M3b, [`docs/m3b_60hz_report.md`](m3b_60hz_report.md)):** Der hier beschriebene 50-Hz-Takt mit VSync erreichte auf dem 120-Hz-Messrechner nur 49,2–49,3 Hz, weil 50 Hz kein Teiler von 120 Hz ist, und war als PAL-Timing ohnehin unerwünscht. Seit M3b tickt das Spiel mit 60 Hz bei PAL-Inhalten (`[game] tick_rate`), und der Takt koppelt sich an die Anzeige (`[render] pacing`); `m3_check` prüft ≥ 60 fps. Die Prüfbefehle in 3.3 gelten weiter, die Konfigurationen `run\m3final\*` laufen jetzt mit `tick_rate = 50` + `pacing = timer`; die 60-Hz-Konfigurationen liegen unter `run\m3b\*`.
 - **Kein Hardware-Vergleich:** Referenz ist ausschließlich xemu. Das 1/16-Pixel-Raster ist am xemu-Bild gemessen, nicht am NV2A belegt; die restlichen knapp 2 % Kantenpixel sind nicht zugeordnet.
 - **Nicht erreicht in M3:**
   - Slots 15 (Textur), 19, 26, 28, 49–51 und 60

@@ -5,7 +5,9 @@
 //   probe:Game::ArchiveMount   FUN_0013FE70  "archive: mounted sysPAL.img as #0 ..." / "... not mounted"
 //   probe:Game::ArchiveLookup  FUN_0013FE10  vfs_trace.log line per asset lookup (archive hit or loose)
 //   probe:Game::Init           FUN_000A26A0  "game: video standard ...", "game: language ...",
-//                                            "game: BUILD.TXT = ...", "game: archives mounted: ..."
+//                                            "game: BUILD.TXT = ...", "game: archives mounted: ...",
+//                                            (M3b) "game timing: effective after Game::Init: ..."
+//                                            (xapi::NoteGameInitTiming, xapi/game_timing.h)
 //   probe:CApp::Frame          FUN_000D2630  counts frames; fallback "game: context ..." (after the frame)
 //   probe:Game::ContextSwitch  FUN_000A48C0  "game: context Intro -> Frontend ..." at every switch that
 //                                            Game::Frame makes (call site 0xA2E40, review finding 4)

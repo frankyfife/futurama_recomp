@@ -2,6 +2,17 @@
 
 Ziel: Das Spiel läuft nativ auf x86-PCs mit einem Vulkan- oder D3D12-Renderer.
 
+## Schnellstart für Spieler
+
+Stand M3c: Legal-Bild, Intro-Bildschirme und das Frontend-Menü laufen mit 60 fps und Kantenglättung; Ton, Filme und Eingabe fehlen noch.
+
+1. Paket bauen oder entpacken (`dist\FuturamaPC\`, siehe unten) und **`FuturamaLauncher.exe`** starten. Voraussetzung: Windows 10 oder 11 (64 Bit), Grafikkarte mit Direct3D 11 und ein Abbild (ISO) **Ihrer eigenen** europäischen Futurama-Disc für die Xbox. Das Paket enthält keine Spieldaten.
+2. Beim ersten Start führt ein Assistent durch die Einrichtung: Oberflächensprache, Spielabbild (wird sofort geprüft; nur die europäische Verkaufsversion startet), Sprache des Spiels, Bildschirm und Fenster oder randloses Vollbild, Bildqualität.
+3. Bildqualität: **Klassisch** (640×480 wie auf der Xbox), **Standard** (Bildschirmhöhe, 4× MSAA – empfohlen) oder **Maximum** (dazu 2× Supersampling, 8× MSAA und helligkeitsrichtige Kantenglättung; passt sich an den Grafikspeicher an). Alles lässt sich später im Reiter „Grafik“ einzeln ändern.
+4. **„Spielen“** – der Launcher verschwindet und zeigt nach dem Spiel das Ergebnis (bei Fehlern mit Ursache und Protokollende). Im Spiel: Alt+Eingabetaste = Vollbild, F12 = Screenshot.
+
+Einstellungen, Protokolle, Screenshots und Spielstände liegen in `%LOCALAPPDATA%\FuturamaPC\`; mit einer leeren Datei `portable.txt` neben `futurama.exe` im Spielordner. Ausführlich: [`docs/m3c_report.md`](docs/m3c_report.md) Abschnitt 3 und [`launcher/README.md`](launcher/README.md).
+
 ## Ausgangsmaterial
 
 Die Disc-Images bleiben in `Y:\xbox games\Futurama (Jun 17, 2003 prototype)\`.
@@ -71,11 +82,13 @@ Manuelle Arbeit in der Ghidra-Oberfläche geht bei einem Neubau verloren. Dauerh
 - Spielklassen mit NiRTTI: `PhysicController`, `AimController`, `LightSource`/`LightTarget`, `LMSource`/`LMTarget`, `MasterPropertyAccumulator`.
 - Eintrittspunkt `entry` (0xF84DD) startet einen Thread bei 0xF8469, `XapiInitProcess` liegt bei 0xF92C0.
 
-## Loader (PC-Port, Meilenstein M3 erreicht)
+## Loader (PC-Port, Meilensteine M3, M3b und M3c erreicht)
 
-Der Loader führt das Original-XBE nativ auf Windows aus. `futurama.exe` ist ein Launcher mit fester Basis 0x10000. `futurama_host.dll` stellt den xboxkrnl-Kernel als HLE bereit, mappt `default.xbe` direkt aus dem eigenen ISO und startet es. Stand M3: Das Spiel zeigt Bild – Legal-Bild, Tech-Notice (`NI_Splash_PAL.nif`), Ladebild und das animierte Frontend-Menü, noch ohne Ton, Filme und Eingabe. `NiPCRenderer` ersetzt `NiXBoxRenderer` an der NiRenderer-Schnittstelle und zeichnet über eine D3D11-RHI mit nachgebildeter D3D8-Fixed-Function (Property→State, Licht, Texturstufen, CPU-Skinning). Die Szenen stimmen mit xemu-Aufnahmen des Originals überein (Legal/Tech-Notice texelgenau, statische Frontend-Pixel zu 98 % exakt), 0 Debug-Layer-Meldungen, 50 Hz mit VSync. Darunter liegen aus M1/M2 die Archive, Fibers, asynchrones I/O mit Gast-APCs und stille Stubs für DSOUND/XMV/XPP. Nächster Meilenstein: M4, Eingabe.
+Der Loader führt das Original-XBE nativ auf Windows aus. `futurama.exe` ist ein Launcher mit fester Basis 0x10000. `futurama_host.dll` stellt den xboxkrnl-Kernel als HLE bereit, mappt `default.xbe` direkt aus dem eigenen ISO und startet es. Stand M3: Das Spiel zeigt Bild – Legal-Bild, Tech-Notice (`NI_Splash_PAL.nif`), Ladebild und das animierte Frontend-Menü, noch ohne Ton, Filme und Eingabe. `NiPCRenderer` ersetzt `NiXBoxRenderer` an der NiRenderer-Schnittstelle und zeichnet über eine D3D11-RHI mit nachgebildeter D3D8-Fixed-Function (Property→State, Licht, Texturstufen, CPU-Skinning). Die Szenen stimmen mit xemu-Aufnahmen des Originals überein (Legal/Tech-Notice texelgenau, statische Frontend-Pixel zu 98 % exakt), 0 Debug-Layer-Meldungen. **Seit M3b läuft der Port mit 60 fps:** Die Spiellogik tickt mit den NTSC-Zeitwerten (60 Hz) bei unveränderten PAL-Inhalten (`[game] tick_rate = 60`, Standard; `50` = Original-PAL für Vergleiche), und der Bildtakt koppelt sich an die Anzeige (`[render] pacing = auto`: bei 120 Hz genau 2 Vblanks pro Bild). Darunter liegen aus M1/M2 die Archive, Fibers, asynchrones I/O mit Gast-APCs und stille Stubs für DSOUND/XMV/XPP. **Seit M3c** gibt es den Qt-Launcher `FuturamaLauncher.exe` (Einstellungen, ISO-Prüfung, Spielstart; Deutsch/Englisch) und eine höhere Bildqualität: Renderauflösung bis zur vollen Bildschirmhöhe (4:3 mit Seitenbalken), MSAA 2×/4×/8× mit Alpha-to-Coverage, Supersampling (Render-Skala 1,0–2,0), helligkeitsrichtige Kantenglättung, anisotrope Filterung und Monitorwahl. „Klassisch“ (640×480 ohne Kantenglättung) bleibt bitgleich zu M3. Nächste Meilensteine: M3d (bis 120 Bilder pro Sekunde), M4 (Eingabe).
 
 - Design: [`docs/loader_design.md`](docs/loader_design.md) (Entscheidungen E1–E12, Abweichungen in Abschnitt 8)
+- 60 fps (Zeitbasis, Takt, Konfiguration, Belege): [`docs/m3b_60hz_report.md`](docs/m3b_60hz_report.md)
+- Launcher und Bildqualität (M3c): Bericht [`docs/m3c_report.md`](docs/m3c_report.md), [`launcher/README.md`](launcher/README.md), Abweichungen in [`docs/loader_design.md`](docs/loader_design.md) 8.5–8.8, Renderer-Vertrag [`src/host/gfx/GFX_CONTRACT.md`](src/host/gfx/GFX_CONTRACT.md) Abschnitt 12
 - Stand, Bauen, Konfiguration und Prüfung: [`docs/m3_report.md`](docs/m3_report.md) (Abschnitt 3), frühere Meilensteine: [`docs/m2_report.md`](docs/m2_report.md), [`docs/m1_report.md`](docs/m1_report.md)
 - Schnittstellen für Entwickler: [`src/INTERFACES.md`](src/INTERFACES.md), Grafikvertrag: [`src/host/gfx/GFX_CONTRACT.md`](src/host/gfx/GFX_CONTRACT.md)
 
@@ -83,11 +96,16 @@ Kurzfassung (MSVC x86, CMake, Ninja; `build.cmd` immer mit vollem Pfad aufrufen)
 
 ```
 cmd /c "D:\FuturamaDecomp\build.cmd" build\x86-debug Debug
-build\x86-debug\bin\futurama.exe --config=<eigene futurama.ini>                (ISO-Pfad und userdata in der INI; F12 = Screenshot, Alt+Enter = Vollbild)
+cmd /c "D:\FuturamaDecomp\build_launcher.cmd" build\launcher-rel Release test     (Qt-Launcher, x64)
+python tools\package.py --game-build build\x86-relwithdebinfo --launcher-build build\launcher-rel   (dist\FuturamaPC\)
+build\x86-debug\bin\futurama.exe --config=<eigene futurama.ini>                (ISO-Pfad und userdata in der INI; F12 = Screenshot, Alt+Eingabetaste = Vollbild)
 python tools\m3_check.py --exe build\x86-debug\bin\futurama.exe --config <ini> --runs 2 --fresh
 python tools\m2_check.py --exe build\x86-debug\bin\futurama.exe --config <ini> --runs 3 --fresh
 python tools\m1_check.py --exe build\x86-debug\bin\futurama.exe --config <ini mit stop_at = main> --runs 10 --xbe orig\retail_eu\default.xbe
+python tools\m3c_check.py --exe build\x86-debug\bin\futurama.exe --config <Basis-ini> --fresh
 ```
+
+Ohne `--config` liest `futurama.exe` seit M3c `%LOCALAPPDATA%\FuturamaPC\futurama.ini` (Benutzerdaten im selben Ordner); liegt `portable.txt` neben `futurama.exe`, stehen Konfiguration und Benutzerdaten im Programmordner. Werkzeug-Modi für den Launcher: `--print-config-schema=`, `--check-iso= --result=`, `--query-gpu=`, `--print-paths=` (`src/INTERFACES.md` 4.21). Für den xemu-Vergleich (`m3_check`) muss die INI die klassischen Werte setzen: `[render] resolution = 640x480`, `render_scale = 1.0`, `msaa = off`, `anisotropy = off`.
 
 ## Port-Strategie (Vorschlag)
 

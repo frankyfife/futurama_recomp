@@ -58,6 +58,7 @@ void HashBlend(Hasher& h, const BlendDesc& d) noexcept {
     h.Add(d.dstAlpha);
     h.Add(d.opAlpha);
     h.Add(d.writeMask);
+    h.Add(d.alphaToCoverage);  // M3c
 }
 
 void HashDepthStencil(Hasher& h, const DepthStencilDesc& d) noexcept {
@@ -80,6 +81,7 @@ void HashRaster(Hasher& h, const RasterDesc& d) noexcept {
     h.Add(d.depthClip);
     h.Add(d.depthBias);
     h.AddFloat(d.slopeScaledDepthBias);
+    h.Add(d.multisample);  // M3c
 }
 
 }  // namespace

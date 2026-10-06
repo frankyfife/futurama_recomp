@@ -231,6 +231,8 @@ TEST_CASE("gfx: settings defaults and test override") {
     CHECK(gfx::GetSettings().frameLimit == 7);
     CHECK(gfx::GetSettings().trapMode == gfx::TrapMode::Log);
     gfx::OverrideSettingsForTest(nullptr);
-    CHECK(gfx::GetSettings().frameRate == 50);  // default (no [render] frame_rate in the test process)
+    // default (no [render] frame_rate in the test process) = [game] tick_rate = 60 since M3b (was 50)
+    CHECK(gfx::GetSettings().frameRate == gfx::GetSettings().tickRate);
+    CHECK(gfx::GetSettings().tickRate == 60);
     CHECK(gfx::GetSettings().trapMode == gfx::TrapMode::Abort);
 }

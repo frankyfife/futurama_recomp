@@ -70,6 +70,8 @@ fut_add_shader(d3d11_diag_texture_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagTexture
 fut_add_shader(d3d11_diag_tint_ps ../rhi/d3d11/d3d11_builtin.hlsl DiagTintPS ps_4_0)
 fut_add_shader(d3d11_present_vs ../rhi/d3d11/d3d11_builtin.hlsl PresentVS vs_4_0)
 fut_add_shader(d3d11_present_ps ../rhi/d3d11/d3d11_builtin.hlsl PresentPS ps_4_0)
+# Renderer agent (M3c): box / Mitchell-Netravali downsample (render_scale, image larger than the window).
+fut_add_shader(d3d11_resample_ps ../rhi/d3d11/d3d11_builtin.hlsl ResamplePS ps_4_0)
 # Phase-1 stubs, kept for the RHI tests (gfx::ff::StubShaderBytecode); moved to ff_stub.hlsl in phase 2.
 fut_add_shader(ff_stub_vs ff_stub.hlsl VSMain vs_4_0)
 fut_add_shader(ff_stub_ps ff_stub.hlsl PSMain ps_4_0)

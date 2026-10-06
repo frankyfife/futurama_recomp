@@ -11,6 +11,7 @@
 #include "d3d11_diag_vs.h"
 #include "d3d11_present_ps.h"
 #include "d3d11_present_vs.h"
+#include "d3d11_resample_ps.h"  // M3c: supersampling downsample / present downscale
 
 #include <algorithm>
 #include <atomic>
@@ -238,21 +239,26 @@ D3D11Device::~D3D11Device() {
         textures_.Clear();
         shaders_.Clear();
         captureStaging_.Reset();
-        depthDsv_.Reset();
-        depthBuffer_.Reset();
-        for (std::uint32_t i = 0; i < kMaxBackBuffers; ++i) {
-            backBufferSrvs_[i].Reset();
-            backBufferRtvs_[i].Reset();
-            backBuffers_[i].Reset();
-        }
+        outputStaging_.Reset();
+        targets_ = Targets{};
         presentVs_.Reset();
         presentPs_.Reset();
+        resamplePs_.Reset();
+        resampleConstants_.Reset();
+        for (GpuTimer& t : gpuTimers_) {
+            t = GpuTimer{};
+        }
         presentPoint_.Reset();
         presentLinear_.Reset();
         presentRaster_.Reset();
         presentDepth_.Reset();
         presentBlend_.Reset();
         swapRtv_.Reset();
+        swapSrgbRtv_.Reset();
+        if (latencyWaitable_ != nullptr) {
+            CloseHandle(latencyWaitable_);  // GetFrameLatencyWaitableObject: the caller closes the handle
+            latencyWaitable_ = nullptr;
+        }
         swapChain_.Reset();
         if (immediate_ != nullptr) {
             immediate_->ClearState();
@@ -288,6 +294,13 @@ bool D3D11Device::Init(const DeviceDesc& desc, std::string* error) noexcept {
             *error = std::string("unsupported depth format ") + GetFormatInfo(desc.depthFormat).name;
             return false;
         }
+        // M3c: output size (0 x 0 = the back buffer size).
+        if ((desc.outputWidth == 0) != (desc.outputHeight == 0) ||
+            desc.outputWidth > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+            desc.outputHeight > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
+            *error = "invalid output size";
+            return false;
+        }
         debugLayer_.requested = desc.debugLayer;
         if (!CreateFactoryAndDevice(desc, error)) {
             return false;
@@ -295,21 +308,32 @@ bool D3D11Device::Init(const DeviceDesc& desc, std::string* error) noexcept {
         SetUpDebugLayer();
         info_.backBufferWidth = desc.width;
         info_.backBufferHeight = desc.height;
-        if (!CreateBackBuffers(desc, error)) {
+        info_.backBufferFormat = desc.backBufferFormat;
+        info_.depthFormat = desc.depthFormat;
+        backBufferCount_ = std::clamp<std::uint32_t>(desc.bufferCount, 1, kMaxBackBuffers);
+        currentBackBuffer_ = 0;
+        // Review M3c finding 3: both supported back buffer formats have an sRGB variant.
+        linearResolve_ = desc.linearResolve;
+        // M3c: the sample count the device supports for the back buffer and depth formats (<= requested).
+        const std::uint32_t samples = SupportedSampleCount(desc.backBufferFormat, desc.depthFormat, desc.sampleCount);
+        if (!CreateTargets(desc.width, desc.height, samples, desc.outputWidth, desc.outputHeight, &targets_, error)) {
             return false;
         }
-        if (desc.nativeWindow != nullptr && (!CreateSwapChain(desc, error) || !CreatePresentPass(error))) {
+        if (!CreatePresentPass(error)) {
             return false;
         }
-        if (!CreateDepthBuffer(desc, error)) {
+        if (desc.nativeWindow != nullptr && !CreateSwapChain(desc, error)) {
             return false;
         }
         info_.backend = Backend::D3D11;
         info_.headless = desc.nativeWindow == nullptr;
         info_.backBufferWidth = desc.width;
         info_.backBufferHeight = desc.height;
-        info_.backBufferFormat = desc.backBufferFormat;
-        info_.depthFormat = desc.depthFormat;
+        info_.sampleCount = targets_.samples;
+        info_.outputWidth = targets_.outputWidth;
+        info_.outputHeight = targets_.outputHeight;
+        info_.linearResolve = linearResolve_;
+        info_.tearingSupported = swapChain_ != nullptr && tearingSupported_;
         context_.Init(immediate_.Get());
         context_.BindDefaultTargets();
 
@@ -341,10 +365,13 @@ bool D3D11Device::Init(const DeviceDesc& desc, std::string* error) noexcept {
             std::snprintf(target, sizeof(target), "swap chain %ux%u, scaling %s", swapWidth_, swapHeight_,
                           PresentScalingName(scaling_));
         }
-        FUT_LOGI(Gfx, "d3d11: device on \"%s\" (%s%s), %s, %u back buffers %ux%u %s, depth %s, debug layer %s",
+        FUT_LOGI(Gfx, "d3d11: device on \"%s\" (%s%s), %s, %u back buffers %ux%u %s (%u sample%s), depth %s, "
+                 "output %ux%u, resolve %s, debug layer %s",
                  info_.adapterName.c_str(), info_.apiVersion.c_str(), info_.softwareAdapter ? ", software" : "",
                  target, backBufferCount_, desc.width, desc.height, GetFormatInfo(desc.backBufferFormat).name,
-                 GetFormatInfo(desc.depthFormat).name, DebugLayerStateName(debugLayer_));
+                 targets_.samples, targets_.samples == 1 ? "" : "s", GetFormatInfo(desc.depthFormat).name,
+                 targets_.outputWidth, targets_.outputHeight, linearResolve_ ? "linear light" : "gamma",
+                 DebugLayerStateName(debugLayer_));
         PumpDebugMessages();
         return true;
     } catch (...) {
@@ -447,7 +474,8 @@ bool D3D11Device::CreateFactoryAndDevice(const DeviceDesc& desc, std::string* er
             info_.adapterName = "?";
             info_.softwareAdapter = desc.softwareAdapter;
         }
-        // Keep the CPU at most two frames ahead of the GPU (the 50 Hz limiter paces anyway).
+        // Keep the CPU at most two frames ahead of the GPU. A swap chain with a frame-latency waitable object
+        // (DeviceDesc::frameLatencyWaitable, M3b pacing) has its own latency instead (CreateSwapChain).
         ComPtr<IDXGIDevice1> dxgiDevice1;
         if (SUCCEEDED(device_.As(&dxgiDevice1))) {
             dxgiDevice1->SetMaximumFrameLatency(2);
@@ -533,7 +561,7 @@ bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) no
         }
         // The swap chain has the window's size: the present pass scales the back buffer into it (review M3
         // finding 11). It is redrawn completely every Present, so FLIP_DISCARD is fine - the persistent back
-        // buffers (CreateBackBuffers) keep the Xbox contents (review M3 findings 2 and 8).
+        // buffers (CreateTargets) keep the Xbox contents (review M3 findings 2 and 8).
         ClientSize(window_, &swapWidth_, &swapHeight_);
         if (swapWidth_ == 0 || swapHeight_ == 0) {
             swapWidth_ = desc.width;
@@ -550,9 +578,17 @@ bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) no
         sd.Scaling = DXGI_SCALING_STRETCH;  // only between a window resize and the next Present
         sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-        sd.Flags = tearingSupported_ ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u;
+        // M3b pacing: frame-latency waitable object (DXGI 1.3, Windows 8.1) when requested. Both flags stay for
+        // the swap chain's lifetime (ResizeBuffers passes swapFlags_).
+        const UINT waitableFlag =
+            desc.frameLatencyWaitable != 0 ? static_cast<UINT>(DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) : 0u;
+        sd.Flags = (tearingSupported_ ? static_cast<UINT>(DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) : 0u) | waitableFlag;
         HRESULT hr = factory_->CreateSwapChainForHwnd(device_.Get(), hwnd, &sd, nullptr, nullptr, &swapChain_);
         const char* effect = "flip discard";
+        if (FAILED(hr) && waitableFlag != 0) {  // no DXGI 1.3: without the waitable object
+            sd.Flags = tearingSupported_ ? static_cast<UINT>(DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) : 0u;
+            hr = factory_->CreateSwapChainForHwnd(device_.Get(), hwnd, &sd, nullptr, nullptr, &swapChain_);
+        }
         if (FAILED(hr)) {  // FLIP_DISCARD needs Windows 10
             sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
             sd.Flags = 0;
@@ -566,19 +602,27 @@ bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) no
             return false;
         }
         swapFlags_ = sd.Flags;
+        if ((sd.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) != 0) {
+            ComPtr<IDXGISwapChain2> chain2;
+            const UINT latency = std::clamp<UINT>(desc.frameLatencyWaitable, 1u, 3u);
+            if (SUCCEEDED(swapChain_.As(&chain2)) && SUCCEEDED(chain2->SetMaximumFrameLatency(latency))) {
+                latencyWaitable_ = chain2->GetFrameLatencyWaitableObject();
+            }
+            if (latencyWaitable_ != nullptr) {
+                info_.frameLatency = latency;
+            }
+        }
         factory_->MakeWindowAssociation(hwnd, DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER);
         ComPtr<ID3D11Texture2D> buffer;
         hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(&buffer));
-        if (SUCCEEDED(hr)) {
-            hr = device_->CreateRenderTargetView(buffer.Get(), nullptr, &swapRtv_);
-        }
-        if (FAILED(hr)) {
-            *error = "swap chain buffer: " + HresultText(hr);
+        if (FAILED(hr) || !CreateSwapViews(buffer.Get())) {
+            *error = "swap chain buffer: " + (FAILED(hr) ? HresultText(hr) : lastError_);
             return false;
         }
-        FUT_LOGD(Gfx, "d3d11: swap chain for window %p: %ux%u, %u buffers, %s, scaling %s, tearing %s",
-                 desc.nativeWindow, sd.Width, sd.Height, sd.BufferCount, effect, PresentScalingName(scaling_),
-                 tearingSupported_ ? "supported" : "no");
+        FUT_LOGD(Gfx, "d3d11: swap chain for window %p: %ux%u, %u buffers, %s, scaling %s, tearing %s, frame-latency "
+                 "waitable %s (maximum latency %u)", desc.nativeWindow, sd.Width, sd.Height, sd.BufferCount, effect,
+                 PresentScalingName(scaling_), tearingSupported_ ? "supported" : "no",
+                 latencyWaitable_ != nullptr ? "yes" : "no", info_.frameLatency);
         return true;
     } catch (...) {
         *error = "out of memory while creating the swap chain";
@@ -586,38 +630,179 @@ bool D3D11Device::CreateSwapChain(const DeviceDesc& desc, std::string* error) no
     }
 }
 
-bool D3D11Device::CreateBackBuffers(const DeviceDesc& desc, std::string* error) noexcept {
+// Render target views of swap chain buffer 0: the plain one and, with linearResolve_, an sRGB one (allowed on the
+// UNORM buffer of a flip-model swap chain) for a downsample in the present pass.
+bool D3D11Device::CreateSwapViews(ID3D11Texture2D* buffer) noexcept {
+    swapRtv_.Reset();
+    swapSrgbRtv_.Reset();
+    HRESULT hr = device_->CreateRenderTargetView(buffer, nullptr, &swapRtv_);
+    if (SUCCEEDED(hr) && linearResolve_) {
+        D3D11_TEXTURE2D_DESC bd{};
+        buffer->GetDesc(&bd);
+        D3D11_RENDER_TARGET_VIEW_DESC rd{};
+        rd.Format = bd.Format == DXGI_FORMAT_R8G8B8A8_UNORM ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+                                                           : DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+        hr = device_->CreateRenderTargetView(buffer, &rd, &swapSrgbRtv_);
+    }
+    if (FAILED(hr)) {
+        swapRtv_.Reset();
+        swapSrgbRtv_.Reset();
+        return Fail("swap chain render target view", hr);
+    }
+    return true;
+}
+
+namespace {
+
+// Review M3c finding 3: the TYPELESS / UNORM / sRGB members of the back buffer format's family.
+struct ColorFormats {
+    DXGI_FORMAT resource, unorm, srgb;
+};
+ColorFormats ColorFormatsOf(DXGI_FORMAT unorm, bool linear) noexcept {
+    if (!linear) {
+        return {unorm, unorm, unorm};
+    }
+    if (unorm == DXGI_FORMAT_R8G8B8A8_UNORM) {
+        return {DXGI_FORMAT_R8G8B8A8_TYPELESS, unorm, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB};
+    }
+    return {DXGI_FORMAT_B8G8R8A8_TYPELESS, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB};
+}
+
+D3D11_SHADER_RESOURCE_VIEW_DESC SrvDesc(DXGI_FORMAT format) noexcept {
+    D3D11_SHADER_RESOURCE_VIEW_DESC d{};
+    d.Format = format;
+    d.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    d.Texture2D.MipLevels = 1;
+    return d;
+}
+
+D3D11_RENDER_TARGET_VIEW_DESC RtvDesc(DXGI_FORMAT format, bool multisampled) noexcept {
+    D3D11_RENDER_TARGET_VIEW_DESC d{};
+    d.Format = format;
+    d.ViewDimension = multisampled ? D3D11_RTV_DIMENSION_TEXTURE2DMS : D3D11_RTV_DIMENSION_TEXTURE2D;
+    return d;
+}
+
+}  // namespace
+
+// M3c: the persistent back buffers (bufferCount, `samples` per pixel), their depth buffer, the resolve texture
+// (samples > 1) and the output image (output size != back buffer size) of one configuration.
+bool D3D11Device::CreateTargets(std::uint32_t width, std::uint32_t height, std::uint32_t samples,
+                                std::uint32_t outputWidth, std::uint32_t outputHeight, Targets* out,
+                                std::string* error) noexcept {
     try {
-        backBufferCount_ = std::clamp<std::uint32_t>(desc.bufferCount, 1, kMaxBackBuffers);
-        currentBackBuffer_ = 0;
+        Targets t;
+        t.width = width;
+        t.height = height;
+        t.samples = samples < 1 ? 1 : samples;
+        t.outputWidth = outputWidth != 0 ? outputWidth : width;
+        t.outputHeight = outputHeight != 0 ? outputHeight : height;
+        const ColorFormats color =
+            ColorFormatsOf(static_cast<DXGI_FORMAT>(DxgiFormatOf(info_.backBufferFormat)), linearResolve_);
+        const D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = RtvDesc(color.unorm, t.samples > 1);
+        const D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = SrvDesc(color.unorm);
+        const D3D11_SHADER_RESOURCE_VIEW_DESC srgbSrvDesc = SrvDesc(color.srgb);
+        const std::uint64_t pixels = static_cast<std::uint64_t>(width) * height;
         D3D11_TEXTURE2D_DESC td{};
-        td.Width = desc.width;
-        td.Height = desc.height;
+        td.Width = width;
+        td.Height = height;
         td.MipLevels = 1;
         td.ArraySize = 1;
-        td.Format = static_cast<DXGI_FORMAT>(DxgiFormatOf(desc.backBufferFormat));
-        td.SampleDesc.Count = 1;
+        td.Format = color.resource;
+        td.SampleDesc.Count = t.samples;
+        td.SampleDesc.Quality = 0;
         td.Usage = D3D11_USAGE_DEFAULT;
-        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        // A multisampled back buffer is never sampled directly: Present resolves it into t.resolve.
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | (t.samples == 1 ? D3D11_BIND_SHADER_RESOURCE : 0u);
         static constexpr float kBlack[4] = {0.0f, 0.0f, 0.0f, 1.0f};
         for (std::uint32_t i = 0; i < backBufferCount_; ++i) {
-            HRESULT hr = device_->CreateTexture2D(&td, nullptr, &backBuffers_[i]);
+            HRESULT hr = device_->CreateTexture2D(&td, nullptr, &t.backBuffers[i]);
             if (SUCCEEDED(hr)) {
-                hr = device_->CreateRenderTargetView(backBuffers_[i].Get(), nullptr, &backBufferRtvs_[i]);
+                hr = device_->CreateRenderTargetView(t.backBuffers[i].Get(), &rtvDesc, &t.backBufferRtvs[i]);
             }
-            if (SUCCEEDED(hr)) {
-                hr = device_->CreateShaderResourceView(backBuffers_[i].Get(), nullptr, &backBufferSrvs_[i]);
+            if (SUCCEEDED(hr) && t.samples == 1) {
+                hr = device_->CreateShaderResourceView(t.backBuffers[i].Get(), &srvDesc, &t.backBufferSrvs[i]);
+            }
+            if (SUCCEEDED(hr) && t.samples == 1 && linearResolve_) {
+                hr = device_->CreateShaderResourceView(t.backBuffers[i].Get(), &srgbSrvDesc,
+                                                       &t.backBufferSrgbSrvs[i]);
             }
             if (FAILED(hr)) {
-                *error = "back buffer: " + HresultText(hr);
+                *error = "back buffer " + std::to_string(width) + "x" + std::to_string(height) + " (" +
+                         std::to_string(t.samples) + " samples): " + HresultText(hr);
                 return false;
             }
-            char name[32];
+            char name[48];
             std::snprintf(name, sizeof(name), "rhi back buffer %u", i);
-            SetName(backBuffers_[i].Get(), name);
+            SetName(t.backBuffers[i].Get(), name);
             // Defined start contents (black; the game clears every buffer itself, FUN_0002A660).
-            immediate_->ClearRenderTargetView(backBufferRtvs_[i].Get(), kBlack);
+            immediate_->ClearRenderTargetView(t.backBufferRtvs[i].Get(), kBlack);
+            t.bytes += pixels * 4 * t.samples;
         }
+        if (info_.depthFormat != Format::Unknown) {
+            D3D11_TEXTURE2D_DESC dd = td;
+            dd.Format = TextureFormatsOf(info_.depthFormat, kTextureDepthStencil).dsv;
+            dd.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+            HRESULT hr = device_->CreateTexture2D(&dd, nullptr, &t.depth);
+            if (SUCCEEDED(hr)) {
+                hr = device_->CreateDepthStencilView(t.depth.Get(), nullptr, &t.depthDsv);
+            }
+            if (FAILED(hr)) {
+                *error = "depth buffer: " + HresultText(hr);
+                return false;
+            }
+            SetName(t.depth.Get(), "rhi back buffer depth");
+            t.bytes += pixels * 4 * t.samples;
+        }
+        if (t.samples > 1) {
+            D3D11_TEXTURE2D_DESC rd = td;
+            rd.SampleDesc.Count = 1;
+            rd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            HRESULT hr = device_->CreateTexture2D(&rd, nullptr, &t.resolve);
+            if (SUCCEEDED(hr)) {
+                hr = device_->CreateShaderResourceView(t.resolve.Get(), &srvDesc, &t.resolveSrv);
+            }
+            if (SUCCEEDED(hr) && linearResolve_) {
+                hr = device_->CreateShaderResourceView(t.resolve.Get(), &srgbSrvDesc, &t.resolveSrgbSrv);
+            }
+            if (FAILED(hr)) {
+                *error = "resolve texture: " + HresultText(hr);
+                return false;
+            }
+            SetName(t.resolve.Get(), "rhi resolved back buffer");
+            t.bytes += pixels * 4;
+        }
+        if (t.outputWidth != width || t.outputHeight != height) {
+            D3D11_TEXTURE2D_DESC od = td;
+            od.Width = t.outputWidth;
+            od.Height = t.outputHeight;
+            od.SampleDesc.Count = 1;
+            od.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+            HRESULT hr = device_->CreateTexture2D(&od, nullptr, &t.output);
+            const D3D11_RENDER_TARGET_VIEW_DESC outRtv = RtvDesc(color.unorm, false);
+            if (SUCCEEDED(hr)) {
+                hr = device_->CreateRenderTargetView(t.output.Get(), &outRtv, &t.outputRtv);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = device_->CreateShaderResourceView(t.output.Get(), &srvDesc, &t.outputSrv);
+            }
+            if (SUCCEEDED(hr) && linearResolve_) {
+                const D3D11_RENDER_TARGET_VIEW_DESC srgbRtv = RtvDesc(color.srgb, false);
+                hr = device_->CreateRenderTargetView(t.output.Get(), &srgbRtv, &t.outputSrgbRtv);
+                if (SUCCEEDED(hr)) {
+                    hr = device_->CreateShaderResourceView(t.output.Get(), &srgbSrvDesc, &t.outputSrgbSrv);
+                }
+            }
+            if (FAILED(hr)) {
+                *error = "output image: " + HresultText(hr);
+                return false;
+            }
+            SetName(t.output.Get(), "rhi output image");
+            immediate_->ClearRenderTargetView(t.outputRtv.Get(), kBlack);
+            t.bytes += static_cast<std::uint64_t>(t.outputWidth) * t.outputHeight * 4;
+        }
+        *out = std::move(t);
         return true;
     } catch (...) {
         *error = "out of memory";
@@ -630,6 +815,19 @@ bool D3D11Device::CreatePresentPass(std::string* error) noexcept {
         HRESULT hr = device_->CreateVertexShader(g_d3d11_present_vs, sizeof(g_d3d11_present_vs), nullptr, &presentVs_);
         if (SUCCEEDED(hr)) {
             hr = device_->CreatePixelShader(g_d3d11_present_ps, sizeof(g_d3d11_present_ps), nullptr, &presentPs_);
+        }
+        if (SUCCEEDED(hr)) {  // M3c: downsample pass (ResamplePS + its constants, d3d11_builtin.hlsl)
+            hr = device_->CreatePixelShader(g_d3d11_resample_ps, sizeof(g_d3d11_resample_ps), nullptr, &resamplePs_);
+        }
+        if (SUCCEEDED(hr)) {
+            D3D11_BUFFER_DESC bd{};
+            bd.ByteWidth = 48;  // 3 x float4 (ResampleConstants)
+            bd.Usage = D3D11_USAGE_DEFAULT;
+            bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+            hr = device_->CreateBuffer(&bd, nullptr, &resampleConstants_);
+            if (SUCCEEDED(hr)) {
+                SetName(resampleConstants_.Get(), "rhi resample constants");
+            }
         }
         for (int linear = 0; linear < 2 && SUCCEEDED(hr); ++linear) {
             D3D11_SAMPLER_DESC sd{};
@@ -691,6 +889,7 @@ bool D3D11Device::UpdateSwapChainSize() noexcept {
     }
     immediate_->OMSetRenderTargets(0, nullptr, nullptr);
     swapRtv_.Reset();
+    swapSrgbRtv_.Reset();
     const HRESULT hr = swapChain_->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, swapFlags_);
     if (FAILED(hr)) {
         Fail("IDXGISwapChain::ResizeBuffers", hr);  // keeps the old size and buffers
@@ -700,12 +899,12 @@ bool D3D11Device::UpdateSwapChainSize() noexcept {
         ++swapResizes_;
     }
     ComPtr<ID3D11Texture2D> buffer;
-    HRESULT hr2 = swapChain_->GetBuffer(0, IID_PPV_ARGS(&buffer));
-    if (SUCCEEDED(hr2)) {
-        hr2 = device_->CreateRenderTargetView(buffer.Get(), nullptr, &swapRtv_);
-    }
+    const HRESULT hr2 = swapChain_->GetBuffer(0, IID_PPV_ARGS(&buffer));
     if (FAILED(hr2)) {
         return Fail("swap chain buffer after ResizeBuffers", hr2);
+    }
+    if (!CreateSwapViews(buffer.Get())) {
+        return false;
     }
     FUT_LOGD(Gfx, "d3d11: swap chain resized to %ux%u (scaling %s)", swapWidth_, swapHeight_,
              PresentScalingName(scaling_));
@@ -740,18 +939,68 @@ D3D11_VIEWPORT PresentRect(PresentScaling scaling, std::uint32_t srcW, std::uint
 
 }  // namespace
 
-// The current back buffer -> swap chain buffer 0 (black borders, scaling_). Leaves the immediate context with
-// the present pass state; D3D11Context::OnPresent restores the context's own bindings afterwards.
-void D3D11Device::DrawPresentPass() noexcept {
-    if (swapRtv_ == nullptr) {
+// M3c: the picture of persistent back buffer `buffer` of `t` at the internal size as a shader resource: the
+// buffer itself (single-sampled) or, multisampled, resolved into t.resolve (box average of the samples; with
+// linearResolve_ an sRGB resolve, i.e. the average of linear light). `srgb`: the sRGB view of it.
+ID3D11ShaderResourceView* D3D11Device::ResolvedPicture(const Targets& t, std::uint32_t buffer, bool srgb) noexcept {
+    if (buffer >= backBufferCount_ || t.backBuffers[buffer] == nullptr) {
+        return nullptr;
+    }
+    srgb = srgb && linearResolve_;
+    if (t.samples <= 1) {
+        return srgb ? t.backBufferSrgbSrvs[buffer].Get() : t.backBufferSrvs[buffer].Get();
+    }
+    const ColorFormats color =
+        ColorFormatsOf(static_cast<DXGI_FORMAT>(DxgiFormatOf(info_.backBufferFormat)), linearResolve_);
+    immediate_->ResolveSubresource(t.resolve.Get(), 0, t.backBuffers[buffer].Get(), 0, color.srgb);
+    return srgb ? t.resolveSrgbSrv.Get() : t.resolveSrv.Get();
+}
+
+// M3c: the image Present shows for the current back buffer: resolved, then (output size != back buffer size)
+// downsampled into targets_.output - exact box filter for an integer ratio (render_scale 2), Catmull-Rom with
+// anti-ringing for a fractional one. With linearResolve_ the downsample reads and writes sRGB views (linear light);
+// `srgb` receives the sRGB view of the image (nullptr without linearResolve_).
+ID3D11ShaderResourceView* D3D11Device::PrepareOutput(ID3D11ShaderResourceView** srgb) noexcept {
+    if (srgb != nullptr) {
+        *srgb = nullptr;
+    }
+    ID3D11ShaderResourceView* picture = ResolvedPicture(targets_, currentBackBuffer_);
+    if (picture == nullptr || targets_.output == nullptr) {
+        if (srgb != nullptr && picture != nullptr && linearResolve_) {
+            *srgb = targets_.samples > 1 ? targets_.resolveSrgbSrv.Get()
+                                         : targets_.backBufferSrgbSrvs[currentBackBuffer_].Get();
+        }
+        return picture;
+    }
+    D3D11_VIEWPORT v{};
+    v.Width = static_cast<float>(targets_.outputWidth);
+    v.Height = static_cast<float>(targets_.outputHeight);
+    v.MaxDepth = 1.0f;
+    if (linearResolve_) {
+        ID3D11ShaderResourceView* linear = targets_.samples > 1
+                                               ? targets_.resolveSrgbSrv.Get()
+                                               : targets_.backBufferSrgbSrvs[currentBackBuffer_].Get();
+        DrawBlit(linear, targets_.width, targets_.height, targets_.outputSrgbRtv.Get(), v, BlitFilter::Resample);
+        if (srgb != nullptr) {
+            *srgb = targets_.outputSrgbSrv.Get();
+        }
+    } else {
+        DrawBlit(picture, targets_.width, targets_.height, targets_.outputRtv.Get(), v, BlitFilter::Resample);
+    }
+    return targets_.outputSrv.Get();
+}
+
+void D3D11Device::DrawBlit(ID3D11ShaderResourceView* source, std::uint32_t srcW, std::uint32_t srcH,
+                           ID3D11RenderTargetView* target, const D3D11_VIEWPORT& v, BlitFilter filter) noexcept {
+    if (source == nullptr || target == nullptr || presentVs_ == nullptr || !(v.Width > 0.0f) || !(v.Height > 0.0f)) {
         return;
     }
-    static constexpr float kBlack[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    ID3D11RenderTargetView* rtv = swapRtv_.Get();
-    immediate_->OMSetRenderTargets(1, &rtv, nullptr);  // unbinds the back buffer before it is sampled
-    immediate_->ClearRenderTargetView(rtv, kBlack);
-    const D3D11_VIEWPORT v = PresentRect(scaling_, info_.backBufferWidth, info_.backBufferHeight, swapWidth_,
-                                         swapHeight_);
+    const auto dstW = static_cast<std::uint32_t>(v.Width);
+    const auto dstH = static_cast<std::uint32_t>(v.Height);
+    if (filter == BlitFilter::Resample && dstW >= srcW && dstH >= srcH) {
+        filter = BlitFilter::Linear;  // nothing to shrink: a plain (bilinear) stretch
+    }
+    immediate_->OMSetRenderTargets(1, &target, nullptr);  // unbinds a back buffer before it is sampled
     immediate_->RSSetViewports(1, &v);
     immediate_->RSSetState(presentRaster_.Get());
     immediate_->OMSetBlendState(presentBlend_.Get(), nullptr, 0xFFFFFFFFu);
@@ -759,44 +1008,69 @@ void D3D11Device::DrawPresentPass() noexcept {
     immediate_->IASetInputLayout(nullptr);
     immediate_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     immediate_->VSSetShader(presentVs_.Get(), nullptr, 0);
-    immediate_->PSSetShader(presentPs_.Get(), nullptr, 0);
-    ID3D11ShaderResourceView* srv = backBufferSrvs_[currentBackBuffer_].Get();
-    immediate_->PSSetShaderResources(0, 1, &srv);
-    ID3D11SamplerState* sampler = scaling_ == PresentScaling::Linear ? presentLinear_.Get() : presentPoint_.Get();
-    immediate_->PSSetSamplers(0, 1, &sampler);
+    immediate_->PSSetShaderResources(0, 1, &source);
+    ComPtr<ID3D11Buffer> savedConstants;
+    if (filter == BlitFilter::Resample) {
+        // ResampleConstants (d3d11_builtin.hlsl): source size, source pixels per destination pixel + mode,
+        // destination origin. Box only when both ratios are whole numbers (each destination pixel = k x k
+        // source pixels exactly).
+        const bool box = dstW != 0 && dstH != 0 && srcW % dstW == 0 && srcH % dstH == 0 &&
+                         static_cast<float>(dstW) == v.Width && static_cast<float>(dstH) == v.Height;
+        const float constants[12] = {static_cast<float>(srcW), static_cast<float>(srcH), 0.0f, 0.0f,
+                                     static_cast<float>(srcW) / v.Width, static_cast<float>(srcH) / v.Height,
+                                     box ? 0.0f : 1.0f, 0.0f,
+                                     v.TopLeftX, v.TopLeftY, 0.0f, 0.0f};
+        immediate_->UpdateSubresource(resampleConstants_.Get(), 0, nullptr, constants, 0, 0);
+        immediate_->PSGetConstantBuffers(0, 1, savedConstants.ReleaseAndGetAddressOf());
+        ID3D11Buffer* cb = resampleConstants_.Get();
+        immediate_->PSSetConstantBuffers(0, 1, &cb);
+        immediate_->PSSetShader(resamplePs_.Get(), nullptr, 0);
+    } else {
+        immediate_->PSSetShader(presentPs_.Get(), nullptr, 0);
+        ID3D11SamplerState* sampler = filter == BlitFilter::Linear ? presentLinear_.Get() : presentPoint_.Get();
+        immediate_->PSSetSamplers(0, 1, &sampler);
+    }
     immediate_->Draw(3, 0);
     ID3D11ShaderResourceView* none = nullptr;
-    immediate_->PSSetShaderResources(0, 1, &none);  // the next back buffer becomes a render target
+    immediate_->PSSetShaderResources(0, 1, &none);  // the source may become a render target again
+    if (filter == BlitFilter::Resample) {
+        ID3D11Buffer* cb = savedConstants.Get();
+        immediate_->PSSetConstantBuffers(0, 1, &cb);
+    }
 }
 
-bool D3D11Device::CreateDepthBuffer(const DeviceDesc& desc, std::string* error) noexcept {
-    if (desc.depthFormat == Format::Unknown) {
-        return true;
+// The output image -> swap chain buffer 0 (black borders, scaling_). Leaves the immediate context with the
+// present pass state; D3D11Context::OnPresent restores the context's own bindings afterwards. M3c: an image
+// of exactly the destination size is copied 1:1 (point); a larger one is downsampled (box / Catmull-Rom, on
+// linear light with linearResolve_) instead of bilinear taps; a smaller one is scaled with [render] scaling as
+// in M3.
+void D3D11Device::DrawPresentPass() noexcept {
+    if (swapRtv_ == nullptr) {
+        return;
     }
-    try {
-        D3D11_TEXTURE2D_DESC td{};
-        td.Width = desc.width;
-        td.Height = desc.height;
-        td.MipLevels = 1;
-        td.ArraySize = 1;
-        td.Format = TextureFormatsOf(desc.depthFormat, kTextureDepthStencil).dsv;
-        td.SampleDesc.Count = 1;
-        td.Usage = D3D11_USAGE_DEFAULT;
-        td.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-        HRESULT hr = device_->CreateTexture2D(&td, nullptr, &depthBuffer_);
-        if (SUCCEEDED(hr)) {
-            hr = device_->CreateDepthStencilView(depthBuffer_.Get(), nullptr, &depthDsv_);
-        }
-        if (FAILED(hr)) {
-            *error = "depth buffer: " + HresultText(hr);
-            return false;
-        }
-        SetName(depthBuffer_.Get(), "rhi back buffer depth");
-        return true;
-    } catch (...) {
-        *error = "out of memory";
-        return false;
+    ID3D11ShaderResourceView* imageSrgb = nullptr;
+    ID3D11ShaderResourceView* image = PrepareOutput(&imageSrgb);
+    static constexpr float kBlack[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    ID3D11RenderTargetView* rtv = swapRtv_.Get();
+    immediate_->OMSetRenderTargets(1, &rtv, nullptr);
+    immediate_->ClearRenderTargetView(rtv, kBlack);
+    if (image == nullptr) {
+        return;
     }
+    const std::uint32_t w = targets_.outputWidth;
+    const std::uint32_t h = targets_.outputHeight;
+    const D3D11_VIEWPORT v = PresentRect(scaling_, w, h, swapWidth_, swapHeight_);
+    BlitFilter filter = scaling_ == PresentScaling::Linear ? BlitFilter::Linear : BlitFilter::Point;
+    if (v.Width == static_cast<float>(w) && v.Height == static_cast<float>(h)) {
+        filter = BlitFilter::Point;  // 1:1
+    } else if (v.Width < static_cast<float>(w) || v.Height < static_cast<float>(h)) {
+        filter = BlitFilter::Resample;  // the image is larger than the window
+        if (imageSrgb != nullptr && swapSrgbRtv_ != nullptr) {
+            DrawBlit(imageSrgb, w, h, swapSrgbRtv_.Get(), v, filter);
+            return;
+        }
+    }
+    DrawBlit(image, w, h, rtv, v, filter);
 }
 
 void D3D11Device::SetName(ID3D11DeviceChild* object, const char* name) noexcept {
@@ -1418,23 +1692,156 @@ PresentResult D3D11Device::Present(const PresentDesc& desc) noexcept {
     ++stats_.presents;
     PresentResult result = PresentResult::Ok;
     context_.EndTransient();
-    if (swapChain_ != nullptr) {
-        Global().presentThread.store(GetCurrentThreadId());
+    const bool toSwapChain = swapChain_ != nullptr && !desc.skipSwapChain;
+    if (toSwapChain) {
         UpdateSwapChainSize();
         DrawPresentPass();
-        const UINT sync = desc.syncInterval > 4 ? 4u : desc.syncInterval;
-        const UINT flags = sync == 0 && tearingSupported_ ? DXGI_PRESENT_ALLOW_TEARING : 0u;
-        const HRESULT hr = swapChain_->Present(sync, flags);
-        result = PresentResultFromHresult(hr);
-        if (result == PresentResult::DeviceLost || result == PresentResult::Failed) {
-            Fail("IDXGISwapChain::Present", hr);
+    }
+    EndGpuFrame();  // M3c: GPU frame timing (DeviceStats::gpuFrame*)
+    if (!toSwapChain) {
+        // M3c: nothing else submits the frame when the swap chain is skipped (minimized, display off, headless):
+        // without it the GPU work (and the timer queries) waited for the driver's next implicit flush.
+        immediate_->Flush();
+    }
+    if (swapChain_ != nullptr) {
+        Global().presentThread.store(GetCurrentThreadId());
+        HRESULT hr = S_OK;
+        if (toSwapChain) {
+            const UINT sync = desc.syncInterval > 4 ? 4u : desc.syncInterval;
+            // M3b: tearing only on request (PresentDesc::allowTearing); DXGI allows it with sync interval 0 only.
+            const UINT flags = sync == 0 && desc.allowTearing && tearingSupported_ ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+            hr = swapChain_->Present(sync, flags);
+            result = PresentResultFromHresult(hr);
+            if (result == PresentResult::DeviceLost || result == PresentResult::Failed) {
+                Fail("IDXGISwapChain::Present", hr);
+            }
         }
+        UpdatePresentTiming(!desc.skipSwapChain && SUCCEEDED(hr), hr);
     }
     // The next persistent back buffer: it still holds the picture of backBufferCount_ presents ago.
     currentBackBuffer_ = (currentBackBuffer_ + 1) % backBufferCount_;
     context_.OnPresent();
+    CollectGpuFrames(false);  // the next frame's timer starts at its first clear or draw (NoteGpuWork)
     PumpDebugMessages();
     return result;
+}
+
+// ---- M3c: GPU frame timing --------------------------------------------------------------------------------------
+
+void D3D11Device::BeginGpuFrame() noexcept {
+    if (gpuTimerOpen_) {
+        return;
+    }
+    GpuTimer& t = gpuTimers_[gpuTimer_];
+    if (t.pending) {
+        // Still not read back after kGpuTimers frames: wait for it (a query must not be restarted before its
+        // results were obtained - debug-layer warning #408).
+        ReadGpuTimer(t, true);
+    }
+    if (t.disjoint == nullptr) {
+        D3D11_QUERY_DESC qd{};
+        qd.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+        if (FAILED(device_->CreateQuery(&qd, &t.disjoint))) {
+            return;
+        }
+        qd.Query = D3D11_QUERY_TIMESTAMP;
+        if (FAILED(device_->CreateQuery(&qd, &t.begin)) || FAILED(device_->CreateQuery(&qd, &t.end))) {
+            t.disjoint.Reset();
+            t.begin.Reset();
+            return;
+        }
+    }
+    immediate_->Begin(t.disjoint.Get());
+    immediate_->End(t.begin.Get());
+    gpuTimerOpen_ = true;
+}
+
+void D3D11Device::EndGpuFrame() noexcept {
+    if (!gpuTimerOpen_) {
+        return;
+    }
+    GpuTimer& t = gpuTimers_[gpuTimer_];
+    immediate_->End(t.end.Get());
+    immediate_->End(t.disjoint.Get());
+    t.pending = true;
+    gpuTimerOpen_ = false;
+    gpuTimer_ = (gpuTimer_ + 1) % kGpuTimers;
+}
+
+// One frame's queries: true when they were read (or turned out unusable), false if not finished yet. `wait`
+// flushes and waits (at most ~250 ms, then the frame is dropped).
+bool D3D11Device::ReadGpuTimer(GpuTimer& t, bool wait) noexcept {
+    try {
+        if (!t.pending) {
+            return true;
+        }
+        if (gpuHistogram_.empty()) {
+            gpuHistogram_.assign(1001, 0);  // 0.1 ms bins, 1000 = 100 ms and more
+        }
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
+        const UINT flags = wait ? 0u : static_cast<UINT>(D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        HRESULT hr = immediate_->GetData(t.disjoint.Get(), &disjoint, sizeof(disjoint), flags);
+        if (wait && hr == S_FALSE) {
+            const ULONGLONG deadline = GetTickCount64() + 250;
+            while (hr == S_FALSE && GetTickCount64() < deadline) {
+                SwitchToThread();
+                hr = immediate_->GetData(t.disjoint.Get(), &disjoint, sizeof(disjoint), 0);
+            }
+        }
+        if (hr == S_FALSE && !wait) {
+            return false;
+        }
+        UINT64 begin = 0, end = 0;
+        const bool ok = hr == S_OK && immediate_->GetData(t.begin.Get(), &begin, sizeof(begin), 0) == S_OK &&
+                        immediate_->GetData(t.end.Get(), &end, sizeof(end), 0) == S_OK;
+        t.pending = false;
+        if (!ok || disjoint.Disjoint || disjoint.Frequency == 0 || end < begin) {
+            return true;
+        }
+        const double ms = static_cast<double>(end - begin) * 1000.0 / static_cast<double>(disjoint.Frequency);
+        ++gpuFrames_;
+        gpuMsTotal_ += ms;
+        gpuMsMax_ = std::max(gpuMsMax_, ms);
+        ++gpuHistogram_[std::min<std::size_t>(static_cast<std::size_t>(ms * 10.0), gpuHistogram_.size() - 1)];
+        return true;
+    } catch (...) {
+        t.pending = false;
+        return true;
+    }
+}
+
+void D3D11Device::CollectGpuFrames(bool wait) noexcept {
+    for (std::uint32_t k = 0; k < kGpuTimers; ++k) {  // oldest first (gpuTimer_ = the next slot to record)
+        GpuTimer& t = gpuTimers_[(gpuTimer_ + k) % kGpuTimers];
+        if (!ReadGpuTimer(t, wait)) {
+            break;  // the later ones are not ready either
+        }
+    }
+}
+
+// M3b pacing: present id and DXGI frame statistics after Present (also after a skipped one: earlier presents
+// keep becoming visible). GetFrameStatistics fails with DXGI_ERROR_FRAME_STATISTICS_DISJOINT on the first call
+// and while the statistics are interrupted (mode change, occlusion); that is reported, not logged.
+void D3D11Device::UpdatePresentTiming(bool presented, HRESULT hr) noexcept {
+    PresentTiming t;
+    t.swapChainPresented = presented;
+    t.occluded = hr == DXGI_STATUS_OCCLUDED;
+    UINT count = 0;
+    if (SUCCEEDED(swapChain_->GetLastPresentCount(&count))) {
+        t.presentId = count;
+    }
+    DXGI_FRAME_STATISTICS fs{};
+    const HRESULT shr = swapChain_->GetFrameStatistics(&fs);
+    if (SUCCEEDED(shr)) {
+        t.statsValid = true;
+        t.statPresentCount = fs.PresentCount;
+        t.statPresentRefreshCount = fs.PresentRefreshCount;
+        t.statSyncRefreshCount = fs.SyncRefreshCount;
+        t.statSyncQpc = fs.SyncQPCTime.QuadPart;
+    } else {
+        t.statsError = static_cast<long>(shr);
+    }
+    lastTiming_ = t;
 }
 
 bool D3D11Device::CopyToImage(ID3D11Texture2D* source, std::uint32_t level, Format format, std::uint32_t width,
@@ -1499,12 +1906,111 @@ bool D3D11Device::CopyToImage(ID3D11Texture2D* source, std::uint32_t level, Form
 }
 
 bool D3D11Device::CaptureBackBuffer(Image& out) noexcept {
-    ID3D11Texture2D* current = backBuffers_[currentBackBuffer_].Get();
+    ID3D11Texture2D* current = targets_.backBuffers[currentBackBuffer_].Get();
     if (current == nullptr) {
         return FailText("CaptureBackBuffer: no back buffer");
     }
-    return CopyToImage(current, 0, info_.backBufferFormat, info_.backBufferWidth, info_.backBufferHeight,
-                       &captureStaging_, out);
+    if (targets_.samples > 1) {  // M3c: the resolved picture (a copy needs a single-sampled source)
+        ResolvedPicture(targets_, currentBackBuffer_);
+        current = targets_.resolve.Get();
+    }
+    return CopyToImage(current, 0, info_.backBufferFormat, targets_.width, targets_.height, &captureStaging_, out);
+}
+
+bool D3D11Device::CaptureOutput(Image& out) noexcept {
+    if (targets_.output == nullptr) {
+        return CaptureBackBuffer(out);  // output = back buffer size
+    }
+    ID3D11ShaderResourceView* image = PrepareOutput();
+    context_.RestoreBindings();  // the downsample pass replaced targets, shaders and states mid-frame
+    if (image == nullptr) {
+        return FailText("CaptureOutput: no output image");
+    }
+    return CopyToImage(targets_.output.Get(), 0, info_.backBufferFormat, targets_.outputWidth, targets_.outputHeight,
+                       &outputStaging_, out);
+}
+
+std::uint32_t D3D11Device::SupportedSampleCount(Format color, Format depth, std::uint32_t requested) const noexcept {
+    if (device_ == nullptr || requested <= 1) {
+        return 1;
+    }
+    std::uint32_t n = 1;
+    while (n * 2 <= requested && n * 2 <= D3D11_MAX_MULTISAMPLE_SAMPLE_COUNT) {
+        n *= 2;
+    }
+    const DXGI_FORMAT c = TextureFormatsOf(color, kTextureRenderTarget).rtv;
+    const DXGI_FORMAT d = depth != Format::Unknown ? TextureFormatsOf(depth, kTextureDepthStencil).dsv
+                                                   : DXGI_FORMAT_UNKNOWN;
+    for (; n > 1; n /= 2) {
+        UINT levels = 0;
+        if (c == DXGI_FORMAT_UNKNOWN || FAILED(device_->CheckMultisampleQualityLevels(c, n, &levels)) || levels == 0) {
+            continue;
+        }
+        if (d != DXGI_FORMAT_UNKNOWN &&
+            (FAILED(device_->CheckMultisampleQualityLevels(d, n, &levels)) || levels == 0)) {
+            continue;
+        }
+        return n;
+    }
+    return 1;
+}
+
+// M3c: new back-buffer configuration (window resize with [render] resolution = auto). The pictures of the
+// persistent back buffers are carried over (resolved, then stretched or downsampled into the new buffers;
+// a multisampled destination gets the color in every sample), so frames without draws keep showing the
+// picture of `bufferCount` presents ago; the depth buffer starts at 1.0 / stencil 0.
+bool D3D11Device::ResizeBackBuffers(std::uint32_t width, std::uint32_t height, std::uint32_t sampleCount,
+                                    std::uint32_t outputWidth, std::uint32_t outputHeight) noexcept {
+    try {
+        if (width == 0 || height == 0 || width > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+            height > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION || (outputWidth == 0) != (outputHeight == 0) ||
+            outputWidth > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION || outputHeight > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
+            return FailText("ResizeBackBuffers: invalid size");
+        }
+        const std::uint32_t samples = SupportedSampleCount(info_.backBufferFormat, info_.depthFormat, sampleCount);
+        const std::uint32_t outW = outputWidth != 0 ? outputWidth : width;
+        const std::uint32_t outH = outputHeight != 0 ? outputHeight : height;
+        if (width == targets_.width && height == targets_.height && samples == targets_.samples &&
+            outW == targets_.outputWidth && outH == targets_.outputHeight) {
+            return true;
+        }
+        context_.EndTransient();
+        Targets next;
+        std::string error;
+        if (!CreateTargets(width, height, samples, outputWidth, outputHeight, &next, &error)) {
+            return FailText(("ResizeBackBuffers: " + error).c_str());
+        }
+        D3D11_VIEWPORT v{};
+        v.Width = static_cast<float>(width);
+        v.Height = static_cast<float>(height);
+        v.MaxDepth = 1.0f;
+        for (std::uint32_t i = 0; i < backBufferCount_; ++i) {
+            ID3D11ShaderResourceView* old = ResolvedPicture(targets_, i);
+            DrawBlit(old, targets_.width, targets_.height, next.backBufferRtvs[i].Get(), v, BlitFilter::Resample);
+        }
+        if (next.depthDsv != nullptr) {
+            immediate_->ClearDepthStencilView(next.depthDsv.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+        }
+        immediate_->OMSetRenderTargets(0, nullptr, nullptr);
+        const std::uint32_t oldW = targets_.width, oldH = targets_.height, oldSamples = targets_.samples;
+        targets_ = std::move(next);
+        captureStaging_.Reset();
+        outputStaging_.Reset();
+        info_.backBufferWidth = width;
+        info_.backBufferHeight = height;
+        info_.sampleCount = targets_.samples;
+        info_.outputWidth = targets_.outputWidth;
+        info_.outputHeight = targets_.outputHeight;
+        ++backBufferResizes_;
+        context_.OnBackBuffersChanged();
+        FUT_LOGI(Gfx, "d3d11: back buffers resized from %ux%u (%u samples) to %ux%u (%u samples), output %ux%u, "
+                 "%llu MiB", oldW, oldH, oldSamples, width, height, targets_.samples, targets_.outputWidth,
+                 targets_.outputHeight, static_cast<unsigned long long>(targets_.bytes >> 20));
+        PumpDebugMessages();
+        return true;
+    } catch (...) {
+        return FailText("ResizeBackBuffers: out of memory");
+    }
 }
 
 bool D3D11Device::ReadTexture(TextureHandle texture, std::uint32_t level, Image& out) noexcept {
@@ -1517,6 +2023,21 @@ bool D3D11Device::ReadTexture(TextureHandle texture, std::uint32_t level, Image&
 
 DeviceStats D3D11Device::Stats() const noexcept {
     DeviceStats s = stats_;
+    // M3c: GPU frame times (CollectGpuFrames).
+    s.gpuFramesTimed = gpuFrames_;
+    if (gpuFrames_ != 0) {
+        s.gpuFrameMsAverage = gpuMsTotal_ / static_cast<double>(gpuFrames_);
+        s.gpuFrameMsMax = gpuMsMax_;
+        const std::uint64_t rank = (gpuFrames_ * 99 + 99) / 100;  // nearest-rank 99th percentile
+        std::uint64_t seen = 0;
+        for (std::size_t bin = 0; bin < gpuHistogram_.size(); ++bin) {
+            seen += gpuHistogram_[bin];
+            if (seen >= rank) {
+                s.gpuFrameMsP99 = std::min(static_cast<double>(bin + 1) / 10.0, gpuMsMax_);
+                break;
+            }
+        }
+    }
     s.pipelines = static_cast<std::uint32_t>(pipelines_.size());
     s.samplers = static_cast<std::uint32_t>(samplers_.size());
     s.buffers = buffers_.Live();

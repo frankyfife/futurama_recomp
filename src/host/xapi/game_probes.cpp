@@ -25,6 +25,7 @@
 #include "core/host_main.h"
 #include "core/log.h"
 #include "core/trace.h"
+#include "xapi/game_timing.h"
 
 #include <intrin.h>
 
@@ -298,6 +299,8 @@ std::uint32_t __fastcall GameInitProbe(std::uint32_t self, std::uint32_t /*edx*/
                             : "?",
             static_cast<double>(fps), static_cast<double>(dt),
             GuestString(guest::kGameMovieTagVar, 8).c_str());
+        // (M3b) read-back of all time base globals against [game] tick_rate (xapi/game_timing.h).
+        NoteGameInitTiming(self);
         const guest::GuestAddr strings = ReadU32(guest::kGameStringManagerPtr);
         const std::string language =
             strings != 0 ? GuestString(ReadU32(strings + guest::kStringManagerLanguageOffset), 32)

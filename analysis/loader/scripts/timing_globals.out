@@ -1,0 +1,98 @@
+== 1. code references per global (W write, R read, A address pushed)
+  0x2D6744 fps                code   3 {'W': 2, 'R': 1}       raw hits   3 (non-code: [])
+      W 000A275E  d91d44672d00           fstp    dword ptr [0x2d6744]                     FUN_000a26a0
+      W 000A2D7E  d91d44672d00           fstp    dword ptr [0x2d6744]                     FUN_000a2c20
+      R 000E4AA0  d90544672d00           fld     dword ptr [0x2d6744]                     FUN_000e4aa0
+  0x2D6748 dt                 code 280 {'R': 276, 'W': 4}     raw hits 280 (non-code: [])
+  0x2D674C fixed-step flag    code   2 {'W': 1, 'R': 1}       raw hits   2 (non-code: [])
+      W 000A2754  881d4c672d00           mov     byte ptr [0x2d674c], bl                  FUN_000a26a0
+      R 000A2D23  381d4c672d00           cmp     byte ptr [0x2d674c], bl                  FUN_000a2c20
+  0x2E7A58 dt clamp min       code   3 {'W': 1, 'R': 2}       raw hits   3 (non-code: [])
+      W 000A274E  d915587a2e00           fst     dword ptr [0x2e7a58]                     FUN_000a26a0
+      R 000A2D59  d81d587a2e00           fcomp   dword ptr [0x2e7a58]                     FUN_000a2c20
+      R 000A2D66  8b0d587a2e00           mov     ecx, dword ptr [0x2e7a58]                FUN_000a2c20
+  0x2E7A5C dt clamp max       code   4 {'W': 2, 'R': 2}       raw hits   4 (non-code: [])
+      W 000A26F3  c7055c7a2e008988883c   mov     dword ptr [0x2e7a5c], 0x3c888889         FUN_000a26a0
+      W 000A272A  c7055c7a2e000ad7a33c   mov     dword ptr [0x2e7a5c], 0x3ca3d70a         FUN_000a26a0
+      R 000A2D3A  d81d5c7a2e00           fcomp   dword ptr [0x2e7a5c]                     FUN_000a2c20
+      R 000A2D47  a15c7a2e00             mov     eax, dword ptr [0x2e7a5c]                FUN_000a2c20
+  0x2E7A60 fps copy           code   2 {'W': 2}               raw hits   2 (non-code: [])
+      W 000A26DD  d915607a2e00           fst     dword ptr [0x2e7a60]                     FUN_000a26a0
+      W 000A2724  d915607a2e00           fst     dword ptr [0x2e7a60]                     FUN_000a26a0
+  0x2E7B68 1/25.4 | 1/30.5    code   2 {'W': 2}               raw hits   2 (non-code: [])
+      W 000A26FD  c705687b2e008a4b063d   mov     dword ptr [0x2e7b68], 0x3d064b8a         FUN_000a26a0
+      W 000A273A  c705687b2e008542213d   mov     dword ptr [0x2e7b68], 0x3d214285         FUN_000a26a0
+  0x2E7B6C fps copy 2         code   2 {'W': 2}               raw hits   2 (non-code: [])
+      W 000A26E9  c7056c7b2e0000007042   mov     dword ptr [0x2e7b6c], 0x42700000         FUN_000a26a0
+      W 000A271A  c7056c7b2e0000004842   mov     dword ptr [0x2e7b6c], 0x42480000         FUN_000a26a0
+  0x2E7B70 tag PAL/NTSC       code   3 {'W': 2, 'A': 1}       raw hits   3 (non-code: [])
+      W 000A2707  a3707b2e00             mov     dword ptr [0x2e7b70], eax                FUN_000a26a0
+      W 000A2744  c705707b2e0050414c00   mov     dword ptr [0x2e7b70], 0x4c4150           FUN_000a26a0
+      A 000A2424  68707b2e00             push    0x2e7b70                                 gap_0A2380
+  0x2E7B74 tag byte 4         code   1 {'W': 1}               raw hits   1 (non-code: [])
+      W 000A270C  880d747b2e00           mov     byte ptr [0x2e7b74], cl                  FUN_000a26a0
+  0x2E7B88 real frame delta   code   8 {'R': 7, 'W': 1}       raw hits   8 (non-code: [])
+      R 00021B6D  8b15887b2e00           mov     edx, dword ptr [0x2e7b88]                FUN_00021b60
+      R 00045F1B  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_00045f10
+      W 000A2FD8  d91d887b2e00           fstp    dword ptr [0x2e7b88]                     FUN_000a2c20
+      R 000C0EEC  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000c0ac0
+      R 000C1075  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000c0ac0
+      R 000C8EA8  a1887b2e00             mov     eax, dword ptr [0x2e7b88]                FUN_000c8e90
+      R 000EEFD7  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000eef80
+      R 000EEFEA  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000eef80
+
+== 2. dword constants 0x2E7A54..0x2E7B83 anywhere in the image (struct-base access check)
+  2E7A58:3, 2E7A5C:4, 2E7A60:2, 2E7A68:3, 2E7B68:2, 2E7B6C:2, 2E7B70:3, 2E7B74:1, 2E7B7C:7, 2E7B80:1
+
+== 3. dt [0x2D6748] users
+  280 instructions in 139 functions/segments (45 gap segments), {'mov': 40, 'fld': 170, 'fsub': 40, 'fdiv': 7, 'fmul': 16, 'fcomp': 2, 'fadd': 3, 'fstp': 1, 'fst': 1}
+  address range 0x12F64..0xEEF6A
+  accumulators x += dt: 39 sites, 23 field offsets: {'R + 0x24': 7, 'R + 0x3c': 5, 'R + 0x18': 2, 'R + 0x4c8': 2, 'R': 2, 'R + 0x10': 2, 'R + 0x78': 2, 'R + 0x58': 2, 'R + 0x40': 1, 'R + 0x634': 1, 'R + 0x84': 1, 'R + 0xbd8': 1}
+  count-downs  x -= dt: 15 sites, 13 field offsets
+  NiAVObject::Update FUN_00101840: 212 call sites in 147 functions/segments
+
+== 4. real frame delta [0x2E7B88] (Game::Frame 0xA2FD8: QPC time between two Render calls)
+  00021B6D  8b15887b2e00           mov     edx, dword ptr [0x2e7b88]                FUN_00021b60
+  00045F1B  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_00045f10
+  000A2FD8  d91d887b2e00           fstp    dword ptr [0x2e7b88]                     FUN_000a2c20
+  000C0EEC  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000c0ac0
+  000C1075  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000c0ac0
+  000C8EA8  a1887b2e00             mov     eax, dword ptr [0x2e7b88]                FUN_000c8e90
+  000EEFD7  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000eef80
+  000EEFEA  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_000eef80
+
+== 5. fps/dt readers reachable before Game::Init (callgraph from CApp::Init 0xD26A0, 0xA26A0 cut)
+  dt: 875 functions reachable, readers among them: []
+  fps: 875 functions reachable, readers among them: ['FUN_000e4aa0']
+  C++ initializers 0x17E010..0x233880 reading dt/fps: 0
+  .data initial values: fps 50.0, dt 0.019999999552965164, fixed 1
+
+== 6. pause object ctor FUN_000E4AA0: fps * 0.25 -> _ftol -> FUN_0009B2F0 (+0x50, repeat period)
+  0009B32D  668b4c240c             mov     cx, word ptr [esp + 0xc]                 FUN_0009b2f0
+  0009B332  5e                     pop     esi                                      FUN_0009b2f0
+  0009B333  66894850               mov     word ptr [eax + 0x50], cx                FUN_0009b2f0
+  0009B337  5b                     pop     ebx                                      FUN_0009b2f0
+  0009B338  c20400                 ret     4                                        FUN_0009b2f0
+  000E4AA0  d90544672d00           fld     dword ptr [0x2d6744]                     FUN_000e4aa0
+  000E4AA6  56                     push    esi                                      FUN_000e4aa0
+  000E4AA7  d80db03a2900           fmul    dword ptr [0x293ab0]                     FUN_000e4aa0
+  000E4AAD  57                     push    edi                                      FUN_000e4aa0
+  000E4AAE  8bf1                   mov     esi, ecx                                 FUN_000e4aa0
+  000E4AB0  e8cb250800             call    0x167080                                 FUN_000e4aa0
+  000E4AB5  8d4e1c                 lea     ecx, [esi + 0x1c]                        FUN_000e4aa0
+  000E4AB8  50                     push    eax                                      FUN_000e4aa0
+  000E4AB9  e83268fbff             call    0x9b2f0                                  FUN_000e4aa0
+  000E4ABE  33d2                   xor     edx, edx                                 FUN_000e4aa0
+  [0x293AB0] = 0.25; trunc(50*0.25) = 12, trunc(60*0.25) = 15
+
+== 7. time argument of NiAVObject::Update FUN_00101840 (push just before the call; register traced back to its last mov within 12 instructions)
+  0 (static scene): 82, field +0x24: 31, reg ?: 29, field +0x78: 22, field +0x10b4: 5, field +0x10b8: 5, field +0x10bc: 5, ?: 5, stack argument: 5, field +0x68: 4, field +0x18: 3, field +0x1c: 3, field +0xc: 3, 0xc: 2, field +0x8c: 2, field +0x40: 1, field +0x174: 1, field +0x58: 1, field +0x2c: 1, field +0x5c: 1, field +0x20: 1
+
+== 8. tag reader: CApp::PlayMovie 0xA2380 (vtable slot 6)
+  000A2424  68707b2e00             push    0x2e7b70                                 gap_0A2380
+  000A2429  57                     push    edi                                      gap_0A2380
+  000A242A  8d442418               lea     eax, [esp + 0x18]                        gap_0A2380
+  000A242E  6838182a00             push    0x2a1838                                 gap_0A2380
+  000A2433  50                     push    eax                                      gap_0A2380
+  000A2434  e81b4b0c00             call    0x166f54                                 gap_0A2380
+  format 0x2A1838 = '%s-%s'

@@ -1,0 +1,1406 @@
+{
+  "schema_version": 1,
+  "build": "sample-schema (launcher testdata, hand-written; render.monitor is an assumed key)",
+  "sections": [
+    {
+      "name": "paths",
+      "label": {
+        "de": "Pfade",
+        "en": "Paths"
+      },
+      "keys": [
+        {
+          "name": "iso",
+          "type": "path_file",
+          "default": "",
+          "label": {
+            "de": "Spielabbild (ISO)",
+            "en": "Game image (ISO)"
+          },
+          "help": {
+            "de": "Abbild Ihrer eigenen Futurama-Disc für die Xbox (europäische Version). Pfade mit Leerzeichen, Klammern und Kommas sind erlaubt.",
+            "en": "Image of your own Futurama disc for the Xbox (European version). Paths with blanks, parentheses and commas are fine."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "paths",
+            "order": 10,
+            "widget": "file",
+            "filter": "*.iso *.xiso"
+          }
+        },
+        {
+          "name": "userdata",
+          "type": "path_dir",
+          "default": "",
+          "label": {
+            "de": "Benutzerdaten",
+            "en": "User data"
+          },
+          "help": {
+            "de": "Ordner für Spielstände, Logs und Screenshots. Leer: %LOCALAPPDATA%\\FuturamaPC (im portablen Modus neben futurama.exe).",
+            "en": "Folder for saves, logs and screenshots. Empty: %LOCALAPPDATA%\\FuturamaPC (next to futurama.exe in portable mode)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "paths",
+            "order": 20,
+            "widget": "dir"
+          },
+          "dynamic_default": true,
+          "placeholder": "%LOCALAPPDATA%\\FuturamaPC"
+        },
+        {
+          "name": "xbe",
+          "type": "path_file",
+          "default": "",
+          "label": {
+            "de": "XBE-Datei (statt aus dem ISO)",
+            "en": "XBE file (instead of the ISO's)"
+          },
+          "help": {
+            "de": "Nur für Entwickler: lädt default.xbe aus dieser Datei.",
+            "en": "Developers only: loads default.xbe from this file."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "paths",
+            "order": 100,
+            "widget": "file"
+          },
+          "developer": true
+        },
+        {
+          "name": "disc_dir",
+          "type": "path_dir",
+          "default": "",
+          "label": {
+            "de": "Entpackte Disc (Ordner)",
+            "en": "Extracted disc (folder)"
+          },
+          "help": {
+            "de": "Nur für Entwickler: Ordner mit den entpackten Disc-Dateien statt des ISO.",
+            "en": "Developers only: folder with the extracted disc files instead of the ISO."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "paths",
+            "order": 110,
+            "widget": "dir"
+          },
+          "developer": true
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "label": {
+        "de": "Xbox-Einstellungen",
+        "en": "Xbox settings"
+      },
+      "keys": [
+        {
+          "name": "language",
+          "type": "choice",
+          "default": "english",
+          "choices": [
+            {
+              "value": "english",
+              "label": {
+                "de": "Englisch",
+                "en": "English"
+              }
+            },
+            {
+              "value": "german",
+              "label": {
+                "de": "Deutsch",
+                "en": "German"
+              }
+            },
+            {
+              "value": "french",
+              "label": {
+                "de": "Französisch",
+                "en": "French"
+              }
+            },
+            {
+              "value": "spanish",
+              "label": {
+                "de": "Spanisch",
+                "en": "Spanish"
+              }
+            },
+            {
+              "value": "italian",
+              "label": {
+                "de": "Italienisch",
+                "en": "Italian"
+              }
+            }
+          ],
+          "label": {
+            "de": "Sprache des Spiels",
+            "en": "Game language"
+          },
+          "help": {
+            "de": "Sprache von Texten, Sprachausgabe und Untertiteln (die europäische Disc enthält EN, DE, FR, ES, IT).",
+            "en": "Language of texts, voices and subtitles (the European disc has EN, DE, FR, ES, IT)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "game",
+            "order": 10,
+            "widget": "combo"
+          },
+          "hidden_choices": [
+            "japanese",
+            "korean",
+            "tchinese",
+            "portuguese",
+            "1..9"
+          ]
+        },
+        {
+          "name": "game_region",
+          "type": "int",
+          "default": 4,
+          "min": 0,
+          "max": 4294967295,
+          "label": {
+            "de": "Spielregion (XboxGameRegion)",
+            "en": "Game region (XboxGameRegion)"
+          },
+          "help": {
+            "de": "Bitmaske der Spielregion, die der Kernel meldet.",
+            "en": "Game region bit mask reported by the kernel."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 400,
+            "widget": "spin"
+          },
+          "developer": true
+        },
+        {
+          "name": "av_region",
+          "type": "int",
+          "default": 3,
+          "min": 0,
+          "max": 4294967295,
+          "label": {
+            "de": "AV-Region",
+            "en": "AV region"
+          },
+          "help": {
+            "de": "Wert der AV-Region (Videostandard).",
+            "en": "AV region value (video standard)."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 401,
+            "widget": "spin"
+          },
+          "developer": true
+        }
+      ]
+    },
+    {
+      "name": "game",
+      "label": {
+        "de": "Spiellogik",
+        "en": "Game logic"
+      },
+      "keys": [
+        {
+          "name": "tick_rate",
+          "type": "choice",
+          "default": "60",
+          "choices": [
+            {
+              "value": "60",
+              "label": {
+                "de": "60 Hz (Standard)",
+                "en": "60 Hz (default)"
+              }
+            },
+            {
+              "value": "50",
+              "label": {
+                "de": "50 Hz (PAL-Original)",
+                "en": "50 Hz (original PAL)"
+              }
+            }
+          ],
+          "label": {
+            "de": "Logik-Takt",
+            "en": "Logic rate"
+          },
+          "help": {
+            "de": "60 Hz nutzt die NTSC-Zeitwerte mit den PAL-Inhalten; 50 Hz ist das Original-Timing der PAL-Version.",
+            "en": "60 Hz uses the NTSC timing values with the PAL content; 50 Hz is the original timing of the PAL version."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "game",
+            "order": 20,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "frame_clock",
+          "type": "choice",
+          "default": "lockstep",
+          "choices": [
+            {
+              "value": "lockstep",
+              "label": {
+                "de": "Gleichschritt (Standard)",
+                "en": "Lockstep (default)"
+              }
+            },
+            {
+              "value": "realtime",
+              "label": {
+                "de": "Echtzeit (Original)",
+                "en": "Real time (original)"
+              }
+            }
+          ],
+          "label": {
+            "de": "Zeitquelle der Spielschleife",
+            "en": "Game loop clock"
+          },
+          "help": {
+            "de": "Gleichschritt: genau ein Logik-Schritt pro angezeigtem Bild.",
+            "en": "Lockstep: exactly one logic step per displayed frame."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 300,
+            "widget": "combo"
+          }
+        }
+      ]
+    },
+    {
+      "name": "render",
+      "label": {
+        "de": "Grafik",
+        "en": "Graphics"
+      },
+      "keys": [
+        {
+          "name": "fullscreen",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Randloses Vollbild",
+            "en": "Borderless fullscreen"
+          },
+          "help": {
+            "de": "Ein randloses Fenster über den ganzen Monitor (Alt+Enter schaltet im Spiel um).",
+            "en": "A borderless window covering the whole monitor (Alt+Enter toggles in the game)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 10,
+            "widget": "check"
+          }
+        },
+        {
+          "name": "monitor",
+          "type": "string",
+          "default": "primary",
+          "label": {
+            "de": "Bildschirm",
+            "en": "Display"
+          },
+          "help": {
+            "de": "Auf welchem Bildschirm das Spiel startet (primary = Hauptbildschirm).",
+            "en": "The display the game starts on (primary = main display)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 12,
+            "widget": "monitor"
+          }
+        },
+        {
+          "name": "window_scale",
+          "type": "int",
+          "default": 2,
+          "min": 1,
+          "max": 8,
+          "step": 1,
+          "label": {
+            "de": "Fenstergröße (× 640×480)",
+            "en": "Window size (× 640×480)"
+          },
+          "help": {
+            "de": "Größe des Fensters als Vielfaches von 640×480 (nur im Fenstermodus).",
+            "en": "Window size as a multiple of 640×480 (window mode only)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 14,
+            "widget": "spin"
+          },
+          "range_enforced": false
+        },
+        {
+          "name": "resolution",
+          "type": "resolution",
+          "default": "auto",
+          "label": {
+            "de": "Renderauflösung",
+            "en": "Render resolution"
+          },
+          "help": {
+            "de": "Interne Auflösung. Automatisch = passend zum Fenster bzw. Monitor; das 4:3-Bild wird mit Seitenbalken eingepasst. 640x480 = Original.",
+            "en": "Internal resolution. Automatic = fit the window or monitor; the 4:3 image is fitted with side bars. 640x480 = original."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 20,
+            "widget": "resolution"
+          },
+          "choices": [
+            {
+              "value": "auto",
+              "label": {
+                "de": "auto",
+                "en": "auto"
+              }
+            },
+            {
+              "value": "640x480",
+              "label": {
+                "de": "640x480",
+                "en": "640x480"
+              }
+            },
+            {
+              "value": "1280x960",
+              "label": {
+                "de": "1280x960",
+                "en": "1280x960"
+              }
+            },
+            {
+              "value": "1920x1440",
+              "label": {
+                "de": "1920x1440",
+                "en": "1920x1440"
+              }
+            },
+            {
+              "value": "2560x1920",
+              "label": {
+                "de": "2560x1920",
+                "en": "2560x1920"
+              }
+            },
+            {
+              "value": "2880x2160",
+              "label": {
+                "de": "2880x2160",
+                "en": "2880x2160"
+              }
+            }
+          ],
+          "min": 160,
+          "max": 16384,
+          "range_enforced": true
+        },
+        {
+          "name": "render_scale",
+          "type": "float",
+          "default": 1.0,
+          "min": 1.0,
+          "max": 2.0,
+          "step": 0.25,
+          "label": {
+            "de": "Supersampling (Render-Skala)",
+            "en": "Supersampling (render scale)"
+          },
+          "help": {
+            "de": "Rendert intern um diesen Faktor größer und rechnet danach herunter. Kombinierbar mit MSAA.",
+            "en": "Renders larger by this factor and scales down afterwards. Can be combined with MSAA."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 30,
+            "widget": "dspin"
+          }
+        },
+        {
+          "name": "msaa",
+          "type": "choice",
+          "default": "off",
+          "choices": [
+            {
+              "value": "off",
+              "label": {
+                "de": "Aus",
+                "en": "Off"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "de": "2× MSAA",
+                "en": "2× MSAA"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "de": "4× MSAA",
+                "en": "4× MSAA"
+              }
+            },
+            {
+              "value": "8",
+              "label": {
+                "de": "8× MSAA",
+                "en": "8× MSAA"
+              }
+            }
+          ],
+          "label": {
+            "de": "Kantenglättung (MSAA)",
+            "en": "Anti-aliasing (MSAA)"
+          },
+          "help": {
+            "de": "Multisampling. Wird auf das begrenzt, was die Grafikkarte kann.",
+            "en": "Multisampling. Limited to what the graphics card supports."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 40,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "alpha_to_coverage",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Alpha-to-Coverage",
+            "en": "Alpha to coverage"
+          },
+          "help": {
+            "de": "Glättet auch Kanten in Texturen mit Alpha-Test (Gitter, Pflanzen). Nur mit MSAA wirksam.",
+            "en": "Also smooths edges in alpha-tested textures (fences, plants). Only effective with MSAA."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 45,
+            "widget": "check"
+          }
+        },
+        {
+          "name": "linear_aa",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Helligkeitsrichtige Kantenglättung",
+            "en": "Gamma-correct anti-aliasing"
+          },
+          "help": {
+            "de": "Mittelt Kantenpixel in linearem Licht. Nur mit MSAA oder Supersampling wirksam.",
+            "en": "Averages edge pixels in linear light. Only effective with MSAA or supersampling."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 46,
+            "widget": "check"
+          }
+        },
+        {
+          "name": "anisotropy",
+          "type": "choice",
+          "default": "16",
+          "choices": [
+            {
+              "value": "off",
+              "label": {
+                "de": "Aus",
+                "en": "Off"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "de": "2×",
+                "en": "2×"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "de": "4×",
+                "en": "4×"
+              }
+            },
+            {
+              "value": "8",
+              "label": {
+                "de": "8×",
+                "en": "8×"
+              }
+            },
+            {
+              "value": "16",
+              "label": {
+                "de": "16×",
+                "en": "16×"
+              }
+            }
+          ],
+          "label": {
+            "de": "Anisotrope Filterung",
+            "en": "Anisotropic filtering"
+          },
+          "help": {
+            "de": "Schärfere Texturen bei flachen Blickwinkeln.",
+            "en": "Sharper textures at grazing angles."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 50,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "scaling",
+          "type": "choice",
+          "default": "linear",
+          "choices": [
+            {
+              "value": "linear",
+              "label": {
+                "de": "Linear (weich)",
+                "en": "Linear (smooth)"
+              }
+            },
+            {
+              "value": "point",
+              "label": {
+                "de": "Punkt (scharf)",
+                "en": "Point (sharp)"
+              }
+            },
+            {
+              "value": "integer",
+              "label": {
+                "de": "Ganzzahlig (pixelgenau)",
+                "en": "Integer (pixel exact)"
+              }
+            }
+          ],
+          "label": {
+            "de": "Hochskalierung",
+            "en": "Upscaling"
+          },
+          "help": {
+            "de": "Wie ein kleineres Bild auf die Ausgabe vergrößert wird.",
+            "en": "How a smaller image is enlarged to the output."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 60,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "vsync",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "VSync",
+            "en": "VSync"
+          },
+          "help": {
+            "de": "Bildwechsel im vertikalen Austastintervall (kein Tearing).",
+            "en": "Present in the vertical blank (no tearing)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 70,
+            "widget": "check"
+          }
+        },
+        {
+          "name": "pacing",
+          "type": "choice",
+          "default": "auto",
+          "choices": [
+            {
+              "value": "auto",
+              "label": {
+                "de": "Automatisch",
+                "en": "Automatic"
+              }
+            },
+            {
+              "value": "vsync",
+              "label": {
+                "de": "An Bildwiederholung gekoppelt",
+                "en": "Coupled to the refresh"
+              }
+            },
+            {
+              "value": "timer",
+              "label": {
+                "de": "Zeitgeber",
+                "en": "Timer"
+              }
+            },
+            {
+              "value": "off",
+              "label": {
+                "de": "Aus (unbegrenzt)",
+                "en": "Off (unlimited)"
+              }
+            }
+          ],
+          "label": {
+            "de": "Bildtakt (Pacing)",
+            "en": "Frame pacing"
+          },
+          "help": {
+            "de": "Automatisch koppelt an den Monitor (z. B. jedes 2. Vblank bei 120 Hz).",
+            "en": "Automatic couples to the monitor (e.g. every 2nd vblank at 120 Hz)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 80,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "frame_rate",
+          "type": "int",
+          "default": 60,
+          "min": 0,
+          "max": 240,
+          "label": {
+            "de": "Bildrate (fps, 0 = unbegrenzt)",
+            "en": "Frame rate (fps, 0 = unlimited)"
+          },
+          "help": {
+            "de": "Standard: Logik-Takt. Bis 120 Hz mit Interpolation folgt in M3d.",
+            "en": "Default: the logic rate. Up to 120 Hz with interpolation follows in M3d."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 200,
+            "widget": "spin"
+          },
+          "dynamic_default": true,
+          "range_enforced": false
+        },
+        {
+          "name": "screenshot_dir",
+          "type": "path_dir",
+          "default": "",
+          "label": {
+            "de": "Screenshots",
+            "en": "Screenshots"
+          },
+          "help": {
+            "de": "Ordner für Screenshots. Leer: <Benutzerdaten>\\screenshots.",
+            "en": "Folder for screenshots. Empty: <user data>\\screenshots."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "paths",
+            "order": 30,
+            "widget": "dir"
+          }
+        },
+        {
+          "name": "backend",
+          "type": "choice",
+          "default": "d3d11",
+          "choices": [
+            {
+              "value": "d3d11",
+              "label": {
+                "de": "Direct3D 11",
+                "en": "Direct3D 11"
+              }
+            },
+            {
+              "value": "null",
+              "label": {
+                "de": "Keine Grafik (Tests)",
+                "en": "No graphics (tests)"
+              }
+            }
+          ],
+          "label": {
+            "de": "Grafik-Backend",
+            "en": "Graphics backend"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 210,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "debug_layer",
+          "type": "choice",
+          "default": "auto",
+          "choices": [
+            {
+              "value": "auto",
+              "label": {
+                "de": "Automatisch",
+                "en": "Automatic"
+              }
+            },
+            {
+              "value": "on",
+              "label": {
+                "de": "An",
+                "en": "On"
+              }
+            },
+            {
+              "value": "off",
+              "label": {
+                "de": "Aus",
+                "en": "Off"
+              }
+            }
+          ],
+          "label": {
+            "de": "D3D11-Debug-Layer",
+            "en": "D3D11 debug layer"
+          },
+          "help": {
+            "de": "Automatisch: nur in Debug-Builds.",
+            "en": "Automatic: Debug builds only."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 211,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "adapter",
+          "type": "choice",
+          "default": "hardware",
+          "choices": [
+            {
+              "value": "hardware",
+              "label": {
+                "de": "Grafikkarte",
+                "en": "Graphics card"
+              }
+            },
+            {
+              "value": "warp",
+              "label": {
+                "de": "Software (WARP)",
+                "en": "Software (WARP)"
+              }
+            }
+          ],
+          "label": {
+            "de": "Grafikadapter",
+            "en": "Graphics adapter"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 212,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "d3d_traps",
+          "type": "choice",
+          "default": "abort",
+          "choices": [
+            {
+              "value": "abort",
+              "label": {
+                "de": "Abbrechen",
+                "en": "Abort"
+              }
+            },
+            {
+              "value": "log",
+              "label": {
+                "de": "Nur protokollieren",
+                "en": "Log only"
+              }
+            }
+          ],
+          "label": {
+            "de": "D3D-Fallen",
+            "en": "D3D traps"
+          },
+          "help": {
+            "de": "Verhalten bei einem nicht nachgebauten Direct3D-Aufruf.",
+            "en": "What happens on a Direct3D call that is not emulated."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 213,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "load_textures",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Texturdateien lesen",
+            "en": "Read texture files"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 214,
+            "widget": "check"
+          },
+          "developer": true
+        },
+        {
+          "name": "screenshot_frames",
+          "type": "string",
+          "default": "",
+          "label": {
+            "de": "Screenshot-Frames",
+            "en": "Screenshot frames"
+          },
+          "help": {
+            "de": "Kommagetrennte Frame-Nummern mit automatischem Screenshot.",
+            "en": "Comma-separated frame numbers with an automatic screenshot."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 215,
+            "widget": "text"
+          },
+          "developer": true
+        },
+        {
+          "name": "trace_frames",
+          "type": "string",
+          "default": "",
+          "label": {
+            "de": "Trace-Frames",
+            "en": "Trace frames"
+          },
+          "help": {
+            "de": "Kommagetrennte Frame-Nummern, deren Zeichenaufrufe protokolliert werden.",
+            "en": "Comma-separated frame numbers whose draw calls are logged."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 216,
+            "widget": "text"
+          },
+          "developer": true
+        },
+        {
+          "name": "validate",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Validierung (Null-Renderer)",
+            "en": "Validation (null renderer)"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 217,
+            "widget": "check"
+          },
+          "developer": true
+        },
+        {
+          "name": "pacing_trace",
+          "type": "path_file",
+          "default": "",
+          "label": {
+            "de": "Pacing-Trace (CSV)",
+            "en": "Pacing trace (CSV)"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 218,
+            "widget": "file",
+            "filter": "*.csv"
+          },
+          "developer": true
+        }
+      ]
+    },
+    {
+      "name": "log",
+      "label": {
+        "de": "Protokoll",
+        "en": "Log"
+      },
+      "keys": [
+        {
+          "name": "level",
+          "type": "choice",
+          "default": "info",
+          "choices": [
+            {
+              "value": "error",
+              "label": {
+                "de": "Fehler",
+                "en": "Errors"
+              }
+            },
+            {
+              "value": "warn",
+              "label": {
+                "de": "Warnungen",
+                "en": "Warnings"
+              }
+            },
+            {
+              "value": "info",
+              "label": {
+                "de": "Info (Standard)",
+                "en": "Info (default)"
+              }
+            },
+            {
+              "value": "debug",
+              "label": {
+                "de": "Debug",
+                "en": "Debug"
+              }
+            },
+            {
+              "value": "trace",
+              "label": {
+                "de": "Trace (sehr ausführlich)",
+                "en": "Trace (very verbose)"
+              }
+            }
+          ],
+          "label": {
+            "de": "Log-Level",
+            "en": "Log level"
+          },
+          "help": {
+            "de": "Wie ausführlich <Benutzerdaten>\\logs\\futurama.log wird.",
+            "en": "How detailed <user data>\\logs\\futurama.log is."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 10,
+            "widget": "combo"
+          },
+          "hidden_choices": [
+            "warning"
+          ]
+        },
+        {
+          "name": "console",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Log auf die Konsole",
+            "en": "Log to the console"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 11,
+            "widget": "check"
+          },
+          "dynamic_default": true
+        },
+        {
+          "name": "debugger",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Log an den Debugger",
+            "en": "Log to the debugger"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 12,
+            "widget": "check"
+          },
+          "dynamic_default": true
+        }
+      ]
+    },
+    {
+      "name": "debug",
+      "label": {
+        "de": "Fehlersuche",
+        "en": "Debugging"
+      },
+      "keys": [
+        {
+          "name": "selftest",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Selbsttest beim Start",
+            "en": "Self-test at start"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 100,
+            "widget": "check"
+          }
+        },
+        {
+          "name": "trace",
+          "type": "string",
+          "default": "",
+          "label": {
+            "de": "Traces",
+            "en": "Traces"
+          },
+          "help": {
+            "de": "Kommagetrennt: krnl, vfs, ... oder all.",
+            "en": "Comma-separated: krnl, vfs, ... or all."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 101,
+            "widget": "text"
+          }
+        },
+        {
+          "name": "msgbox",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Fehler als Meldungsfenster",
+            "en": "Errors as message box"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 102,
+            "widget": "check"
+          },
+          "dynamic_default": true
+        },
+        {
+          "name": "timeout",
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "max": 86400,
+          "label": {
+            "de": "Watchdog (Sekunden, 0 = aus)",
+            "en": "Watchdog (seconds, 0 = off)"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 103,
+            "widget": "spin"
+          }
+        },
+        {
+          "name": "frames",
+          "type": "int",
+          "default": 0,
+          "min": 0,
+          "max": 100000000,
+          "label": {
+            "de": "Nach N Bildern beenden (0 = nie)",
+            "en": "End after N frames (0 = never)"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 104,
+            "widget": "spin"
+          },
+          "developer": true
+        },
+        {
+          "name": "stop_at",
+          "type": "string",
+          "default": "",
+          "label": {
+            "de": "Anhalten bei (main oder 0xADRESSE)",
+            "en": "Stop at (main or 0xADDRESS)"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 105,
+            "widget": "text"
+          },
+          "developer": true
+        },
+        {
+          "name": "minidump",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Minidump bei Absturz",
+            "en": "Minidump on crash"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 106,
+            "widget": "check"
+          }
+        }
+      ]
+    },
+    {
+      "name": "kernel",
+      "label": {
+        "de": "Kernel-Emulation",
+        "en": "Kernel emulation"
+      },
+      "keys": [
+        {
+          "name": "strict",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Streng (Abbruch bei fehlender Funktion)",
+            "en": "Strict (abort on a missing function)"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 500,
+            "widget": "check"
+          },
+          "developer": true
+        },
+        {
+          "name": "fiber_stack",
+          "type": "int",
+          "default": 524288,
+          "min": 65536,
+          "max": 16777216,
+          "label": {
+            "de": "Fiber-Stack (Bytes)",
+            "en": "Fiber stack (bytes)"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 501,
+            "widget": "spin"
+          },
+          "developer": true,
+          "range_enforced": false,
+          "step": 65536
+        }
+      ]
+    },
+    {
+      "name": "hooks",
+      "label": {
+        "de": "Hooks",
+        "en": "Hooks"
+      },
+      "keys": [
+        {
+          "name": "disable",
+          "type": "string",
+          "default": "",
+          "label": {
+            "de": "Hooks abschalten",
+            "en": "Disable hooks"
+          },
+          "help": {
+            "de": "Kommagetrennte Namen, Adressen oder Präfixe mit *.",
+            "en": "Comma-separated names, addresses or prefixes with *."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 600,
+            "widget": "text"
+          },
+          "developer": true
+        }
+      ]
+    },
+    {
+      "name": "audio",
+      "label": {
+        "de": "Audio",
+        "en": "Audio"
+      },
+      "keys": [
+        {
+          "name": "dummy_streams",
+          "type": "bool",
+          "default": false,
+          "label": {
+            "de": "Platzhalter-Streams",
+            "en": "Dummy streams"
+          },
+          "help": {
+            "de": "",
+            "en": ""
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 700,
+            "widget": "check"
+          },
+          "developer": true
+        }
+      ]
+    }
+  ]
+}

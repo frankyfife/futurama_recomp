@@ -9,15 +9,20 @@
 //   6  BuildPolyglotHeader         core/xbe_header_polyglot.h    XBE header + MZ/e_lfanew + NT headers
 //   7  ResolveKernelThunks         core/kernel_thunks.h          111 slots from the krnl registry
 //   8  ApplyFsPatches              core/fs_patcher.h             38 disp32 retargets
+//   8b ApplyGameTiming             xapi/game_timing.h            (M3b) [game] tick_rate: 60 Hz operand patches
 //   9  InstallHooks                core/hooks.h                  XAPI hooks (+ later D3D/DSOUND/...)
 //  10  RunSelfTests                core/selftest.h               design 1.4 step 8 (with --selftest)
 //  11  InitVfs                     vfs/vfs_init.h                io agent: CdRom0, partition1
 //  12  CreateWindow                platform/platform.h           (M3)
 //  13  AdoptBootThreadAndRunEntry  core/boot.h                   entry 0xF84DD -> guest main thread
 //  14  MessageLoop                 platform/platform.h           until the process ends
+// (M3c) Before stage 1, core::cli::RunToolIfRequested (core/cli_tools.h) handles the launcher's tool modes
+// (--print-config-schema, --check-iso, --query-gpu, --print-paths): they run without configuration, log and XBE
+// and return their own exit code.
 #include "core/host_main.h"
 
 #include "core/boot.h"
+#include "core/cli_tools.h"
 #include "core/config.h"
 #include "core/crash.h"
 #include "core/fs_patcher.h"
@@ -31,11 +36,14 @@
 #include "kernel/kernel_init.h"
 #include "platform/platform.h"
 #include "vfs/vfs_init.h"
+#include "xapi/game_timing.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -80,7 +88,44 @@ void ReportStageFailure(const char* stage, int exitCode, bool msgbox, const std:
     }
 }
 
-bool InitConfigAndLog(const LauncherInfo* info) {
+// Review M3c finding 15: one game process per user data folder. Two would write the same log, screenshots and
+// (from M7) save games; the second one ends before it opens anything. The mutex lives until the process ends.
+// Name: Local\FuturamaPC-userdata-<FNV-1a 64 of the lower-case absolute path> (per Windows session).
+bool AcquireUserdataLock(const std::filesystem::path& userdata) noexcept {
+    try {
+        std::error_code ec;
+        std::filesystem::path p = std::filesystem::weakly_canonical(std::filesystem::absolute(userdata, ec), ec);
+        if (ec) {
+            p = userdata;
+        }
+        std::wstring key = p.wstring();
+        while (key.size() > 3 && (key.back() == L'\\' || key.back() == L'/')) {
+            key.pop_back();
+        }
+        CharLowerBuffW(key.data(), static_cast<DWORD>(key.size()));
+        std::uint64_t hash = 14695981039346656037ull;
+        for (const wchar_t c : key) {
+            hash = (hash ^ static_cast<std::uint64_t>(c)) * 1099511628211ull;
+        }
+        wchar_t name[64];
+        std::swprintf(name, std::size(name), L"Local\\FuturamaPC-userdata-%016llx",
+                      static_cast<unsigned long long>(hash));
+        const HANDLE mutex = CreateMutexW(nullptr, FALSE, name);
+        if (mutex == nullptr) {
+            return true;  // no lock available (should not happen): do not block the start
+        }
+        if (GetLastError() == ERROR_ALREADY_EXISTS) {
+            CloseHandle(mutex);
+            return false;
+        }
+        return true;  // deliberately never closed: released when the process ends
+    } catch (...) {
+        return true;
+    }
+}
+
+bool InitConfigAndLog(const LauncherInfo* info, int* exitCode) {
+    *exitCode = kExitStartupError;
     if (info == nullptr || info->size < sizeof(LauncherInfo) || info->version != FUT_LAUNCHER_INFO_VERSION) {
         ReportStartupError("launcher/host version mismatch (LauncherInfo)");
         return false;
@@ -99,6 +144,13 @@ bool InitConfigAndLog(const LauncherInfo* info) {
     Level level = Level::Info;
     if (!ParseLevel(cfg.logLevel, level)) {
         ReportStartupError("configuration error: unknown [log] level '" + cfg.logLevel + "'");
+        return false;
+    }
+    if (!AcquireUserdataLock(cfg.userdata)) {
+        *exitCode = kExitAlreadyRunning;
+        ReportStartupError("the game is already running with the user data folder " +
+                           WideToUtf8(cfg.userdata.wstring()) + " - close it first (exit code " +
+                           std::to_string(kExitAlreadyRunning) + ")");
         return false;
     }
     LogOptions options;
@@ -135,8 +187,9 @@ bool InitConfigAndLog(const LauncherInfo* info) {
         FUT_LOGW(Core, "config: %s", w.c_str());
     }
     FUT_LOGI(Core, "exe       %s", WideToUtf8(c.exePath.wstring()).c_str());
-    FUT_LOGI(Core, "config    %s",
-             c.configFile.empty() ? "(none; defaults)" : WideToUtf8(c.configFile.wstring()).c_str());
+    FUT_LOGI(Core, "config    %s (%s%s)",
+             c.configFile.empty() ? "(none; defaults)" : WideToUtf8(c.configFile.wstring()).c_str(),
+             ConfigLocationModeName(c.configMode), c.portable ? ", portable.txt" : "");
     FUT_LOGI(Core, "userdata  %s", WideToUtf8(c.userdata.wstring()).c_str());
     FUT_LOGI(Core, "iso       %s", c.iso.empty() ? "(not set)" : WideToUtf8(c.iso.wstring()).c_str());
     FUT_LOGI(Core, "xbe       %s", c.xbe.empty() ? "(not set)" : WideToUtf8(c.xbe.wstring()).c_str());
@@ -281,8 +334,18 @@ void ExitHostProcess(int exitCode, const char* reason) noexcept {
 
 int RunHost(const LauncherInfo* info) noexcept {
     try {
-        if (!InitConfigAndLog(info)) {
-            return kExitStartupError;
+        // M3c tool modes: after the launcher stub's checks and LoadLibrary, before anything else (no config, log,
+        // crash handlers or XBE mapping). A bad LauncherInfo falls through to InitConfigAndLog's report.
+        int toolExitCode = kExitOk;
+        if (info != nullptr && info->size >= sizeof(LauncherInfo) && info->version == FUT_LAUNCHER_INFO_VERSION &&
+            cli::RunToolIfRequested(info->cmdline,
+                                    info->exePath ? std::filesystem::path(info->exePath) : std::filesystem::path(),
+                                    toolExitCode)) {
+            return toolExitCode;
+        }
+        int initExitCode = kExitStartupError;
+        if (!InitConfigAndLog(info, &initExitCode)) {
+            return initExitCode;
         }
         const Config& cfg = GetConfig();
         const Stage stages[] = {
@@ -293,6 +356,7 @@ int RunHost(const LauncherInfo* info) noexcept {
             {"BuildPolyglotHeader", [] { return StageBuildPolyglotHeader(); }},
             {"ResolveKernelThunks", [] { return StageResolveKernelThunks(); }},
             {"ApplyFsPatches", [] { return StageApplyFsPatches(); }},
+            {"ApplyGameTiming", [&] { return xapi::StageApplyGameTiming(cfg); }},
             {"InstallHooks", [&] { return StageInstallHooks(cfg); }},
             {"RunSelfTests", [&] { return StageRunSelfTests(cfg); }},
             {"InitVfs", [&] { return vfs::StageInitVfs(cfg); }},

@@ -222,7 +222,7 @@ D3D11_PRIMITIVE_TOPOLOGY TopologyOf(PrimitiveTopology topology) noexcept {
 
 D3D11_BLEND_DESC BlendDescOf(const BlendDesc& d) noexcept {
     D3D11_BLEND_DESC b{};
-    b.AlphaToCoverageEnable = FALSE;
+    b.AlphaToCoverageEnable = d.alphaToCoverage ? TRUE : FALSE;  // M3c (MSAA + alpha-tested materials)
     b.IndependentBlendEnable = FALSE;
     D3D11_RENDER_TARGET_BLEND_DESC& t = b.RenderTarget[0];
     t.BlendEnable = d.enable ? TRUE : FALSE;
@@ -279,7 +279,7 @@ D3D11_RASTERIZER_DESC RasterDescOf(const RasterDesc& d) noexcept {
     r.SlopeScaledDepthBias = d.slopeScaledDepthBias;
     r.DepthClipEnable = d.depthClip ? TRUE : FALSE;
     r.ScissorEnable = d.scissorEnable ? TRUE : FALSE;
-    r.MultisampleEnable = FALSE;
+    r.MultisampleEnable = d.multisample ? TRUE : FALSE;  // M3c: MSAA target
     r.AntialiasedLineEnable = FALSE;
     return r;
 }

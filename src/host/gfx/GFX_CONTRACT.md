@@ -330,8 +330,10 @@ Configuration (`[render]`, registered in `core/config.cpp` in phase 1, parsed in
 | Key | Default | Meaning |
 |---|---|---|
 | `backend` | `null` | `null` (M2 null renderer) or `d3d11`; the integration makes `d3d11` the default when M3 passes |
-| `vsync` | 1 | Present sync interval 1 |
-| `frame_rate` | 50 | limiter (M2 key), 0 = off |
+| `vsync` | 1 | M3: Present sync interval 1. **M3b:** vblank coupling on/off - `0` with `pacing = auto` = timer + Present(0, ALLOW_TEARING); ignored by `pacing = vsync` (GFX/warn); `timer`/`off` tear with `0` |
+| `frame_rate` | 50 | M2/M3: limiter, 0 = off. **M3b:** default `[game] tick_rate` (60); target rate of the pacer; another value logs GFX/warn; `0` = unthrottled only with `pacing = auto` (GFX/warn with `timer`/`vsync`) |
+| `pacing` | `auto` | M3b: `auto` / `vsync` / `timer` / `off` (section 8 M3b addendum, `src/INTERFACES.md` 4.20) |
+| `pacing_trace` | empty | M3b: per-frame pacing CSV |
 | `debug_layer` | `auto` | `auto` (Debug builds) / `on` / `off` |
 | `adapter` | `hardware` | `hardware` / `warp` |
 | `window_scale` | 2 | 1..8 |
@@ -405,6 +407,32 @@ extract/ff failures).
   keys `[render] frame_rate` (50 = limiter, 0 = off) and `[render] screenshot_frames` are kept (no new keys).
 - **For the integration**: D3D11 calls from slot 65 may run on a loading fiber's stack (`[kernel] fiber_stack`,
   design R6) - measure the stack high-water mark; no x87/`_controlfp` handling was needed.
+
+**M3b results (pacing agent, add-only; supersede `frame_rate` default 50, `PaceFrame` and "Present(vsync ? 1 :
+0)" of this section; API summary in `src/INTERFACES.md` 4.20, design `analysis/loader/pacing60.md`):**
+- The game ticks at `[game] tick_rate` (60 by default, timing agent); `[render] frame_rate` defaults to it. The
+  pacer couples the frames to the display of the window: Present(k) on a frame-latency waitable swap chain
+  (maximum latency 1) when the refresh is k x the target (120 Hz -> k = 2), otherwise a 60 Hz high-resolution
+  timer with Present(0, ALLOW_TEARING) and a VRR probe on the DXGI frame statistics (rejected -> Present(1) once
+  per refresh), and a free-running timer with non-blocking presents while the window is in the background,
+  minimized, the display is off or the session is locked. `[render] pacing = auto | vsync | timer | off`.
+- `GpuRenderer::DisplayFrame` asks `platform::PlanPresent` for sync interval / tearing / skip and reports
+  `rhi::Device::LastPresentTiming` back; `OnFrameDisplayed` calls `platform::EndFrame` (both backends).
+- Measured on the dev machine (LG TV 3840x2160, 120/1 Hz from QueryDisplayConfig, RTX 5090, Debug + debug
+  layer, `run\m3b-pacing\*`): auto in the foreground = `vblank k=2`: 1756 of 1757 vblank-coupled frames exactly
+  2 refreshes on screen, frame starts 99.8 % within +-5 % of 16.67 ms, 60.07 Hz, 0 debug-layer messages;
+  present-to-visible median 21.4 ms in the composed window (DWM latches one refresh before scan-out).
+  `m3_check` (3000 frames, scenes at 180/480/816/1200, `--min-hz 59.4 --max-work-ms 16.7`): ALL PASS, 60.03 Hz
+  (the window lost the foreground after ~10 s: 551 vblank + 2449 free frames). Minimized: free without presents,
+  2 % of one core. `[game] tick_rate = 50` on 120 Hz: tearing-timer, VRR rejected in the composed window
+  (2/3-refresh grid) -> display-rate 120 Hz. Null backend: headless timer, 900 frames in 15.0 s.
+- **M3b phase 5 (review fixes, `docs/m3b_60hz_report.md`):** presenting resumes at once after a restore from
+  minimized (no 30-frame hysteresis); `pacing::CadenceGuard` shifts the grid of `timer`/`free` by half a refresh
+  when the on-screen durations keep missing k refreshes (alternating sign; on-time durations of a VRR panel count
+  as regular; stops after 4 unsuccessful shifts); VRR probe with 2 s warm-up and one repeat after a
+  rejection; the second exit line counts slow frame STARTS (Present intervals in parentheses); the on-screen line
+  adds d >= 2 jumps and a least-squares refresh fit; `m3_check` M3b-7 judges foreground share and vblank
+  coupling. The table above now states the M3b meaning of `vsync` and `frame_rate`.
 
 ## 9. Integration (phase 3, owns `gfx/nipc_renderer.cpp`)
 
@@ -555,6 +583,183 @@ Report deviations from this contract in your result instead of silently divergin
 - The pipeline's base-map stage setup lives partly in Ghidra gap code (0x164360..0x1650F0).
 - Window resize keeps a 640x480 back buffer (stretched); native resolution and widescreen are M10.
   **Phase 5:** the present pass scales it (`[render] scaling = linear | point | integer`); higher internal
-  resolution and widescreen stay M10.
+  resolution and widescreen stay M10. **M3c:** the internal render resolution, MSAA, supersampling and
+  anisotropic filtering came with M3c (section 12); widescreen stays a later point.
 - **Phase 5:** transformed vertices are snapped to 1/16 pixel (NV2A precision, section 9 "Phase-5 results");
   pre-transformed quads (slot 55) are not snapped (integer coordinates in the scenes measured).
+
+## 12. M3c: render resolution and anti-aliasing (renderer agent)
+
+Scope: `docs/ROADMAP.md` "M3c" (anti-aliasing bullet list) and contract item 5 of the M3c workflow. User
+requirements: anti-aliasing by MSAA (no FXAA, no TAA), native render resolution with supersampling on top, the
+"classic" configuration bit-identical to M3 (xemu regression). Code: `gfx/gfx_config.*`, `gfx/nipc_gpu.*`,
+`gfx/ff_pipeline.*`, `gfx/shaders/*`, `gfx/rhi/rhi.h`, `gfx/rhi/rhi.cpp`, `gfx/rhi/d3d11/*`,
+`platform/screenshot.*`, `gfx/nipc_renderer.cpp` (one line); tests `tests/aa_tests.cpp`; check `tools/m3c_check.py`.
+
+### 12.1 Configuration (`[render]`, schema rows in `core/config_schema.cpp`)
+
+| Key | Values (default) | Meaning |
+|---|---|---|
+| `resolution` | `auto` \| `<W>x<H>` (auto) | output size of the 4:3 image: the largest 4:3 rectangle inside the window's view (auto) or inside W x H (`1920x1080` -> 1440x1080, `640x480` = Xbox); W, H 160..16384 (`core::ParseConfigResolution`) |
+| `render_scale` | 1.0..2.0, UI step 0.25 (1.0) | supersampling factor on top: the back buffers are output x scale |
+| `msaa` | `off` \| `2` \| `4` \| `8` (4) | samples per pixel of the back buffers and their depth buffer; clamped to the device (`rhi::Device::SupportedSampleCount`, GFX/info line) |
+| `alpha_to_coverage` | bool (on) | alpha-tested materials without blending use alpha-to-coverage with alpha sharpening (only with MSAA) |
+| `anisotropy` | `off` \| `2` \| `4` \| `8` \| `16` (16) | anisotropic filtering of mip-mapped 3D textures |
+| `screenshot_size` | `output` \| `internal` (output) | screenshots of the presented image (output size) or of the resolved back buffer (output x render_scale) |
+| `linear_aa` | bool (off) | review M3c finding 3: the MSAA resolve and the downsample average linear light (sRGB views of TYPELESS targets) instead of gamma-encoded values; rendering and blending unchanged; off = the Xbox's gamma resolve |
+
+The existing `scaling` (linear | point | integer) applies when the output is smaller than the view. Classic =
+`resolution = 640x480`, `render_scale = 1`, `msaa = off`, `anisotropy = off`. The defaults (`gfx::kDefault*`) equal
+the schema defaults (unit test "aa: [render] M3c key parsers agree with the configuration schema"); the parsers
+`gfx::ParseRenderResolution/ParseRenderScale/ParseMsaa/ParseAnisotropy` use the schema's value parsers.
+
+### 12.2 Coordinate rule: the guest keeps 640x480
+
+The guest renders a 640x480 world: slots 21/22 return the Create size, `ni_extract` computes viewports, clear
+rectangles and pre-transformed quads in guest pixels, the ff camera (and so the `pretransform` constants, the +0.5
+pixel shift of B19, the 1/16-pixel NV2A snap of B33 and the slot-54 screen camera) stays in guest pixels. Only the
+D3D11 side grows (`gfx::RenderSizes`: output, internal = output x render_scale):
+- viewport: `ScaleViewport` (guest -> internal pixels, computed in double); everything inside the viewport is
+  resolution independent, so transformed geometry, slot 54 and slot 55 quads land on the same (scaled) place;
+- clear rectangles: `ScaleRect` (each edge rounded to the nearest internal pixel; adjacent rectangles stay adjacent);
+- the 1/16-pixel snap stays a 1/16 GUEST pixel (internal size / 640 / 16 internal pixels): vertices keep the
+  position the original rasterizer gave them; the high-resolution picture is a supersampled version of that
+  geometry and box-downscaled matches the xemu captures (X1 of m3c_check);
+- render to texture (slot 15 with a texture, P2) keeps the texture's own size (scale 1); scissor is never enabled
+  (a future one goes through `ScaleRect`); lines and points (slots 52/53, wireframe fill) are P2 and 1 internal
+  pixel wide - they must be widened by the scale when they are implemented.
+
+Point-filtered textures (all intro screens: filter 0/0/0) on a target larger than 640x480 are sampled as
+"anti-aliased nearest" (`FF_STAGE_SHARP_NEAREST`, `ff::RenderOptions::sharpNearest`, `UsesSharpNearest`): bilinear
+sampler, coordinates held on the texel center except within one pixel of a texel border. Plain nearest at the
+non-integer scale 4.5 (2880x2160) gives alternating 4- and 5-pixel texels; anti-aliased nearest keeps every texel
+4.5 pixels wide with a one-pixel seam (legal screen vs xemu after the box downscale: 1.28 -> 0.73; the rest is the
+half-pixel grid of 4.5 itself). Classic is untouched (the flag is only set when internal != guest size).
+
+### 12.3 Back buffers, MSAA, resolve, downsample, present (`rhi::DeviceDesc` / D3D11 backend)
+
+- `DeviceDesc::width/height` = internal size, `sampleCount` (clamped), `outputWidth/outputHeight` (0 = no
+  downsample); `DeviceInfo::sampleCount/outputWidth/outputHeight`.
+- The persistent back buffers (Xbox flip, M3 B31) are multisampled themselves (one D24S8 depth buffer with the same
+  samples): a frame without draws continues on the samples of two presents ago. Present: `ResolveSubresource` of the
+  current buffer (box average of the samples) -> downsample to the output size (`ResamplePS` in
+  `d3d11_builtin.hlsl`: exact box filter when the ratio is a whole number per axis - render_scale 2 = 2x2 samples
+  per output pixel; Catmull-Rom (B = 0, C = 1/2) stretched by the ratio otherwise, clamped to the range of the 2x2
+  source pixels nearest to the destination center - review M3c finding 1: the Mitchell-Netravali filter B = C = 1/3
+  before drew text and 2D visibly softer; offline against the render_scale 2 box reference the edge error at 1.5
+  drops from 8.8 to 5.0 (legal) and 3.2 to 2.05 (frontend) without overshoot, `docs/m3c_report.md`) -> present pass
+  into the swap chain: 1:1 (point) when the output fills the view, `[render] scaling` when it is smaller,
+  `ResamplePS` when it is larger than the view (no bilinear decimation).
+- `DeviceDesc::linearResolve` / `DeviceInfo::linearResolve` (`[render] linear_aa`, review M3c finding 3): back
+  buffers, resolve texture and output image are created TYPELESS; the game renders through UNORM views (blending
+  exactly as before), `ResolveSubresource` uses the `_SRGB` format and `ResamplePS` reads and writes `_SRGB` views
+  (the downsample in the present pass writes an `_SRGB` view of the flip-model swap chain buffer). The 1:1 copy and
+  the enlarging present pass stay in gamma. Unit test: a 2:1 checkerboard gives 188 instead of 128, an MSAA edge
+  pixel with coverage c gives encode(c) instead of 255c.
+- Review M3c finding 2: `GpuRenderer::Create` steps down when the back buffers of a configuration cannot be created
+  (`QualityFallbacks`: the request, render scale 1, MSAA halved down to off, 640x480 without MSAA; GFX/warn per step,
+  the `render:` line ends with `reduced from <request>`); the view-following resize steps down the same way (scale 1,
+  fewer samples) before it keeps the old buffers. When even 640x480 fails, `NiXBoxRenderer::Create` ends the game
+  with `core::Fatal` (exit code 3) - the null renderer never showed the window, the game ran invisibly and a waiting
+  launcher hung with it.
+- `CaptureBackBuffer` = resolved internal picture, `CaptureOutput` = the downsampled image (both mid-frame safe: the
+  context re-binds its state, `D3D11Context::RestoreBindings`).
+- `ResizeBackBuffers(w, h, samples, outW, outH)`: new targets; the pictures of the persistent buffers are resolved
+  and stretched/downsampled into the new ones (Xbox-flip contents survive a window resize), depth = 1, stencil 0.
+  `GpuRenderer` calls it for `resolution = auto` when the view size stayed changed for `kResizeSettleFrames` (12)
+  frames (window resize, Alt+Enter) and re-applies the guest viewport.
+- Descriptors (add-only): `BlendDesc::alphaToCoverage`, `RasterDesc::multisample` (MultisampleEnable for MSAA
+  targets), both hashed. Rectangle color clears use `ClearView` (works on MSAA RTVs), depth/stencil rectangles the
+  ClearVS triangle (unchanged).
+- GPU frame timing (`DeviceStats::gpuFrame*`): timestamp queries from the first clear/draw of a frame to the end
+  of its present pass, read back without flushing (a slot still pending after 6 frames is waited for).
+- Present flushes the immediate context when it skips the swap chain (minimized, display off, headless): before,
+  nothing submitted those frames until the driver's next implicit flush (section 12.6).
+- Memory (`render:` line): 2880x2160 with 4x MSAA 308 MiB; 5760x4320 (render_scale 2) with 8x MSAA 2396 MiB. The
+  launcher's presets keep the largest buffer within the D3D11 limit per resource (max(128 MB, min(VRAM/4, 2 GB)))
+  and the total within half the video memory of `--query-gpu` (review M3c finding 21).
+
+### 12.4 Fixed-function pipeline (`ff::RenderOptions`)
+
+- MSAA: `RasterDesc::multisample` for every draw on a multisampled target.
+- Alpha-to-coverage (`UsesAlphaToCoverage`): MSAA on, `[render] alpha_to_coverage`, alpha test on, alpha blend OFF
+  (blended cut-outs keep the discard: their blend softens the edge already), function GREATER / GREATEREQUAL / LESS /
+  LESSEQUAL and not trivially always/never passing. The pixel shader (`FFDrawConstants::alphaTest.w = 1`) replaces
+  the discard by `color.a = saturate((alpha - threshold) / fwidth(alpha) + 0.5)` (reversed for LESS*), threshold =
+  where the 8-bit test switches ((ref +- 0.5) / 255): the 50 % coverage line lies exactly on the alpha test's cut,
+  the transition is one pixel wide (alpha sharpening: crisp when magnified, no fading when minified).
+  Known difference (review M3c finding 5): the target's alpha channel receives this coverage alpha (inside mostly
+  1.0) instead of the texel alpha the D3D8 test leaves. Only a later blend with the destination alpha would show it;
+  `ff::ReadsDestinationAlpha` (DESTALPHA, INVDESTALPHA, SRCALPHASAT in any factor) suspends alpha-to-coverage for the
+  rest of the session at the first such draw (GFX/warn; exit line `N draws with a destination-alpha blend (alpha to
+  coverage suspended)`). The frontend has none (283 draws without blending, 61 SRCALPHA/INVSRCALPHA). Writing the
+  coverage through SV_Coverage would keep the texel alpha but needs shader model 4.1; flicker of alpha-to-coverage
+  under camera motion is checked with a test scene in M4/M8.
+- Anisotropy (`MakeSamplerDesc(stage, maxAnisotropy, screenSpace)`): only mip-mapped stages with linear
+  minification AND magnification on transformed geometry; point-filtered (also MIN = LINEAR / MAG = POINT, which the
+  anisotropic filter would magnify linearly - review M3c finding 4), non-mip-mapped and screen-space (slots 54/55)
+  stages keep their D3D8 filter. D3D11's anisotropic filter blends mip levels (a bilinear-mip texture becomes
+  trilinear). Its benefit is not measurable in the reachable scenes (no oblique surfaces in the static frontend);
+  to be checked with the free camera (M4b) or a synthetic scene.
+- Statistics: `PipelineStats::alphaToCoverageDraws / alphaTestDiscardDraws / anisotropicStages /
+  sharpNearestStages` -> exit line `render totals: ...`.
+
+### 12.5 Log lines (tools/m3c_check.py reads them)
+
+- `render: output WxH (resolution auto: view WxH | WxH), internal WxH (render scale S, X x Y per 640x480 pixel),
+  MSAA Nx (requested Mx; supported: 2, 4, 8), alpha to coverage on|off, anisotropy Nx, downsample
+  none|box|catmull-rom, screenshots output|internal, back buffers N MiB, resolve gamma|linear light[, reduced from
+  render scale S, MSAA Nx, resolution R]` (Create); a clamp adds `render: [render] msaa = M is not supported ... -
+  using Nx`; a step down `render: D3D11 back buffers WxH with N samples not available (...) - trying ...` (GFX/warn).
+- `render: view resized to WxH - output ... -> ..., internal ... -> ...` (resolution auto).
+- `d3d11: device on ... N back buffers WxH BGRA8_UNorm (S samples), depth ..., output WxH, ...`,
+  `d3d11: back buffers resized from ... to ...`.
+- Exit: `render totals: output WxH, internal WxH, MSAA Nx, R back-buffer resizes (F failed)[, quality reduced]; alpha
+  test: A draws with alpha to coverage, D with discard; S anisotropic texture stages, P point-filtered stages as
+  anti-aliased nearest; N draws with a destination-alpha blend[ (alpha to coverage suspended)]`, `d3d11 gpu frame time: N frames timed, average A ms, 99th percentile P ms, longest L ms` (span from the first
+  clear/draw of a frame to the end of its present pass: GPU work plus the gaps while the CPU still submits),
+  `screenshots: N written, M failed`.
+- Screenshots: captured on the render thread, the PNG is encoded on a worker thread (a 2880x2160 PNG takes
+  100+ ms); the worker logs `screenshot: <path> (WxH)` when the file is complete; the exit reporter "screenshots"
+  waits for pending files (`platform::FlushScreenshots`). The synchronous `SaveScreenshot(device, dir, frame)` of
+  M3 is unchanged (tests).
+
+### 12.6 Evidence (renderer agent, 2026-10-06; dev machine RTX 5090, display OFF during the runs)
+
+- `fut_tests` (Debug, RelWithDebInfo, clang-cl, FUT_WERROR=ON): all pass; `tests/aa_tests.cpp` 11 cases on WARP +
+  debug layer: MSAA resolve and partial coverage, ClearView on MSAA, Xbox flip with MSAA, box/Mitchell downsample,
+  resize carry-over, GpuRenderer at 2x internal, alpha-to-coverage, anti-aliased nearest, GPU timing over 40
+  frames without warnings, present pass 1:1/up/down into a window.
+- Classic vs the pre-M3c build (`build\m3b`): legal / tech notice / frontend frame 1200 screenshots bit-identical
+  (later runs differ only in animated content: lightning, gears, highlight pulse); xemu 0.00 / 0.00 / 0.30 / 0.02.
+- `m3c_check` (Debug, debug layer on, `run\m3c-renderer\check\m3c_check\report.txt`): ALL PASS for classic, hq,
+  hq_noaa, ref, ss - 0 debug-layer errors and warnings, every draw drawn, all M2 criteria, render configuration and
+  screenshot sizes as expected (hq: auto in borderless fullscreen = 2880x2160 internal; ref 5760x4320 8x box; ss
+  1440x1080 output / 2880x2160 internal box); presented 59.93-60.03 Hz, frame work p99 5.9-6.2 ms (average 1.4 ms
+  for the AA variants, 3.55 ms classic incl. the trace frames); GPU span average 0.35 ms classic, 1.0 ms hq,
+  1.57 ms ref. X1 (hq downscaled vs xemu) legal 0.73, tech notice 0.18, loading 0.61, frontend 0.98 (limits 1.0 /
+  1.0 / 2.0 / 2.0). X2 edge error vs the render_scale 2 + 8x reference: no AA 3.13, MSAA 4x 1.47 (ratio 0.47),
+  hard steps 1.7 % -> 0.1 %.
+- `m3c_check` with the RelWithDebInfo build (debug layer on): ALL PASS, frame work p99 3.7-4.7 ms, X1 as above,
+  X2 ratio 0.45 (no AA 3.13, MSAA 1.41).
+- Found on the way: with the display off (or minimized) the pacer skips the swap chain, and nothing flushed the
+  immediate context any more - the frame's GPU work waited for the driver's next implicit flush. Before the fix the
+  frame work p99 was 15-22 ms in every variant and 55 ms with the unchanged pre-M3c build (the GPU timer queries
+  even ran into debug-layer warning #408). `D3D11Device::Present` now flushes when it skips the swap chain; p99
+  6 ms afterwards. With the display on the swap-chain Present flushes as before (not re-measured here: the display
+  of the dev machine was off, so the present pass ran only in the windowed unit test).
+
+### 12.7 Review fixes (M3c phase 4, 2026-10-06; display on)
+
+- Findings 1-5 of the M3c review (`docs/loader_design.md` 8.8 R1-R5): Catmull-Rom downsample with the 2x2
+  anti-ringing clamp, the quality ladder of `GpuRenderer::Create` + `core::Fatal` instead of the invisible null
+  renderer, `[render] linear_aa`, anisotropy only with linear magnification, the destination-alpha rule of
+  alpha-to-coverage. Finding 6 (present-to-visible latency varies by 1-2 refreshes per session) goes to M3d.
+- `fut_tests` 259/259 (Debug, RelWithDebInfo, clang-cl; FUT_WERROR=ON); new aa cases: quality ladder, linear resolve
+  (checkerboard 128 -> 188, MSAA edge = encode(coverage) within 1 level on WARP), fractional downsample without
+  over-/undershoot, MIN = LINEAR / MAG = POINT keeps its filter, `ReadsDestinationAlpha`, present pass with an sRGB
+  swap-chain view under the debug layer.
+- `m3c_check` with the new variants `max` (render_scale 2 + 8x + linear_aa) and `frac` (1.5 + 4x + linear_aa):
+  Debug and RelWithDebInfo ALL PASS, debug layer 0 messages; X1 0.73 / 0.18 / 0.60 / 0.98, X2 ratio 0.44-0.46.
+  Classic `m3_check` (xemu 0.00 / 0.00 / 0.29-0.30 / 0.01) ALL PASS in all three builds.
+- 16384x12288 with 8x: `E_OUTOFMEMORY` -> one step down to 4x, the game runs visibly (`run\m3c_final\cases`).

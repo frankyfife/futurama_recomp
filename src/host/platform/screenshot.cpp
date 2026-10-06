@@ -1,13 +1,18 @@
 // Screenshots (screenshot.h): PNG through the Windows Imaging Component.
 #include "platform/screenshot.h"
 
+#include "core/host_main.h"
 #include "core/log.h"
 
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <mutex>
 #include <system_error>
+#include <thread>
 
 #pragma comment(lib, "windowscodecs.lib")
 
@@ -180,6 +185,106 @@ bool SaveScreenshot(gfx::rhi::Device& device, const std::filesystem::path& direc
         return true;
     } catch (...) {
         FUT_LOGE(Gfx, "screenshot of frame %u failed: out of memory", frame);
+        return false;
+    }
+}
+
+// ---- M3c: asynchronous screenshots --------------------------------------------------------------------------
+namespace {
+
+struct AsyncShots {
+    std::mutex mutex;
+    std::condition_variable done;
+    std::uint32_t pending = 0;
+    std::uint64_t written = 0;
+    std::uint64_t failed = 0;
+};
+
+AsyncShots& Shots() noexcept {
+    static AsyncShots shots;  // function-local: usable from static initialisation and at exit
+    return shots;
+}
+
+void LogScreenshotTotals() noexcept {
+    const bool flushed = FlushScreenshots(10000);
+    AsyncShots& s = Shots();
+    std::uint64_t written = 0, failed = 0;
+    {
+        std::lock_guard<std::mutex> lock(s.mutex);
+        written = s.written;
+        failed = s.failed;
+    }
+    FUT_LOGI(Gfx, "screenshots: %llu written, %llu failed%s", static_cast<unsigned long long>(written),
+             static_cast<unsigned long long>(failed), flushed ? "" : " (some were still being written at exit)");
+}
+
+// One detached worker per screenshot (a few per run): encode + write + log, then count it as done. Detached, so
+// neither a normal exit (unit tests) nor TerminateProcess (ExitHostProcess) waits for or kills a joinable thread.
+void WriteAsync(std::filesystem::path path, gfx::rhi::Image image, std::uint32_t frame) {
+    AsyncShots& s = Shots();
+    {
+        std::lock_guard<std::mutex> lock(s.mutex);
+        ++s.pending;
+    }
+    try {
+        std::thread([path = std::move(path), image = std::move(image), frame]() noexcept {
+            bool ok = false;
+            try {
+                core::LogSetThreadName("screenshot");
+                std::string error;
+                ok = WritePngFile(path, image, &error);
+                if (ok) {
+                    FUT_LOGI(Gfx, "screenshot: %s (%ux%u)", path.string().c_str(), image.width, image.height);
+                } else {
+                    FUT_LOGE(Gfx, "screenshot of frame %u failed: %s (%s)", frame, error.c_str(),
+                             path.string().c_str());
+                }
+            } catch (...) {
+                FUT_LOGE(Gfx, "screenshot of frame %u failed: out of memory", frame);
+            }
+            AsyncShots& shots = Shots();
+            {
+                std::lock_guard<std::mutex> lock(shots.mutex);
+                --shots.pending;
+                ++(ok ? shots.written : shots.failed);
+            }
+            shots.done.notify_all();
+        }).detach();
+    } catch (...) {
+        std::lock_guard<std::mutex> lock(s.mutex);
+        --s.pending;
+        throw;
+    }
+}
+
+}  // namespace
+
+bool SaveScreenshot(gfx::rhi::Device& device, const std::filesystem::path& directory, std::uint32_t frame,
+                    ScreenshotSource source) noexcept {
+    try {
+        static std::once_flag reporter;
+        std::call_once(reporter, [] { core::AddExitReporter("screenshots", &LogScreenshotTotals); });
+        gfx::rhi::Image image;
+        const bool captured =
+            source == ScreenshotSource::Output ? device.CaptureOutput(image) : device.CaptureBackBuffer(image);
+        if (!captured) {
+            FUT_LOGE(Gfx, "screenshot of frame %u failed: %s", frame, device.LastError());
+            return false;
+        }
+        WriteAsync(ScreenshotPath(directory, frame), std::move(image), frame);
+        return true;
+    } catch (...) {
+        FUT_LOGE(Gfx, "screenshot of frame %u failed: out of memory or no thread", frame);
+        return false;
+    }
+}
+
+bool FlushScreenshots(std::uint32_t timeoutMs) noexcept {
+    try {
+        AsyncShots& s = Shots();
+        std::unique_lock<std::mutex> lock(s.mutex);
+        return s.done.wait_for(lock, std::chrono::milliseconds(timeoutMs), [&s] { return s.pending == 0; });
+    } catch (...) {
         return false;
     }
 }

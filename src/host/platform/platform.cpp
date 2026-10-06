@@ -44,6 +44,7 @@ bool StageCreateWindow(const core::Config& config) {
     WindowOptions options;
     options.scale = settings.windowScale;
     options.fullscreen = settings.fullscreen;
+    options.monitor = settings.monitor.empty() ? nullptr : settings.monitor.c_str();
     const char* error = nullptr;
     if (!CreateMainWindow(options, &error)) {
         FUT_LOGE(Core, "CreateWindow: %s (error %lu) - continuing without a window", error != nullptr ? error : "?",

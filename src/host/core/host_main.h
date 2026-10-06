@@ -14,6 +14,9 @@ inline constexpr int kExitStageFailed = 2;   // a HostMain stage returned false
 inline constexpr int kExitGuestShutdown = 4;  // the guest ended itself: XLaunchNewImageA (dashboard),
                                               // HalReturnToFirmware (design 1.10 "Ende")
 inline constexpr int kExitWatchdog = 5;       // [debug] timeout elapsed (hang; thread dump in the log)
+// Review M3c finding 15: another game process already runs with the same user data folder (named mutex
+// Local\FuturamaPC-userdata-<hash>, taken before the log is opened); this one ends at once, nothing is written.
+inline constexpr int kExitAlreadyRunning = 6;
 
 int RunHost(const LauncherInfo* info) noexcept;
 

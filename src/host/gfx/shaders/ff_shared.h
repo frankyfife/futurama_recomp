@@ -168,6 +168,11 @@ struct float4x4 {
 #define FF_TTFF_COUNT3 3
 #define FF_TTFF_COUNT4 4
 #define FF_TTFF_PROJECTED 256
+// FFStage::coord.w flags (M3c; bit 0 was the phase-1 "texture bound" value 1).
+#define FF_STAGE_TEXTURE 0x1u        // a texture is bound to the stage
+#define FF_STAGE_SHARP_NEAREST 0x2u  // M3c: point-filtered texture on a target larger than 640x480 - sampled as
+                                     // "anti-aliased nearest" (flat texels, linear seams one pixel wide, the stage
+                                     // sampler is bilinear): every texel keeps the same size at a non-integer scale
 // rhi::CompareFunc order (alpha test function in FFDrawConstants::alphaTest.y)
 #define FF_CMP_NEVER 0
 #define FF_CMP_LESS 1
@@ -208,7 +213,8 @@ struct FFDrawConstants {
     float4 textureFactor;       // D3DRS_TEXTUREFACTOR rgba
     uint4 features;             // x feature key, y light count, z UV sets, w active stages
     uint4 colorSources;         // D3DMCS: x diffuse, y ambient, z specular, w emissive
-    uint4 alphaTest;            // x enable, y FF_CMP_* func, z ref 0..255, w unused
+    uint4 alphaTest;            // x enable, y FF_CMP_* func, z ref 0..255, w 1 = alpha-to-coverage (M3c: MSAA
+                                // target; the shader outputs the sharpened coverage alpha instead of discarding)
     uint4 fog;                  // x table mode FF_FOG_*, y range fog, z/w unused
 };
 
@@ -233,7 +239,8 @@ struct FFStage {
     uint4 color;           // x COLOROP, y COLORARG1, z COLORARG2, w COLORARG0
     uint4 alpha;           // x ALPHAOP, y ALPHAARG1, z ALPHAARG2, w ALPHAARG0
     uint4 coord;           // x TEXCOORDINDEX (UV set, low 16 bits), y TEXTURETRANSFORMFLAGS, z RESULTARG
-                           // (FF_TA_CURRENT or FF_TA_TEMP), w 1 if a texture is bound
+                           // (FF_TA_CURRENT or FF_TA_TEMP), w flags: FF_STAGE_TEXTURE (a texture is bound),
+                           // FF_STAGE_SHARP_NEAREST (M3c)
     FF_ROW_MAJOR float4x4 transform;  // D3DTS_TEXTUREn (used when coord.y != 0)
 };
 // b3

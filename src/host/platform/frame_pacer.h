@@ -1,33 +1,122 @@
-// Frame pacing and presented frame rate (GFX_CONTRACT.md 8). Owned by the backend agent.
+// Frame pacing and presented frame rate (GFX_CONTRACT.md 8; M3b display-coupled pacing, analysis/loader/
+// pacing60.md). Owned by the pacing agent (M3b; before: backend agent).
 //
-// The Xbox game runs its logic in fixed 1/50 s steps (PAL, CApp+0xE8 = 0) and D3DDevice_Swap waits for the
-// vertical blank (Create gets PresentationInterval ONE). On the PC, Present runs with VSync ([render]
-// vsync = 1, usually 60 Hz) and the 50 Hz limiter ([render] frame_rate = 50) keeps the guest at its
-// native rate. M2 had the limiter inside gfx/nipc_renderer.cpp (PaceFrame); the integration moves the
-// call site to this API (same algorithm: waitable high-resolution timer, a new schedule when more than one
-// frame late).
+// The game runs its logic in fixed steps of dt = 1/[game] tick_rate (60 Hz by default since M3b: the NTSC
+// timing values with PAL content, xapi/game_timing.h; 50 Hz = original PAL) and renders once per CApp::Frame
+// without interpolation. The pacer decides per displayed frame how the picture reaches the display and when
+// the next frame starts (pure policy: platform/pacer_policy.h; refresh detection: platform/pacer_display.h):
 //
-// Exit criterion 3 of M3 ("presented frame rate >= 50") is read from the lines LogPresentStatistics logs
-// (GFX/info). The first NotePresentedFrame registers it as the exit reporter "present" (core::AddExitReporter)
-// and shows the main window (platform::ShowMainWindow - "visible from the first Present"):
+//   GpuRenderer::DisplayFrame (gfx/nipc_gpu.cpp, guest main thread = render thread)
+//     NoteFrameWorkDone()                      end of the frame's own work (statistics)
+//     PlanPresent(config, swapChain)           -> PresentRequest {sync interval, tearing, skip}; takes a free
+//                                                 slot of the frame-latency waitable object without waiting
+//     rhi::Device::Present(...)
+//     NoteSwapChainPresent(feedback)           present id + DXGI frame statistics (what reached the screen)
+//     NotePresentedFrame()                     QPC after Present: the "present:" rate statistics
+//   OnFrameDisplayed (gfx/nipc_renderer.cpp, both backends)
+//     EndFrame(config)                         replans if needed, then waits: vblank paths on the waitable
+//                                              object (timeout 2 periods), timer paths on an absolute
+//                                              high-resolution waitable timer; without a swap chain this
+//                                              frame (null backend) the headless timer at the target rate
+//
+// Plans (pacing::Path, chosen by pacing::SelectPlan from [render] pacing, the refresh of the window's monitor,
+// tearing support, the VRR probe and the window state): vblank k = Present(k) when refresh = k * target
+// (k 1..4, 59.94/119.88 included); tearing-timer = timer + Present(0, ALLOW_TEARING) otherwise (VRR path,
+// probed with the frame statistics); display-rate = Present(1), one game frame per refresh, when tearing is
+// not available or VRR was rejected; free = timer + non-blocking Present(0) while the window is in the
+// background, minimized, the display is off, the session is locked or the display holds the pace;
+// timer/unthrottled = [render] pacing = timer/off; headless = null backend. Changes out of free need 30
+// frames (hysteresis) unless presentation resumes (restored from minimized: at once); the window's monitor and
+// the display epoch (platform/window.h) are polled every frame. Timer and free plans on a refresh of k x the
+// target are watched by pacing::CadenceGuard (half-refresh shift of the timer grid, alternating in sign, when the
+// on-screen durations keep missing k; a present that stayed visible for its target period - a VRR panel following
+// the presents - counts as on time); the VRR probe starts with 2 s of warm-up and a rejection is probed once more
+// after 10 s.
+//
+// Exit reporter "present" (registered by the first NotePresentedFrame, which also shows the main window -
+// "visible from the first Present"), GFX/info. The first three lines keep their M3 format (tools/m3_check.py):
 //   "present: N frames in T s (average A Hz, slowest 1 s window W Hz, longest frame L ms)"
 //   "present: pacing P Hz, R schedule resets (more than one frame late), S frames longer than 1.5 periods"
 //   "present: frame work N frames: average A ms, 99th percentile P ms, longest L ms (W frames longer than one
 //    pacing period) -> sustainable S Hz"
-// The third line (M3 review finding 3) separates the renderer's throughput from the pacing: "frame work" is
-// the time from the end of the previous PaceFrame to NoteFrameWorkDone (guest logic + slot calls + D3D11
-// command submission; without Present, screenshots and the pacer wait); sustainable = 1000 / average.
-// average = (N - 1) / T over first..last presented frame; slowest 1 s window = the lowest rate
-// (intervals / span) over the frames of any trailing 1 s window after the first second (a window with a
-// single frame - a gap longer than 1 s - counts as 1 / gap); longest frame = the longest interval.
+// P = the target rate; R = timer re-anchors + vblank waits that timed out; S = frame START intervals longer than
+// 1.5 planned periods (review M3b finding 8: the Present return times also contain the screenshot time and the
+// work jitter of frames that still reached the screen on plan; their count follows in parentheses). M3b adds
+// (formats in frame_pacer.cpp LogPresentStatistics):
+//   "present: mode ..., plan ...; frames per plan: ...; N plan changes"
+//   "present: display ... Hz (source), tearing ..., frame-latency waitable ..., VRR ..."
+//   "present: frame start intervals (planned period): <buckets> -> X % on period; longest L ms"
+//   "present: swap chain: N presents, S skipped (...), F forced; T vblank waits timed out, D display-limited ...;
+//    timer cadence: J durations judged (F followed by the panel), H half-refresh shifts[ (guard stopped)];
+//    V repeated VRR probes"
+//   "present: on screen (DXGI frame statistics): ... refreshes per frame ...; J jumps over P presents (I off the
+//    cadence); ... on plan ...; measured refresh ... Hz (fit over N samples, S segments); present to visible
+//    median ... ms, 99th percentile ... ms"
+//   "present: environment: foreground N frames (P %), background ..., minimized ..., display off ...,
+//    session locked ..., display-limited ..."
+// average = (N - 1) / T over first..last presented frame (QPC after Present); slowest 1 s window = the lowest
+// rate over the frames of any trailing 1 s window after the first second (a window with a single frame - a gap
+// longer than 1 s - counts as 1 / gap); longest frame = the longest interval. These three are Present-based: a
+// screenshot frame (about 10 ms between NoteFrameWorkDone and Present) shows up in "longest frame" although it
+// reached the screen on time; the on-screen line tells what the display showed. "frame work" = time from the end
+// of the previous EndFrame/PaceFrame to NoteFrameWorkDone (guest logic + slot calls + D3D11 submission).
+// [render] pacing_trace = <file> writes one CSV line per frame (columns in frame_pacer.cpp).
+//
+// Threading: PlanPresent, NoteSwapChainPresent, EndFrame, PaceFrame, NoteFrameWorkDone, NotePresentedFrame run
+// on the render thread; GetPresentStatistics / LogPresentStatistics on any thread. No lock is held while waiting.
 #pragma once
+
+#include "platform/pacer_display.h"
+#include "platform/pacer_policy.h"
 
 #include <cstdint>
 #include <deque>
 
 namespace platform {
 
-// Waits for the next 1/hz slot (hz = 0: returns at once). Call once per displayed frame, after Present.
+// ---- configuration (gfx::Settings -> gfx/nipc_gpu.cpp, gfx/nipc_renderer.cpp) ----------------------------------
+
+struct PacingConfig {
+    pacing::Mode mode = pacing::Mode::Auto;  // [render] pacing
+    bool vsync = true;                       // [render] vsync
+    double targetHz = 60.0;                  // game frames per second: [render] frame_rate, default the tick rate
+    std::uint32_t tickHz = 60;               // [game] tick_rate (log)
+    const wchar_t* tracePath = nullptr;      // [render] pacing_trace (nullptr or "" = off); must stay valid
+};
+
+// ---- per frame -----------------------------------------------------------------------------------------------
+
+struct SwapChainInfo {
+    void* frameLatencyWaitable = nullptr;  // rhi::Device::FrameLatencyWaitable (HANDLE)
+    bool tearingSupported = false;         // rhi::DeviceInfo::tearingSupported
+};
+struct PresentRequest {
+    std::uint32_t syncInterval = 0;
+    bool allowTearing = false;
+    bool skipSwapChain = false;
+};
+// Before Present (render thread). Never waits.
+PresentRequest PlanPresent(const PacingConfig& config, const SwapChainInfo& swapChain) noexcept;
+
+struct PresentFeedback {
+    std::int64_t qpcCall = 0;         // QPC right before / after rhi::Device::Present
+    std::int64_t qpcReturn = 0;
+    bool swapChainPresented = false;  // rhi::PresentTiming (copied by the caller)
+    bool occluded = false;
+    std::uint32_t presentId = 0;
+    bool statsValid = false;
+    std::uint32_t statPresentCount = 0;
+    std::uint32_t statSyncRefreshCount = 0;
+    std::int64_t statSyncQpc = 0;
+};
+// After Present (render thread).
+void NoteSwapChainPresent(const PresentFeedback& feedback) noexcept;
+
+// After the frame (render thread): replan and wait for the start of the next frame.
+void EndFrame(const PacingConfig& config) noexcept;
+
+// M2/M3 entry kept for tests: waits for the next 1/hz s slot on the absolute timer (hz = 0: returns at once).
+// The game itself uses EndFrame.
 void PaceFrame(std::uint32_t hz) noexcept;
 
 // End of the frame's own work (before screenshots and Present; GpuRenderer::DisplayFrame). Guest main thread.
@@ -43,20 +132,54 @@ struct PresentStatistics {
     double slowestWindowHz = 0.0;  // lowest rate of any trailing 1 s window (0 = run shorter than 1 s)
     double longestFrameMs = 0.0;
     // Pacer details (second log line).
-    std::uint32_t pacingHz = 0;          // last PaceFrame argument
-    std::uint64_t scheduleResets = 0;    // PaceFrame started a new schedule (more than one frame late)
-    std::uint64_t slowFrames = 0;        // intervals longer than 1.5 pacing periods (0 without pacing)
+    std::uint32_t pacingHz = 0;          // target rate (rounded; PaceFrame: its argument)
+    std::uint64_t scheduleResets = 0;    // timer re-anchors (more than one period late) + vblank wait timeouts
+    std::uint64_t slowFrames = 0;        // frame start intervals longer than 1.5 planned periods (0 without pacing;
+                                         // PresentStatsAccumulator::Result: Present intervals)
+    std::uint64_t presentSlowFrames = 0; // Present intervals longer than 1.5 planned periods (incl. screenshots)
+    double longestStartMs = 0.0;         // longest frame start interval
     // Frame work (third line; NoteFrameWorkDone).
     std::uint64_t workFrames = 0;
     double workAverageMs = 0.0;
     double workP99Ms = 0.0;              // 99th percentile (0.1 ms buckets up to 100 ms)
     double workLongestMs = 0.0;
-    std::uint64_t workOverPeriod = 0;    // frames whose work alone exceeded one pacing period
+    std::uint64_t workOverPeriod = 0;    // frames whose work alone exceeded one planned period
+    // M3b display-coupled pacing.
+    pacing::Mode mode = pacing::Mode::Auto;
+    double targetHz = 0.0;
+    std::uint32_t tickHz = 0;
+    pacing::Plan plan;                                  // current plan
+    std::uint64_t pathFrames[pacing::kPathCount] = {};  // EndFrame calls per plan path
+    std::uint64_t planChanges = 0;
+    DisplayTiming display;                              // of the window's monitor (valid = false: unknown)
+    bool tearingSupported = false;
+    bool frameLatencyWaitable = false;
+    pacing::VrrState vrr = pacing::VrrState::Unknown;
+    const char* vrrReason = "";
+    std::uint64_t monitorChanges = 0;
+    std::uint64_t displayEvents = 0;                    // display epoch changes seen (window.h)
+    std::uint64_t timerResets = 0;
+    std::uint64_t waitTimeouts = 0;                     // vblank waits that timed out
+    std::uint64_t displayLimited = 0;                   // display-limited detections
+    std::uint64_t swapChainPresents = 0;
+    std::uint64_t skippedNoSlot = 0;                    // no free slot of the waitable object
+    std::uint64_t skippedHidden = 0;                    // minimized / display off / locked
+    std::uint64_t forcedPresents = 0;                   // presented without a slot after a long starvation
+    std::uint64_t cadenceJudged = 0;                    // timer-plan durations judged by pacing::CadenceGuard
+    std::uint64_t cadenceFollowed = 0;                  // ... off the refresh count but on time (VRR panel)
+    std::uint64_t cadenceShifts = 0;                    // half-refresh shifts of the timer grid (alternating sign)
+    bool cadenceStopped = false;                        // the guard stopped (kMaxShifts without a clean window)
+    std::uint32_t vrrRetries = 0;                       // repeated VRR probes since the last display event
+    std::uint64_t intervalBuckets[pacing::IntervalHistogram::kBuckets] = {};  // frame start intervals
+    double onPeriodPercent = 0.0;
+    pacing::OnScreenTracker::Result onScreen;
+    std::uint64_t foregroundFrames = 0, backgroundFrames = 0, minimizedFrames = 0, displayOffFrames = 0,
+                  lockedFrames = 0, limitedFrames = 0;
 };
 PresentStatistics GetPresentStatistics() noexcept;  // thread-safe
 void LogPresentStatistics() noexcept;               // thread-safe (exit reporter)
 
-// Tests: forget the pacing schedule and the statistics.
+// Tests: forget the plan, the schedule and the statistics.
 void ResetFramePacer() noexcept;
 
 // The statistics computation (pure, tests): feed frame times in seconds (non-decreasing).

@@ -11,9 +11,10 @@
 // (core::ExitHostProcess(0, "window closed") - exit reporters run on the render thread, exit code 0; M3
 // review findings 5/10). If no frame is displayed within 3 s, the UI thread ends the process itself.
 //
-// Layout: a top-level frame window "Futurama" (resizable; client area 640x480 * [render] window_scale at 100 %
-// desktop scaling, i.e. * DPI / 96 in physical pixels, shrunk to the largest 4:3 area that fits the work
-// area; [render] fullscreen = borderless window on the whole monitor) with a
+// Layout: a top-level frame window "Futurama" on the monitor of [render] monitor (M3c; default the primary one;
+// resizable; client area 640x480 * [render] window_scale at 100 % desktop scaling, i.e. * DPI / 96 of that
+// monitor in physical pixels, shrunk to the largest 4:3 area that fits its work area; [render] fullscreen =
+// borderless window on the whole monitor) with a
 // black background and one child "view" window that keeps the 4:3 aspect of the back buffer, centered
 // (letterbox/pillarbox). MainWindow() is the VIEW: the swap chain has its client size (the D3D11 backend
 // resizes it in Present) and the present pass scales the 640x480 back buffer onto it ([render] scaling =
@@ -31,7 +32,21 @@ struct WindowOptions {
     std::uint32_t scale = 2;     // client area = (kViewWidth x kViewHeight) * scale * DPI / 96 (1..8)
     bool fullscreen = false;     // borderless window covering the monitor
     const wchar_t* title = L"Futurama";
+    // [render] monitor (M3c): GDI device name of the monitor the window opens on, as `futurama.exe
+    // --query-gpu` lists it ("\\.\DISPLAY2"); nullptr, "" or "primary" = the primary monitor. A name that is not
+    // connected falls back to the primary monitor (Core warning). Window size and DPI follow that monitor.
+    const char* monitor = nullptr;
 };
+
+// Monitor selection for [render] monitor (M3c). `name` as in WindowOptions::monitor (blanks around it are
+// ignored, case-insensitive). The result is always a valid monitor: the named one, else the primary one.
+struct MonitorChoice {
+    HMONITOR monitor = nullptr;
+    bool primary = true;   // the result is the primary monitor
+    bool found = true;     // false: `name` named a monitor that is not connected (fallback to the primary)
+    char device[40] = {};  // GDI device name of the result (UTF-8), e.g. "\\.\DISPLAY1"
+};
+MonitorChoice SelectMonitor(const char* name) noexcept;
 inline constexpr std::uint32_t kViewWidth = 640;   // NiXBoxRenderer::Create size (aspect of the view)
 inline constexpr std::uint32_t kViewHeight = 480;
 
@@ -66,6 +81,27 @@ void PostHotkeys(std::uint32_t mask) noexcept;
 // The window received WM_CLOSE (close button, Alt+F4). Thread-safe; NiPCRenderer's DisplayFrame polls it
 // and ends the process on the guest main thread.
 bool CloseRequested() noexcept;
+
+// Display environment for the frame pacer (M3b display-coupled pacing, platform/frame_pacer.h; analysis/loader/
+// pacing60.md 3.4). The frame window's procedure (UI thread) keeps it up to date; the render thread reads it at
+// every frame boundary:
+//   displayOn      GUID_CONSOLE_DISPLAY_STATE (RegisterPowerSettingNotification on the frame window; Windows
+//                  sends the current state right after the registration): 0 = off -> false, on/dimmed -> true
+//   sessionLocked  WM_WTSSESSION_CHANGE WTS_SESSION_LOCK/UNLOCK (WTSRegisterSessionNotification); the initial
+//                  state comes from WTSQuerySessionInformationW(WTSSessionInfoEx)
+//   epoch          +1 on WM_DISPLAYCHANGE (mode/refresh/monitor change), WM_DPICHANGED, the Alt+Enter
+//                  fullscreen toggle (VRR/tearing only apply in independent flip), display on/off and
+//                  lock/unlock: the pacer queries the refresh rate again and plans anew.
+// Foreground (GetForegroundWindow() == MainFrameWindow()), minimized (IsIconic) and the window's monitor
+// (MonitorFromWindow) are polled by the pacer itself. Without a window: displayOn, unlocked, epoch 0.
+struct DisplayEnvironment {
+    bool displayOn = true;
+    bool sessionLocked = false;
+    std::uint32_t epoch = 0;
+};
+DisplayEnvironment GetDisplayEnvironment() noexcept;
+// Raises the epoch as if the display configuration had changed (tests; any thread).
+void NoteDisplayChange() noexcept;
 
 // Largest rectangle of aspect aspectW:aspectH inside a client area of clientW x clientH, centered
 // (x, y, width, height). Used for the view layout; pure (tests).

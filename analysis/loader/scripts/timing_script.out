@@ -1,0 +1,124 @@
+== 1. PAL (retail EU FutPAL01) vs. NTSC prototype (FutNTSC01)
+  level1-1.ful     identical  sha1=4875862ce8b6
+  level1-1.dbg     identical  sha1=a76185ce0e1d
+  level1-2.ful     identical  sha1=55b069cb25f8
+  level1-2.dbg     identical  sha1=617644fb37b4
+  level1-3.ful     differs (154632 vs 154808 bytes)  sha1=7ef63c83a351
+  level1-3.dbg     differs (325496 vs 325496 bytes)  sha1=cad09c1f434f
+  level1-4.ful     identical  sha1=1acbbfa4439e
+  level1-4.dbg     identical  sha1=49478fa4bf4a
+  level1-5.ful     differs (221040 vs 220552 bytes)  sha1=b80b31818b92
+  level1-5.dbg     differs (399000 vs 398728 bytes)  sha1=c7cfee0c636c
+  level1-6.ful     identical  sha1=ae4c726c33fd
+  level1-6.dbg     identical  sha1=8f6ea22386ad
+  level1-7.ful     identical  sha1=9213721cae18
+  level1-7.dbg     identical  sha1=0dee1d762258
+  level2-1.ful     identical  sha1=d891b754f6c1
+  level2-1.dbg     identical  sha1=dd62d5cdccaa
+  level2-2.ful     identical  sha1=6308d27ac7d8
+  level2-2.dbg     identical  sha1=15415f5de1c9
+  level2-3.ful     identical  sha1=f15d987600b9
+  level2-3.dbg     identical  sha1=0d04264c4781
+  level2-4.ful     identical  sha1=f15adc311490
+  level2-4.dbg     identical  sha1=07c15c605431
+  level2-5.ful     identical  sha1=63efcda2813e
+  level2-5.dbg     identical  sha1=631a645e4851
+  level2-6.ful     identical  sha1=c4a9d8ed18c5
+  level2-6.dbg     identical  sha1=50af22b9bdc8
+  level3-1.ful     identical  sha1=723af6c8c5d7
+  level3-1.dbg     identical  sha1=f37bcc32e40e
+  level3-2.ful     identical  sha1=44702b9cfbf8
+  level3-2.dbg     identical  sha1=d59e606ab544
+  level3-3.ful     identical  sha1=1e901ae91e95
+  level3-3.dbg     identical  sha1=85b138ebc380
+  level3-4.ful     identical  sha1=9fd8595031d2
+  level3-4.dbg     identical  sha1=176ba52e47a4
+  level3-5.ful     identical  sha1=59a66d6990a2
+  level3-5.dbg     identical  sha1=7be21d311726
+  level3-6.ful     identical  sha1=eeba913308d4
+  level3-6.dbg     identical  sha1=29ae7b18218e
+  level4-1.ful     identical  sha1=a9818750a6b8
+  level4-1.dbg     identical  sha1=db90f4461faa
+  level5-1.ful     identical  sha1=a82fe7032c47
+  level5-1.dbg     identical  sha1=c11115c4fa89
+  level5-2.ful     identical  sha1=a6cc1106cc37
+  level5-2.dbg     identical  sha1=15af3fd4010b
+  level5-3.ful     identical  sha1=3fe824b74685
+  level5-3.dbg     identical  sha1=e13e1e29197a
+  identical .ful: 21 of 23
+
+== 2. wait (0x18) and timer (0x03) operands from immediate pushes (0x08), all PAL scripts
+  wait opcodes: 7224, with immediate operand: 6473
+  wait operands (float seconds unless marked int): [(0.0, 5511), (1.0, 235), (0.1, 134), (2.0, 127), (0.5, 106), (0.05, 48), (1.5, 36), (0.2, 30), (3.0, 27), (0.02, 24), (4.5, 23), (0.98, 23), (0.3, 15), (6.0, 14), (0.25, 13), (2.5, 12), (1.25, 11), (0.7, 8), (0.6, 8), (0.04, 7), (0.8, 7), (0.4, 6), (10.0, 6), (1.2, 6), (4.0, 6), (2.3, 4), (0.9, 4), (5.0, 3), (0.75, 3), (1.75, 2)]
+  wait operands that are not float seconds: {('int', 31981574): 1}
+  timer (0x03) operands: [(1.0, 139), (0.5, 59), (1.5, 44), (2.0, 34), (5.0, 24), (3.0, 18), (0.3, 10), (2.5, 9), (0.8, 8), (4.0, 7), (3.5, 6), (0.1, 5), (0.6, 4), (0.2, 4), (0.08, 3), (40.0, 3), (0.7, 2), (10.0, 2), (2.3, 2), (0.15, 1)]
+  undecoded opcode words (linear walk noise): {0: 23765, 1: 2850, 80: 502, 61: 403, 116: 352, 35: 330, 189: 328, 104: 323}
+
+== 3. loops (backward jumps) by body content, all PAL scripts
+  wait0                            4526
+  wait0+timer                      721
+  wait0+step                       38
+  wait0+waitS                      26
+  wait0+timer+step                 25
+  wait0+waitS+timer                23
+  wait0+waitS+step                 21
+  per-tick stepping candidates (wait<=0.05 s, immediate float add/sub, no timer read): 59
+   level1-1.ful loop 0018BC..001944 (17 ops) ('wait0', 'waitS', 'step')
+   level1-1.ful loop 0019AC..001A34 (17 ops) ('wait0', 'waitS', 'step')
+   level1-1.ful loop 001C04..001C8C (17 ops) ('wait0', 'step')
+   level1-1.ful loop 001CA0..001D28 (17 ops) ('wait0', 'step')
+   level1-1.ful loop 001B30..001D50 (65 ops) ('wait0', 'step')
+   level1-2.ful loop 017BD8..017E14 (67 ops) ('wait0', 'step')
+   level1-3.ful loop 0042B0..004338 (17 ops) ('wait0', 'waitS', 'step')
+   level1-3.ful loop 0043A0..004428 (17 ops) ('wait0', 'waitS', 'step')
+   level1-3.ful loop 0045F8..004680 (17 ops) ('wait0', 'step')
+   level1-3.ful loop 004694..00471C (17 ops) ('wait0', 'step')
+   level1-3.ful loop 004524..004744 (65 ops) ('wait0', 'step')
+   level1-4.ful loop 002F14..002F9C (17 ops) ('wait0', 'waitS', 'step')
+   level1-4.ful loop 003004..00308C (17 ops) ('wait0', 'waitS', 'step')
+   level1-4.ful loop 00325C..0032E4 (17 ops) ('wait0', 'step')
+   level1-4.ful loop 0032F8..003380 (17 ops) ('wait0', 'step')
+   level1-4.ful loop 003188..0033A8 (65 ops) ('wait0', 'step')
+   level1-5.ful loop 0043B0..004438 (17 ops) ('wait0', 'waitS', 'step')
+   level1-5.ful loop 0044A0..004528 (17 ops) ('wait0', 'waitS', 'step')
+   level1-5.ful loop 0046F8..004780 (17 ops) ('wait0', 'step')
+   level1-5.ful loop 004794..00481C (17 ops) ('wait0', 'step')
+   level1-5.ful loop 004624..004844 (65 ops) ('wait0', 'step')
+   level1-6.ful loop 003C9C..003D24 (17 ops) ('wait0', 'waitS', 'step')
+   level1-6.ful loop 003D8C..003E14 (17 ops) ('wait0', 'waitS', 'step')
+   level1-6.ful loop 003FE4..00406C (17 ops) ('wait0', 'step')
+   level1-6.ful loop 004080..004108 (17 ops) ('wait0', 'step')
+   level1-6.ful loop 003F10..004130 (65 ops) ('wait0', 'step')
+   level1-7.ful loop 003634..0036BC (17 ops) ('wait0', 'waitS', 'step')
+   level1-7.ful loop 003724..0037AC (17 ops) ('wait0', 'waitS', 'step')
+   level1-7.ful loop 00397C..003A04 (17 ops) ('wait0', 'step')
+   level1-7.ful loop 003A18..003AA0 (17 ops) ('wait0', 'step')
+   level1-7.ful loop 0038A8..003AC8 (65 ops) ('wait0', 'step')
+   level2-2.ful loop 002E94..002F1C (17 ops) ('wait0', 'waitS', 'step')
+   level2-2.ful loop 002F84..00300C (17 ops) ('wait0', 'waitS', 'step')
+   level2-2.ful loop 0031DC..003264 (17 ops) ('wait0', 'step')
+   level2-2.ful loop 003278..003300 (17 ops) ('wait0', 'step')
+   level2-2.ful loop 003108..003328 (65 ops) ('wait0', 'step')
+   level2-3.ful loop 00EB04..00F37C (178 ops) ('wait0', 'step')
+   level2-5.ful loop 0093DC..00954C (39 ops) ('wait0', 'step')
+   level2-6.ful loop 000A30..000AB8 (17 ops) ('wait0', 'step')
+   level2-6.ful loop 000710..000AF4 (93 ops) ('wait0', 'step')
+
+== 4. wait quantization (ticks / seconds until the thread resumes)
+  Wait(t)  50 Hz              60 Hz              change
+  0          1 =  0.0200 s        1 =  0.0167 s      -3.3 ms
+  0.02       1 =  0.0200 s        2 =  0.0333 s      +13.3 ms
+  0.04       2 =  0.0400 s        3 =  0.0500 s      +10.0 ms
+  0.05       3 =  0.0600 s        3 =  0.0500 s      -10.0 ms
+  0.1        5 =  0.1000 s        7 =  0.1167 s      +16.7 ms
+  0.2       11 =  0.2200 s       13 =  0.2167 s      -3.3 ms
+  0.25      13 =  0.2600 s       16 =  0.2667 s      +6.7 ms
+  0.3       16 =  0.3200 s       18 =  0.3000 s      -20.0 ms
+  0.5       25 =  0.5000 s       30 =  0.5000 s      +0.0 ms
+  0.98      50 =  1.0000 s       59 =  0.9833 s      -16.7 ms
+  1         51 =  1.0200 s       61 =  1.0167 s      -3.3 ms
+  1.5       76 =  1.5200 s       91 =  1.5167 s      -3.3 ms
+  2        101 =  2.0200 s      121 =  2.0167 s      -3.3 ms
+  3        151 =  3.0200 s      181 =  3.0167 s      -3.3 ms
+  5        251 =  5.0200 s      300 =  5.0000 s      -20.0 ms
+  10       500 = 10.0000 s      600 = 10.0000 s      +0.0 ms

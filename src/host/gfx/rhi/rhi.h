@@ -162,6 +162,9 @@ struct BlendDesc {
     BlendFactor dstAlpha = BlendFactor::Zero;
     BlendOp opAlpha = BlendOp::Add;
     std::uint8_t writeMask = 0xF;     // bit 0 R, 1 G, 2 B, 3 A
+    // M3c (add-only): alpha-to-coverage - the pixel shader's output alpha selects the covered samples of a
+    // multisampled target (D3D11_BLEND_DESC::AlphaToCoverageEnable). Only meaningful with MSAA.
+    bool alphaToCoverage = false;
     friend bool operator==(const BlendDesc&, const BlendDesc&) = default;
 };
 
@@ -195,6 +198,9 @@ struct RasterDesc {
     bool depthClip = true;
     std::int32_t depthBias = 0;
     float slopeScaledDepthBias = 0.0f;
+    // M3c (add-only): the target is multisampled (D3D11 MultisampleEnable: MSAA rasterization of lines and on
+    // feature level 10_0; triangles on 10_1+ are multisampled on an MSAA target anyway).
+    bool multisample = false;
     friend bool operator==(const RasterDesc&, const RasterDesc&) = default;
 };
 
@@ -325,14 +331,19 @@ const char* BackendName(Backend backend) noexcept;
 // finding 11): Linear = bilinear to the largest 4:3 rectangle of the client area, Point = nearest texel
 // to the same rectangle, Integer = nearest texel with the largest whole factor that fits, centered with
 // black borders (falls back to Point when even factor 1 does not fit).
+// M3c: the source is the presented image (DeviceDesc::outputWidth x outputHeight, else the back buffer size).
+// When it has exactly the size of the destination rectangle it is copied 1:1 (point); when it is LARGER than
+// the destination (the image does not fit the window) it is downsampled with the same filter as the
+// supersampling downsample (box for an integer ratio, Catmull-Rom with anti-ringing otherwise) instead of
+// bilinear taps.
 enum class PresentScaling : std::uint8_t { Linear, Point, Integer };
 const char* PresentScalingName(PresentScaling scaling) noexcept;
 
 struct DeviceDesc {
     Backend backend = Backend::D3D11;
     void* nativeWindow = nullptr;     // HWND; nullptr = headless device (no swap chain)
-    std::uint32_t width = 640;        // back buffer size (= NiXBoxRenderer::Create size); Present scales it
-    std::uint32_t height = 480;       // to the window's client area (`scaling`)
+    std::uint32_t width = 640;        // back buffer size (M3: = NiXBoxRenderer::Create size; M3c: the internal
+    std::uint32_t height = 480;       // render resolution); Present scales it to the window's client area (`scaling`)
     // Persistent back buffers in rotation (1..3; the Xbox flip with BackBufferCount 1 = 2 buffers): after
     // Present the back buffer holds what was rendered `bufferCount` presents ago (Device::Present).
     std::uint32_t bufferCount = 2;
@@ -341,6 +352,26 @@ struct DeviceDesc {
     Format depthFormat = Format::D24_UNorm_S8_UInt;
     bool debugLayer = false;          // request the API validation layer (D3D11: D3D11_CREATE_DEVICE_DEBUG)
     bool softwareAdapter = false;     // D3D11: WARP
+    // M3b (display-coupled pacing, platform/frame_pacer.h): 1..3 = the swap chain gets a frame-latency
+    // waitable object (Device::FrameLatencyWaitable) with this maximum frame latency; 0 = none (the device-wide
+    // frame latency 2 of M3; Present itself blocks when the queue is full). Ignored without a window.
+    std::uint32_t frameLatencyWaitable = 0;
+    // M3c (render resolution and anti-aliasing, add-only; defaults = the M3 behaviour):
+    // Samples per pixel of the persistent back buffers and their depth buffer (1 = no MSAA; 2/4/8 are clamped
+    // to what the device supports for backBufferFormat + depthFormat, DeviceInfo::sampleCount). Every
+    // persistent back buffer is multisampled, so a frame that draws nothing still continues on the samples of
+    // `bufferCount` presents ago (Xbox flip); Present resolves the current one.
+    std::uint32_t sampleCount = 1;
+    // Size of the image Present shows (and CaptureOutput returns): the resolved back buffer (width x height) is
+    // downsampled to it - exact box filter for an integer ratio, Catmull-Rom with anti-ringing otherwise
+    // (supersampling, [render] render_scale). 0 x 0 = the back buffer size (no downsample).
+    std::uint32_t outputWidth = 0;
+    std::uint32_t outputHeight = 0;
+    // Review M3c finding 3 ([render] linear_aa): the MSAA resolve and the downsample average linear light
+    // (sRGB decode -> filter -> sRGB encode) instead of the gamma-encoded values (what the Xbox and the M3c
+    // default do). Rendering and blending into the back buffers stay unchanged (UNORM views), and so does the
+    // present pass when it copies 1:1 or enlarges. Needs a back buffer format with an sRGB variant.
+    bool linearResolve = false;
 };
 
 struct DeviceInfo {
@@ -353,6 +384,17 @@ struct DeviceInfo {
     std::uint32_t backBufferHeight = 0;
     Format backBufferFormat = Format::Unknown;
     Format depthFormat = Format::Unknown;
+    // M3b (pacing): Present may use PresentDesc::allowTearing (D3D11: DXGI_FEATURE_PRESENT_ALLOW_TEARING and a
+    // swap chain created with DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING); maximum frame latency of the waitable
+    // object (0 = no waitable object).
+    bool tearingSupported = false;
+    std::uint32_t frameLatency = 0;
+    // M3c: samples per pixel of the back buffers (after clamping DeviceDesc::sampleCount) and the size of the
+    // presented image (= the back buffer size without a downsample).
+    std::uint32_t sampleCount = 1;
+    std::uint32_t outputWidth = 0;
+    std::uint32_t outputHeight = 0;
+    bool linearResolve = false;  // DeviceDesc::linearResolve in effect
 };
 
 enum class DebugSeverity : std::uint8_t { Info, Message, Warning, Error, Corruption };
@@ -380,11 +422,39 @@ struct DeviceStats {
     std::uint64_t textureBytes = 0;   // live
     std::uint32_t debugErrors = 0;    // Error + Corruption messages so far
     std::uint32_t debugWarnings = 0;
+    // M3c (add-only): GPU time per frame from timestamp queries (start of the frame after the previous Present
+    // to the end of the present pass), read back a few frames later; 0 frames = not measured (no support or
+    // disjoint timestamps).
+    std::uint64_t gpuFramesTimed = 0;
+    double gpuFrameMsAverage = 0.0;
+    double gpuFrameMsP99 = 0.0;
+    double gpuFrameMsMax = 0.0;
 };
 
 enum class PresentResult : std::uint8_t { Ok, Occluded, DeviceLost, Failed };
 struct PresentDesc {
-    std::uint32_t syncInterval = 1;   // 0 = no vsync, 1 = every vblank ([render] vsync)
+    std::uint32_t syncInterval = 1;   // 0 = no vsync, 1..4 = show for (at least) N vblanks (DXGI semantics)
+    // M3b (display-coupled pacing, platform/frame_pacer.h; add-only):
+    bool allowTearing = false;        // DXGI_PRESENT_ALLOW_TEARING; only with syncInterval 0 and
+                                      // DeviceInfo::tearingSupported (ignored otherwise). Before M3b the backend
+                                      // set it implicitly for syncInterval 0.
+    bool skipSwapChain = false;       // do not present into the window (minimized, display off, no free slot):
+                                      // only the persistent back buffers rotate (Xbox flip semantics kept)
+};
+
+// M3b: what the swap chain reported after Present (Device::LastPresentTiming). The frame statistics
+// (DXGI_FRAME_STATISTICS) describe the newest present that became visible, which is usually one or two
+// presents older than this one.
+struct PresentTiming {
+    bool swapChainPresented = false;  // this Present reached the swap chain (not skipped, no failure)
+    bool occluded = false;            // DXGI_STATUS_OCCLUDED
+    std::uint32_t presentId = 0;      // IDXGISwapChain::GetLastPresentCount after this Present
+    bool statsValid = false;          // IDXGISwapChain::GetFrameStatistics succeeded
+    long statsError = 0;              // its HRESULT otherwise (e.g. 0x887A000B DXGI_ERROR_FRAME_STATISTICS_DISJOINT)
+    std::uint32_t statPresentCount = 0;         // present id of the newest visible present
+    std::uint32_t statPresentRefreshCount = 0;
+    std::uint32_t statSyncRefreshCount = 0;     // vblank count at which it became visible
+    std::int64_t statSyncQpc = 0;               // QPC time of that vblank
 };
 
 class Device {
@@ -414,11 +484,45 @@ public:
     // BackBufferCount 1 flips two buffers, renderer.md 3.1), a frame that draws nothing shows the picture of
     // `bufferCount` presents ago (review M3 findings 2/8). With a window the picture is copied into the swap
     // chain (window size, DeviceDesc::scaling); the swap chain itself is redrawn completely every Present.
-    // The caller paces to 50 Hz separately (platform/frame_pacer.h).
+    // The caller paces separately (platform/frame_pacer.h: PlanPresent chooses desc, EndFrame waits).
     virtual PresentResult Present(const PresentDesc& desc) noexcept = 0;
+    // M3b (display-coupled pacing; add-only, defaults for backends without a swap chain):
+    // The swap chain's frame-latency waitable object (a Win32 HANDLE owned by the device; DeviceDesc::
+    // frameLatencyWaitable), nullptr if there is none. It is signaled when the swap chain can take the next
+    // frame; whoever presents must wait on it (consume one signal) once per swap-chain Present.
+    virtual void* FrameLatencyWaitable() const noexcept { return nullptr; }
+    // Result and frame statistics of the most recent Present.
+    virtual PresentTiming LastPresentTiming() const noexcept { return {}; }
     // Copy of the current back buffer (BGRA8_UNorm, DeviceDesc size, independent of the window size). Used
-    // by the screenshot key and [render] screenshot_frames before Present.
+    // by the screenshot key and [render] screenshot_frames before Present. M3c: a multisampled back buffer is
+    // resolved first (the picture at the internal render resolution).
     virtual bool CaptureBackBuffer(Image& out) noexcept = 0;
+    // M3c (add-only, defaults for backends without a downsample): the image Present would show for the current
+    // back buffer - resolved and downsampled to DeviceInfo::outputWidth x outputHeight ([render] screenshot_size
+    // = output). Call before Present.
+    virtual bool CaptureOutput(Image& out) noexcept { return CaptureBackBuffer(out); }
+    // Highest sample count <= `requested` (1, 2, 4, 8) that the device supports for a render target of `color`
+    // together with a depth buffer of `depth` (Format::Unknown = no depth); 1 = no multisampling.
+    virtual std::uint32_t SupportedSampleCount(Format color, Format depth, std::uint32_t requested) const noexcept {
+        (void)color;
+        (void)depth;
+        (void)requested;
+        return 1;
+    }
+    // Recreates the persistent back buffers, their depth buffer and the output image with a new size / sample
+    // count / output size (DeviceDesc meaning; the sample count is clamped like at creation). The pictures the
+    // back buffers hold are resampled into the new ones (the Xbox-flip contents survive a window resize); the
+    // depth buffer is cleared to 1 / stencil 0. Binds the back buffer with a whole-target viewport. False (old
+    // buffers kept) on failure.
+    virtual bool ResizeBackBuffers(std::uint32_t width, std::uint32_t height, std::uint32_t sampleCount,
+                                   std::uint32_t outputWidth, std::uint32_t outputHeight) noexcept {
+        (void)width;
+        (void)height;
+        (void)sampleCount;
+        (void)outputWidth;
+        (void)outputHeight;
+        return false;
+    }
     virtual bool ReadTexture(TextureHandle texture, std::uint32_t level, Image& out) noexcept = 0;
 
     virtual DebugLayerInfo DebugLayer() const noexcept = 0;

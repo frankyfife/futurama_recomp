@@ -16,8 +16,14 @@
 // (ResizeBuffers in Present when the size changed). Present first draws the current back buffer into it
 // with the present pass (built-in PresentVS/PresentPS): DeviceDesc::scaling linear (bilinear) | point |
 // integer (whole factor, centered), black borders; then Present, DXGI_MWA_NO_WINDOW_CHANGES |
-// DXGI_MWA_NO_ALT_ENTER (the window handles Alt+Enter itself), DXGI_PRESENT_ALLOW_TEARING for sync interval
-// 0 when supported; the context re-binds its targets and state afterwards. Headless (nativeWindow ==
+// DXGI_MWA_NO_ALT_ENTER (the window handles Alt+Enter itself); the context re-binds its targets and state
+// afterwards. M3b (display-coupled pacing, platform/frame_pacer.h): DeviceDesc::frameLatencyWaitable 1..3 adds
+// DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT + IDXGISwapChain2::SetMaximumFrameLatency (the handle is
+// FrameLatencyWaitable(), closed by the destructor); DXGI_PRESENT_ALLOW_TEARING only for PresentDesc::
+// allowTearing with sync interval 0 (M3 set it for every sync interval 0); PresentDesc::skipSwapChain rotates
+// the back buffers without touching the swap chain; after every Present LastPresentTiming() holds
+// GetLastPresentCount and GetFrameStatistics (errors such as FRAME_STATISTICS_DISJOINT are kept, not
+// logged). Headless (nativeWindow ==
 // nullptr): no swap chain; Present rotates the back buffers, counts, drains the debug messages and resets
 // the transient ring. CaptureBackBuffer always reads the current back buffer (DeviceDesc size).
 //

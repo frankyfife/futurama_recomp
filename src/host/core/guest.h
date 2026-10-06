@@ -319,6 +319,65 @@ inline constexpr GuestAddr kGameFrame = 0x000A2C20;
 inline constexpr GuestAddr kGamePoolMaintenance = 0x000A48C0;
 inline constexpr GuestAddr kGameFrameContextSwitchReturn = 0x000A2E45;
 inline constexpr std::uint32_t kCAppNextContextOffset = 0xC0;  // next context (0 after the switch)
+// --- added in M3b (game timing: 60 Hz tick with PAL content, xapi/game_timing.cpp; see Changelog) ----
+// Time base block of Game::Init (kGameInit) 0xA26BD..0xA276A, analysis/loader/timing60.md 2.1 (capstone,
+// scripts/timing_patch.out): `mov eax,[esi+0xE8]; mov ebx,1; cmp eax,ebx; jne 0xA2714` selects the branch
+// (CApp+0xE8 = 1 NTSC, else PAL). Both branches load fps and dt with `fld` from the shared .rdata pool and
+// leave them on the x87 stack; the common tail stores st0 = dt to kGameDtMinVar (0xA274E), sets
+// kGameFixedStepVar = bl = 1 (0xA2754), then `fstp` fps -> kGameFpsVar (0xA275E) and dt -> kGameFrameTimeVar
+// (0xA2764). The PAL branch is patched operand by operand to the NTSC values (timing60.md 2.3).
+inline constexpr GuestAddr kGameInitVideoStandardBranch = 0x000A26BD;  // 8B 86 E8 00 00 00 .. 75 48 (15 bytes)
+inline constexpr GuestAddr kGameInitNtscFpsLoad = 0x000A26CC;          // fld [kRdataFloat60]
+inline constexpr GuestAddr kGameInitNtscDtLoad = 0x000A26E3;           // fld [kRdataFloatOneSixtieth]
+inline constexpr GuestAddr kGameInitNtscFpsCopyStore = 0x000A26E9;     // mov [kGameFpsCopy2Var], 60.0f
+inline constexpr GuestAddr kGameInitNtscDtMaxStore = 0x000A26F3;       // mov [kGameDtMaxVar], 1/60
+inline constexpr GuestAddr kGameInitNtscFrameTimeStore = 0x000A26FD;   // mov [kGameVideoFrameTimeVar], 1/30.5
+inline constexpr GuestAddr kGameInitPalFpsLoad = 0x000A2714;           // fld [kRdataFloat50]
+inline constexpr GuestAddr kGameInitPalFpsCopyStore = 0x000A271A;      // mov [kGameFpsCopy2Var], 50.0f
+inline constexpr GuestAddr kGameInitPalFpsCopy1Store = 0x000A2724;     // fst [kGameFpsCopy1Var] (unchanged)
+inline constexpr GuestAddr kGameInitPalDtMaxStore = 0x000A272A;        // mov [kGameDtMaxVar], 0.02f
+inline constexpr GuestAddr kGameInitPalDtLoad = 0x000A2734;            // fld [kRdataFloat0p02]
+inline constexpr GuestAddr kGameInitPalFrameTimeStore = 0x000A273A;    // mov [kGameVideoFrameTimeVar], 1/25.4
+inline constexpr GuestAddr kGameInitPalMovieTagStore = 0x000A2744;     // mov [kGameMovieTagVar], "PAL" (kept)
+inline constexpr GuestAddr kGameInitTimeBaseTail = 0x000A274E;         // common tail, 0x1C bytes (unchanged)
+// Shared .rdata float constants (timing60.md 2.2): 50.0f has 9 code users, 0.02f 13 users, so the operand
+// of the PAL `fld` is retargeted to the NTSC branch's own constants, never the constant itself.
+inline constexpr GuestAddr kRdataFloat50 = 0x002955AC;          // 0x42480000
+inline constexpr GuestAddr kRdataFloat0p02 = 0x002942C0;        // 0x3CA3D70A
+inline constexpr GuestAddr kRdataFloat60 = 0x002942CC;          // 0x42700000 (3 users, read only)
+inline constexpr GuestAddr kRdataFloatOneSixtieth = 0x0029E390;  // 0x3C888889 (4 users, read only)
+// Further time base globals (timing60.md 3): kGameFixedStepVar u8 (1 = fixed step, .data initial value 1;
+// read at 0xA2D23); kGameDtMinVar/kGameDtMaxVar clamps of the dead variable-step branch (0xA2D3A..0xA2D66);
+// kGameFpsCopy1Var/kGameFpsCopy2Var fps copies and kGameVideoFrameTimeVar (1/25.4 PAL, 1/30.5 NTSC) are only
+// written, never read. kGameFpsVar is read only by the pause/input ctor FUN_000E4AA0 (key repeat period
+// trunc(fps * 0.25), CApp::Init step 6, i.e. BEFORE Game::Init: it sees the .data initial value).
+inline constexpr GuestAddr kGameFixedStepVar = 0x002D674C;
+inline constexpr GuestAddr kGameDtMinVar = 0x002E7A58;
+inline constexpr GuestAddr kGameDtMaxVar = 0x002E7A5C;
+inline constexpr GuestAddr kGameFpsCopy1Var = 0x002E7A60;
+inline constexpr GuestAddr kGameVideoFrameTimeVar = 0x002E7B68;
+inline constexpr GuestAddr kGameFpsCopy2Var = 0x002E7B6C;
+// One call per fixed time step: Game::Frame's step loop calls FUN_0002C890 (thiscall, ecx = [0x2E7B7C], no
+// stack args, plain ret, al = 1; per-step pad helper reading the active controller [0x2E6FA4]) exactly once
+// per step at 0xA2DD3, after CApp vf10 and before cur->Update(); it has no other caller (callgraph.tsv, no
+// raw pointer to it in the image). Prologue 55 8B 2D A4 6F 2E 00 = push ebp; mov ebp,[0x2E6FA4]; no branch
+// targets 0x2C891..0x2C896 (capstone scan of all code sections). probe:Game::FixedStep counts the steps.
+inline constexpr GuestAddr kGameFixedStepHelper = 0x0002C890;
+inline constexpr GuestAddr kGameFrameFixedStepCall = 0x000A2DD3;
+// Game timer FUN_000D2B90: cdecl void(int64* out), plain ret 0xD2BE6 (callers `add esp,4`). First call:
+// QueryPerformanceFrequency -> kGameTimerFrequencyVar (int64) and 1.0f/QPF -> kGameTimerInverseFrequencyVar
+// (float), then *out = QueryPerformanceCounter (XAPILIB 0xF641B). 23 call sites; three in Game::Frame
+// (analysis/loader/pacing60.md 1.4, timing60.md 6): 0xA2C6A "now" of the fixed-step accumulator (return
+// 0xA2C6F), 0xA2FA1 one-time init of the previous render time 0x2E7D50 (return 0xA2FA6), 0xA2FB6 render branch,
+// g_frameDelta [0x2E7B88] = now - 0x2E7D50 (return 0xA2FBB). Game::Frame converts seconds to ticks with
+// trunc(QPF * s) (FUN_000D2B50/_ftol) and subtracts ticks(dt) per step. Prologue 83 EC 08 8B 0D 4C B4 2E 00 =
+// sub esp,8; mov ecx,[0x2EB44C] (9 bytes, position-independent; no branch targets 0xD2B91..0xD2B98).
+inline constexpr GuestAddr kGameTimer = 0x000D2B90;
+inline constexpr GuestAddr kGameTimerFrequencyVar = 0x002EB448;
+inline constexpr GuestAddr kGameTimerInverseFrequencyVar = 0x002EB450;
+inline constexpr GuestAddr kGameFrameClockSampleReturn = 0x000A2C6F;
+inline constexpr GuestAddr kGameFrameRenderInitSampleReturn = 0x000A2FA6;
+inline constexpr GuestAddr kGameFrameRenderSampleReturn = 0x000A2FBB;
 
 // ---------------------------------------------------------------------------------------------
 // Memory helpers

@@ -1332,16 +1332,18 @@ const char* DriverInfoString() noexcept {
 
 // ---- frames: counter, pacing, --frames limit (design 5.4) ---------------------------------------------
 
-// After the frame (and Present with the d3d11 backend): wait for the next 1/frame_rate s slot like
-// D3DDevice_Swap waits for the PAL vertical blank (PresentationInterval ONE from FUN_000D26A0;
-// platform::PaceFrame = the M2 algorithm, moved to platform/frame_pacer.cpp in M3), count, --frames.
+// After the frame (and Present with the d3d11 backend): wait for the start of the next frame like
+// D3DDevice_Swap waits for the vertical blank (PresentationInterval ONE from FUN_000D26A0). M3b: platform::
+// EndFrame = display-coupled pacing at [render] frame_rate (default the tick rate; platform/frame_pacer.h),
+// the null backend runs on the pacer's headless timer. Then count, --frames.
 void OnFrameDisplayed() noexcept {
     const Settings& s = GetSettings();
-    platform::PaceFrame(s.frameRate);  // 0 = unthrottled
+    platform::EndFrame(PacingConfigOf(s));
     const std::uint32_t n = g_framesDisplayed.fetch_add(1) + 1;
     if (n == 1) {
-        FUT_LOGI(Gfx, "NiPCRenderer: first frame displayed (pacing %u Hz, frame limit %u)", s.frameRate,
-                 s.frameLimit);
+        FUT_LOGI(Gfx, "NiPCRenderer: first frame displayed (pacing %s at %u Hz, tick %u Hz, frame limit %u)",
+                 platform::pacing::ModeName(PacingConfigOf(s).mode), s.frameRate != 0 ? s.frameRate : s.tickRate,
+                 s.tickRate, s.frameLimit);
     } else if (n % 1000 == 0) {
         FUT_LOGI(Gfx, "NiPCRenderer: %u frames displayed", n);
     }
@@ -1411,7 +1413,8 @@ std::uint32_t CreateRenderer(std::uint32_t width, std::uint32_t height, std::uin
     });
     const Settings& s = GetSettings();
     // M3: [render] backend = d3d11 -> device, swap chain and fixed-function pipeline for the main window
-    // (stage 12). Failure keeps the null renderer so that the game still runs (GFX/error).
+    // (stage 12). Review M3c finding 2: a failure ends the game with core::Fatal (exit code 3) - the null renderer
+    // would run it invisibly. Without a window (headless) the null renderer stays (GFX/error).
     std::string backend = "null renderer";
     if (s.backend == RenderBackend::D3D11) {
         HWND window = platform::MainWindow();
@@ -1428,11 +1431,16 @@ std::uint32_t CreateRenderer(std::uint32_t width, std::uint32_t height, std::uin
             params.resolveTexture = &ResolveTexture;
             params.resolveUser = r;
             params.scaling = s.scaling;
+            params.quality = RenderQualityOf(s);  // M3c: [render] resolution, render_scale, msaa, a2c, anisotropy
             std::string error;
             host->gpu = GpuRenderer::Create(params, &error);
             if (host->gpu == nullptr) {
-                FUT_LOGE(Gfx, "NiXBoxRenderer::Create: D3D11 renderer not available (%s) - null renderer",
-                         error.c_str());
+                // Review M3c finding 2: the null renderer never shows the window (only GpuRenderer::DisplayFrame
+                // does), so the game would run invisibly and a waiting launcher would hang with it. Create has
+                // already stepped down to 640x480 without MSAA; nothing is left to try.
+                FUT_LOGE(Gfx, "NiXBoxRenderer::Create: D3D11 renderer not available (%s)", error.c_str());
+                core::Fatal("Direct3D 11 could not be started (%s). Check the graphics driver, or lower [render] "
+                            "resolution, render_scale and msaa.", error.c_str());
             } else {
                 backend = "d3d11: " + host->gpu->Describe();
             }

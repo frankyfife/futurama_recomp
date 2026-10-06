@@ -5,6 +5,14 @@
 #include "core/log.h"
 
 #include <atomic>
+#include <cstring>
+#include <string_view>
+
+#include <shellscalingapi.h>
+#include <wtsapi32.h>
+
+#pragma comment(lib, "wtsapi32.lib")  // WTSRegisterSessionNotification (display environment, M3b pacing)
+#pragma comment(lib, "shcore.lib")    // GetDpiForMonitor ([render] monitor, M3c)
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;  // the host DLL (window classes are registered for it)
 
@@ -30,6 +38,56 @@ constexpr UINT kCloseFallbackMs = 3000;
 // UI thread only.
 bool g_fullscreen = false;
 RECT g_windowedRect{};
+// Display environment (window.h DisplayEnvironment; M3b pacing). Written by the UI thread.
+std::atomic<bool> g_displayOn{true};
+std::atomic<bool> g_sessionLocked{false};
+std::atomic<std::uint32_t> g_displayEpoch{0};
+HPOWERNOTIFY g_powerNotify = nullptr;  // UI thread only
+bool g_sessionNotify = false;          // UI thread only
+// GUID_CONSOLE_DISPLAY_STATE {6FE69556-704A-47A0-8F24-C28D936FDA47} (winnt.h declares it without a definition
+// in any default import library).
+constexpr GUID kConsoleDisplayState = {0x6FE69556, 0x704A, 0x47A0, {0x8F, 0x24, 0xC2, 0x8D, 0x93, 0x6F, 0xDA, 0x47}};
+
+void RaiseDisplayEpoch() noexcept {
+    g_displayEpoch.fetch_add(1);
+}
+
+// Initial lock state of this session (Windows 8+: SessionFlags WTS_SESSIONSTATE_LOCK = 0, UNLOCK = 1).
+bool QuerySessionLocked() noexcept {
+    LPWSTR buffer = nullptr;
+    DWORD bytes = 0;
+    bool locked = false;
+    if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSSessionInfoEx, &buffer,
+                                    &bytes) &&
+        buffer != nullptr && bytes >= sizeof(WTSINFOEXW)) {
+        const auto* info = reinterpret_cast<const WTSINFOEXW*>(buffer);
+        locked = info->Level == 1 && info->Data.WTSInfoExLevel1.SessionFlags == WTS_SESSIONSTATE_LOCK;
+    }
+    if (buffer != nullptr) {
+        WTSFreeMemory(buffer);
+    }
+    return locked;
+}
+
+void RegisterDisplayNotifications(HWND frame) noexcept {
+    g_displayOn.store(true);
+    g_sessionLocked.store(QuerySessionLocked());
+    g_powerNotify = RegisterPowerSettingNotification(frame, &kConsoleDisplayState, DEVICE_NOTIFY_WINDOW_HANDLE);
+    g_sessionNotify = WTSRegisterSessionNotification(frame, NOTIFY_FOR_THIS_SESSION) != FALSE;
+}
+
+void UnregisterDisplayNotifications(HWND frame) noexcept {
+    if (g_powerNotify != nullptr) {
+        UnregisterPowerSettingNotification(g_powerNotify);
+        g_powerNotify = nullptr;
+    }
+    if (g_sessionNotify) {
+        WTSUnRegisterSessionNotification(frame);
+        g_sessionNotify = false;
+    }
+    g_displayOn.store(true);
+    g_sessionLocked.store(false);
+}
 
 HINSTANCE ModuleInstance() noexcept {
     return reinterpret_cast<HINSTANCE>(&__ImageBase);
@@ -49,15 +107,46 @@ void LayoutView(HWND frame) noexcept {
     g_viewHeight.store(r.height);
 }
 
-RECT MonitorRect(HWND window, bool workArea) noexcept {
+RECT MonitorRectOf(HMONITOR monitor, bool workArea) noexcept {
     MONITORINFO mi{};
     mi.cbSize = sizeof(mi);
-    const HMONITOR monitor = window != nullptr ? MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST)
-                                               : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
-    if (GetMonitorInfoW(monitor, &mi)) {
+    if (monitor != nullptr && GetMonitorInfoW(monitor, &mi)) {
         return workArea ? mi.rcWork : mi.rcMonitor;
     }
     return RECT{0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+}
+
+RECT MonitorRect(HWND window, bool workArea) noexcept {
+    return MonitorRectOf(window != nullptr ? MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST)
+                                           : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY),
+                         workArea);
+}
+
+// Effective DPI of a monitor (per-monitor DPI awareness V2 of the calling thread); the system DPI if the
+// query fails.
+UINT MonitorDpi(HMONITOR monitor) noexcept {
+    UINT x = 0;
+    UINT y = 0;
+    if (monitor != nullptr && SUCCEEDED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &x, &y)) && x != 0) {
+        return x;
+    }
+    return GetDpiForSystem();
+}
+
+struct MonitorSearch {
+    const wchar_t* name = nullptr;
+    HMONITOR found = nullptr;
+};
+
+BOOL CALLBACK FindMonitorByDevice(HMONITOR monitor, HDC, LPRECT, LPARAM lp) {
+    auto* search = reinterpret_cast<MonitorSearch*>(lp);
+    MONITORINFOEXW mi{};
+    mi.cbSize = sizeof(mi);
+    if (GetMonitorInfoW(monitor, &mi) && _wcsicmp(mi.szDevice, search->name) == 0) {
+        search->found = monitor;
+        return FALSE;
+    }
+    return TRUE;
 }
 
 void SetFullscreen(HWND frame, bool fullscreen) noexcept {
@@ -78,6 +167,7 @@ void SetFullscreen(HWND frame, bool fullscreen) noexcept {
     }
     g_fullscreen = fullscreen;
     LayoutView(frame);
+    RaiseDisplayEpoch();  // independent flip (VRR, tearing) depends on the window mode (M3b pacing)
 }
 
 LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -132,7 +222,38 @@ LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SetWindowPos(hwnd, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
         }
+        RaiseDisplayEpoch();  // usually another monitor (M3b pacing)
         return 0;
+    // Display environment for the frame pacer (window.h DisplayEnvironment, M3b).
+    case WM_DISPLAYCHANGE:
+        RaiseDisplayEpoch();
+        break;
+    case WM_POWERBROADCAST:
+        if (wp == PBT_POWERSETTINGCHANGE && lp != 0) {
+            const auto* setting = reinterpret_cast<const POWERBROADCAST_SETTING*>(lp);
+            if (std::memcmp(&setting->PowerSetting, &kConsoleDisplayState, sizeof(GUID)) == 0 &&
+                setting->DataLength >= sizeof(DWORD)) {
+                DWORD state = 0;
+                std::memcpy(&state, setting->Data, sizeof(state));
+                const bool on = state != 0;  // 0 off, 1 on, 2 dimmed
+                if (g_displayOn.exchange(on) != on) {
+                    FUT_LOGI(Core, "window: display %s", on ? "on" : "off");
+                    RaiseDisplayEpoch();
+                }
+            }
+            return TRUE;
+        }
+        break;
+    case WM_WTSSESSION_CHANGE:
+        if (wp == WTS_SESSION_LOCK || wp == WTS_SESSION_UNLOCK) {
+            const bool locked = wp == WTS_SESSION_LOCK;
+            if (g_sessionLocked.exchange(locked) != locked) {
+                FUT_LOGI(Core, "window: session %s", locked ? "locked" : "unlocked");
+                RaiseDisplayEpoch();
+            }
+            return 0;
+        }
+        break;
     case WM_GETMINMAXINFO: {
         auto* mm = reinterpret_cast<MINMAXINFO*>(lp);
         mm->ptMinTrackSize.x = 200;
@@ -183,6 +304,45 @@ bool RegisterClasses() noexcept {
 
 }  // namespace
 
+MonitorChoice SelectMonitor(const char* name) noexcept {
+    MonitorChoice choice;
+    const HMONITOR primary = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    choice.monitor = primary;
+    std::string_view wanted = name != nullptr ? std::string_view(name) : std::string_view();
+    while (!wanted.empty() && (wanted.front() == ' ' || wanted.front() == '\t')) {
+        wanted.remove_prefix(1);
+    }
+    while (!wanted.empty() && (wanted.back() == ' ' || wanted.back() == '\t')) {
+        wanted.remove_suffix(1);
+    }
+    const bool isPrimaryWord = wanted.size() == 7 && _strnicmp(wanted.data(), "primary", 7) == 0;
+    if (!wanted.empty() && !isPrimaryWord) {
+        wchar_t wide[64] = {};
+        int n = 0;
+        if (wanted.size() < 60) {
+            n = MultiByteToWideChar(CP_UTF8, 0, wanted.data(), static_cast<int>(wanted.size()), wide, 63);
+        }
+        MonitorSearch search;
+        search.name = wide;
+        if (n > 0) {
+            EnumDisplayMonitors(nullptr, nullptr, &FindMonitorByDevice, reinterpret_cast<LPARAM>(&search));
+        }
+        if (search.found != nullptr) {
+            choice.monitor = search.found;
+        } else {
+            choice.found = false;
+        }
+    }
+    choice.primary = choice.monitor == primary;
+    MONITORINFOEXW mi{};
+    mi.cbSize = sizeof(mi);
+    if (GetMonitorInfoW(choice.monitor, &mi)) {
+        WideCharToMultiByte(CP_UTF8, 0, mi.szDevice, -1, choice.device, static_cast<int>(sizeof(choice.device)) - 1,
+                            nullptr, nullptr);
+    }
+    return choice;
+}
+
 ViewRect FitAspectRect(std::uint32_t clientW, std::uint32_t clientH, std::uint32_t aspectW, std::uint32_t aspectH) noexcept {
     ViewRect r;
     if (clientW == 0 || clientH == 0 || aspectW == 0 || aspectH == 0) {
@@ -221,8 +381,14 @@ bool CreateMainWindow(const WindowOptions& options, const char** error) noexcept
     // Everything that measures or moves the windows below runs inside this context (the boot thread itself
     // may be DPI unaware; the window procedures always run in the windows' own context).
     const DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    const UINT dpi = GetDpiForSystem();
-    const RECT work = MonitorRect(nullptr, true);
+    // [render] monitor (M3c): the window opens on that monitor, with its DPI and work area.
+    const MonitorChoice target = SelectMonitor(options.monitor);
+    if (!target.found) {
+        FUT_LOGW(Core, "window: [render] monitor = '%s' is not connected - using the primary monitor %s",
+                 options.monitor, target.device);
+    }
+    const UINT dpi = MonitorDpi(target.monitor);
+    const RECT work = MonitorRectOf(target.monitor, true);
     const LONG workW = work.right - work.left;
     const LONG workH = work.bottom - work.top;
     // window_scale is relative to the desktop scaling: 640x480 * scale at 100 %, * dpi / 96 otherwise.
@@ -281,6 +447,7 @@ bool CreateMainWindow(const WindowOptions& options, const char** error) noexcept
     g_shown.store(false);
     g_hotkeys.store(0);
     g_closeRequested.store(false);
+    RegisterDisplayNotifications(frame);
     LayoutView(frame);
     if (options.fullscreen) {
         SetFullscreen(frame, true);
@@ -288,9 +455,10 @@ bool CreateMainWindow(const WindowOptions& options, const char** error) noexcept
     if (previous != nullptr) {
         SetThreadDpiAwarenessContext(previous);
     }
-    FUT_LOGI(Core, "window: frame %p, view %p %ux%u (window_scale %u, DPI %u%s, %s)", static_cast<void*>(frame),
-             static_cast<void*>(view), g_viewWidth.load(), g_viewHeight.load(), scale, dpi,
-             reduced ? ", reduced to fit the work area" : "", options.fullscreen ? "borderless fullscreen" : "windowed");
+    FUT_LOGI(Core, "window: frame %p, view %p %ux%u (window_scale %u, DPI %u%s, %s, monitor %s%s)",
+             static_cast<void*>(frame), static_cast<void*>(view), g_viewWidth.load(), g_viewHeight.load(), scale, dpi,
+             reduced ? ", reduced to fit the work area" : "", options.fullscreen ? "borderless fullscreen" : "windowed",
+             target.device, target.primary ? " (primary)" : "");
     return true;
 }
 
@@ -298,6 +466,7 @@ void DestroyMainWindow() noexcept {
     const HWND frame = g_frame.exchange(nullptr);
     g_view.store(nullptr);
     if (frame != nullptr) {
+        UnregisterDisplayNotifications(frame);
         DestroyWindow(frame);
     }
     g_viewWidth.store(0);
@@ -336,6 +505,18 @@ void MainWindowClientSize(std::uint32_t* width, std::uint32_t* height) noexcept 
 
 bool CloseRequested() noexcept {
     return g_closeRequested.load();
+}
+
+DisplayEnvironment GetDisplayEnvironment() noexcept {
+    DisplayEnvironment e;
+    e.displayOn = g_displayOn.load();
+    e.sessionLocked = g_sessionLocked.load();
+    e.epoch = g_displayEpoch.load();
+    return e;
+}
+
+void NoteDisplayChange() noexcept {
+    RaiseDisplayEpoch();
 }
 
 std::uint32_t ConsumeHotkeys() noexcept {

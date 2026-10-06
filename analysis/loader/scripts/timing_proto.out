@@ -1,0 +1,34 @@
+== timing-relevant code: retail EU vs. NTSC prototype
+  0x0A26A0 207   Game::Init timing block 0xA26A0..0xA2770         identical (relocated) at proto 0xA2620, .rdata constants equal (6)
+  0x0A2C20 1131  Game::Frame fixed step                           identical (relocated) at proto 0xA2BA0, .rdata constants equal (3)
+  0x022B30 838   Frontend::Update (gap, 60 s attract, 30-tick input lock) identical (relocated) at proto 0x22B20, .rdata constants equal (6)
+  0x022550 121   Frontend fade (alpha -= 0.02 per tick)           identical (relocated) at proto 0x22540, .rdata constants equal (2)
+  0x021A80 224   Frontend activate (+0x84 = 30 ticks)             identical (relocated) at proto 0x21A70, .rdata constants equal (0)
+  0x02B5F0 1084  Intro::Update (QPC seconds, 20-tick counter)     identical (relocated) at proto 0x2B5B0, .rdata constants equal (0)
+  0x02B360 216   Intro image helper (min/max seconds)             identical (relocated) at proto 0x2B320, .rdata constants equal (0)
+  0x0EEC80 122   timed image vf1 (+8 += real seconds)             identical (relocated) at proto 0xEEBF0, .rdata constants equal (1)
+  0x0E4AA0 93    pause object ctor (repeat = trunc(fps*0.25))     identical (relocated) at proto 0xE4A30, .rdata constants equal (1)
+  0x09B120 162   analog repeat                                    identical (relocated) at proto 0x9B040, .rdata constants equal (2)
+  0x09B210 85    button repeat                                    identical (relocated) at proto 0x9B130, .rdata constants equal (0)
+  0x0E2DB0 199   menu debounce 5 ticks                            identical (relocated) at proto 0xE2D40, .rdata constants equal (0)
+  0x0BA060 172   script scheduler (wait -= dt)                    identical (relocated) at proto 0xBA050, .rdata constants equal (2)
+  0x0B97D0 1696  script interpreter                               identical (relocated) at proto 0xB97C0, .rdata constants equal (0)
+  0x094560 2398  physics integration (dt)                         identical (relocated) at proto 0x94480, .rdata constants equal (29)
+  0x061A70 3549  player/camera (0.25 smoothing, 1/60)             identical (relocated) at proto 0x619C0, .rdata constants equal (33)
+  0x077E50 4301  splash spawn (pos - vel*0.02)                    identical (relocated) at proto 0x77D70, .rdata constants equal (29)
+  0x0C0AC0 1622  flicker smoothing 0.8/0.2                        identical (relocated) at proto 0xC0A50, .rdata constants equal (10)
+  0x0A46D0 75    memory maintenance every 41/201 frames           identical (relocated) at proto 0xA4640, .rdata constants equal (0)
+
+== whole game code (.text < 0x100000, Ghidra functions >= 16 bytes)
+  3112 of 3116 functions have an identical (relocated) counterpart in the prototype (99.9 %)
+
+== prototype timing init 0xA2620 (counterpart of 0xA26A0)
+  000A2694 d9052c572900             fld dword ptr [0x29572c]
+  000A269A c705ec7c2e0000004842     mov dword ptr [0x2e7cec], 0x42480000
+  000A26A4 d915e07b2e00             fst dword ptr [0x2e7be0]
+  000A26AA c705dc7b2e000ad7a33c     mov dword ptr [0x2e7bdc], 0x3ca3d70a
+  000A26B4 d90540442900             fld dword ptr [0x294440]
+  000A26BA c705e87c2e008542213d     mov dword ptr [0x2e7ce8], 0x3d214285
+  000A26C4 c705f07c2e0050414c00     mov dword ptr [0x2e7cf0], 0x4c4150
+  000A26CE d915d87b2e00             fst dword ptr [0x2e7bd8]
+  proto .data fps 0x2D68C4 = 50.0, dt 0x2D68C8 = 0.019999999552965164 (retail .data 0x2D6744 = 50.0, 0x2D6748 = 0.019999999552965164)

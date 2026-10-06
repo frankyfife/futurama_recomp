@@ -9,6 +9,7 @@
 #include "platform/window.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -114,6 +115,123 @@ void HalfPixelShift(Matrix4* projection, float viewportWidth, float viewportHeig
     }
 }
 
+RenderQuality RenderQualityOf(const Settings& settings) noexcept {
+    RenderQuality q;
+    q.resolutionWidth = settings.resolutionWidth;
+    q.resolutionHeight = settings.resolutionHeight;
+    q.renderScale = settings.renderScale;
+    q.msaa = settings.msaa;
+    q.alphaToCoverage = settings.alphaToCoverage;
+    q.anisotropy = settings.anisotropy;
+    q.screenshots = settings.screenshotSize;
+    q.linearAa = settings.linearAa;
+    return q;
+}
+
+QualityLadder QualityFallbacks(const RenderQuality& requested) noexcept {
+    QualityLadder ladder;
+    auto add = [&ladder](const RenderQuality& q) noexcept {
+        if (ladder.count < QualityLadder::kMaxSteps) {
+            ladder.steps[ladder.count++] = q;
+        }
+    };
+    RenderQuality q = requested;
+    add(q);
+    if (q.renderScale > 1.0f) {
+        q.renderScale = 1.0f;
+        add(q);
+    }
+    while (q.msaa > 1) {
+        q.msaa /= 2;
+        add(q);
+    }
+    if (q.resolutionWidth != 640 || q.resolutionHeight != 480) {
+        q.resolutionWidth = 640;
+        q.resolutionHeight = 480;
+        add(q);
+    }
+    return ladder;
+}
+
+std::string DescribeQuality(const RenderQuality& quality) {
+    char text[96];
+    char resolution[32];
+    if (quality.resolutionWidth == 0) {
+        std::snprintf(resolution, sizeof(resolution), "auto");
+    } else {
+        std::snprintf(resolution, sizeof(resolution), "%ux%u", quality.resolutionWidth, quality.resolutionHeight);
+    }
+    std::snprintf(text, sizeof(text), "render scale %.2f, MSAA %ux, resolution %s",
+                  static_cast<double>(quality.renderScale), quality.msaa, resolution);
+    return text;
+}
+
+RenderSizes ComputeRenderSizes(std::uint32_t guestWidth, std::uint32_t guestHeight, std::uint32_t resolutionWidth,
+                               std::uint32_t resolutionHeight, std::uint32_t viewWidth, std::uint32_t viewHeight,
+                               float renderScale) noexcept {
+    const std::uint32_t gw = guestWidth != 0 ? guestWidth : 640;
+    const std::uint32_t gh = guestHeight != 0 ? guestHeight : 480;
+    std::uint32_t tw = resolutionWidth, th = resolutionHeight;
+    if (tw == 0 || th == 0) {
+        tw = viewWidth;
+        th = viewHeight;
+    }
+    if (tw == 0 || th == 0) {
+        tw = gw;
+        th = gh;
+    }
+    const platform::ViewRect fit = platform::FitAspectRect(std::min(tw, kMaxRenderDimension),
+                                                           std::min(th, kMaxRenderDimension), gw, gh);
+    RenderSizes s;
+    s.outputWidth = fit.width != 0 ? fit.width : gw;
+    s.outputHeight = fit.height != 0 ? fit.height : gh;
+    // NaN-safe clamp of the scale (the configuration validated 1..2).
+    double k = renderScale >= kMinRenderScale ? static_cast<double>(renderScale) : 1.0;
+    k = std::min(k, static_cast<double>(kMaxRenderScale));
+    const double limit = std::min(static_cast<double>(kMaxRenderDimension) / s.outputWidth,
+                                  static_cast<double>(kMaxRenderDimension) / s.outputHeight);
+    if (k > limit) {
+        k = std::max(1.0, limit);
+    }
+    s.internalWidth = static_cast<std::uint32_t>(std::floor(s.outputWidth * k + 0.5));
+    s.internalHeight = static_cast<std::uint32_t>(std::floor(s.outputHeight * k + 0.5));
+    s.internalWidth = std::clamp<std::uint32_t>(s.internalWidth, s.outputWidth, kMaxRenderDimension);
+    s.internalHeight = std::clamp<std::uint32_t>(s.internalHeight, s.outputHeight, kMaxRenderDimension);
+    s.renderScale = static_cast<float>(k);
+    return s;
+}
+
+rhi::Viewport ScaleViewport(const rhi::Viewport& viewport, std::uint32_t guestW, std::uint32_t guestH,
+                            std::uint32_t internalW, std::uint32_t internalH) noexcept {
+    if ((guestW == internalW && guestH == internalH) || guestW == 0 || guestH == 0) {
+        return viewport;
+    }
+    const double sx = static_cast<double>(internalW) / guestW;
+    const double sy = static_cast<double>(internalH) / guestH;
+    rhi::Viewport v = viewport;
+    v.x = static_cast<float>(viewport.x * sx);
+    v.y = static_cast<float>(viewport.y * sy);
+    v.width = static_cast<float>(viewport.width * sx);
+    v.height = static_cast<float>(viewport.height * sy);
+    return v;
+}
+
+rhi::Rect ScaleRect(const rhi::Rect& rect, std::uint32_t guestW, std::uint32_t guestH, std::uint32_t internalW,
+                    std::uint32_t internalH) noexcept {
+    if ((guestW == internalW && guestH == internalH) || guestW == 0 || guestH == 0) {
+        return rect;
+    }
+    auto scale = [](std::int32_t v, std::uint32_t from, std::uint32_t to) noexcept {
+        return static_cast<std::int32_t>(std::floor(static_cast<double>(v) * to / from + 0.5));
+    };
+    rhi::Rect r;
+    r.left = scale(rect.left, guestW, internalW);
+    r.right = scale(rect.right, guestW, internalW);
+    r.top = scale(rect.top, guestH, internalH);
+    r.bottom = scale(rect.bottom, guestH, internalH);
+    return r;
+}
+
 struct GpuRenderer::Impl {
     std::unique_ptr<rhi::Device> device;
     ff::FixedFunctionPipeline ff;
@@ -160,6 +278,17 @@ struct GpuRenderer::Impl {
     bool loggedPresentFailure = false;
     bool loggedTextureFailure = false;
 
+    // M3c: render resolution and anti-aliasing (nipc_gpu.h).
+    RenderQuality quality;        // in effect (review M3c finding 2: after a step down)
+    RenderQuality requested;      // [render] values
+    bool reduced = false;         // quality != requested (a step down at Create or at a resize)
+    RenderSizes sizes;            // current back-buffer configuration
+    std::uint32_t samples = 1;    // samples per pixel the device uses
+    void* window = nullptr;       // view (resolution auto follows its size)
+    RenderSizes pendingSizes;     // a changed view size waiting for kResizeSettleFrames frames
+    std::uint32_t pendingFrames = 0;
+    std::uint64_t resizes = 0, resizeFailures = 0;
+
     rhi::CommandContext& Ctx() noexcept { return device->Context(); }
 
     rhi::Viewport FullViewport() const noexcept {
@@ -173,10 +302,14 @@ struct GpuRenderer::Impl {
         return v;
     }
 
-    // D3DDevice_SetViewport + the pipeline's copy of it (pre-transformed pixels map relative to it).
+    // D3DDevice_SetViewport + the pipeline's copy of it (pre-transformed pixels map relative to it). M3c: `v` is
+    // in guest pixels; the D3D viewport of the back buffer is scaled to the internal size, the camera keeps the
+    // guest viewport (everything inside the viewport is resolution independent, nipc_gpu.h).
     void ApplyViewport(const rhi::Viewport& v) noexcept {
         viewport = v;
-        Ctx().SetViewport(v);
+        Ctx().SetViewport(textureTarget ? v
+                                        : ScaleViewport(v, backBufferWidth, backBufferHeight, sizes.internalWidth,
+                                                        sizes.internalHeight));
         ni::CameraDesc c = camera;
         c.viewport = v;
         if (v.width > 0.0f && v.height > 0.0f) {
@@ -205,7 +338,107 @@ struct GpuRenderer::Impl {
     void TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome, bool haveItem) noexcept;
     void LogFrameSummary(std::uint32_t frame, const Picture& shown) noexcept;
     void PrepareFrame(std::uint32_t frame) noexcept;
+    bool Resize(const RenderSizes& want, const char* reason) noexcept;  // M3c
+    void FollowView() noexcept;                                          // M3c: resolution auto
+    // M3c: MSAA / alpha-to-coverage / anisotropy / anti-aliased nearest of the pipeline for the current sizes.
+    void ApplyRenderOptions() noexcept {
+        ff::RenderOptions options;
+        options.sampleCount = samples;
+        options.alphaToCoverage = quality.alphaToCoverage && samples > 1;
+        options.maxAnisotropy = std::clamp<std::uint32_t>(quality.anisotropy, 1, 16);
+        options.sharpNearest = sizes.internalWidth != backBufferWidth || sizes.internalHeight != backBufferHeight;
+        ff.SetRenderOptions(options);
+    }
 };
+
+// M3c: new back-buffer configuration (the device carries the pictures over), then the guest viewport again.
+// Review M3c finding 2: if the buffers cannot be created (a larger view in fullscreen, out of video memory) the
+// resize steps down like Create - render scale 1, then fewer samples - before it keeps the old buffers.
+bool GpuRenderer::Impl::Resize(const RenderSizes& wanted, const char* reason) noexcept {
+    if (wanted == sizes) {
+        return false;
+    }
+    const RenderSizes old = sizes;
+    RenderSizes want = wanted;
+    std::uint32_t trySamples = samples;
+    bool stepped = false;
+    bool scaleStepped = false;
+    for (;;) {
+        const bool downsample = want.outputWidth != want.internalWidth || want.outputHeight != want.internalHeight;
+        if (device->ResizeBackBuffers(want.internalWidth, want.internalHeight, trySamples,
+                                      downsample ? want.outputWidth : 0, downsample ? want.outputHeight : 0)) {
+            break;
+        }
+        const std::string failure = device->LastError();
+        RenderSizes next = want;
+        std::uint32_t nextSamples = trySamples;
+        if (want.renderScale > 1.0f) {
+            next.internalWidth = want.outputWidth;
+            next.internalHeight = want.outputHeight;
+            next.renderScale = 1.0f;
+            scaleStepped = true;
+        } else if (trySamples > 1) {
+            nextSamples = trySamples / 2;
+        } else {
+            if (resizeFailures++ == 0) {
+                FUT_LOGW(Gfx, "render: back buffers not resized to %ux%u (%s): %s - the present pass scales the old ones",
+                         wanted.internalWidth, wanted.internalHeight, reason, failure.c_str());
+            }
+            return false;
+        }
+        FUT_LOGW(Gfx, "render: back buffers %ux%u with %u sample%s not available (%s): %s - reducing to %ux%u with %u "
+                 "sample%s", want.internalWidth, want.internalHeight, trySamples, trySamples == 1 ? "" : "s",
+                 reason, failure.c_str(), next.internalWidth, next.internalHeight, nextSamples,
+                 nextSamples == 1 ? "" : "s");
+        want = next;
+        trySamples = nextSamples;
+        stepped = true;
+    }
+    if (stepped) {
+        reduced = true;
+        quality.renderScale = scaleStepped ? 1.0f : quality.renderScale;
+        quality.msaa = std::min(quality.msaa, std::max<std::uint32_t>(trySamples, 1u));
+    }
+    samples = std::max<std::uint32_t>(device->Info().sampleCount, 1);
+    sizes = want;
+    ++resizes;
+    ApplyRenderOptions();
+    if (!textureTarget) {
+        ApplyViewport(viewport);
+    }
+    FUT_LOGI(Gfx, "render: %s - output %ux%u -> %ux%u, internal %ux%u -> %ux%u (render scale %.2f, %u sample%s%s)",
+             reason, old.outputWidth, old.outputHeight, sizes.outputWidth, sizes.outputHeight, old.internalWidth,
+             old.internalHeight, sizes.internalWidth, sizes.internalHeight, static_cast<double>(sizes.renderScale),
+             samples, samples == 1 ? "" : "s", stepped ? ", reduced" : "");
+    return true;
+}
+
+void GpuRenderer::Impl::FollowView() noexcept {
+    if (window == nullptr || quality.resolutionWidth != 0) {
+        return;  // fixed [render] resolution (or headless)
+    }
+    std::uint32_t w = 0, h = 0;
+    platform::MainWindowClientSize(&w, &h);
+    if (w == 0 || h == 0) {
+        pendingFrames = 0;  // minimized: keep the buffers
+        return;
+    }
+    const RenderSizes want = ComputeRenderSizes(backBufferWidth, backBufferHeight, 0, 0, w, h, quality.renderScale);
+    if (want == sizes) {
+        pendingFrames = 0;
+        return;
+    }
+    if (!(want == pendingSizes)) {
+        pendingSizes = want;
+        pendingFrames = 0;
+    }
+    if (++pendingFrames >= kResizeSettleFrames) {
+        pendingFrames = 0;
+        char reason[64];
+        std::snprintf(reason, sizeof(reason), "view resized to %ux%u", w, h);
+        Resize(want, reason);
+    }
+}
 
 // Screen-space bounding box of a draw in D3D8 pixel coordinates (pixel centers on integers, i.e. before the
 // half-pixel shift of B19): world * view * projection (or the screen projection of slot 54), perspective
@@ -427,24 +660,120 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
         return nullptr;
     }
     Impl& d = *r->impl_;
+    // M3c: back-buffer configuration from [render] resolution / render_scale / msaa and the view size.
+    d.requested = params.quality;
+    d.window = params.window;
+    std::uint32_t viewW = params.viewWidth, viewH = params.viewHeight;
+    if (params.window != nullptr && (viewW == 0 || viewH == 0)) {
+        platform::MainWindowClientSize(&viewW, &viewH);
+    }
     rhi::DeviceDesc desc;
-    desc.backend = rhi::Backend::D3D11;
-    desc.nativeWindow = params.window;
-    desc.width = params.width;
-    desc.height = params.height;
-    desc.bufferCount = Impl::kBackBuffers;
-    desc.backBufferFormat = rhi::Format::BGRA8_UNorm;
-    desc.depthFormat = rhi::Format::D24_UNorm_S8_UInt;  // Create gets D3DFMT_D24S8 (0x4B, auto depth/stencil)
-    desc.debugLayer = params.debugLayer;
-    desc.softwareAdapter = params.softwareAdapter;
-    desc.scaling = params.scaling;
+    bool downsample = false;
     d.renderThread = GetCurrentThreadId();
-    d.device = rhi::CreateDevice(desc, error);
+    // Review M3c finding 2: step down while the back buffers of a configuration cannot be created.
+    const QualityLadder ladder = QualityFallbacks(params.quality);
+    std::string firstError;
+    for (std::uint32_t step = 0; step < ladder.count && d.device == nullptr; ++step) {
+        d.quality = ladder.steps[step];
+        d.sizes = ComputeRenderSizes(params.width, params.height, d.quality.resolutionWidth,
+                                     d.quality.resolutionHeight, viewW, viewH, d.quality.renderScale);
+        downsample = d.sizes.outputWidth != d.sizes.internalWidth || d.sizes.outputHeight != d.sizes.internalHeight;
+        desc = rhi::DeviceDesc{};
+        desc.backend = rhi::Backend::D3D11;
+        desc.nativeWindow = params.window;
+        desc.width = d.sizes.internalWidth;
+        desc.height = d.sizes.internalHeight;
+        desc.bufferCount = Impl::kBackBuffers;
+        desc.backBufferFormat = rhi::Format::BGRA8_UNorm;
+        desc.depthFormat = rhi::Format::D24_UNorm_S8_UInt;  // Create gets D3DFMT_D24S8 (0x4B, auto depth/stencil)
+        desc.debugLayer = params.debugLayer;
+        desc.softwareAdapter = params.softwareAdapter;
+        desc.scaling = params.scaling;
+        desc.frameLatencyWaitable = 1;  // M3b: display-coupled pacing (platform/frame_pacer.h) waits on it
+        desc.sampleCount = std::max<std::uint32_t>(d.quality.msaa, 1);  // M3c (clamped by the device)
+        desc.outputWidth = downsample ? d.sizes.outputWidth : 0;
+        desc.outputHeight = downsample ? d.sizes.outputHeight : 0;
+        desc.linearResolve = d.quality.linearAa;  // review M3c finding 3
+        std::string stepError;
+        d.device = rhi::CreateDevice(desc, &stepError);
+        if (d.device == nullptr) {
+            if (firstError.empty()) {
+                firstError = stepError;
+            }
+            if (step + 1 < ladder.count) {
+                FUT_LOGW(Gfx, "render: D3D11 back buffers %ux%u with %u sample%s not available (%s; %s) - trying %s",
+                         desc.width, desc.height, desc.sampleCount, desc.sampleCount == 1 ? "" : "s",
+                         stepError.c_str(), DescribeQuality(d.quality).c_str(),
+                         DescribeQuality(ladder.steps[step + 1]).c_str());
+            } else if (error != nullptr) {
+                try {
+                    *error = firstError == stepError ? stepError
+                                                     : firstError + "; with " + DescribeQuality(d.quality) +
+                                                           " too: " + stepError;
+                } catch (...) {
+                }
+            }
+        }
+    }
     if (d.device == nullptr) {
         return nullptr;
     }
+    d.reduced = d.quality.renderScale != d.requested.renderScale || d.quality.msaa != d.requested.msaa ||
+                d.quality.resolutionWidth != d.requested.resolutionWidth ||
+                d.quality.resolutionHeight != d.requested.resolutionHeight;
     if (!d.ff.Init(*d.device, error)) {
         return nullptr;
+    }
+    d.samples = std::max<std::uint32_t>(d.device->Info().sampleCount, 1);
+    d.backBufferWidth = params.width;
+    d.backBufferHeight = params.height;
+    d.ApplyRenderOptions();
+    const ff::RenderOptions options = d.ff.GetRenderOptions();
+    {
+        // "render: ..." (GFX/info; tools/m3c_check.py reads it): the configuration actually used.
+        char supported[32] = "";
+        std::size_t used = 0;
+        for (std::uint32_t n = 2; n <= 8; n *= 2) {
+            if (d.device->SupportedSampleCount(desc.backBufferFormat, desc.depthFormat, n) == n) {
+                const int w = std::snprintf(supported + used, sizeof(supported) - used, "%s%u", used != 0 ? ", " : "",
+                                            n);
+                used += w > 0 ? static_cast<std::size_t>(w) : 0;
+            }
+        }
+        char resolution[48];
+        if (d.quality.resolutionWidth == 0) {
+            std::snprintf(resolution, sizeof(resolution), "auto: view %ux%u", viewW, viewH);
+        } else {
+            std::snprintf(resolution, sizeof(resolution), "%ux%u", d.quality.resolutionWidth,
+                          d.quality.resolutionHeight);
+        }
+        const rhi::DeviceInfo& info = d.device->Info();
+        const std::uint64_t pixels = static_cast<std::uint64_t>(info.backBufferWidth) * info.backBufferHeight;
+        const std::uint64_t mib = (pixels * 4 * d.samples * (Impl::kBackBuffers + 1) +
+                                   (d.samples > 1 ? pixels * 4 : 0) +
+                                   (downsample ? static_cast<std::uint64_t>(d.sizes.outputWidth) * d.sizes.outputHeight * 4
+                                               : 0)) >> 20;
+        FUT_LOGI(Gfx,
+                 "render: output %ux%u (resolution %s), internal %ux%u (render scale %.2f, %.4f x %.4f per %ux%u "
+                 "pixel), MSAA %ux (requested %ux; supported: %s), alpha to coverage %s, anisotropy %ux, downsample "
+                 "%s, screenshots %s, back buffers %llu MiB, resolve %s%s%s",
+                 d.sizes.outputWidth, d.sizes.outputHeight, resolution, info.backBufferWidth, info.backBufferHeight,
+                 static_cast<double>(d.sizes.renderScale),
+                 static_cast<double>(info.backBufferWidth) / params.width,
+                 static_cast<double>(info.backBufferHeight) / params.height, params.width, params.height, d.samples,
+                 desc.sampleCount, used != 0 ? supported : "none", options.alphaToCoverage ? "on" : "off",
+                 options.maxAnisotropy,
+                 !downsample                                                ? "none"
+                 : (d.sizes.internalWidth % d.sizes.outputWidth == 0 &&
+                    d.sizes.internalHeight % d.sizes.outputHeight == 0) ? "box"
+                                                                           : "catmull-rom",
+                 d.quality.screenshots == ScreenshotSize::Internal ? "internal" : "output",
+                 static_cast<unsigned long long>(mib), info.linearResolve ? "linear light" : "gamma",
+                 d.reduced ? ", reduced from " : "", d.reduced ? DescribeQuality(d.requested).c_str() : "");
+        if (d.samples != desc.sampleCount) {
+            FUT_LOGI(Gfx, "render: [render] msaa = %u is not supported by \"%s\" for BGRA8 + D24S8 - using %ux", desc.sampleCount,
+                     info.adapterName.c_str(), d.samples);
+        }
     }
     d.backBufferWidth = d.targetWidth = params.width;
     d.backBufferHeight = d.targetHeight = params.height;
@@ -489,6 +818,33 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
 
 rhi::Device& GpuRenderer::Device() noexcept {
     return *impl_->device;
+}
+
+const RenderSizes& GpuRenderer::Sizes() const noexcept {
+    return impl_->sizes;
+}
+
+const RenderQuality& GpuRenderer::Quality() const noexcept {
+    return impl_->quality;
+}
+
+bool GpuRenderer::QualityReduced() const noexcept {
+    return impl_->reduced;
+}
+
+std::uint32_t GpuRenderer::SampleCount() const noexcept {
+    return impl_->samples;
+}
+
+bool GpuRenderer::ResizeForView(std::uint32_t viewWidth, std::uint32_t viewHeight) noexcept {
+    Impl& d = *impl_;
+    if (d.quality.resolutionWidth != 0 || viewWidth == 0 || viewHeight == 0) {
+        return false;
+    }
+    // (a step down to 640x480 at Create set resolutionWidth: such a renderer no longer follows the view)
+    const RenderSizes want =
+        ComputeRenderSizes(d.backBufferWidth, d.backBufferHeight, 0, 0, viewWidth, viewHeight, d.quality.renderScale);
+    return d.Resize(want, "view size");
 }
 
 std::string GpuRenderer::Describe() const {
@@ -560,6 +916,9 @@ void GpuRenderer::ClearBuffer(const ni::NiRectF* rect, std::uint32_t mode, std::
     if (hasRect && (r.right <= r.left || r.bottom <= r.top)) {
         ++d.emptyClearRects;  // D3DDevice_Clear with an empty rectangle clears nothing
         return;
+    }
+    if (hasRect) {  // M3c: guest pixels -> internal pixels of the back buffer
+        r = ScaleRect(r, d.backBufferWidth, d.backBufferHeight, d.sizes.internalWidth, d.sizes.internalHeight);
     }
     d.Ctx().Clear(flags, color, depth, static_cast<std::uint8_t>(stencil & 0xFF), hasRect ? &r : nullptr);
     if ((flags & rhi::kClearColor) != 0) {
@@ -670,11 +1029,41 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
     const bool hotkey = (platform::ConsumeHotkeys() & platform::kHotkeyScreenshot) != 0;
     if (hotkey || Listed(s.screenshotFrames, frame)) {
         ++d.screenshots;
-        platform::SaveScreenshot(*d.device, s.screenshotDir, frame);  // logs "screenshot: <path> (WxH)"
+        // M3c: the resolved back buffer (internal size) or the presented image (output size); the PNG is written
+        // on a worker thread, which logs "screenshot: <path> (WxH)".
+        platform::SaveScreenshot(*d.device, s.screenshotDir, frame,
+                                 d.quality.screenshots == ScreenshotSize::Internal ? platform::ScreenshotSource::Internal
+                                                                                   : platform::ScreenshotSource::Output);
     }
+    // M3b display-coupled pacing: the pacer chooses sync interval, tearing and whether the swap chain gets this
+    // frame (platform/frame_pacer.h); OnFrameDisplayed then waits (platform::EndFrame).
+    const platform::PacingConfig pacing = PacingConfigOf(s);
+    platform::SwapChainInfo chain;
+    chain.frameLatencyWaitable = d.device->FrameLatencyWaitable();
+    chain.tearingSupported = d.device->Info().tearingSupported;
+    const platform::PresentRequest request = platform::PlanPresent(pacing, chain);
     rhi::PresentDesc present;
-    present.syncInterval = s.vsync ? 1u : 0u;
+    present.syncInterval = request.syncInterval;
+    present.allowTearing = request.allowTearing;
+    present.skipSwapChain = request.skipSwapChain;
+    LARGE_INTEGER qpcCall, qpcReturn;
+    QueryPerformanceCounter(&qpcCall);
     const rhi::PresentResult result = d.device->Present(present);
+    QueryPerformanceCounter(&qpcReturn);
+    {
+        const rhi::PresentTiming timing = d.device->LastPresentTiming();
+        platform::PresentFeedback feedback;
+        feedback.qpcCall = qpcCall.QuadPart;
+        feedback.qpcReturn = qpcReturn.QuadPart;
+        feedback.swapChainPresented = timing.swapChainPresented;
+        feedback.occluded = timing.occluded;
+        feedback.presentId = timing.presentId;
+        feedback.statsValid = timing.statsValid;
+        feedback.statPresentCount = timing.statPresentCount;
+        feedback.statSyncRefreshCount = timing.statSyncRefreshCount;
+        feedback.statSyncQpc = timing.statSyncQpc;
+        platform::NoteSwapChainPresent(feedback);
+    }
     ++d.presents;
     switch (result) {
     case rhi::PresentResult::Ok:
@@ -697,6 +1086,7 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
     d.arenaPeak = std::max(d.arenaPeak, d.arena.BytesUsed());
     d.arena.Reset();
     d.framesDone = frame;
+    d.FollowView();  // M3c: [render] resolution = auto follows window resizes (between frames)
     d.PrepareFrame(frame + 1);
 }
 
@@ -795,6 +1185,20 @@ void GpuRenderer::LogStatistics() noexcept {
         static_cast<unsigned long long>(f.litDraws), static_cast<unsigned long long>(f.pretransformedDraws),
         static_cast<unsigned long long>(f.frameUploads), static_cast<unsigned long long>(f.lightUploads),
         static_cast<unsigned long long>(f.stageUploads), static_cast<unsigned long long>(f.missingTextures));
+    // M3c: the back-buffer configuration at the end and what the anti-aliasing options did.
+    FUT_LOGI(Gfx,
+             "render totals: output %ux%u, internal %ux%u, MSAA %ux, %llu back-buffer resizes (%llu failed)%s; alpha "
+             "test: %llu draws with alpha to coverage, %llu with discard; %llu anisotropic texture stages, %llu "
+             "point-filtered stages as anti-aliased nearest; %llu draws with a destination-alpha blend%s",
+             d.sizes.outputWidth, d.sizes.outputHeight, d.sizes.internalWidth, d.sizes.internalHeight, d.samples,
+             static_cast<unsigned long long>(d.resizes), static_cast<unsigned long long>(d.resizeFailures),
+             d.reduced ? ", quality reduced" : "",
+             static_cast<unsigned long long>(f.alphaToCoverageDraws),
+             static_cast<unsigned long long>(f.alphaTestDiscardDraws),
+             static_cast<unsigned long long>(f.anisotropicStages),
+             static_cast<unsigned long long>(f.sharpNearestStages),
+             static_cast<unsigned long long>(f.destAlphaBlendDraws),
+             f.alphaToCoverageSuspended ? " (alpha to coverage suspended)" : "");
     const ni::ExtractCounters& e = d.shadow.counters;
     FUT_LOGI(
         Gfx,
@@ -817,6 +1221,10 @@ void GpuRenderer::LogStatistics() noexcept {
              static_cast<unsigned long long>(ds.transientBytes >> 20), ds.pipelines, ds.samplers, ds.buffers,
              ds.textures, static_cast<unsigned long long>(ds.textureBytes >> 10), ds.debugErrors,
              ds.debugWarnings);
+    // M3c: GPU time per frame (timestamp queries; the frame work of "present: frame work" is the CPU side).
+    FUT_LOGI(Gfx, "d3d11 gpu frame time: %llu frames timed, average %.2f ms, 99th percentile %.1f ms, longest %.1f ms",
+             static_cast<unsigned long long>(ds.gpuFramesTimed), ds.gpuFrameMsAverage, ds.gpuFrameMsP99,
+             ds.gpuFrameMsMax);
 }
 
 }  // namespace gfx

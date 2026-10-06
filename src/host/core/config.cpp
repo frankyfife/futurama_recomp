@@ -1,6 +1,8 @@
 // Configuration loading (INI + command line). See config.h.
 #include "core/config.h"
 
+#include "core/config_schema.h"
+
 #include <shellapi.h>
 
 #include <algorithm>
@@ -46,31 +48,14 @@ std::string MakeKey(std::string_view section, std::string_view key) {
     return section.empty() ? Lower(key) : Lower(section) + "." + Lower(key);
 }
 
+// M3c: the value parsers live with the schema (core/config_schema.h), so the validation and the accessors
+// accept exactly the same text.
 bool ParseBool(std::string_view text, bool& out) {
-    const std::string v = Lower(Trim(text));
-    if (v == "1" || v == "true" || v == "yes" || v == "on") {
-        out = true;
-        return true;
-    }
-    if (v == "0" || v == "false" || v == "no" || v == "off") {
-        out = false;
-        return true;
-    }
-    return false;
+    return ParseConfigBool(text, out);
 }
 
 bool ParseU32(std::string_view text, std::uint32_t& out) {
-    const std::string v(Trim(text));
-    if (v.empty()) {
-        return false;
-    }
-    char* end = nullptr;
-    const unsigned long long n = std::strtoull(v.c_str(), &end, 0);
-    if (end == nullptr || *end != 0 || n > 0xFFFFFFFFull) {
-        return false;
-    }
-    out = static_cast<std::uint32_t>(n);
-    return true;
+    return ParseConfigU32(text, out);
 }
 
 std::vector<std::string> SplitList(std::string_view text) {
@@ -107,119 +92,15 @@ std::string_view StripInlineComment(std::string_view line) {
     return line;
 }
 
-// Every key the host reads (review finding 8). A module that reads a new key adds it here. A key
-// that is not listed is a configuration error in a known section (typos such as "stop-at" or
-// "timeout = 60s" must not be ignored silently); an unknown section only produces a warning.
-// Choice (M2 review finding 10): the value must be one of the '|'-separated words (case-insensitive) or
-// lie in a numeric range "a..b" of the list; otherwise the configuration error (exit code 1) is raised
-// here instead of a stage failure (exit code 2) when the module parses the key.
-enum class KeyType : std::uint8_t { String, Bool, U32, List, Path, Choice };
-struct KnownKey {
-    const char* section;
-    const char* key;
-    KeyType type;
-    const char* choices = nullptr;  // KeyType::Choice only
-};
-constexpr KnownKey kKnownKeys[] = {
-    {"paths", "iso", KeyType::Path},
-    {"paths", "xbe", KeyType::Path},
-    {"paths", "userdata", KeyType::Path},
-    {"paths", "disc_dir", KeyType::Path},
-    {"debug", "stop_at", KeyType::String},
-    {"debug", "selftest", KeyType::Bool},
-    {"debug", "trace", KeyType::List},
-    {"debug", "msgbox", KeyType::Bool},
-    {"debug", "timeout", KeyType::U32},
-    {"debug", "crash_test", KeyType::Bool},
-    {"debug", "exit_hang_test", KeyType::Bool},  // M2 review finding 7: an exit reporter that never returns
-    {"debug", "minidump", KeyType::Bool},
-    {"debug", "mmio_trap", KeyType::Bool},
-    {"debug", "frames", KeyType::U32},  // gfx (M2): end orderly after N displayed frames, 0 = off
-    {"kernel", "strict", KeyType::Bool},
-    {"kernel", "min_guest_stack", KeyType::U32},
-    {"kernel", "fiber_stack", KeyType::U32},  // fiber (M2): MmCreateKernelStack minimum, default 0x80000
-    {"log", "level", KeyType::String},
-    {"log", "console", KeyType::Bool},
-    {"log", "debugger", KeyType::Bool},
-    {"hooks", "disable", KeyType::List},
-    // same names as kLanguages in kernel/kernel_settings.cpp (unit test "config: choice keys ...")
-    {"settings", "language", KeyType::Choice,
-     "english|japanese|german|french|spanish|italian|korean|tchinese|portuguese|1..9"},
-    {"settings", "game_region", KeyType::U32},
-    {"settings", "av_region", KeyType::U32},
-    {"settings", "video_flags", KeyType::U32},
-    {"settings", "audio_flags", KeyType::U32},
-    {"settings", "av_pack", KeyType::U32},
-    {"saves", "key_mode", KeyType::Choice, "fixed|xbox"},
-    {"saves", "signature_key", KeyType::String},
-    {"saves", "xbox_cert_key", KeyType::String},
-    // gfx (M2, src/host/gfx/gfx_config.h): [render] = null renderer and D3D shim/traps
-    {"render", "frame_rate", KeyType::U32},       // DisplayFrame pacing in Hz, 0 = unthrottled (default 50)
-    {"render", "d3d_traps", KeyType::Choice, "abort|log"},  // default abort
-    {"render", "load_textures", KeyType::Bool},   // slot 65 reads texture files for their size (default 1)
-    // gfx (M3 phase 1, GFX_CONTRACT.md 8): window + D3D11 renderer
-    {"render", "backend", KeyType::Choice, "null|d3d11"},      // default d3d11 since the M3 integration
-    {"render", "vsync", KeyType::Bool},                        // default 1
-    {"render", "debug_layer", KeyType::Choice, "auto|on|off"}, // default auto (on in Debug builds)
-    {"render", "adapter", KeyType::Choice, "hardware|warp"},   // default hardware
-    {"render", "window_scale", KeyType::U32},                  // client area = 640x480 * N (default 2)
-    {"render", "fullscreen", KeyType::Bool},                   // borderless full-monitor window (default 0)
-    {"render", "scaling", KeyType::Choice, "linear|point|integer"},  // present scaling (M3 review, default linear)
-    {"render", "screenshot_dir", KeyType::Path},               // default <userdata>\screenshots
-    {"render", "screenshot_frames", KeyType::List},            // displayed-frame numbers with a screenshot
-    {"render", "trace_frames", KeyType::List},                 // displayed-frame numbers whose draws are logged
-    {"render", "validate", KeyType::Bool},                     // null renderer runs ni_extract/texconv (default 0)
-    // xdk (M2, src/host/audio/dsound_stubs.h): DirectSoundCreateStream returns stub streams instead of NULL
-    {"audio", "dummy_streams", KeyType::Bool},  // default 0
-};
+// Every key the host reads (review finding 8) is a row of the schema table (core/config_schema.cpp, M3c; it
+// replaced kKnownKeys here). A key that is not listed is a configuration error in a known section (typos such
+// as "stop-at" or "timeout = 60s" must not be ignored silently); an unknown section only produces a warning.
+// Choice (M2 review finding 10): the value must be one of the '|'-separated words (case-insensitive) or lie in
+// a numeric range "a..b" of the list; otherwise the configuration error (exit code 1) is raised here instead of
+// a stage failure (exit code 2) when the module parses the key. M3c adds float, resolution and enforced ranges
+// (core::ValidateConfigValue).
 
-// True if `value` is one of the '|'-separated choices (words case-insensitive, "a..b" numeric ranges).
-bool MatchesChoice(std::string_view value, std::string_view choices) {
-    const std::string v = Lower(Trim(value));
-    std::uint32_t number = 0;
-    const bool isNumber = ParseU32(v, number);
-    std::size_t start = 0;
-    while (start <= choices.size()) {
-        std::size_t bar = choices.find('|', start);
-        if (bar == std::string_view::npos) {
-            bar = choices.size();
-        }
-        const std::string_view choice = choices.substr(start, bar - start);
-        const std::size_t dots = choice.find("..");
-        if (dots != std::string_view::npos) {
-            std::uint32_t lo = 0, hi = 0;
-            if (isNumber && ParseU32(choice.substr(0, dots), lo) && ParseU32(choice.substr(dots + 2), hi) &&
-                number >= lo && number <= hi) {
-                return true;
-            }
-        } else if (v == choice) {
-            return true;
-        }
-        start = bar + 1;
-    }
-    return false;
-}
-
-bool IsKnownSection(std::string_view section) {
-    for (const KnownKey& k : kKnownKeys) {
-        if (section == k.section) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Section-less keys (outside any [section]) match the key name in any section.
-const KnownKey* FindKnownKey(std::string_view section, std::string_view key) {
-    for (const KnownKey& k : kKnownKeys) {
-        if (key == k.key && (section.empty() || section == k.section)) {
-            return &k;
-        }
-    }
-    return nullptr;
-}
-
-// Checks every stored "section.key" against kKnownKeys and its type. Unknown sections -> warnings.
+// Checks every stored "section.key" against the schema and its type. Unknown sections -> warnings.
 bool ValidateKeys(const std::map<std::string, std::string, std::less<>>& values,
                   std::vector<std::string>& warnings, std::string& error) {
     for (const auto& [fullKey, value] : values) {
@@ -227,33 +108,21 @@ bool ValidateKeys(const std::map<std::string, std::string, std::less<>>& values,
         const std::string_view full(fullKey);
         const std::string_view section = dot == std::string::npos ? std::string_view() : full.substr(0, dot);
         const std::string_view key = dot == std::string::npos ? full : full.substr(dot + 1);
-        if (!section.empty() && !IsKnownSection(section)) {
+        if (!section.empty() && !IsConfigSection(section)) {
             warnings.push_back("unknown config section [" + std::string(section) + "] (key '" +
                                std::string(key) + "' ignored)");
             continue;
         }
-        const KnownKey* known = FindKnownKey(section, key);
+        const ConfigKeyDef* known = FindConfigKey(section, key);
         if (known == nullptr) {
+            // Review M3c finding 16 (h): the launcher shows this line to the player - no source reference.
             error = section.empty() ? "unknown config key '" + std::string(key) + "' outside any section"
                                     : "unknown config key '" + std::string(key) + "' in [" +
-                                          std::string(section) + "] (known keys: see core/config.h)";
+                                          std::string(section) +
+                                          "] - this game build does not know it; remove the line or fix the name";
             return false;
         }
-        const std::string where = "[" + std::string(known->section) + "] " + known->key;
-        bool b = false;
-        std::uint32_t u = 0;
-        if (known->type == KeyType::Bool && !ParseBool(value, b)) {
-            error = "invalid boolean for " + where + ": '" + value +
-                    "' (expected 0/1, true/false, yes/no, on/off)";
-            return false;
-        }
-        if (known->type == KeyType::U32 && !ParseU32(value, u)) {
-            error = "invalid number for " + where + ": '" + value + "' (expected decimal or 0x hex, no unit)";
-            return false;
-        }
-        if (known->type == KeyType::Choice && known->choices != nullptr &&
-            !MatchesChoice(Unquote(value), known->choices)) {
-            error = "invalid value for " + where + ": '" + value + "' (expected " + known->choices + ")";
+        if (!ValidateConfigValue(*known, known->type == ConfigKeyType::Choice ? Unquote(value) : value, error)) {
             return false;
         }
     }
@@ -412,12 +281,16 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
             overrides["log.level"] = v;
         } else if (valueOf("--set=", v)) {
             const size_t eq = v.find('=');
-            if (eq == std::string::npos || eq == 0) {
+            // Key and value as in the INI file: blanks trimmed, the value unquoted (review M3b finding 10: a
+            // value " timer" passed the choice check but did not match in the readers).
+            const std::string key =
+                eq == std::string::npos ? std::string() : Lower(Trim(std::string_view(v).substr(0, eq)));
+            if (key.empty()) {
                 error = "--set expects <section>.<key>=<value>: " + arg;
                 LocalFree(argv);
                 return false;
             }
-            overrides[Lower(v.substr(0, eq))] = v.substr(eq + 1);
+            overrides[key] = Unquote(std::string_view(v).substr(eq + 1));
         } else {
             error = "unknown command line option '" + arg +
                     "' (known: --config= --userdata= --iso= --xbe= --stop-at= --selftest --trace= --strict "
@@ -430,17 +303,30 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
         LocalFree(argv);
     }
 
-    // 2. INI file.
-    if (!explicitConfig.empty()) {
+    // 2. INI file (M3c, shared contract item 4): --config, else portable (<exe dir>) or default
+    // (%LOCALAPPDATA%\FuturamaPC); see ResolveConfigLocation.
+    const ConfigLocation location = ResolveConfigLocation(out.exeDir, explicitConfig);
+    out.configMode = location.mode;
+    out.portable = location.portable;
+    if (location.mode == ConfigLocationMode::Explicit) {
         if (!std::filesystem::exists(explicitConfig, ec)) {
             error = "config file not found: " + WideToUtf8(explicitConfig.wstring());
             return false;
         }
         out.configFile = explicitConfig;
     } else {
-        const std::filesystem::path def = out.exeDir / L"futurama.ini";
-        if (std::filesystem::exists(def, ec)) {
-            out.configFile = def;
+        if (!location.configFile.empty() && std::filesystem::is_regular_file(location.configFile, ec)) {
+            out.configFile = location.configFile;
+        }
+        if (location.mode == ConfigLocationMode::Default && !out.exeDir.empty() &&
+            std::filesystem::exists(out.exeDir / kConfigFileName, ec)) {
+            // Before M3c this was the default INI; keep users from wondering why their settings are gone.
+            out.warnings.push_back(WideToUtf8((out.exeDir / kConfigFileName).wstring()) +
+                                   " is ignored: the configuration is read from " +
+                                   (location.configFile.empty() ? std::string("(none: %LOCALAPPDATA% is not set)")
+                                                                : WideToUtf8(location.configFile.wstring())) +
+                                   " (put a file " + WideToUtf8(kPortableMarkerName) +
+                                   " next to futurama.exe for portable mode, or pass --config=<file>)");
         }
     }
     if (!out.configFile.empty() && !ReadIni(out.configFile, out.values, error)) {
@@ -455,13 +341,11 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
     out.xbe = out.GetPath("paths", "xbe");
     out.userdata = out.GetPath("paths", "userdata");
     if (out.userdata.empty()) {
-        wchar_t buf[MAX_PATH * 2];
-        const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, static_cast<DWORD>(std::size(buf)));
-        if (n == 0 || n >= std::size(buf)) {
-            error = "%LOCALAPPDATA% is not set; configure [paths] userdata";
+        if (location.defaultUserdata.empty()) {
+            error = "%LOCALAPPDATA% is not set; configure [paths] userdata (or use portable mode)";
             return false;
         }
-        out.userdata = std::filesystem::path(buf) / L"FuturamaPC";
+        out.userdata = location.defaultUserdata;
     }
     // Review finding 11: the VFS uses "\\?\" paths, but the log, minidumps and std::filesystem users
     // rely on Win32 long path support (launcher manifest longPathAware + LongPathsEnabled = 1).
@@ -504,12 +388,48 @@ bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath
 }
 
 bool IsKnownConfigKey(std::string_view section, std::string_view key) {
-    return FindKnownKey(Lower(section), Lower(key)) != nullptr;
+    return FindConfigKey(section, key) != nullptr;
 }
 
 const char* ConfigKeyChoices(std::string_view section, std::string_view key) {
-    const KnownKey* k = FindKnownKey(Lower(section), Lower(key));
-    return k != nullptr && k->type == KeyType::Choice ? k->choices : nullptr;
+    const ConfigKeyDef* k = FindConfigKey(section, key);
+    return k != nullptr ? ConfigChoiceList(*k) : nullptr;
+}
+
+ConfigLocation ResolveConfigLocation(const std::filesystem::path& exeDir, const std::filesystem::path& explicitConfig) {
+    ConfigLocation loc;
+    std::error_code ec;
+    loc.portable = !exeDir.empty() && std::filesystem::is_regular_file(exeDir / kPortableMarkerName, ec);
+    std::filesystem::path appData;
+    wchar_t buf[MAX_PATH * 2];
+    const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, static_cast<DWORD>(std::size(buf)));
+    if (n > 0 && n < std::size(buf)) {
+        appData = std::filesystem::path(buf) / kUserdataFolderName;
+    }
+    loc.defaultUserdata = loc.portable ? exeDir : appData;
+    if (!explicitConfig.empty()) {
+        loc.mode = ConfigLocationMode::Explicit;
+        loc.configFile = explicitConfig;
+    } else if (loc.portable) {
+        loc.mode = ConfigLocationMode::Portable;
+        loc.configFile = exeDir / kConfigFileName;
+    } else {
+        loc.mode = ConfigLocationMode::Default;
+        loc.configFile = appData.empty() ? std::filesystem::path() : appData / kConfigFileName;
+    }
+    return loc;
+}
+
+const char* ConfigLocationModeName(ConfigLocationMode mode) noexcept {
+    switch (mode) {
+    case ConfigLocationMode::Default:
+        return "default";
+    case ConfigLocationMode::Portable:
+        return "portable";
+    case ConfigLocationMode::Explicit:
+        return "explicit";
+    }
+    return "default";
 }
 
 bool ProcessLongPathsEnabled() noexcept {

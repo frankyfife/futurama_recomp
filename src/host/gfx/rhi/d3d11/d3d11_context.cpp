@@ -109,6 +109,7 @@ void D3D11Context::SetScissor(const Rect& r) noexcept {
 void D3D11Context::Clear(std::uint8_t flags, const float color[4], float depth, std::uint8_t stencil,
                          const Rect* rect) noexcept {
     static constexpr float kBlack[4] = {0, 0, 0, 0};
+    device_.NoteGpuWork();  // M3c: GPU frame timing
     const float* c = color != nullptr ? color : kBlack;
     const float d = depth < 0.0f ? 0.0f : depth > 1.0f ? 1.0f : depth;
     const UINT dsFlags = ((flags & kClearDepth) != 0 ? D3D11_CLEAR_DEPTH : 0u) |
@@ -385,6 +386,7 @@ void D3D11Context::Draw(std::uint32_t vertexCount, std::uint32_t firstVertex) no
     if (vertexCount == 0) {
         return;
     }
+    device_.NoteGpuWork();  // M3c: GPU frame timing
     ctx_->Draw(vertexCount, firstVertex);
     DeviceStats& s = device_.MutableStats();
     ++s.draws;
@@ -399,6 +401,7 @@ void D3D11Context::DrawIndexed(std::uint32_t indexCount, std::uint32_t firstInde
     if (indexCount == 0) {
         return;
     }
+    device_.NoteGpuWork();  // M3c: GPU frame timing
     ctx_->DrawIndexed(indexCount, firstIndex, baseVertex);
     DeviceStats& s = device_.MutableStats();
     ++s.draws;
@@ -556,6 +559,13 @@ void D3D11Context::OnPresent() noexcept {
     if (colorTarget_ == 0) {
         rtv_ = device_.BackBufferRtv();
     }
+    RestoreBindings();
+}
+
+void D3D11Context::RestoreBindings() noexcept {
+    if (ctx_ == nullptr) {
+        return;
+    }
     ApplyTargets();
     ApplyViewport();
     ApplyPipeline(true);
@@ -565,6 +575,20 @@ void D3D11Context::OnPresent() noexcept {
     }
     ctx_->PSSetShaderResources(0, 1, &srv);
     ctx_->PSSetSamplers(0, 1, &samplers_[0]);
+}
+
+void D3D11Context::OnBackBuffersChanged() noexcept {
+    if (colorTarget_ == 0) {
+        rtv_ = device_.BackBufferRtv();
+        targetWidth_ = device_.Info().backBufferWidth;
+        targetHeight_ = device_.Info().backBufferHeight;
+        viewport_ = D3D11_VIEWPORT{0.0f, 0.0f, static_cast<float>(targetWidth_), static_cast<float>(targetHeight_),
+                                   0.0f, 1.0f};
+    }
+    if (defaultTargets_ || (colorTarget_ == 0 && depthTarget_ == 0)) {
+        dsv_ = device_.BackBufferDsv();
+    }
+    RestoreBindings();
 }
 
 void D3D11Context::OnDestroyTexture(std::uint32_t id) noexcept {

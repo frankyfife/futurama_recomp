@@ -442,14 +442,55 @@ float FogFactor(float depth)
     return f;
 }
 
+// M3c alpha-to-coverage (FFDrawConstants::alphaTest.w, ff_pipeline.h RenderOptions): instead of the D3D8 alpha
+// test's discard, the output alpha becomes the coverage of the pixel on an MSAA target. The threshold is where
+// the 8-bit test switches (alpha8 = round(a * 255): GREATER ref passes from (ref + 0.5) / 255 on, GREATEREQUAL
+// from (ref - 0.5) / 255, LESS below (ref - 0.5) / 255, LESSEQUAL below (ref + 0.5) / 255), and the distance to
+// it is divided by the alpha's screen-space change per pixel (fwidth) - "alpha sharpening": the edge spans about
+// one pixel of coverage, exactly on the line the alpha test would cut, so magnified cut-out textures stay crisp
+// and minified ones do not fade out.
+float CoverageAlpha(float alpha, float alphaWidth, uint func, uint reference)
+{
+    const float r = (float)reference;
+    float threshold = (r + 0.5f) / 255.0f;  // GREATER, LESSEQUAL
+    if (func == FF_CMP_GREATEREQUAL || func == FF_CMP_LESS)
+    {
+        threshold = (r - 0.5f) / 255.0f;
+    }
+    const float distance = (func == FF_CMP_LESS || func == FF_CMP_LESSEQUAL) ? threshold - alpha : alpha - threshold;
+    return saturate(distance / max(alphaWidth, 1.0e-4f) + 0.5f);
+}
+
+float2 TextureSize(Texture2D source)
+{
+    uint width, height;
+    source.GetDimensions(width, height);
+    return float2((float)width, (float)height);
+}
+
+// M3c anti-aliased nearest (FF_STAGE_SHARP_NEAREST): on a target larger than 640x480 a point-filtered texture
+// (the intro screens, UI) would get texels of 4 and 5 pixels at a scale of 4.5. Sampled bilinearly at
+// coordinates that stay on the texel center except within one pixel of a texel border, every texel keeps its
+// exact area and the borders get one pixel of blend instead of a stair step - as crisp as nearest, but even.
+// The derivatives are taken unconditionally (no gradients inside flow control); stages without the flag keep
+// their coordinates (the classic path is unchanged).
+float2 StageUv(uint stage, float2 uv, float2 size)
+{
+    const float2 texel = uv * size;
+    const float2 seam = floor(texel + 0.5f);
+    const float2 width = max(fwidth(texel), 1.0e-5f);
+    const float2 sharp = (seam + clamp((texel - seam) / width, -0.5f, 0.5f)) / max(size, 1.0f);
+    return (g_stages.stages[stage].coord.w & FF_STAGE_SHARP_NEAREST) != 0 ? sharp : uv;
+}
+
 float4 PSMain(FFVertexOutput input) : SV_Target
 {
     // All stages are sampled up front (no gradients inside flow control; unused stages see white).
     float4 texels[FF_MAX_STAGES];
-    texels[0] = g_texture0.Sample(g_sampler0, ProjectStageCoordinates(0, input.tex0));
-    texels[1] = g_texture1.Sample(g_sampler1, ProjectStageCoordinates(1, input.tex1));
-    texels[2] = g_texture2.Sample(g_sampler2, ProjectStageCoordinates(2, input.tex2));
-    texels[3] = g_texture3.Sample(g_sampler3, ProjectStageCoordinates(3, input.tex3));
+    texels[0] = g_texture0.Sample(g_sampler0, StageUv(0, ProjectStageCoordinates(0, input.tex0), TextureSize(g_texture0)));
+    texels[1] = g_texture1.Sample(g_sampler1, StageUv(1, ProjectStageCoordinates(1, input.tex1), TextureSize(g_texture1)));
+    texels[2] = g_texture2.Sample(g_sampler2, StageUv(2, ProjectStageCoordinates(2, input.tex2), TextureSize(g_texture2)));
+    texels[3] = g_texture3.Sample(g_sampler3, StageUv(3, ProjectStageCoordinates(3, input.tex3), TextureSize(g_texture3)));
 
     const float4 diffuse = input.diffuse;
     const float4 specular = input.specular;
@@ -500,12 +541,21 @@ float4 PSMain(FFVertexOutput input) : SV_Target
     {
         color.rgb = saturate(color.rgb + specular.rgb);  // D3DRS_SPECULARENABLE: added after the stages
     }
+    // Screen-space change of the alpha (M3c alpha-to-coverage), outside the uniform branch below.
+    const float alphaWidth = fwidth(saturate(color.a));
     if (g_draw.alphaTest.x != 0)
     {
-        const uint alpha8 = (uint)(saturate(color.a) * 255.0f + 0.5f);
-        if (!AlphaTestPasses(g_draw.alphaTest.y, alpha8, g_draw.alphaTest.z))
+        if (g_draw.alphaTest.w != 0)
         {
-            discard;
+            color.a = CoverageAlpha(saturate(color.a), alphaWidth, g_draw.alphaTest.y, g_draw.alphaTest.z);
+        }
+        else
+        {
+            const uint alpha8 = (uint)(saturate(color.a) * 255.0f + 0.5f);
+            if (!AlphaTestPasses(g_draw.alphaTest.y, alpha8, g_draw.alphaTest.z))
+            {
+                discard;
+            }
         }
     }
     if (HasFeature(FF_FEATURE_FOG))

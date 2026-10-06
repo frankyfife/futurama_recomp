@@ -25,6 +25,24 @@ the VFS trace of every run and checks the seven M2 exit criteria plus the genera
 The evidence lines come from the game observer probes (src/host/xapi/game_probes.cpp), the exit
 reporters (core::AddExitReporter: fiber summary, I/O APC stats, game summary) and the VFS trace.
 
+M3b (60 Hz time base, docs/loader_design.md 8.4): the game ticks at [game] tick_rate (default 60 = the NTSC
+timing values of Game::Init 0xA26A0 with PAL content, 50 = original PAL) and [render] frame_rate follows it,
+so the frame numbers of a run are 1/tick_rate s apart. Thresholds that were frame counts at 50 Hz are seconds
+times the tick rate now: the intro must finish from INTRO_MIN_SECONDS * rate frames on (1000 at 50 Hz as
+before, 1200 at 60 Hz; Intro -> Frontend comes after 15.2-16.1 s at both rates), the timeout is
+frames / rate + 90 s. The 3000-frame run stays (M3 exit criterion 3 names --frames=3000); at 60 Hz it covers
+50 s instead of 60 s, which still contains the whole intro context and 35 s of the frontend (the attract
+switch after 60 s of frontend idle was outside both runs). Additionally checked (check_timing, also used by
+m3_check):
+
+  T1 game timing values: the stage ApplyGameTiming applied the patch table of the configured tick rate (7 rows
+     at 60 Hz, none at 50 Hz), the read-back after Game::Init is "ok" with fps/dt of that rate (60 Hz:
+     0x42700000 / 0x3C888889 = 1/60, 50 Hz: 0x42480000 / 0x3CA3D70A = 0.02), CApp+0xE8 = 0 and the movie tag
+     "PAL"; the GameInitProbe line shows "PAL; <rate> fps"; every movie the game opens is Video\\*-PAL.xmv
+  T2 tick rate: "game ticks:" steady steps per second within 0.2 % of the tick rate; with [game] frame_clock =
+     lockstep (default) and frames at the tick rate also >= 99 % of the CApp::Frame calls with exactly one
+     fixed step (analysis/loader/timing60.md observable 8.3); the 0- and 2-step frames are reported
+
 Usage (paths with spaces belong in the INI, not on the command line):
     python tools/m2_check.py --exe build/x86-debug/bin/futurama.exe --config run/m2/futurama.ini
                              [--runs 3] [--fresh] [--timeout SECONDS]
@@ -45,8 +63,16 @@ from pathlib import Path
 
 DEFAULT_FRAMES = 3000
 # The intro context (legal screen, fox/sci/uds movies, splash, load menu, intro movie) ends after about
-# 800 displayed frames (Intro -> Frontend at CApp::Frame #780). Shorter runs only check that it runs.
-INTRO_MIN_FRAMES = 1000
+# 15.2-16.1 s (Intro -> Frontend at CApp::Frame #780 at 50 Hz, #890-893 at 60 Hz; the screens count QPC
+# seconds, timing60.md 4.2). Runs shorter than INTRO_MIN_SECONDS * rate frames only check that it runs.
+INTRO_MIN_SECONDS = 20
+# [game] tick_rate (M3b, src/host/xapi/game_timing.h): 60 (default) | 50.
+DEFAULT_TICK_RATE = 60
+TICK_RATES = (60, 50)
+# Game::Init 0xA26A0 time base per tick rate (timing60.md 2.1-2.4): fps bits, dt bits, number of patch rows.
+TIMING_VALUES = {60: ("0x42700000", "0x3C888889", 7), 50: ("0x42480000", "0x3CA3D70A", 0)}
+TICK_RATE_TOLERANCE = 0.002     # steady steps per second within 0.2 % of the tick rate
+MIN_SINGLE_STEP_SHARE = 0.99    # lockstep frame clock: frames with exactly one fixed step (observable 8.3)
 # XC_LANGUAGE values (ExQueryNonVolatileSetting 7, design 2.1): the names of kernel/kernel_settings.cpp
 # (= the choices of [settings] language in core/config.cpp) or 1..9.
 LANGUAGES = {"english": 1, "japanese": 2, "german": 3, "french": 4, "spanish": 5, "italian": 6,
@@ -92,6 +118,25 @@ def expected_language(cp: configparser.ConfigParser) -> int:
     if value not in LANGUAGES:
         sys.exit(f"m2_check: unknown [settings] language {value!r}")
     return LANGUAGES[value]
+
+
+def tick_rate(cp: configparser.ConfigParser) -> int:
+    """[game] tick_rate (M3b): 60 (default) or 50 - the configuration loader rejects anything else."""
+    value = ini_value(cp, "game", "tick_rate", str(DEFAULT_TICK_RATE)) or str(DEFAULT_TICK_RATE)
+    if not value.isdigit() or int(value) not in TICK_RATES:
+        sys.exit(f"m2_check: [game] tick_rate = {value!r} - the loader accepts only 60 or 50")
+    return int(value)
+
+
+def frame_rate(cp: configparser.ConfigParser) -> int:
+    """Game frames per second: [render] frame_rate if set (0 = unthrottled), else the tick rate (M3b default)."""
+    value = ini_value(cp, "render", "frame_rate")
+    return int(value, 0) if value else tick_rate(cp)
+
+
+def frame_clock(cp: configparser.ConfigParser) -> str:
+    """[game] frame_clock (M3b): lockstep (default) or realtime."""
+    return (ini_value(cp, "game", "frame_clock", "lockstep") or "lockstep").lower()
 
 
 def log_userdata(lines: list[str]) -> str | None:
@@ -165,7 +210,9 @@ def loose_path(name: str) -> str:
 
 
 def check_run(log: str, trace: str, exit_code: int, elapsed: float, timeout: int, frames: int,
-              language: int, userdata: Path) -> tuple[list[tuple[str, bool, str]], dict]:
+              language: int, userdata: Path, rate: int = DEFAULT_TICK_RATE) -> tuple[list[tuple[str, bool, str]], dict]:
+    """The M2 criteria of one run; `rate` = game frames per second (the intro must finish from
+    INTRO_MIN_SECONDS * rate frames on)."""
     lines = log.splitlines()
     info: dict = {}
     if not lines:
@@ -226,8 +273,9 @@ def check_run(log: str, trace: str, exit_code: int, elapsed: float, timeout: int
                 for m in all_matches(r"game: context (\S+) -> (\S+) \(CApp::Frame #(\d+)\)")]
     intro_first = contexts is not None and contexts.group(2) == "Intro"
     intro_done = any(a == "Intro" and b != "Intro" for a, b, _ in switches)
-    # B11: the intro must also finish - only if the run is long enough for it (finding 6).
-    need_intro_done = frames >= INTRO_MIN_FRAMES
+    # B11: the intro must also finish - only if the run is long enough for it (finding 6). M3b: in seconds.
+    intro_min_frames = INTRO_MIN_SECONDS * max(rate, 1)
+    need_intro_done = frames >= intro_min_frames
     limit = first(rf"FRAMES: limit of {frames} frames reached")
     pexit = first(r"process exit: frame limit reached \(exit code 0")
     summary = first(r"game summary: (\d+) CApp::Frame calls, contexts (.*?) \((\d+) switches")
@@ -244,7 +292,8 @@ def check_run(log: str, trace: str, exit_code: int, elapsed: float, timeout: int
     elif need_intro_done:
         intro_note = " (Intro never left)"
     else:
-        intro_note = f" (Intro still running; leaving it is only required from {INTRO_MIN_FRAMES} frames on)"
+        intro_note = (f" (Intro still running; leaving it is only required from {intro_min_frames} frames = "
+                      f"{INTRO_MIN_SECONDS} s at {rate} Hz on)")
     results.append((CRITERIA[3], ok4,
                     f"first context {contexts.group(2) if contexts else '?'!r}, contexts {history}{intro_note}, "
                     f"{len(switches)} switches logged, "
@@ -312,13 +361,102 @@ def check_run(log: str, trace: str, exit_code: int, elapsed: float, timeout: int
     return results, info
 
 
+TIMING_CRITERIA = [
+    "T1 game timing values (patch table, read-back after Game::Init, CApp+0xE8 = 0, movie tag PAL)",
+    "T2 tick rate (steady fixed steps per second, steps per CApp::Frame)",
+]
+
+
+def check_timing(log: str, trace: str, rate: int, clock: str = "lockstep",
+                 frames_at_tick_rate: bool = True) -> tuple[list[tuple[str, bool, str]], dict]:
+    """M3b time base of one run (T1, T2 above). `rate` = [game] tick_rate, `clock` = [game] frame_clock,
+    `frames_at_tick_rate` = the run presents one frame per tick (frame_rate = tick rate, pacing not off and no
+    display-rate plan) - only then must >= 99 % of the frames take exactly one fixed step."""
+    lines = log.splitlines()
+    info: dict = {}
+
+    def first(rx: str) -> re.Match | None:
+        for ln in lines:
+            m = re.search(rx, ln)
+            if m:
+                return m
+        return None
+
+    fps_bits, dt_bits, rows = TIMING_VALUES[rate]
+    problems = []
+    stage = first(r"game timing: (\d+) Hz \(([^)]*)\) - \[game\] tick_rate = (\d+); "
+                  r"(?:(\d+) patches applied|no patches)")
+    if stage is None:
+        problems.append("no 'game timing: <rate> Hz' stage line")
+    elif int(stage.group(1)) != rate or int(stage.group(4) or 0) != rows:
+        problems.append(f"stage: {stage.group(1)} Hz with {stage.group(4) or 0} patches (expected {rate} Hz, {rows})")
+    back = first(r"game timing: effective after Game::Init: tick (\d+) Hz, fps (\S+) \((0x[0-9A-F]{8})\), dt (\S+) s "
+                 r"\((0x[0-9A-F]{8})\), fixed step (\d+), .*CApp\+0xE8 = (\d+), movie tag \"([^\"]*)\" - (ok|MISMATCH)")
+    if back is None:
+        problems.append("no read-back line 'game timing: effective after Game::Init'")
+    else:
+        if (int(back.group(1)), back.group(3), back.group(5), back.group(6), back.group(7), back.group(8),
+                back.group(9)) != (rate, fps_bits, dt_bits, "1", "0", "PAL", "ok"):
+            problems.append(f"read-back: tick {back.group(1)}, fps {back.group(3)}, dt {back.group(5)}, fixed step "
+                            f"{back.group(6)}, CApp+0xE8 {back.group(7)}, tag {back.group(8)!r}, {back.group(9)}")
+        info["read_back"] = (f"fps {back.group(2)} ({back.group(3)}), dt {back.group(4)} s ({back.group(5)}), "
+                             f"CApp+0xE8 = {back.group(7)}, tag \"{back.group(8)}\"")
+    video = first(r"game: video standard CApp\+0xE8 = (\d+) \((\w+); (\d+) fps, fixed time step ([\d.]+) s, "
+                  r"movie tag \"([^\"]*)\"\)")
+    if video is None or (video.group(1), video.group(2), int(video.group(3)), video.group(5)) != \
+            ("0", "PAL", rate, "PAL"):
+        problems.append(f"GameInitProbe: {video.group(0) if video else 'no video standard line'}")
+    entries, _ = parse_trace(trace)
+    movies = sorted({e["path"].rsplit("\\", 1)[-1] for e in entries
+                     if e["api"] == "NtCreateFile" and re.search(r"\\video\\[^\\]+\.xmv$", e["path"], re.I)})
+    wrong = [m for m in movies if not m.lower().endswith("-pal.xmv")]
+    if wrong:
+        problems.append(f"movies without the PAL tag: {wrong}")
+    info["movies"] = movies
+    t1 = (f"{rate} Hz, {stage.group(4) or 0} patches" if stage else "no stage line") + \
+         (f"; read-back {info['read_back']} - {back.group(9)}" if back else "") + \
+         (f"; probe '{video.group(2)}; {video.group(3)} fps, {video.group(4)} s'" if video else "") + \
+         f"; movies opened {', '.join(movies) or 'none'}"
+    results = [(TIMING_CRITERIA[0], not problems, t1 + (f"; PROBLEMS: {'; '.join(problems)}" if problems else ""))]
+
+    ticks = first(r"game ticks: (\d+) fixed steps in ([\d.]+) s \(([\d.]+) steps/s at tick rate (\d+) Hz; game time "
+                  r"([\d.]+) s; (\d+) stalls > 6 dt, about ([\d.]+) s dropped by the guest's cap: steady ([\d.]+) "
+                  r"steps/s\), steps per CApp::Frame over (\d+) frames: 0 x (\d+), 1 x (\d+), 2 x (\d+), 3\+ x (\d+) "
+                  r"\(max (\d+)\)")
+    summary = first(r"game clock summary: (\w+), (\d+) accumulator samples: \+1 step x (\d+), catch-up x (\d+) "
+                    r"\(max \+(\d+) steps\), hold x (\d+); phase real - virtual (-?[\d.]+)\.\.(-?[\d.]+) ms")
+    if ticks is None:
+        results.append((TIMING_CRITERIA[1], False, "no 'game ticks:' exit line"))
+        return results, info
+    steady = float(ticks.group(8))
+    n_frames = int(ticks.group(9))
+    hist = [int(ticks.group(i)) for i in range(10, 14)]
+    single = hist[1] / n_frames if n_frames else 0.0
+    info.update(steady=steady, single_share=single, hist=hist)
+    rate_ok = abs(steady - rate) <= rate * TICK_RATE_TOLERANCE
+    need_single = clock == "lockstep" and frames_at_tick_rate
+    ok = rate_ok and (single >= MIN_SINGLE_STEP_SHARE or not need_single)
+    detail = (f"{ticks.group(1)} steps in {ticks.group(2)} s ({ticks.group(3)}/s; steady {steady:.3f}/s, tick rate "
+              f"{rate} +- {rate * TICK_RATE_TOLERANCE:.2f}; {ticks.group(6)} stalls, {ticks.group(7)} s capped); steps "
+              f"per frame over {n_frames} frames: 0 x {hist[0]}, 1 x {hist[1]}, 2 x {hist[2]}, 3+ x {hist[3]} (max "
+              f"{ticks.group(14)}) -> {single * 100:.2f} % exactly one"
+              + (f" (minimum {MIN_SINGLE_STEP_SHARE * 100:.0f} %)" if need_single else
+                 f" (reported only: frame clock {clock}"
+                 f"{'' if frames_at_tick_rate else ', frames not at the tick rate'})"))
+    if summary:
+        detail += (f"; clock {summary.group(1)}: +1 x {summary.group(3)}, catch-up x {summary.group(4)} (max "
+                   f"+{summary.group(5)}), hold x {summary.group(6)}, phase {summary.group(7)}..{summary.group(8)} ms")
+    results.append((TIMING_CRITERIA[1], ok, detail))
+    return results, info
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--exe", required=True, type=Path)
     ap.add_argument("--config", required=True, type=Path)
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--fresh", action="store_true")
-    ap.add_argument("--timeout", type=int, help="seconds per run (default: frames/50 + 90)")
+    ap.add_argument("--timeout", type=int, help="seconds per run (default: frames/rate + 90)")
     args = ap.parse_args()
 
     config = args.config.resolve()
@@ -339,12 +477,17 @@ def main() -> int:
     trace = [t.strip().lower() for t in ini_value(cp, "debug", "trace").replace(";", ",").split(",") if t.strip()]
     if "vfs" not in trace and "all" not in trace:
         extra_args.append("--trace=" + ",".join(trace + ["vfs"]))
-    rate = int(ini_value(cp, "render", "frame_rate", "50") or "50", 0)
+    ticks = tick_rate(cp)
+    clock = frame_clock(cp)
+    rate = frame_rate(cp)
     if rate == 0:
         print("m2_check: warning: [render] frame_rate = 0 - time-based loading loops spin, the intro barely runs")
-    if frames < INTRO_MIN_FRAMES:
-        print(f"m2_check: warning: {frames} frames are too few for the intro context to finish (about 800); "
-              f"criterion 4 only checks that it runs and that the run ends orderly")
+    elif rate != ticks:
+        print(f"m2_check: warning: [render] frame_rate = {rate} differs from [game] tick_rate = {ticks} (the exe logs "
+              f"a warning, the general rule fails) - remove frame_rate, it follows the tick rate")
+    if frames < INTRO_MIN_SECONDS * max(rate, 1):
+        print(f"m2_check: warning: {frames} frames are too few for the intro context to finish (about 16 s = "
+              f"{16 * max(rate, 1)} frames); criterion 4 only checks that it runs and that the run ends orderly")
     timeout = args.timeout or (frames // max(rate, 1) + 90)
     ini_timeout = int(ini_value(cp, "debug", "timeout", "0") or "0", 0)
     if ini_timeout and ini_timeout < frames // max(rate, 1) + 10:
@@ -353,8 +496,8 @@ def main() -> int:
     out_dir = userdata / "m2_check"
     shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True)
-    print(f"m2_check: {args.runs} run(s), {frames} frames at {rate} Hz, language {language}, "
-          f"extra args {' '.join(extra_args)}, timeout {timeout} s")
+    print(f"m2_check: {args.runs} run(s), {frames} frames at {rate} Hz (tick rate {ticks} Hz, frame clock {clock}), "
+          f"language {language}, extra args {' '.join(extra_args)}, timeout {timeout} s")
 
     all_ok = True
     infos = []
@@ -379,8 +522,10 @@ def main() -> int:
         trace = trace_path.read_text(encoding="utf-8", errors="replace") if trace_path.exists() else ""
         (out_dir / f"run_{i:02d}.log").write_text(log, encoding="utf-8")
         (out_dir / f"run_{i:02d}_vfs_trace.log").write_text(trace, encoding="utf-8")
-        results, info = check_run(log, trace, code, elapsed, timeout, frames, language, userdata)
+        results, info = check_run(log, trace, code, elapsed, timeout, frames, language, userdata, rate)
         results.insert(4, ("4 exit code 0", code == 0, f"exit code {code}"))
+        timing, _ = check_timing(log, trace, ticks, clock, frames_at_tick_rate=rate == ticks)
+        results += timing
         run_ok = all(ok for _, ok, _ in results)
         all_ok &= run_ok
         infos.append(info)

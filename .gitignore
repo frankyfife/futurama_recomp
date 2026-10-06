@@ -34,3 +34,6 @@ analysis/_tmp*
 *.pdb
 *.ilk
 *.exp
+
+# --- added in M3c (launcher agent): player packages assembled by tools/package.py ---
+dist/

@@ -1,4 +1,14 @@
-// Host configuration: futurama.ini (next to futurama.exe, or --config=<file>) + command line.
+// Host configuration: futurama.ini + command line.
+//
+// Location of the player configuration (M3c, shared contract item 4; ResolveConfigLocation below):
+//   default   %LOCALAPPDATA%\FuturamaPC\futurama.ini, userdata %LOCALAPPDATA%\FuturamaPC
+//   portable  a file "portable.txt" lies next to futurama.exe: <exe dir>\futurama.ini, userdata = <exe dir>
+//             (config and user data side by side as in the default mode; design 4.1 had ".\userdata")
+//   explicit  --config=<file> always wins (the file must exist; the Qt launcher always passes it); the userdata
+//             default then follows the mode above (portable.txt -> <exe dir>, else %LOCALAPPDATA%\FuturamaPC)
+// A missing INI in default/portable mode means built-in defaults. [paths] userdata overrides the userdata
+// default in every mode. Until M3c the default INI was <exe dir>\futurama.ini; such a file is now only read in
+// portable mode (without portable.txt and --config it is ignored with a warning in the log).
 //
 // INI format: UTF-8, [section] headers, key = value. Section and key names are case-insensitive.
 // Comments: a line that starts with ';' or '#', and an inline comment that starts with ';' or '#'
@@ -8,9 +18,11 @@
 // directory, on the command line against the current directory. Pass paths with spaces/commas/
 // parentheses (e.g. the ISO) through the INI file.
 //
-// Every key is checked against the table kKnownKeys in config.cpp: an unknown key in a known section
-// and a value that is not a valid boolean/number/choice (language, key_mode, d3d_traps) are
-// configuration errors (exit code 1); an unknown section only produces a warning in the log. Known keys:
+// Every key is checked against the schema table of core/config_schema.cpp (M3c; before: kKnownKeys in
+// config.cpp): an unknown key in a known section and a value that is not a valid boolean/number/choice/
+// resolution or lies outside an enforced range are configuration errors (exit code 1); an unknown section
+// only produces a warning in the log. The same table produces `futurama.exe --print-config-schema=<file>`
+// (core/cli_tools.h) with types, defaults, choices and de/en texts for the launcher. Known keys:
 //
 //   [paths]
 //   iso      = Y:\xbox games\...\Futurama (Europe) (En,Fr,De,Es,It).iso   ; disc image (D:, default.xbe)
@@ -48,7 +60,19 @@
 //   key_mode = fixed           ; fixed | xbox (design 4.5; anything else: exit code 1)
 //   signature_key / xbox_cert_key = <32 hex digits>
 //   [render]                   ; (gfx module M2, src/host/gfx/gfx_config.h)
-//   frame_rate = 50            ; DisplayFrame paces to N Hz like the Xbox vblank wait, 0 = unthrottled
+//   frame_rate = 60            ; game frames per second (M3b: default = [game] tick_rate, was 50; 0 = like
+//                              ; pacing = off); another value than the tick rate logs a warning
+//   pacing = auto              ; (M3b, platform/frame_pacer.h) auto | vsync | timer | off: auto = Present(k)
+//                              ; on a refresh of k x frame_rate, else timer + tearing (VRR) or one frame per
+//                              ; refresh, free-running timer in the background; vsync/timer/off override it
+//   pacing_trace = <file>      ; (M3b) CSV with one line per frame (pacing diagnosis), default off
+//   resolution = auto          ; (M3c, renderer) auto | <W>x<H>: internal render size; auto = the largest 4:3
+//                              ; size inside the window/display (pillar-/letterbox)
+//   render_scale = 1.0         ; (M3c) 1.0..2.0 supersampling factor on top (UI step 0.25)
+//   msaa = 4                   ; (M3c) off | 2 | 4 | 8 (clamped to the device's support, logged)
+//   alpha_to_coverage = on     ; (M3c) boolean, only effective with MSAA
+//   anisotropy = 16            ; (M3c) off | 2 | 4 | 8 | 16
+//                              ; "classic" = resolution 640x480, render_scale 1, msaa off, anisotropy off (M3)
 //   d3d_traps = abort          ; abort | log (a hit D3D trap logs and returns 0 with the right purge;
 //                              ; anything else: exit code 1)
 //   load_textures = 1          ; NiPCRenderer slot 65 reads texture files like FUN_0015E010 (0: such
@@ -68,15 +92,27 @@
 //   [audio]                    ; (M2, src/host/audio/dsound_stubs.h)
 //   dummy_streams = 0          ; 1: DirectSoundCreateStream returns stub streams (packets complete after
 //                              ;    their play time) instead of NULL; 0 = design default *ppStream = NULL
+//   [game]                     ; (M3b, src/host/xapi/game_timing.h)
+//   tick_rate = 60             ; 60 | 50 (anything else: exit code 1). 60 = the NTSC timing values of
+//                              ; Game::Init 0xA26A0 with PAL content (CApp+0xE8 = 0, movie tag "PAL"),
+//                              ; 50 = original PAL timing (comparisons with the PAL xemu captures)
+//   frame_clock = lockstep     ; lockstep | realtime (anything else: exit code 1). Time samples of
+//                              ; Game::Frame: lockstep = +1 step per frame while the frames keep the tick
+//                              ; rate (whole-step corrections beyond 3/4 step), realtime = original QPC
 //
 // Command line (wins over the INI):
 //   --config=<file> --userdata=<dir> --iso=<file> --xbe=<file> --stop-at=<main|0xADDR> --selftest
 //   --trace=<channels> --strict --log-level=<level> --set=<section>.<key>=<value> (any known key)
 //   --frames=<N> (= [debug] frames, gfx M2)
 //
+// Tool modes (M3c, core/cli_tools.h; handled before the configuration is loaded, the XBE is never mapped):
+//   --print-config-schema=<file.json>   --check-iso=<image> --result=<file.json>   --query-gpu=<file.json>
+//   --print-paths=<file.json> [--config=<file>]
+//
 // Other modules read their keys generically, e.g.
 //   core::GetConfig().GetString("settings", "language", "english")
-// A new key must be added to kKnownKeys in config.cpp.
+// A new key must be added to the schema table (core/config_schema.cpp); core::ConfigKeyDefault(section, key)
+// returns its default.
 #pragma once
 
 #include "shared/launcher_info.h"
@@ -91,10 +127,32 @@
 
 namespace core {
 
+// ---- player configuration location (M3c, shared contract item 4) ----------------------------------------------
+enum class ConfigLocationMode : std::uint8_t { Default, Portable, Explicit };
+
+inline constexpr wchar_t kConfigFileName[] = L"futurama.ini";
+inline constexpr wchar_t kPortableMarkerName[] = L"portable.txt";  // next to futurama.exe -> portable mode
+inline constexpr wchar_t kUserdataFolderName[] = L"FuturamaPC";    // below %LOCALAPPDATA%
+
+struct ConfigLocation {
+    ConfigLocationMode mode = ConfigLocationMode::Default;
+    bool portable = false;                  // portable.txt lies next to futurama.exe (also with --config)
+    std::filesystem::path configFile;       // INI to read (default/portable: may not exist)
+    std::filesystem::path defaultUserdata;  // userdata unless [paths] userdata is set (empty: %LOCALAPPDATA% unset)
+};
+
+// Where the configuration and the user data live for an exe in `exeDir`; `explicitConfig` = --config (absolute,
+// empty if not given). Pure lookup: checks for portable.txt and reads %LOCALAPPDATA%, touches no other file.
+ConfigLocation ResolveConfigLocation(const std::filesystem::path& exeDir, const std::filesystem::path& explicitConfig);
+const char* ConfigLocationModeName(ConfigLocationMode mode) noexcept;  // "default" | "portable" | "explicit"
+
 struct Config {
     std::filesystem::path exePath;  // futurama.exe
     std::filesystem::path exeDir;
     std::filesystem::path configFile;  // INI actually loaded (empty if none)
+    // (M3c) how configFile / the userdata default were chosen (ResolveConfigLocation)
+    ConfigLocationMode configMode = ConfigLocationMode::Default;
+    bool portable = false;
 
     // [paths]
     std::filesystem::path iso;       // empty if not configured
@@ -144,11 +202,11 @@ struct Config {
 };
 
 // Parses command line and INI into `out`. Returns false with a message on errors (unknown option,
-// missing --config file, unreadable INI, bad value).
+// missing --config file, unreadable INI, bad value). The INI is found with ResolveConfigLocation.
 bool LoadConfig(const wchar_t* commandLine, const std::filesystem::path& exePath, Config& out,
                 std::string& error);
 
-// True if [section] key is in the table of known keys (config.cpp kKnownKeys).
+// True if [section] key is in the schema table (core/config_schema.h; before M3c: config.cpp kKnownKeys).
 bool IsKnownConfigKey(std::string_view section, std::string_view key);
 // (M2 review) The allowed values of a choice key ("fixed|xbox", "english|...|1..9"), nullptr for keys of
 // other types. Tests compare them with the modules that parse the key.

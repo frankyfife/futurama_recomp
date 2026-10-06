@@ -1,0 +1,253 @@
+== 1. rigid-body damping FUN_000AFA30 (VTable 0x2A1F28 slot 5)
+  VTable 0x2A1F28 slots 0..7: 0xAFA10, 0xAED50, 0xAED70, 0xAEDE0, 0xAEBE0, 0xAFA30, 0xAFC00, 0xAFE90
+  ---- damping block 0xAFB07..0xAFBEE (no dt operand; the time argument [ebp+8] goes only to FUN_000AF770 at 0xAFBE5)
+  000AFB07 d981cc000000           fld dword ptr [ecx + 0xcc]
+  000AFB0D d80d683b2900           fmul dword ptr [0x293b68]   ; [0x293b68] = 0.8999999761581421
+  000AFB13 d999cc000000           fstp dword ptr [ecx + 0xcc]
+  000AFB19 d981d0000000           fld dword ptr [ecx + 0xd0]
+  000AFB1F d80d683b2900           fmul dword ptr [0x293b68]   ; [0x293b68] = 0.8999999761581421
+  000AFB25 d999d0000000           fstp dword ptr [ecx + 0xd0]
+  000AFB2B d981d4000000           fld dword ptr [ecx + 0xd4]
+  000AFB31 d80d683b2900           fmul dword ptr [0x293b68]   ; [0x293b68] = 0.8999999761581421
+  000AFB37 d999d4000000           fstp dword ptr [ecx + 0xd4]
+  000AFB3D 8b4e28                 mov ecx, dword ptr [esi + 0x28]
+  000AFB40 d98118010000           fld dword ptr [ecx + 0x118]
+  000AFB46 d98114010000           fld dword ptr [ecx + 0x114]
+  000AFB4C d98110010000           fld dword ptr [ecx + 0x110]
+  000AFB52 d9c0                   fld st(0)
+  000AFB54 d8c9                   fmul st(1)
+  000AFB56 d9c2                   fld st(2)
+  000AFB58 d8cb                   fmul st(3)
+  000AFB5A dec1                   faddp st(1)
+  000AFB5C d9c3                   fld st(3)
+  000AFB5E d8cc                   fmul st(4)
+  000AFB60 dec1                   faddp st(1)
+  000AFB62 d81df8392900           fcomp dword ptr [0x2939f8]   ; [0x2939f8] = 1.0
+  000AFB68 ddd8                   fstp st(0)
+  000AFB6A ddd8                   fstp st(0)
+  000AFB6C dfe0                   fnstsw ax
+  000AFB6E ddd8                   fstp st(0)
+  000AFB70 f6c405                 test ah, 5
+  000AFB73 d981c0000000           fld dword ptr [ecx + 0xc0]
+  000AFB79 7a2c                   jp 0xafba7
+  000AFB7B d80d683b2900           fmul dword ptr [0x293b68]   ; [0x293b68] = 0.8999999761581421
+  000AFB81 d999c0000000           fstp dword ptr [ecx + 0xc0]
+  000AFB87 d981c4000000           fld dword ptr [ecx + 0xc4]
+  000AFB8D d80d683b2900           fmul dword ptr [0x293b68]   ; [0x293b68] = 0.8999999761581421
+  000AFB93 d999c4000000           fstp dword ptr [ecx + 0xc4]
+  000AFB99 d981c8000000           fld dword ptr [ecx + 0xc8]
+  000AFB9F d80d683b2900           fmul dword ptr [0x293b68]   ; [0x293b68] = 0.8999999761581421
+  000AFBA5 eb2a                   jmp 0xafbd1
+  000AFBA7 d80d743b2900           fmul dword ptr [0x293b74]   ; [0x293b74] = 0.9800000190734863
+  000AFBAD d999c0000000           fstp dword ptr [ecx + 0xc0]
+  000AFBB3 d981c4000000           fld dword ptr [ecx + 0xc4]
+  000AFBB9 d80d743b2900           fmul dword ptr [0x293b74]   ; [0x293b74] = 0.9800000190734863
+  000AFBBF d999c4000000           fstp dword ptr [ecx + 0xc4]
+  000AFBC5 d981c8000000           fld dword ptr [ecx + 0xc8]
+  000AFBCB d80d743b2900           fmul dword ptr [0x293b74]   ; [0x293b74] = 0.9800000190734863
+  000AFBD1 d999c8000000           fstp dword ptr [ecx + 0xc8]
+  000AFBD7 8b4e28                 mov ecx, dword ptr [esi + 0x28]
+  000AFBDA e891ddffff             call 0xad970
+  000AFBDF 8b4d08                 mov ecx, dword ptr [ebp + 8]
+  000AFBE2 51                     push ecx
+  000AFBE3 8bce                   mov ecx, esi
+  000AFBE5 e886fbffff             call 0xaf770
+  000AFBEA 5e                     pop esi
+  000AFBEB 8be5                   mov esp, ebp
+  000AFBED 5d                     pop ebp
+  users of 0.9f @0x293B68: 27 instructions in 15 functions/segments; of 0.98f @0x293B74: 4 instructions in 2 functions/segments (shared .rdata: never patch the value)
+  ---- FUN_000C8BA0 (session update, once per fixed step): world [0x2E99DC] vf1 then vf2
+  000C8D19 8b0ddc992e00           mov ecx, dword ptr [0x2e99dc]
+  000C8D1F 85c9                   test ecx, ecx
+  000C8D21 7410                   je 0xc8d33
+  000C8D23 8b11                   mov edx, dword ptr [ecx]
+  000C8D25 ff5204                 call dword ptr [edx + 4]
+  000C8D28 8b0ddc992e00           mov ecx, dword ptr [0x2e99dc]
+  000C8D2E 8b01                   mov eax, dword ptr [ecx]
+  000C8D30 ff5008                 call dword ptr [eax + 8]
+  ---- world vf2 0xAE7E0: for each body of [0x2E9BA0] call slot 5 (0xAE80F) with +0x24, solver 0xAE0D0, +0x24 = 0
+  000AE7E0 83ec64                 sub esp, 0x64
+  000AE7E3 53                     push ebx
+  000AE7E4 56                     push esi
+  000AE7E5 8b35a09b2e00           mov esi, dword ptr [0x2e9ba0]
+  000AE7EB 57                     push edi
+  000AE7EC 33ff                   xor edi, edi
+  000AE7EE 85f6                   test esi, esi
+  000AE7F0 8bd9                   mov ebx, ecx
+  000AE7F2 7426                   je 0xae81a
+  000AE7F4 57                     push edi
+  000AE7F5 8d442410               lea eax, [esp + 0x10]
+  000AE7F9 68bc1e2a00             push 0x2a1ebc
+  000AE7FE 50                     push eax
+  000AE7FF e850870b00             call 0x166f54
+  000AE804 8b4324                 mov eax, dword ptr [ebx + 0x24]
+  000AE807 8b16                   mov edx, dword ptr [esi]
+  000AE809 83c40c                 add esp, 0xc
+  000AE80C 50                     push eax
+  000AE80D 8bce                   mov ecx, esi
+  000AE80F ff5214                 call dword ptr [edx + 0x14]
+  000AE812 8b7604                 mov esi, dword ptr [esi + 4]
+  000AE815 47                     inc edi
+  000AE816 85f6                   test esi, esi
+  000AE818 75da                   jne 0xae7f4
+  000AE81A 8b4b24                 mov ecx, dword ptr [ebx + 0x24]
+  000AE81D 51                     push ecx
+  000AE81E 8b4b20                 mov ecx, dword ptr [ebx + 0x20]
+  000AE821 e8aaf8ffff             call 0xae0d0
+  000AE826 5f                     pop edi
+  000AE827 5e                     pop esi
+  000AE828 c7432400000000         mov dword ptr [ebx + 0x24], 0
+  000AE82F 5b                     pop ebx
+  000AE830 83c464                 add esp, 0x64
+  000AE833 c3                     ret 
+  body ctor FUN_000AF920 is called from: FUN_00064DD0, FUN_00073FC0, FUN_0007F960, FUN_00095290
+  x0.98 per tick: half-life 34.3 ticks = 0.686 s at 50 Hz, 0.572 s at 60 Hz
+  x0.90 per tick: half-life 6.6 ticks = 0.132 s at 50 Hz, 0.110 s at 60 Hz
+  coasting distance from v0 (sum of v*dt, x0.98): 0.980 s*v0 at 50 Hz, 0.817 s*v0 at 60 Hz; terminal velocity under a constant acceleration a: 0.980*a vs 0.817*a (-17 %)
+  PAL parity would need own constants 0.9^(50/60) = 0.91594 and 0.98^(50/60) = 0.98331 for the nine fmul operands 0xAFB0D..0xAFBCB
+
+== 2. Chicken Walker aim/turn step (FUN_00043D80 / FUN_000445A0)
+  00043EEC mov    dword ptr [esi + 0x64], 0x3ca3d70a (ctor)
+  00044BA5 fmul   dword ptr [ebx + 0x64]           (update)
+  00044BB2 fmul   dword ptr [ebx + 0x64]           (update)
+  00045026 fstp   dword ptr [esp + 0x64]           (update)
+  000450BA fld    dword ptr [esp + 0x64]           (update)
+  000450D6 mov    dword ptr [esp + 0x64], edx      (update)
+  00045122 mov    edx, dword ptr [esp + 0x64]      (update)
+  00045258 fadd   dword ptr [esp + 0x64]           (update)
+  0004529A mov    dword ptr [esp + 0x64], ecx      (update)
+  000452FF mov    eax, dword ptr [esp + 0x64]      (update)
+  0x43EEC imm32 0x3CA3D70A = 0.019999999552965164 (the PAL tick length)
+  ---- FUN_000445A0: pitch +0x50 -= stickY*k*[+0x64] (clamp +-0.7), yaw +0x54 += stickX*[+0x64]
+  00044B96 8b5508                 mov edx, dword ptr [ebp + 8]
+  00044B99 d84c2424               fmul dword ptr [esp + 0x24]
+  00044B9D d982d8040000           fld dword ptr [edx + 0x4d8]
+  00044BA3 d9c9                   fxch st(1)
+  00044BA5 d84b64                 fmul dword ptr [ebx + 0x64]
+  00044BA8 d86b50                 fsubr dword ptr [ebx + 0x50]
+  00044BAB d9542424               fst dword ptr [esp + 0x24]
+  00044BAF d95b50                 fstp dword ptr [ebx + 0x50]
+  00044BB2 d84b64                 fmul dword ptr [ebx + 0x64]
+  00044BB5 d84354                 fadd dword ptr [ebx + 0x54]
+  00044BB8 d95354                 fst dword ptr [ebx + 0x54]
+  00044BBB d9442424               fld dword ptr [esp + 0x24]
+  00044BBF d81d68552900           fcomp dword ptr [0x295568]   ; [0x295568] = 0.699999988079071
+  00044BC5 dfe0                   fnstsw ax
+  00044BC7 f6c441                 test ah, 0x41
+  00044BCA 7509                   jne 0x44bd5
+  00044BCC c743503333333f         mov dword ptr [ebx + 0x50], 0x3f333333
+  00044BD3 eb18                   jmp 0x44bed
+  FUN_000445A0 reads dt at 0x44830, 0x44f0d, 0x44f1c, 0x4578a, 0x4581d (timers -= dt: one call per fixed step); caller FUN_00057940 (0x5805F)
+  full stick: 1.00 rad/s at 50 Hz, 1.20 rad/s at 60 Hz; auto-turn clamp 0.05 per update: 2.5 vs 3.0 rad/s
+
+== 3. camera spring sub-steps FUN_00015990, overlay fade FUN_000A8490, rejected pause-menu lock
+  ---- FUN_00019C80: camera mode 0x15990 called with dt
+  00019CC2 8b0d48672d00           mov ecx, dword ptr [0x2d6748]   ; [0x2d6748] = 0.019999999552965164
+  00019CC8 51                     push ecx
+  00019CC9 8bce                   mov ecx, esi
+  00019CCB e8c0bcffff             call 0x15990
+  ---- FUN_00015990 loop end: t -= 0.01f; while (t > 0) -> loop head 0x17720
+  000179B3 d8250c3a2900           fsub dword ptr [0x293a0c]   ; [0x293a0c] = 0.009999999776482582
+  000179B9 d815183a2900           fcom dword ptr [0x293a18]   ; [0x293a18] = 0.0
+  000179BF dfe0                   fnstsw ax
+  000179C1 f6c441                 test ah, 0x41
+  000179C4 0f8456fdffff           je 0x17720
+  dt 0.02f: 2 sub-steps per tick (float32 model; 0.02f is exactly 2 x 0.01f)
+  dt 1/60f: 2 sub-steps per tick (float32 model; 0.02f is exactly 2 x 0.01f)
+  -> 100 sub-steps/s at 50 Hz, 120 at 60 Hz: the spring runs 20 % faster
+  ---- FUN_000A8490 fade in: +0x28 += 0.03 per update, clamp 0.75 (25 ticks: 0.50 s -> 0.42 s)
+  000A84A6 d94628                 fld dword ptr [esi + 0x28]
+  000A84A9 8b4e40                 mov ecx, dword ptr [esi + 0x40]
+  000A84AC d805043a2900           fadd dword ptr [0x293a04]   ; [0x293a04] = 0.029999999329447746
+  000A84B2 6a03                   push 3
+  000A84B4 d95e28                 fstp dword ptr [esi + 0x28]
+  000A84B7 e854980500             call 0x101d10
+  000A84BC 8b4e28                 mov ecx, dword ptr [esi + 0x28]
+  000A84BF 894850                 mov dword ptr [eax + 0x50], ecx
+  000A84C2 8b4854                 mov ecx, dword ptr [eax + 0x54]
+  000A84C5 41                     inc ecx
+  000A84C6 894854                 mov dword ptr [eax + 0x54], ecx
+  000A84C9 d94628                 fld dword ptr [esi + 0x28]
+  000A84CC d81df4392900           fcomp dword ptr [0x2939f4]   ; [0x2939f4] = 0.75
+  000A84D2 dfe0                   fnstsw ax
+  000A84D4 f6c441                 test ah, 0x41
+  000A84D7 750b                   jne 0xa84e4
+  000A84D9 c746280000403f         mov dword ptr [esi + 0x28], 0x3f400000
+  000A84E0 c6463c00               mov byte ptr [esi + 0x3c], 0
+  rejected: 'pause menu input lock +0x84 = 30' - the only writer of +0x84 = 30 is the frontend 0x21AEB;
+    0xA5640 in FUN_000a55d0: dec [esi+0x84] inside the element-removal loop (+0x78 array, +0x7C capacity, +0x80 size) - an element count, not a tick counter
+    0xA64E4 in FUN_000a62b0: dec [esi+0x84] inside the element-removal loop (+0x78 array, +0x7C capacity, +0x80 size) - an element count, not a tick counter
+
+== 4. level scripts: loop back-jumps and the compiler-inserted Wait(0)
+  23 .ful files, 5380 backward jumps: 3823 unconditional (0x0F), 1557 conditional (0x10/0x11)
+  unconditional back-jumps directly after 'push_imm 0; WAIT': 3823 of 3823
+  -> one iteration of a loop with Wait(t) costs q(t) + 1 ticks (q = ceil(t/dt) in float32, at least 1)
+
+  loop period per iteration, loops with exactly one constant explicit wait and no timer read
+  waits per iteration     loops ticks 50|60     seconds 50|60   change  examples
+  Wait(0.05) + 1 x Wait(0)         43     4|4       0.0800|0.0667     -16.7 %  ResetChaseCam 22, RunSteam 20, LavaCam 1
+  Wait(0.05) + 3 x Wait(0)          1     6|6       0.1200|0.1000     -16.7 %  @@action@@aBenderClose 1
+  Wait(0.06) + 1 x Wait(0)          2     4|5       0.0800|0.0833      +4.2 %  StartFire 2
+  Wait(0.1) + 1 x Wait(0)          63     6|8       0.1200|0.1333     +11.1 %  WaitMove 22, RunSteam 20, Add 8, @@action@@aUpdateState 3
+  Wait(0.1) + 2 x Wait(0)           6     7|9       0.1400|0.1500      +7.1 %  RunPlant 3, Run 3
+  Wait(0.1) + 3 x Wait(0)           2     8|10      0.1600|0.1667      +4.2 %  @@action@@aEffects 1, RunAttackSequence 1
+  Wait(0.1) + 5 x Wait(0)           1    10|12      0.2000|0.2000      +0.0 %  EntryPoint 1
+  Wait(0.2) + 3 x Wait(0)           2    14|16      0.2800|0.2667      -4.8 %  RunBenderHit 1, AddButton 1
+  Wait(0.25) + 6 x Wait(0)          4    19|22      0.3800|0.3667      -3.5 %  @@action@@aCannon 4
+  Wait(0.43) + 1 x Wait(0)          1    23|27      0.4600|0.4500      -2.2 %  @@action@@aRejvSync 1
+  Wait(0.43) + 3 x Wait(0)          1    25|29      0.5000|0.4833      -3.3 %  @@action@@aRejvSync 1
+  Wait(0.5) + 1 x Wait(0)           1    26|31      0.5200|0.5167      -0.6 %  Add 1
+  Wait(0.5) + 2 x Wait(0)           1    27|32      0.5400|0.5333      -1.2 %  @@action@@OnStepInsideRoom 1
+  Wait(0.5) + 3 x Wait(0)           1    28|33      0.5600|0.5500      -1.8 %  Init 1
+  Wait(0.5) + 6 x Wait(0)           2    31|36      0.6200|0.6000      -3.2 %  @@action@@aScTunnelArea2 1, @@action@@aScTunnelArea1 1
+  Wait(0.6) + 1 x Wait(0)           1    32|37      0.6400|0.6167      -3.6 %  @@action@@aLavaBall_3 1
+  Wait(0.75) + 1 x Wait(0)          3    39|47      0.7800|0.7833      +0.4 %  RunHintSound 3
+  Wait(0.8) + 2 x Wait(0)           2    43|51      0.8600|0.8500      -1.2 %  @@action@@aElvis 1, Run 1
+  Wait(1) + 1 x Wait(0)            55    52|62      1.0400|1.0333      -0.6 %  RotatingArmSound 46, RunFry2 3, @@action@@FireBalls2 2, CheckSwitches 2
+  Wait(1) + 2 x Wait(0)             1    53|63      1.0600|1.0500      -0.9 %  @@action@@aBoatBell 1
+  Wait(1) + 3 x Wait(0)            23    54|64      1.0800|1.0667      -1.2 %  RotatingArmSound 23
+  Wait(1) + 4 x Wait(0)             1    55|65      1.1000|1.0833      -1.5 %  @@action@@aCamPlat1 1
+  Wait(1) + 5 x Wait(0)             1    56|66      1.1200|1.1000      -1.8 %  @@action@@aDeath 1
+  Wait(1) + 7 x Wait(0)             1    58|68      1.1600|1.1333      -2.3 %  @@action@@aBossRoom 1
+  Wait(1.2) + 1 x Wait(0)           5    62|74      1.2400|1.2333      -0.5 %  @@action@@FireBalls4 2, @@action@@aLavaBall4 1, @@action@@aLavaBall_4 1, @@action@@aLavaBall_1 1
+  Wait(1.4) + 1 x Wait(0)           1    72|86      1.4400|1.4333      -0.5 %  @@action@@aLavaBall_2 1
+  Wait(1.5) + 1 x Wait(0)           2    77|92      1.5400|1.5333      -0.4 %  @@action@@FireBalls3 2
+  Wait(1.5) + 3 x Wait(0)           3    79|94      1.5800|1.5667      -0.8 %  RunFry2 3
+  Wait(2) + 1 x Wait(0)             2   102|122     2.0400|2.0333      -0.3 %  @@action@@FireBalls1 2
+  Wait(2) + 7 x Wait(0)             1   108|128     2.1600|2.1333      -1.2 %  @@action@@OnPlayerKilled 1
+  Wait(2.5) + 1 x Wait(0)           1   127|152     2.5400|2.5333      -0.3 %  RunStatue 1
+  Wait(3) + 1 x Wait(0)             1   152|182     3.0400|3.0333      -0.2 %  Run 1
+  Wait(6) + 1 x Wait(0)             1   302|361     6.0400|6.0167      -0.4 %  @@action@@aRumble 1
+
+  classification of all 5380 loops
+   2941  no explicit wait         no step        engine calls
+   1221  no explicit wait         no step        no engine call
+    586  timer read               no step        engine calls
+     94  timer read               no step        no engine call
+     69  explicit wait <= 0.1 s   step imm       engine calls
+     63  timer read               step imm       engine calls
+     56  explicit wait > 0.1 s    step imm       engine calls
+     52  explicit wait > 0.1 s    step imm       no engine call
+     47  variable wait            step imm       engine calls
+     47  variable wait            step var/expr  engine calls
+     46  explicit wait > 0.1 s    no step        engine calls
+     38  explicit wait <= 0.1 s   no step        engine calls
+     23  no explicit wait         step imm       engine calls
+     23  explicit wait > 0.1 s    no step        no engine call
+     22  timer read               step var/expr  engine calls
+     18  variable wait            no step        engine calls
+     13  no explicit wait         step imm       no engine call
+     13  explicit wait <= 0.1 s   no step        no engine call
+      2  timer read               step var/expr  no engine call
+      2  timer read               step imm       no engine call
+      2  no explicit wait         step var/expr  engine calls
+      2  explicit wait <= 0.1 s   step imm       no engine call
+  loops that advance something once per tick (only Wait(0), no timer read, a step update or an engine call): 2979; most frequent functions: @@action@@aOpen 180, RunHint 154, WaitLeaveDoor 66, @@action@@aInteract 62, Add 59, RunLocked 54, RunNpcAccess 54, Run 50, Close 48, RotatingArmSound 46
+
+== 5. retail EU vs. NTSC prototype (relocated byte patterns, timing_proto.pattern)
+  0x0AFA30 449   rigid-body slot 5 (damping)        identical (relocated) at proto 0xAF9D0, .rdata equal (12)
+  0x0AE7E0 84    world vf2                          identical (relocated) at proto 0xAE790, .rdata equal (0)
+  0x043D80 1490  Chicken Walker ctor                identical (relocated) at proto 0x43D30, .rdata equal (0)
+  0x0445A0 4851  Chicken Walker update              identical (relocated) at proto 0x44550, .rdata equal (46)
+  0x015990 9908  camera mode (0.01 s sub-steps)     identical (relocated) at proto 0x15980, .rdata equal (120)
+  0x0A8490 286   overlay fade                       identical (relocated) at proto 0xA8420, .rdata equal (7)

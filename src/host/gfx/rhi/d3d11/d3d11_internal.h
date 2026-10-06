@@ -195,6 +195,12 @@ public:
     // moved to the next back buffer): re-bind the current back buffer (if it is the color target) and
     // everything the context had bound, start a new transient frame.
     void OnPresent() noexcept;
+    // M3c: after a device-internal pass (resolve / downsample / present / resize blit) changed targets,
+    // viewport, shaders, states and PS t0/s0: bind the context's own state again (no transient reset).
+    void RestoreBindings() noexcept;
+    // M3c: the device replaced its back buffers (ResizeBackBuffers): re-bind the current back buffer and its
+    // depth buffer if they are the bound targets (viewport = whole new target).
+    void OnBackBuffersChanged() noexcept;
     void OnDestroyTexture(std::uint32_t id) noexcept;
     void Release() noexcept;             // ClearState, drop references and the transient chunks
 
@@ -279,7 +285,13 @@ public:
     PipelineHandle GetPipeline(const PipelineDesc& desc, const char* debugName) noexcept override;
 
     PresentResult Present(const PresentDesc& desc) noexcept override;
+    void* FrameLatencyWaitable() const noexcept override { return latencyWaitable_; }  // M3b pacing
+    PresentTiming LastPresentTiming() const noexcept override { return lastTiming_; }    // M3b pacing
     bool CaptureBackBuffer(Image& out) noexcept override;
+    bool CaptureOutput(Image& out) noexcept override;  // M3c
+    std::uint32_t SupportedSampleCount(Format color, Format depth, std::uint32_t requested) const noexcept override;
+    bool ResizeBackBuffers(std::uint32_t width, std::uint32_t height, std::uint32_t sampleCount,
+                           std::uint32_t outputWidth, std::uint32_t outputHeight) noexcept override;  // M3c
     bool ReadTexture(TextureHandle texture, std::uint32_t level, Image& out) noexcept override;
 
     DebugLayerInfo DebugLayer() const noexcept override { return debugLayer_; }
@@ -294,8 +306,8 @@ public:
     const PipelineRecord* GetPipelineRecord(std::uint32_t id) const noexcept;
     ID3D11SamplerState* GetSamplerState(std::uint32_t id) const noexcept;
     // The current one of the persistent back buffers (rotated by Present).
-    ID3D11RenderTargetView* BackBufferRtv() const noexcept { return backBufferRtvs_[currentBackBuffer_].Get(); }
-    ID3D11DepthStencilView* BackBufferDsv() const noexcept { return depthDsv_.Get(); }
+    ID3D11RenderTargetView* BackBufferRtv() const noexcept { return targets_.backBufferRtvs[currentBackBuffer_].Get(); }
+    ID3D11DepthStencilView* BackBufferDsv() const noexcept { return targets_.depthDsv.Get(); }
     std::uint32_t AddTransientBuffer(ComPtr<ID3D11Buffer> buffer, std::uint32_t size, std::uint8_t bind) noexcept;
     void RemoveTransientBuffer(std::uint32_t id) noexcept;
     DeviceStats& MutableStats() noexcept { return stats_; }
@@ -306,14 +318,53 @@ public:
     void PumpDebugMessages() noexcept;
 
 private:
+    static constexpr std::uint32_t kMaxBackBuffers = 3;
+    // M3c: everything that depends on the back-buffer configuration (internal size, sample count, output
+    // size), created together by CreateTargets and replaced as a whole by ResizeBackBuffers.
+    struct Targets {
+        std::uint32_t width = 0, height = 0, samples = 1, outputWidth = 0, outputHeight = 0;
+        // Persistent back buffers (DeviceDesc::bufferCount, rotated by Present; review M3 findings 2/8);
+        // multisampled with samples > 1 (then without SRV: the resolve texture is sampled).
+        ComPtr<ID3D11Texture2D> backBuffers[kMaxBackBuffers];
+        ComPtr<ID3D11RenderTargetView> backBufferRtvs[kMaxBackBuffers];
+        ComPtr<ID3D11ShaderResourceView> backBufferSrvs[kMaxBackBuffers];
+        ComPtr<ID3D11Texture2D> depth;  // shared by the back buffers, same sample count
+        ComPtr<ID3D11DepthStencilView> depthDsv;
+        ComPtr<ID3D11Texture2D> resolve;  // samples > 1: the resolved current back buffer
+        ComPtr<ID3D11ShaderResourceView> resolveSrv;
+        ComPtr<ID3D11Texture2D> output;  // output size != back buffer size: the downsampled image
+        ComPtr<ID3D11RenderTargetView> outputRtv;
+        ComPtr<ID3D11ShaderResourceView> outputSrv;
+        // Review M3c finding 3 ([render] linear_aa, DeviceDesc::linearResolve): the textures above are created
+        // TYPELESS; the views above are the plain UNORM ones (the game renders and blends exactly as before) and
+        // these sRGB views let the resolve and the downsample filter run on linear light. Empty otherwise.
+        ComPtr<ID3D11ShaderResourceView> backBufferSrgbSrvs[kMaxBackBuffers];
+        ComPtr<ID3D11ShaderResourceView> resolveSrgbSrv;
+        ComPtr<ID3D11ShaderResourceView> outputSrgbSrv;
+        ComPtr<ID3D11RenderTargetView> outputSrgbRtv;
+        std::uint64_t bytes = 0;  // estimated video memory
+    };
+    // Blit filters of the internal passes (present, downsample, resize carry-over).
+    enum class BlitFilter : std::uint8_t { Point, Linear, Resample };
+
     bool CreateFactoryAndDevice(const DeviceDesc& desc, std::string* error) noexcept;
     bool SetUpDebugLayer() noexcept;
     bool CreateSwapChain(const DeviceDesc& desc, std::string* error) noexcept;
-    bool CreateBackBuffers(const DeviceDesc& desc, std::string* error) noexcept;
-    bool CreatePresentPass(std::string* error) noexcept;
+    bool CreateTargets(std::uint32_t width, std::uint32_t height, std::uint32_t samples, std::uint32_t outputWidth,
+                       std::uint32_t outputHeight, Targets* out, std::string* error) noexcept;
+    bool CreatePresentPass(std::string* error) noexcept;  // also the resample pass (windowless devices too)
     bool UpdateSwapChainSize() noexcept;  // ResizeBuffers to the window's client size (render thread)
-    void DrawPresentPass() noexcept;      // current back buffer -> swap chain buffer (scaling_)
-    bool CreateDepthBuffer(const DeviceDesc& desc, std::string* error) noexcept;
+    void DrawPresentPass() noexcept;      // output image -> swap chain buffer (scaling_)
+    // M3c: SRV of the current back buffer's picture at the internal size (multisampled buffers are resolved
+    // first) / of the image Present shows (resolved + downsampled to the output size). nullptr on failure.
+    // Both leave the immediate context in a pass state: RestoreBindings / OnPresent afterwards.
+    // `srgb` (linearResolve_ only): the sRGB view of the same picture (a filter reading it works on linear light).
+    ID3D11ShaderResourceView* ResolvedPicture(const Targets& t, std::uint32_t buffer, bool srgb = false) noexcept;
+    ID3D11ShaderResourceView* PrepareOutput(ID3D11ShaderResourceView** srgb = nullptr) noexcept;
+    // Draws `source` (srcW x srcH) into the viewport `v` of `target` with `filter` (Resample: box for an
+    // integer ratio, Catmull-Rom with anti-ringing otherwise). Unbinds the source afterwards.
+    void DrawBlit(ID3D11ShaderResourceView* source, std::uint32_t srcW, std::uint32_t srcH,
+                  ID3D11RenderTargetView* target, const D3D11_VIEWPORT& v, BlitFilter filter) noexcept;
     void SetName(ID3D11DeviceChild* object, const char* name) noexcept;
     void HandleDebugMessage(DebugSeverity severity, std::int32_t id, bool dxgi, const char* text) noexcept;
     bool CopyToImage(ID3D11Texture2D* source, std::uint32_t level, Format format, std::uint32_t width,
@@ -332,29 +383,68 @@ private:
     ComPtr<IDXGIInfoQueue> dxgiInfoQueue_;
     ComPtr<IDXGISwapChain1> swapChain_;
     bool tearingSupported_ = false;
+    // M3b (display-coupled pacing): frame-latency waitable object of the swap chain (DeviceDesc::
+    // frameLatencyWaitable; closed in the destructor) and the result of the last Present.
+    HANDLE latencyWaitable_ = nullptr;
+    PresentTiming lastTiming_;
+    void UpdatePresentTiming(bool presented, HRESULT hr) noexcept;
     void* window_ = nullptr;  // HWND of the swap chain
     std::uint32_t swapWidth_ = 0, swapHeight_ = 0;
     UINT swapFlags_ = 0;
     ComPtr<ID3D11RenderTargetView> swapRtv_;  // buffer 0 of the swap chain (released for ResizeBuffers)
-    // Persistent back buffers (DeviceDesc::bufferCount, rotated by Present; review M3 findings 2/8).
-    static constexpr std::uint32_t kMaxBackBuffers = 3;
-    ComPtr<ID3D11Texture2D> backBuffers_[kMaxBackBuffers];
-    ComPtr<ID3D11RenderTargetView> backBufferRtvs_[kMaxBackBuffers];
-    ComPtr<ID3D11ShaderResourceView> backBufferSrvs_[kMaxBackBuffers];
+    // Review M3c finding 3: [render] linear_aa - resolve and downsample on linear light (sRGB views of TYPELESS
+    // targets; an sRGB view of the swap chain buffer for a downsample in the present pass).
+    bool linearResolve_ = false;
+    ComPtr<ID3D11RenderTargetView> swapSrgbRtv_;
+    bool CreateSwapViews(ID3D11Texture2D* buffer) noexcept;  // swapRtv_ (+ swapSrgbRtv_)
+    // Back buffers, depth, resolve and output image (M3c: Targets above).
+    Targets targets_;
     std::uint32_t backBufferCount_ = 1;
     std::uint32_t currentBackBuffer_ = 0;
-    // Present pass (window only).
+    // Present pass (M3c: also the downsample and resize passes, created for windowless devices too).
     PresentScaling scaling_ = PresentScaling::Linear;
     ComPtr<ID3D11VertexShader> presentVs_;
     ComPtr<ID3D11PixelShader> presentPs_;
+    ComPtr<ID3D11PixelShader> resamplePs_;     // M3c: box / Catmull-Rom downsample
+    ComPtr<ID3D11Buffer> resampleConstants_;   // M3c: b0 of ResamplePS (default usage, UpdateSubresource)
     ComPtr<ID3D11SamplerState> presentPoint_, presentLinear_;
     ComPtr<ID3D11RasterizerState> presentRaster_;
     ComPtr<ID3D11DepthStencilState> presentDepth_;
     ComPtr<ID3D11BlendState> presentBlend_;
     std::uint64_t swapResizes_ = 0;
-    ComPtr<ID3D11Texture2D> depthBuffer_;
-    ComPtr<ID3D11DepthStencilView> depthDsv_;
+    std::uint64_t backBufferResizes_ = 0;  // M3c
+    // M3c: GPU frame timing (DeviceStats::gpuFrame*): a ring of {disjoint, begin, end} timestamp queries; a frame
+    // is bracketed from its first clear or draw (NoteGpuWork, called by the context) to the end of its present
+    // pass - so the span covers the GPU work and the gaps while the CPU still submits, but not the pacing wait
+    // between frames - and read back without flushing on later Presents. Histogram in 0.1 ms bins (the last bin
+    // = 100 ms and more).
+    struct GpuTimer {
+        ComPtr<ID3D11Query> disjoint, begin, end;
+        bool pending = false;
+    };
+    static constexpr std::uint32_t kGpuTimers = 6;
+    GpuTimer gpuTimers_[kGpuTimers];
+    std::uint32_t gpuTimer_ = 0;  // ring index of the frame being recorded
+    bool gpuTimerOpen_ = false;
+    std::vector<std::uint32_t> gpuHistogram_;
+    std::uint64_t gpuFrames_ = 0;
+    double gpuMsTotal_ = 0.0, gpuMsMax_ = 0.0;
+    void BeginGpuFrame() noexcept;
+    void EndGpuFrame() noexcept;
+    void CollectGpuFrames(bool wait) noexcept;
+    bool ReadGpuTimer(GpuTimer& t, bool wait) noexcept;
+
+public:
+    // M3c: the context issues GPU work (clear, draw) - starts the frame's GPU timer if it is not running.
+    void NoteGpuWork() noexcept {
+        if (!gpuTimerOpen_) {
+            BeginGpuFrame();
+        }
+    }
+
+private:
     ComPtr<ID3D11Texture2D> captureStaging_;
+    ComPtr<ID3D11Texture2D> outputStaging_;  // M3c: CaptureOutput
 
     Pool<BufferRecord> buffers_;
     Pool<TextureRecord> textures_;

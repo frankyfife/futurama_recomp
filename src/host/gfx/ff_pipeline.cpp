@@ -232,6 +232,57 @@ rhi::SamplerDesc MakeSamplerDesc(const ni::TextureStageDesc& stage) noexcept {
     return desc;
 }
 
+// M3c: anisotropic filtering only where it changes a 3D texture's minification (ff_pipeline.h RenderOptions):
+// mip-mapped (bilinear or trilinear) with linear minification and not a screen-space draw. D3D11's anisotropic
+// filter interpolates between mip levels, so a bilinear (mip point) texture becomes trilinear. It also magnifies
+// linearly: a stage with MAG = POINT keeps its D3D8 filter (review M3c finding 4).
+rhi::SamplerDesc MakeSamplerDesc(const ni::TextureStageDesc& stage, std::uint32_t maxAnisotropy,
+                                 bool screenSpace) noexcept {
+    rhi::SamplerDesc desc = MakeSamplerDesc(stage);
+    if (maxAnisotropy > 1 && !screenSpace && stage.mipFilter != rhi::MipFilter::None &&
+        stage.minFilter == rhi::Filter::Linear && stage.magFilter == rhi::Filter::Linear) {
+        desc.maxAnisotropy = static_cast<std::uint8_t>(std::min<std::uint32_t>(maxAnisotropy, 16));
+    }
+    return desc;
+}
+
+bool UsesSharpNearest(const ni::TextureStageDesc& stage, const RenderOptions& options) noexcept {
+    return options.sharpNearest && stage.texture && stage.minFilter == rhi::Filter::Point &&
+           stage.magFilter == rhi::Filter::Point;
+}
+
+bool UsesAlphaToCoverage(const ni::RenderStateDesc& state, const RenderOptions& options) noexcept {
+    if (options.sampleCount <= 1 || !options.alphaToCoverage || !state.alphaTestEnable || state.alphaBlendEnable) {
+        return false;
+    }
+    // Only the threshold comparisons have an edge to smooth; a test that always passes (>= 0, <= 255) or never
+    // passes (> 255, < 0) keeps the plain D3D8 behaviour.
+    const std::uint32_t ref = state.alphaRef;
+    switch (state.alphaFunc) {
+    case rhi::CompareFunc::Greater:
+        return ref < 255;
+    case rhi::CompareFunc::GreaterEqual:
+        return ref > 0;
+    case rhi::CompareFunc::Less:
+        return ref > 0;
+    case rhi::CompareFunc::LessEqual:
+        return ref < 255;
+    default:
+        return false;
+    }
+}
+
+bool ReadsDestinationAlpha(const rhi::BlendDesc& blend) noexcept {
+    if (!blend.enable) {
+        return false;
+    }
+    auto reads = [](rhi::BlendFactor f) noexcept {
+        return f == rhi::BlendFactor::DestAlpha || f == rhi::BlendFactor::InvDestAlpha ||
+               f == rhi::BlendFactor::SrcAlphaSat;  // min(As, 1 - Ad)
+    };
+    return reads(blend.src) || reads(blend.dst) || reads(blend.srcAlpha) || reads(blend.dstAlpha);
+}
+
 rhi::VertexLayoutDesc MakeVertexLayout() noexcept {
     rhi::VertexLayoutDesc layout;
     auto add = [&layout](rhi::VertexSemantic semantic, std::uint8_t index, rhi::VertexFormat format,
@@ -391,7 +442,7 @@ void FillStageConstants(const ni::RenderStateDesc& state, FFStageConstants* out)
         if (i < active) {
             d.color = {s.colorOp, s.colorArg1, s.colorArg2, s.colorArg0};
             d.alpha = {s.alphaOp, s.alphaArg1, s.alphaArg2, s.alphaArg0};
-            d.coord = {s.texCoordIndex, s.transformFlags, s.resultArg, s.texture ? 1u : 0u};
+            d.coord = {s.texCoordIndex, s.transformFlags, s.resultArg, s.texture ? FF_STAGE_TEXTURE : 0u};
             d.transform = ToFloat4x4(s.transform);
         } else {
             d.color = {FF_TOP_DISABLE, FF_TA_TEXTURE, FF_TA_CURRENT, FF_TA_CURRENT};
@@ -431,6 +482,7 @@ struct FixedFunctionPipeline::Impl {
     ni::CameraDesc camera;
     std::uint32_t targetWidth = 640;
     std::uint32_t targetHeight = 480;
+    RenderOptions options;  // M3c: MSAA / alpha-to-coverage / anisotropy of the target
     FFFrameConstants frame{};
     bool frameDirty = true;
     FFLightConstants lastLights{};
@@ -559,6 +611,22 @@ DrawResult FixedFunctionPipeline::Impl::Draw(const ni::DrawItem& item) noexcept 
     desc.blend = MakeBlendDesc(state);
     desc.depthStencil = MakeDepthStencilDesc(state);
     desc.raster = MakeRasterDesc(state);
+    // M3c: MSAA target and alpha-to-coverage for alpha-tested materials (RenderOptions, ff_pipeline.h).
+    // Review M3c finding 5: a blend that reads the destination alpha would see the coverage alpha of earlier
+    // alpha-to-coverage draws instead of the texel alpha - from then on the D3D8 discard is used again.
+    if (ReadsDestinationAlpha(desc.blend)) {
+        ++stats.destAlphaBlendDraws;
+        if (!stats.alphaToCoverageSuspended && options.alphaToCoverage && options.sampleCount > 1) {
+            stats.alphaToCoverageSuspended = true;
+            FUT_LOGW(Gfx, "ff pipeline: a draw blends with the destination alpha (src %u, dst %u, src alpha %u, dst alpha "
+                     "%u) - alpha to coverage suspended for the rest of the session (it changes the target's alpha)",
+                     static_cast<unsigned>(desc.blend.src), static_cast<unsigned>(desc.blend.dst),
+                     static_cast<unsigned>(desc.blend.srcAlpha), static_cast<unsigned>(desc.blend.dstAlpha));
+        }
+    }
+    const bool alphaToCoverage = !stats.alphaToCoverageSuspended && UsesAlphaToCoverage(state, options);
+    desc.blend.alphaToCoverage = alphaToCoverage;
+    desc.raster.multisample = options.sampleCount > 1;
     desc.topology = geometry.topology == ni::Topology::TriangleStrip ? rhi::PrimitiveTopology::TriangleStrip
                                                                      : rhi::PrimitiveTopology::TriangleList;
     const rhi::DeviceInfo& info = device->Info();
@@ -649,6 +717,9 @@ DrawResult FixedFunctionPipeline::Impl::Draw(const ni::DrawItem& item) noexcept 
     }
     FFDrawConstants draw;
     FillDrawConstants(item, camera, &draw);
+    if (alphaToCoverage) {
+        draw.alphaTest.w = 1u;  // the shader writes the sharpened coverage alpha instead of discarding
+    }
     if (!ctx.UpdateBuffer(drawBuffer, &draw, sizeof(draw))) {
         return Fail("draw constant upload failed");
     }
@@ -666,6 +737,11 @@ DrawResult FixedFunctionPipeline::Impl::Draw(const ni::DrawItem& item) noexcept 
     }
     FFStageConstants stages;
     FillStageConstants(state, &stages);
+    for (std::uint32_t i = 0; i < activeStages && i < FF_MAX_STAGES; ++i) {
+        if (UsesSharpNearest(state.stages[i], options)) {  // M3c: anti-aliased nearest (RenderOptions)
+            stages.stages[i].coord.w |= FF_STAGE_SHARP_NEAREST;
+        }
+    }
     if (!stagesValid || std::memcmp(&stages, &lastStages, sizeof(stages)) != 0) {
         if (!ctx.UpdateBuffer(stageBuffer, &stages, sizeof(stages))) {
             return Fail("stage constant upload failed");
@@ -681,6 +757,7 @@ DrawResult FixedFunctionPipeline::Impl::Draw(const ni::DrawItem& item) noexcept 
     ctx.SetConstantBuffer(kBothStages, FF_CB_STAGES, stageBuffer);
 
     // Textures and samplers of the four stages (white texture + default sampler where nothing is bound).
+    const bool screenSpace = pretransformed || item.useScreenCamera;  // slots 55/54: UI and intro screens
     for (std::uint32_t i = 0; i < FF_MAX_STAGES; ++i) {
         rhi::TextureHandle texture = whiteTexture;
         rhi::SamplerHandle sampler = defaultSampler;
@@ -691,7 +768,16 @@ DrawResult FixedFunctionPipeline::Impl::Draw(const ni::DrawItem& item) noexcept 
             } else if (stage.niTexture != 0) {
                 ++stats.missingTextures;
             }
-            const rhi::SamplerHandle s = device->GetSampler(MakeSamplerDesc(stage));
+            rhi::SamplerDesc samplerDesc = MakeSamplerDesc(stage, options.maxAnisotropy, screenSpace);
+            if (samplerDesc.maxAnisotropy > 1) {
+                ++stats.anisotropicStages;
+            }
+            if (UsesSharpNearest(stage, options)) {  // M3c: the shader keeps the texels flat, the sampler blends seams
+                samplerDesc.minFilter = rhi::Filter::Linear;
+                samplerDesc.magFilter = rhi::Filter::Linear;
+                ++stats.sharpNearestStages;
+            }
+            const rhi::SamplerHandle s = device->GetSampler(samplerDesc);
             if (s) {
                 sampler = s;
             }
@@ -714,6 +800,9 @@ DrawResult FixedFunctionPipeline::Impl::Draw(const ni::DrawItem& item) noexcept 
     }
     if (pretransformed) {
         ++stats.pretransformedDraws;
+    }
+    if (state.alphaTestEnable) {
+        ++(alphaToCoverage ? stats.alphaToCoverageDraws : stats.alphaTestDiscardDraws);
     }
     return DrawResult::Drawn;
 }
@@ -848,6 +937,18 @@ void FixedFunctionPipeline::SetCamera(const ni::CameraDesc& camera, std::uint32_
     d.frame.fogParams = fogParams;
     d.frameDirty = true;
     d.lightsValid = false;  // view-space lights depend on the camera
+}
+
+void FixedFunctionPipeline::SetRenderOptions(const RenderOptions& options) noexcept {
+    if (impl_ == nullptr) {
+        return;
+    }
+    impl_->options = options;
+    impl_->lastPipeline = {};  // blend/raster descriptors depend on the options
+}
+
+RenderOptions FixedFunctionPipeline::GetRenderOptions() const noexcept {
+    return impl_ != nullptr ? impl_->options : RenderOptions{};
 }
 
 DrawResult FixedFunctionPipeline::Draw(const ni::DrawItem& item) noexcept {

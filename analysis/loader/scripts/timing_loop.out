@@ -1,0 +1,16 @@
+QPF 10000000: ticks(dt) = trunc(QPF*dt): 50 Hz 199999 (50.00025 Hz), 60 Hz 166666 (60.00024 Hz)
+Xbox QPF 733333333: 50 Hz 14666666 ticks, 60 Hz 12222222 ticks
+cap 6*dt: 50 Hz 0.1200 s, 60 Hz 0.1000 s
+
+120 Hz display, CPU pacer 50 Hz + VSync (today)  phase 0.0: present 50.00 Hz, steps 49.998 Hz, steps/frame {0: 3383, 1: 13234, 2: 3382}, 0-step 16.9 %, >=2-step 16.9 %
+120 Hz display, CPU pacer 50 Hz + VSync (today)  phase 0.5: present 50.00 Hz, steps 50.001 Hz, steps/frame {1: 19999}, 0-step 0.0 %, >=2-step 0.0 %
+120 Hz display, sync interval 2 (60 Hz)          phase 0.0: present 60.00 Hz, steps 60.000 Hz, steps/frame {0: 2312, 1: 15375, 2: 2312}, 0-step 11.6 %, >=2-step 11.6 %
+120 Hz display, sync interval 2 (60 Hz)          phase 0.5: present 60.00 Hz, steps 60.000 Hz, steps/frame {1: 19999}, 0-step 0.0 %, >=2-step 0.0 %
+60 Hz display, sync interval 1                   phase 0.0: present 60.00 Hz, steps 60.000 Hz, steps/frame {0: 2312, 1: 15375, 2: 2312}, 0-step 11.6 %, >=2-step 11.6 %
+60 Hz display, sync interval 1                   phase 0.5: present 60.00 Hz, steps 60.000 Hz, steps/frame {1: 19999}, 0-step 0.0 %, >=2-step 0.0 %
+120 Hz display, sync interval 1 (120 fps)        phase 0.0: present 120.00 Hz, steps 59.997 Hz, steps/frame {0: 10000, 1: 9999}, 0-step 50.0 %, >=2-step 0.0 %
+120 Hz display, sync interval 1 (120 fps)        phase 0.5: present 120.00 Hz, steps 59.997 Hz, steps/frame {0: 10000, 1: 9999}, 0-step 50.0 %, >=2-step 0.0 %
+144 Hz display, sync interval 1 (144 fps)        phase 0.0: present 144.00 Hz, steps 59.994 Hz, steps/frame {0: 11667, 1: 8332}, 0-step 58.3 %, >=2-step 0.0 %
+144 Hz display, sync interval 1 (144 fps)        phase 0.5: present 144.00 Hz, steps 60.001 Hz, steps/frame {0: 11666, 1: 8333}, 0-step 58.3 %, >=2-step 0.0 %
+144 Hz display, CPU pacer 60 Hz + VSync          phase 0.0: present 60.00 Hz, steps 59.998 Hz, steps/frame {0: 2821, 1: 14358, 2: 2820}, 0-step 14.1 %, >=2-step 14.1 %
+144 Hz display, CPU pacer 60 Hz + VSync          phase 0.5: present 60.00 Hz, steps 60.001 Hz, steps/frame {1: 19999}, 0-step 0.0 %, >=2-step 0.0 %

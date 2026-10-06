@@ -1,0 +1,15 @@
+{
+  "adapters": [
+    {"name": "NVIDIA GeForce RTX 5090", "vendor_id": 4318, "dedicated_mb": 32186}
+  ],
+  "outputs": [
+    {"name": "LG TV SSCR2", "device": "\\\\.\\DISPLAY1", "primary": true, "rect": [0, 0, 3840, 2160],
+     "refresh": {"num": 120000, "den": 1000},
+     "modes": [[3840, 2160], [2560, 1440], [1920, 1080], [1600, 1200], [1280, 1024], [1280, 960], [1280, 720],
+               [1024, 768], [800, 600], [640, 480]]}
+  ],
+  "msaa": [1, 2, 4, 8],
+  "max_anisotropy": 16,
+  "tearing": true,
+  "vrr_hint": "sample data: VRR not probed"
+}

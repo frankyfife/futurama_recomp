@@ -43,11 +43,17 @@ $p = Start-Process D:\FuturamaDecomp\build\<dir>\bin\futurama.exe -ArgumentList 
 
 Log file: `<userdata>\logs\futurama.log` (previous runs: `futurama.1.log`, `futurama.2.log`).
 Command line options: `--config= --userdata= --iso= --xbe= --stop-at=<main|0xADDR> --selftest --trace=<krnl,vfs,...|all> --strict --log-level=<error|warn|info|debug|trace> --set=<section>.<key>=<value>`.
+M3c tool modes (section 4.21; no game start, no XBE mapping): `--print-config-schema=<file.json>`,
+`--check-iso=<image> --result=<file.json>`, `--query-gpu=<file.json>`, `--print-paths=<file.json>`. Without
+`--config` the INI is `%LOCALAPPDATA%\FuturamaPC\futurama.ini` (portable mode with `portable.txt` next to the exe:
+`<exe dir>\futurama.ini`), no longer `<exe dir>\futurama.ini`.
 
 Exit codes: `0` ok / stop-at reached, `1` startup/config error, `2` a HostMain stage failed,
 `3` fatal error (`core::Fatal`, KeBugCheck-style), `10..14` launcher errors (`shared\launcher_info.h`).
 Added in phase 2 (core): `4` the guest ended itself (`XLaunchNewImageA` hook, `HalReturnToFirmware`, all
 guest threads exited), `5` `[debug] timeout` watchdog (thread dump + minidump in the log directory).
+Added in M3c (review finding 15): `6` another game process already runs with the same user data folder (named mutex
+per user data folder, taken before the log is opened; stderr line, nothing written).
 Core debug keys: `[debug] timeout = <s>` (0 = off), `minidump = 1`, `mmio_trap = 1` (reserve 0xFD000000..0xFEFFFFFF),
 `crash_test = 1` (provokes an unhandled guest access violation before entry to check the crash path, exit 3).
 M1 boot path verified (core run 2026-10-04, `--stop-at=main --selftest`): all self-tests pass, entry ->
@@ -70,7 +76,8 @@ and must not set `stop_at`; the script adds `--selftest`, and `--frames=3000` / 
 `game: language "..."` match `[settings] language` (default english; the game string is compared
 case-insensitively - for english the game keeps its default `"English"`); (3) `game: BUILD.TXT = "1.25"` + the
 archive lookup; (4) first context Intro, `FRAMES: limit of N frames reached`, exit 0 before the timeout, and from
-1000 frames on also Intro -> next context (shorter runs only warn); (5) `fiber summary: N switches (G game, S
+1000 frames on also Intro -> next context (shorter runs only warn; M3b: from 20 s x frame rate on, i.e. 1200
+frames at the default 60 Hz); (5) `fiber summary: N switches (G game, S
 self-test` with G > 0 and `fiber: first SwitchToFiber (game)` (the self-test's own switches do not count), `I/O
 APC stats` with XBE completions > 0, 0 error completions and 0 `failed APC reads` (failed writes = save layer,
 reported only), disc error handler registered + trapped and `disc error screen calls 0`; (6) `SELFTEST PASS
@@ -78,7 +85,13 @@ GuestSehOnFiberStack`; (7) every `vfs_trace.log` line a hit, archive hit, docume
 (no UNDOCUMENTED / error; lines ending in `[self-test]` are counted apart), every non-archived asset followed by
 its loose open; plus no error/warn/UNIMPLEMENTED/TRAP line. On a failed run the script prints the exe's own
 stderr line (not the console copy of the log) or the first error/warn line of the log. 3000 frames at the
-default 50 Hz take about 60 s per run (`[debug] timeout` must be larger, e.g. 150).
+default 50 Hz take about 60 s per run (`[debug] timeout` must be larger, e.g. 150). **M3b:** the default is 60 Hz
+(`[game] tick_rate`, `[render] frame_rate` follows it), so 3000 frames take about 50 s; the script reads the rate
+from `[game] tick_rate` / `[render] frame_rate` (timeout frames / rate + 90 s) and adds the timing criteria
+`m2_check.check_timing` (T1: patch table of the tick rate, read-back `game timing: effective after Game::Init:
+... - ok` with fps/dt of the rate, CApp+0xE8 = 0, tag "PAL", only `*-PAL.xmv` opened; T2: `game ticks:` steady
+rate within 0.2 % of the tick rate and, with the lockstep frame clock and frames at the tick rate, >= 99 % of the
+frames with exactly one fixed step).
 Logs: `<userdata>\m2_check\run_NN.log`, `run_NN_vfs_trace.log`. Configs: `run\m2` (german, Debug), `run\m2-rel` /
 `run\m2-clang` (same settings for the RelWithDebInfo / clang-cl builds), `run\m2-fr` (french, 1000 frames), `run\m2-long` (30000 frames, stability), `run\m2-ctest` (ctest `fut_m2_check`, cache variable
 `FUT_M2_TEST_CONFIG`, 3 runs with `--fresh`); after the review fixes `run\m2fix\<de|rel|clang|en|en-explicit|fr|
@@ -127,6 +140,7 @@ runs these stages in order; a stage returning `false` ends the process with exit
 | 6 | `core::StageBuildPolyglotHeader()` | `core\xbe_header_polyglot.h` | core | design 1.4 step 5 |
 | 7 | `core::StageResolveKernelThunks()` | `core\kernel_thunks.h` | core | 111 slots via `krnl::GetBinding`, `krnl::LogBindingSummary()` |
 | 8 | `core::StageApplyFsPatches()` | `core\fs_patcher.h` | core | 38 sites from `guest::FsPatchSites()` |
+| 8b | `xapi::StageApplyGameTiming(cfg)` | `xapi\game_timing.h` | timing (M3b) | `[game] tick_rate`: 60 Hz = 5 operand patches in Game::Init 0xA26A0 + 2 `.data` initial values (section 4.19); 50 = nothing; reads `[game] frame_clock` for `probe:Game::Timer`. Shifts the log numbers `stage N/14` of the later stages by one |
 | 9 | `core::StageInstallHooks(cfg)` | `core\hooks.h` | core (works) | installs all `FUT_HOOK`s |
 | 10 | `core::StageRunSelfTests(cfg)` | `core\selftest.h` | core (runner works) | phases Host + Mapped |
 | 11 | `vfs::StageInitVfs(cfg)` | `vfs\vfs_init.h` | io | `\Device\CdRom0`, `\Device\Harddisk0\partition1` |
@@ -177,6 +191,10 @@ configuration too, so an invalid `[settings] language` (names of `kernel\kernel_
 failure (exit code 2). `[debug] exit_hang_test = 1` registers an exit reporter that never returns (test of the
 watchdog during the exit, section 5).
 `core::WideToUtf8` / `core::Utf8ToWide` convert strings.
+M3c (section 4.21): `kKnownKeys` is replaced by the schema table `core\config_schema.cpp` - a new module key is a
+row there (type, default, de/en texts, UI hints); `core::ConfigKeyDefault(section, key)` returns the default,
+`core::ParseConfig*` are the shared value parsers. Default INI location `%LOCALAPPDATA%\FuturamaPC\futurama.ini`,
+portable mode, `core::ResolveConfigLocation`.
 
 ### 4.4 Guest addresses and memory - `core\guest.h`
 
@@ -610,6 +628,319 @@ implementations are stubs except where noted):
   picture of frame M (K draw calls, D drawn)`, `draw trace frame N #i: ... screen (x0, y0)-(x1, y1)`.
   `m3_check`: `--xemu-frontend DIR` (default `run\xemu_ref_steam` if present), `--min-hz` default 49.5,
   `--max-work-ms` 20; `tools\xemu_capture.py --start S`.
+- **M3b (verify/integration):** `m3_check` reads `[game] tick_rate` / `[render] frame_rate` (frame rate = tick rate
+  unless set) and works in seconds: scenes legal 3.0 s, tech notice 8.0 s, loading 13.6 s, frontend 20.0 s times
+  the rate (180/480/816/1200 at 60 Hz, 150/400/680/1000 at 50 Hz; `--scene NAME=FRAME` or `NAME=SECONDSs`),
+  `--min-hz` default rate - 0.5, `--max-work-ms` default one tick period, new `--min-on-period` (default 95 % of
+  the frame starts within +-5 % of the planned period, line `present: frame start intervals ...`). New criteria
+  M3b-5/M3b-6 = `m2_check.check_timing` T1/T2. Reported for every run: the M3b `present:` lines (mode/plan,
+  display, intervals, swap chain, on screen, environment). Configs: `run\m3b\{debug,rel,clang}` (60 Hz),
+  `run\m3b\pal50` (`[game] tick_rate = 50`, `[render] pacing = timer`), `run\m3b\{m1,m2,m2-null}`; the M3
+  configs `run\m3final\*` now set `[game] tick_rate = 50` + `[render] pacing = timer` instead of `[render]
+  frame_rate = 50` (that key alone now logs GFX/warn with the 60 Hz tick). Duration comparison of the
+  observables of `timing60.md` 8: `python tools\timing_compare.py --run run\m3b\dur50 --run run\m3b\dur60`
+  (log stamps, VFS lookups, dense screenshots; `docs\loader_design.md` 8.4).
+
+### 4.19 Game timing: `[game] tick_rate` - `xapi\game_timing.h` (M3b, timing agent)
+
+Evidence: `analysis\loader\timing60.md` (patch table 2.3/2.4, readers 3, tick-counted cosmetics 4.10, NTSC
+prototype comparison 5). The EU XBE keeps its PAL content (CApp+0xE8 = 0, `*-PAL.xmv`, PAL archives/language/
+splash/legal); only the time base of Game::Init changes.
+
+- Config `[game] tick_rate = 60 | 50` (choice key, default 60, anything else exit code 1).
+  `xapi::ParseTickRate(text)`, `xapi::ConfiguredTickRate(cfg)` (60/50, 0 = invalid), `xapi::ActiveTickRate()`
+  (set by the stage, 0 before), constants `kTickRateNtsc` 60, `kTickRatePal` 50, `kDefaultTickRate`. Other modules
+  (frame pacer) read the rate with `ConfiguredTickRate` or `cfg.GetU32("game", "tick_rate", 60)`.
+- Stage 8b `xapi::StageApplyGameTiming(cfg)` (after ApplyFsPatches, before InstallHooks): table
+  `xapi::TimingPatches(rate)` (60: 5 Code rows 0xA2714 / 0xA271A / 0xA272A / 0xA2734 / 0xA273A + 2 Data rows
+  0x2D6744 / 0x2D6748; 50: empty), 16 unchanged `xapi::TimingReferenceRows()` (CApp+0xE8 branch, NTSC
+  instructions, PAL fst and movie tag store 0xA2744, common tail, .rdata 60.0f / 1/60). Engine
+  `xapi::ApplyTimingPatches(patches, references, PatchMemory&, error)`: structure check
+  (`ValidateTimingPatchTable`: only operand bytes change, no overlap with each other or an fs site), every row
+  equal in the mapped image AND the XBE file (`core::ReadOriginalXbeBytes`), then write + read back; nothing is
+  written on any mismatch ("already patched", "different XBE build", "changed by another patch or hook").
+  `xapi::AppliedTimingPatches()` = rows in the image (self-test `MappingMatchesFile` excludes them).
+- Read-back: `probe:Game::Init` calls `xapi::NoteGameInitTiming(app)` after the original (the first fixed step
+  does it if that probe is disabled); `xapi::GetGameTimingReadBack()` `{valid, tickRate, values (TimingGlobals:
+  fps, dt, dtMin, dtMax, fpsCopy1, fpsCopy2, frameTime, fixedStep, videoStandard, movieTag), matchesExpected, fps,
+  dt}`, `xapi::ExpectedTimingGlobals(rate)`, `xapi::DiffTimingGlobals(actual, expected)`.
+- `probe:Game::FixedStep` (FUN_0002C890, thiscall, called once per fixed step at 0xA2DD3 in Game::Frame;
+  prologue `55 8B 2D A4 6F 2E 00`, 7 stolen bytes): `xapi::GetGameTickStats()` `{steps, frames, wallSeconds,
+  gameSeconds, stepsPerSecond, stalls, stallSeconds, steadyStepsPerSecond, stepsPerFrame[0, 1, 2, 3+],
+  maxStepsPerFrame}`, `xapi::StepHistogram` (unit-testable). Exit reporter "game timing" -> `LogGameTickSummary`.
+- Frame clock `[game] frame_clock = lockstep | realtime` (choice key, default lockstep): `probe:Game::Timer`
+  (FUN_000D2B90, cdecl `void(int64* out)`, prologue `83 EC 08 8B 0D 4C B4 2E 00`, 9 stolen bytes) calls the
+  original and, for the three samples of Game::Frame (return addresses 0xA2C6F accumulator, 0xA2FA6 / 0xA2FBB
+  render time), returns `xapi::LockstepClock` time: +ticks(dt) = trunc(QPF * dt) per frame, whole-step catch-up
+  or hold only when real time is more than 3/4 step away (phase stays within +-12.5 ms at 60 Hz, real-time
+  semantics and the 6 dt cap unchanged). All other callers keep real QPC. Reason (measured, M3 timer pacer at
+  60 Hz on the 120 Hz machine, realtime): 584 frames with 0 and 587 with 2 steps of 5968 (9.8 % each) after
+  context switches put the remainder on the step boundary (timing60.md 6, pacing60.md 2.6); with the M3b
+  pacer (vblank k = 2, 6000 frames, `run\m3b-timing`): realtime 82 / 76, lockstep 6 / 6 frames with 0 / 2 steps
+  (99.75 % exactly one step; the rest are stall catch-ups and their following hold). API:
+  `xapi::ParseFrameClock`, `ConfiguredFrameClock(cfg, mode)`, `ActiveFrameClock()`, `FrameClockName`,
+  `GuestTimerTicks(qpf, seconds)`, `LockstepClock` (`Advance(real, step)`, `Now`, `GetStats`),
+  `GetFrameClockStats()`. Logs `game clock: lockstep - [game] frame_clock = lockstep; ...` (stage) and
+  `game clock summary: lockstep, N accumulator samples: +1 step x a, catch-up x b (max +n steps), hold x c;
+  phase real - virtual x..y ms; R render samples; ticks(dt) = 166666 at QPF 10000000` (exit). The display-slot
+  clock of pacing60.md 4.4 (frame pacer counts missed vblanks) can replace `Advance` later; the hook stays here.
+- Self-test `GameTimingPatched` (Mapped): all 23 rows hold their expected bytes, no installed hook overlaps.
+- Log lines (GAME/info, parsed by the checks):
+  `game timing: 60 Hz (NTSC timing values, PAL content) - [game] tick_rate = 60; 7 patches applied: ...` /
+  `game timing: 50 Hz (original PAL timing values) - [game] tick_rate = 50; no patches, ...`;
+  `game: video standard CApp+0xE8 = 0 (PAL; 60 fps, fixed time step 0.0167 s, movie tag "PAL")` (unchanged probe
+  line); `game timing: effective after Game::Init: tick 60 Hz, fps 60 (0x42700000), dt 0.0166666675 s
+  (0x3C888889), fixed step 1, dt clamps ..., CApp+0xE8 = 0, movie tag "PAL" - ok (NTSC timing values, PAL
+  content)` (GAME/error `... - MISMATCH in <fields> ...` otherwise); at exit `game ticks: N fixed steps in W s
+  (R steps/s at tick rate 60 Hz; game time G s; K stalls > 6 dt, about S s dropped by the guest's cap: steady
+  R2 steps/s), steps per CApp::Frame over F frames: 0 x a, 1 x b, 2 x c, 3+ x d (max m)`; GAME/debug one
+  `game timing patch 0x... <name>: <original> -> <patched>` line per row.
+- Deliberately unchanged (header comment of `game_timing.h`, NTSC parity): tick-counted UI/camera cosmetics run
+  like the NTSC version (frontend fade 50 ticks = 0.83 s, input lock 30 ticks, menu debounce 5 ticks, overlay
+  fade 25 ticks, camera smoothing and the camera spring's fixed 0.01 s sub-steps), and so do three gameplay
+  places found by the M3b review (`timing60.md` 12): rigid-body damping x0.98/x0.9 per tick (FUN_000AFA30), the
+  Chicken Walker's fixed 0.02 aim/turn step (FUN_000445A0, +0x64 from 0x43EEC) and level-script loops (every
+  loop ends in a compiler-inserted `Wait(0)`: short waits -17 % .. +11 % per iteration). Evidence script
+  `analysis\loader\scripts\timing_review.py`. Tests: `tests\timing_tests.cpp` (config, table vs timing60.md, x87 model of the
+  patched block = NTSC state with the PAL tag, rows vs the XBE file, engine on a fake image, histogram).
+
+### 4.20 Display-coupled frame pacing: `[render] pacing` - `platform\frame_pacer.h` (M3b, pacing agent)
+
+Design and measurements: `analysis\loader\pacing60.md` (German). Replaces the M2/M3 timer pacer
+(`PaceFrame([render] frame_rate)`, default 50 Hz); header comments of `platform\frame_pacer.h`,
+`platform\pacer_policy.h` and `platform\pacer_display.h` are the reference.
+
+- Config: `[render] pacing = auto | vsync | timer | off` (choice, default auto), `[render] pacing_trace = <file>`
+  (CSV, one line per frame, flushed by the exit reporter "pacing trace"), `[render] frame_rate` now defaults to
+  `[game] tick_rate` (60; was 50); 0 keeps the M2 meaning (unthrottled = pacing off) **only with `pacing = auto`**
+  (with `timer`/`vsync` the pacer runs at the tick rate and GFX/warn says so; use `pacing = off`), another value
+  than the tick rate logs GFX/warn. `pacing = vsync` ignores `[render] vsync = 0` (GFX/warn). `--set` values are
+  trimmed and unquoted like INI values (M3b review finding 10). `gfx::Settings::tickRate/pacing/pacingTrace`, `gfx::SettingsFromConfig(cfg)` (tests),
+  `gfx::PacingConfigOf(settings)` -> `platform::PacingConfig {mode, vsync, targetHz, tickHz, tracePath}`.
+- Per frame (render thread): `GpuRenderer::DisplayFrame` -> `platform::PlanPresent(config, SwapChainInfo
+  {frameLatencyWaitable, tearingSupported})` -> `PresentRequest {syncInterval, allowTearing, skipSwapChain}` ->
+  `rhi::Device::Present` -> `platform::NoteSwapChainPresent(PresentFeedback)` (+ `NotePresentedFrame` as
+  before); `OnFrameDisplayed` -> `platform::EndFrame(config)` (null backend: the headless timer at the target
+  rate). `PaceFrame(hz)` stays for tests only.
+- Plans (pure functions, `platform\pacer_policy.h`: `SelectPlan`, `ClassifyRefresh`, `PlanHysteresis`,
+  `FrameSchedule`, `DisplayLimitDetector`, `VrrDetector`, `IntervalHistogram`, `OnScreenTracker`):
+  `vblank k` = refresh is k x target (+-0.2 %, k 1..4; 59.94/119.88 included) -> frame-latency waitable
+  (maximum latency 1) + Present(k); `tearing-timer` = otherwise with tearing support -> absolute
+  high-resolution timer at the target rate + Present(0, ALLOW_TEARING), VRR probed from the DXGI frame
+  statistics (rejected -> `display-rate`); `display-rate` = Present(1), one game frame per refresh; `free` =
+  window not in the foreground, minimized, display off, session locked or the display holding the pace ->
+  timer, Present(0) only into a free slot (none while hidden); `timer`/`unthrottled` = overrides; `headless`.
+  Out of `free` only after 30 frames - except when presenting resumes (restored from minimized: at once, M3b
+  review finding 5); a frame without a free slot skips the swap chain (never blocks), the 30th starved one
+  presents anyway. `pacing::CadenceGuard` (M3b review finding 6): `timer`/`free` on a refresh of k x the target
+  shift their timer grid by half a refresh (alternating sign) when 6 of 60 on-screen durations miss k refreshes; a
+  duration visible for its target period (VRR panel following the presents) counts as on time, and the guard
+  stops after 4 shifts without a clean window (exit line: `timer cadence: J durations judged (F followed by the
+  panel), H half-refresh shifts[ (guard stopped)]`). VRR probe: 2 s warm-up, a rejection is probed once more
+  after 10 s (finding 13a).
+- Refresh rate: `platform::QueryDisplayTiming(HMONITOR)` (`platform\pacer_display.h`: QueryDisplayConfig
+  `targetVideoSignalInfo.vSyncFreq` as a rational, GDI fallback); queried again when `MonitorFromWindow`
+  changes or the display epoch moves.
+- Window (`platform\window.h`, additive): `platform::GetDisplayEnvironment()` `{displayOn, sessionLocked, epoch}`
+  from `GUID_CONSOLE_DISPLAY_STATE` (RegisterPowerSettingNotification), WTS lock/unlock
+  (WTSRegisterSessionNotification) and an epoch raised by WM_DISPLAYCHANGE, WM_DPICHANGED, the Alt+Enter
+  toggle and those events; `platform::NoteDisplayChange()` (tests).
+- RHI (add-only, defaults for other backends): `DeviceDesc::frameLatencyWaitable` (1..3, NiPCRenderer: 1),
+  `DeviceInfo::tearingSupported/frameLatency`, `PresentDesc::allowTearing/skipSwapChain`, `PresentTiming`,
+  `Device::FrameLatencyWaitable()`, `Device::LastPresentTiming()`. The D3D11 backend sets
+  `DXGI_PRESENT_ALLOW_TEARING` only on request now (M3: for every sync interval 0).
+- Log: `pacing: display ...`, `pacing: <old> -> <plan>: <reason>` (plans without presents say "no Present"),
+  `pacing: VRR confirmed|rejected: ...`, `pacing: VRR probe repeated once ...`, `pacing: timer cadence: ... timer
+  grid shifted by +-X ms (half a refresh)`, `pacing: timer cadence: still irregular after 4 shifts ...`; exit reporter "present": the three M3 lines keep their prefix
+  (`pacing P Hz` = target rate, `schedule resets` = timer re-anchors + vblank wait timeouts, `S frames longer than
+  1.5 periods (frame starts; N Present intervals incl. screenshots)` - since M3b phase 5 counted from the frame
+  start intervals, finding 8), new lines `present: mode ...`, `present: display ...`, `present: frame start
+  intervals ...`, `present: swap chain ...` (+ `timer cadence: J durations judged (F followed by the panel), H
+  half-refresh shifts; V repeated VRR probes`), `present: on screen (DXGI frame statistics) ...` (+ `J jumps over P presents (I off the
+  cadence)`, `measured refresh R Hz (fit over N samples, S segments)` = least-squares fit of SyncQPCTime over
+  SyncRefreshCount, finding 9), `present: environment ...` (formats in `LogPresentStatistics`).
+- `m3_check` M3b-7 (finding 7): foreground >= 95 % of the frames; with `pacing = auto|vsync`, vsync on and a
+  refresh of k x the target also >= 95 % of the frames in the vblank plan and >= 99 % of the vblank-coupled frames
+  exactly k refreshes on screen (`--min-foreground`, `--min-vblank-frames`, `--min-on-plan`).
+
+### 4.21 Configuration schema, configuration location, tool modes - `core\config_schema.h`, `core\cli_tools.h` (M3c, host-CLI/schema agent)
+
+Shared contract items 1-4 of M3c (Qt launcher `FuturamaLauncher.exe`; `docs\ROADMAP.md` M3c). Header comments of
+`core\config_schema.h` and `core\cli_tools.h` are the reference.
+
+- **One definition table** (`core\config_schema.cpp` `kKeys`, 55 rows in 10 sections in phase 1) replaces `kKnownKeys` of
+  `core\config.cpp`. Per key: section, name, `core::ConfigKeyType` (bool, int, float, choice, string, path_file,
+  path_dir, resolution), default in INI form, choices (`core::ConfigChoice {value, label{de,en}, hidden}`),
+  range (`min/max/step`, enforced unless `kConfigRangeIsHint`), label and help text in German and English for
+  players, UI tab (game|graphics|paths|advanced), order, widget (combo|check|spin|dspin|text|file|dir|resolution|
+  monitor), flags `kConfigAdvanced`, `kConfigDeveloper` (test/diagnosis knob), `kConfigDynamicDefault`, file dialog
+  filter. A `consteval` check keeps every section listed and its keys contiguous.
+- **Validation** (`core::LoadConfig` -> `core::ValidateConfigValue`): unchanged rules for unknown keys/sections,
+  booleans, numbers and choices (same error texts; `ConfigKeyChoices` = `core::ConfigChoiceList`, visible values
+  first, e.g. `english|german|french|spanish|italian|japanese|korean|tchinese|portuguese|1..9`); new: float
+  (`render_scale`, '.' only), resolution (`auto` or `<W>x<H>`, 160..16384 each), enforced ranges (`render_scale`
+  1.0..2.0, `[kernel] min_guest_stack` 0x10000..0x4000000 - was a stage failure, now exit code 1), `[log] level`
+  is a choice (`error|warn|info|debug|trace`, hidden `warning`). Ranges that the module clamps stay hints
+  (`window_scale`, `fiber_stack`, `timeout`, `frame_rate`).
+- **API for readers**: `core::FindConfigKey`, `IsConfigSection`, `ConfigKeys()`, `ConfigSections()`,
+  `ConfigKeyDefault(section, key)` (default in INI form - use it instead of repeating literals), the shared value
+  parsers `ParseConfigBool`, `ParseConfigU32`, `ParseConfigFloat`, `ParseConfigResolution` (`ConfigResolution
+  {isAuto, width, height}`), `MatchesConfigChoice`. `core\config.cpp` uses the same parsers for `GetBool`/`GetU32`.
+- **M3c [render] keys** (contract item 5, read by the renderer, `gfx\gfx_config.*`): `resolution = auto`,
+  `render_scale = 1.0` (1.0..2.0, step 0.25), `msaa = 4` (off|2|4|8), `alpha_to_coverage = on` (bool),
+  `anisotropy = 16` (off|2|4|8|16); the renderer added `screenshot_size = output` (output|internal) through the
+  same table. "Classic" (M3 / xemu regression) = `resolution = 640x480`, `render_scale = 1`, `msaa = off`,
+  `anisotropy = off`.
+- **M3c integration: `[render] monitor = primary | <GDI device name>`** (type string, widget `monitor`, Graphics
+  tab order 5; the values are `--query-gpu` `outputs[].device`, e.g. `\\.\DISPLAY2`). Read by `gfx\gfx_config.cpp`
+  (`gfx::Settings::monitor`, empty = primary) and used by `platform::CreateMainWindow` through
+  `platform::WindowOptions::monitor` / `platform::SelectMonitor(name)` (`MonitorChoice {monitor, primary, found,
+  device}`): the window opens on that monitor with its work area and DPI (`GetDpiForMonitor`); a name that is not
+  connected falls back to the primary monitor with a Core warning. The `window:` log line ends with
+  `monitor <device> (primary)`.
+- **Configuration location** (contract item 4, `core::ResolveConfigLocation(exeDir, explicitConfig)` ->
+  `ConfigLocation {mode, portable, configFile, defaultUserdata}`, `Config::configMode/portable`): default
+  `%LOCALAPPDATA%\FuturamaPC\futurama.ini` + userdata `%LOCALAPPDATA%\FuturamaPC`; portable (`portable.txt` next
+  to futurama.exe) `<exe dir>\futurama.ini` + userdata `<exe dir>` (side by side like the default mode; design 4.1
+  had `.\userdata`); `--config=<file>` always
+  wins (userdata default by the portable rule). `[paths] userdata` overrides the default in every mode. A
+  pre-M3c `<exe dir>\futurama.ini` without `portable.txt`/`--config` is ignored with a `config:` warning in the log.
+  Log line `config    <file> (explicit|default|portable[, portable.txt])`. All checks pass `--config` (unchanged).
+- **Tool modes** (`core::cli::RunToolIfRequested`, called first in `core::RunHost`: after the launcher stub's TLS/
+  placeholder checks and `LoadLibrary`, before config, log, crash handlers and XBE mapping; never write user data):
+
+| Command line | Output (UTF-8 JSON, `-` = stdout) | Exit code |
+|---|---|---|
+| `--print-config-schema=<file.json>` | `{"schema_version":1,"build","config":{file_name, portable_marker, mode, file, default_userdata},"sections":[{"name","label","keys":[{"name","type","default","choices","min","max","step","label","help","advanced","restart_required","ui":{"tab","order","widget"}}]}]}` + per key `developer`, `dynamic_default`, `hidden_choices`, `range_enforced`, `placeholder`, `ui.filter` | 0 |
+| `--check-iso=<image> --result=<file.json>` | `{"ok","reason","xdvdfs","layout":"xiso\|redump\|unknown","xbe_sha1","version":"retail_eu\|proto_ntsc\|unknown","supported","title","size"}` + `reason_code` (supported, not_found, not_a_file, unreadable, no_xdvdfs, corrupt, no_default_xbe, bad_xbe, prototype, other_version, other_game), `message{de,en}`, `partition_offset`, `xbe_size`, `title_id` | 0 supported, 2 not supported |
+| `--query-gpu=<file.json>` | `{"adapters":[{"name","vendor_id","dedicated_mb"}],"outputs":[{"name","device","primary","rect","refresh":{"num","den"},"modes"}],"msaa","max_anisotropy","tearing","vrr_hint"}` + per adapter `device_id`, `dedicated_mb_source` (d3dkmt = exact 64-bit), `software`, `feature_level`, `msaa`, `max_anisotropy`; per output `adapter`, `hz`, `refresh_source`, `dpi`, `attached`; `default_adapter`, `vrr{possible, windows_setting, hint{de,en}}` | 0 |
+| `--print-paths=<file.json> [--config=<file>]` (extension) | `{"ok","error","mode","portable","exe_dir","config","config_exists","userdata","userdata_configured","logs","hdd","saves","screenshots","cache","warnings"}` | 0 |
+
+  Usage errors (two tools, a foreign option, missing file name, `--result` without `--check-iso`, output not
+  writable): exit 1, one `futurama: ...` line on stderr, never a message box. `--config=` may accompany any tool.
+  Files are written to `<file>.tmp` and renamed. `--check-iso` reads `default.xbe` through `vfs::XdvdfsImage`
+  (XISO and redump/XGD2/XGD3 offsets), SHA-1 via `krnl::xc::Sha1`: retail EU = `guest::kXbeSha1`, NTSC prototype
+  = `core::cli::kProtoNtscXbeSha1` (`f443d255...`); title/title id from the XBE certificate. `--query-gpu`:
+  DXGI 1.1 adapters (dedicated memory via `D3DKMTQueryAdapterInfo(GETSEGMENTSIZE)`, because the SIZE_T of DXGI
+  saturates in the 32-bit process), outputs with the refresh fraction of `platform::QueryDisplayTiming`
+  (QueryDisplayConfig), unique `GetDisplayModeList` sizes, effective DPI; MSAA = sample counts with quality > 0 and
+  multisample render target + resolve support for B8G8R8A8/R8G8B8A8 and D24S8 on a D3D11 device (FL 10_0+) of the
+  adapter; top-level `msaa`/`max_anisotropy` = adapter 0 (the one `D3D11CreateDevice(nullptr, HARDWARE)` takes);
+  `vrr_hint` possible|unavailable|unknown from `DXGI_FEATURE_PRESENT_ALLOW_TEARING`. Measured (dev machine, Debug):
+  schema 27 ms, GPU query 0.27 s (4 adapters, D3D11 device each), ISO check 40 ms (retail ISO and prototype `.bin`,
+  both XISO layout).
+- **Tests**: `tests\schema_tests.cpp` (row metadata, contract keys, LoadConfig accepts every row, source scan:
+  every `"section", "key"` read in `src\host` has a row and every row is read, value validation, defaults vs.
+  `gfx::Settings`/`krnl::KernelSettings`/`xapi::kDefaultTickRate`, JSON document), `tests\cli_tests.cpp` (JSON
+  writer, usage errors, schema file with spaces/commas/parentheses in the path, `--check-iso` on the real retail
+  ISO and prototype `.bin` (read-only, `FUT_TEST_ISO` / `FUT_TEST_PROTO_ISO`), missing/directory/random/empty
+  files, synthetic XISO and sparse redump images with fake and real XBEs, `--query-gpu`, configuration location
+  with a temporary `%LOCALAPPDATA%`, `--print-paths`, end-to-end runs of the built `futurama.exe`),
+  `tests\cli_json.h` (strict JSON reader for the tests).
+
+### 4.22 Render resolution and anti-aliasing: `[render] resolution / render_scale / msaa / ...` - `gfx\nipc_gpu.h` (M3c, renderer agent)
+
+Reference: `src\host\gfx\GFX_CONTRACT.md` section 12 (configuration, coordinate rule, back buffers, ff options, log
+lines, evidence). Summary:
+
+- Keys (schema rows in `core\config_schema.cpp`, parsed by `gfx\gfx_config.*`): `resolution = auto | <W>x<H>`
+  (default auto = the largest 4:3 rectangle inside the window's view), `render_scale = 1.0..2.0` (1.0),
+  `msaa = off | 2 | 4 | 8` (4, clamped to the device), `alpha_to_coverage` (on), `anisotropy = off | 2 | 4 | 8 | 16`
+  (16), new `screenshot_size = output | internal` (output), `linear_aa` (off; M3c review finding 3: resolve and
+  downsample on linear light). `gfx::Settings::resolutionWidth/Height, renderScale, msaa, alphaToCoverage,
+  anisotropy, screenshotSize, linearAa`, defaults `gfx::kDefault*` (= the schema defaults),
+  `gfx::ParseRenderResolution / ParseRenderScale / ParseMsaa / ParseAnisotropy` (on top of the schema's value
+  parsers). Classic (= M3 bit for bit, the xemu regression): `resolution = 640x480, render_scale = 1, msaa = off,
+  anisotropy = off`.
+- `gfx::RenderQuality` (+ `RenderQualityOf(settings)`) in `GpuRenderer::CreateParams::quality` (default: classic),
+  `CreateParams::viewWidth/viewHeight`; `gfx::RenderSizes` + pure `ComputeRenderSizes`, `ScaleViewport`, `ScaleRect`,
+  `kResizeSettleFrames`; `GpuRenderer::Sizes()`, `SampleCount()`, `ResizeForView(w, h)`. The guest keeps its 640x480
+  coordinates; only the D3D viewport and the clear rectangles are scaled to the internal size; resolution auto
+  follows window resizes after 12 frames.
+- Review M3c (findings 2, 3): `RenderQuality::linearAa`; pure `gfx::QualityFallbacks(quality)` -> `QualityLadder`
+  (request, render scale 1, MSAA halved down to off, 640x480 without MSAA) and `DescribeQuality`; `GpuRenderer::
+  Create` tries the steps while the back buffers cannot be created, `GpuRenderer::Quality()` / `QualityReduced()`;
+  the view-following resize steps down too. **Behaviour change:** when even the last step fails,
+  `NiXBoxRenderer::Create` ends the game with `core::Fatal` (exit code 3, "Direct3D 11 could not be started") instead
+  of the invisible null renderer (headless stays null).
+- RHI (add-only): `DeviceDesc::sampleCount / outputWidth / outputHeight / linearResolve`, `DeviceInfo::sampleCount /
+  outputWidth / outputHeight / linearResolve`, `BlendDesc::alphaToCoverage`, `RasterDesc::multisample`, `DeviceStats::gpuFramesTimed /
+  gpuFrameMsAverage / gpuFrameMsP99 / gpuFrameMsMax`, virtual `Device::CaptureOutput`, `SupportedSampleCount`,
+  `ResizeBackBuffers` (defaults for other backends). D3D11: multisampled persistent back buffers + depth, resolve,
+  `ResamplePS` downsample (box for integer ratios, Catmull-Rom with a 2x2 anti-ringing clamp otherwise - review
+  finding 1; Mitchell-Netravali before), with `linearResolve` TYPELESS targets + sRGB views, present pass 1:1 / scaling /
+  downsample, GPU timestamp span per frame; Present flushes the context when it skips the swap chain (before
+  M3c nothing submitted such frames until the driver's next implicit flush: frame work p99 15-55 ms with the display
+  off).
+- `ff::RenderOptions {sampleCount, alphaToCoverage, maxAnisotropy, sharpNearest}` + `FixedFunctionPipeline::
+  SetRenderOptions / GetRenderOptions`, `ff::MakeSamplerDesc(stage, maxAnisotropy, screenSpace)`,
+  `ff::UsesAlphaToCoverage`, `ff::UsesSharpNearest`, `PipelineStats::alphaToCoverageDraws / alphaTestDiscardDraws /
+  anisotropicStages / sharpNearestStages`; review M3c: anisotropy only with linear magnification too (finding 4),
+  `ff::ReadsDestinationAlpha(blend)` + `PipelineStats::destAlphaBlendDraws / alphaToCoverageSuspended` (finding 5:
+  the first blend that reads the destination alpha suspends alpha-to-coverage); shader layout: `FFDrawConstants::alphaTest.w` = alpha-to-coverage,
+  `FFStage::coord.w` flags `FF_STAGE_TEXTURE | FF_STAGE_SHARP_NEAREST`.
+- Screenshots: `platform::ScreenshotSource {Internal, Output}`, `platform::SaveScreenshot(device, dir, frame,
+  source)` (capture on the render thread, PNG on a worker thread, exit reporter "screenshots" flushes),
+  `platform::FlushScreenshots(timeoutMs)`; the M3 overload without a source is unchanged (synchronous).
+- Logs: `render: output WxH (resolution ...), internal WxH (...), MSAA Nx (requested Mx; supported: ...), ...`,
+  `render: view resized to ...`, exit `render totals: ...`, `d3d11 gpu frame time: ...`, `screenshots: N written,
+  M failed`; the device line names samples and output size.
+- Check: `python tools\m3c_check.py --exe <futurama.exe> --config <base INI> [--variants classic,hq,hq_noaa,ref,ss,max,frac]
+  [--fresh]` - per variant exit/frame limit, paced rate + frame work, debug layer, render configuration (downsample
+  none/box/catmull-rom, resolve gamma/linear light, no step down), screenshot
+  sizes, every draw + every M2 criterion; classic = the full m3_check incl. xemu; hq downscaled vs xemu (X1); edge
+  aliasing MSAA vs no AA against a render_scale 2 + 8x reference (X2). Base config of the renderer agent:
+  `run\m3c-renderer\check\futurama.ini`. Tests: `tests\aa_tests.cpp`.
+
+### 4.23 Launcher: `FuturamaLauncher.exe` (Qt 6, x64) - `launcher\**` (M3c, launcher agent)
+
+Separate CMake project (64 bit, Qt 6.8.3 Widgets, MSVC `/W4`, `-DLAUNCHER_WERROR=ON` for `/WX`), not part of the x86
+build. Details (German): `launcher\README.md`.
+
+- Build: `cmd /c "D:\FuturamaDecomp\build_launcher.cmd" [builddir] [Debug|Release] [test]` (vcvars64,
+  `CMAKE_PREFIX_PATH` = `FUT_QT_DIR` (default `D:\Qt\6.8.3\msvc2022_64`), Ninja, windeployqt into `<builddir>\bin` incl.
+  the offscreen platform plugin; Release adds the app-local MSVC runtime). `test` runs ctest: `launcher_tests` (INI round
+  trip, schema, validation, paths, CLI, sessions, translations), `launcher_ui_tests` (main window + wizard, offscreen),
+  `launcher_screenshots`.
+- Uses only the shared contract: `futurama.exe --print-config-schema=`, `--query-gpu=`, `--check-iso= --result=`
+  (results cached per build in `launcher_cache\` next to the INI), starts the game with `--config=<ini>` (stdout/stderr
+  piped -> no host message boxes; startup errors appear in the launcher's result panel), reads
+  `<userdata>\logs\futurama.log`. Optional schema fields it understands: `hidden_choices`, `range_enforced`, `developer`,
+  `dynamic_default`, `placeholder`, `ui.filter`; check-iso `message`/`reason_code`; query-gpu `default_adapter`,
+  `vrr.hint`. A key with `ui.widget` = `monitor` is shown as a monitor picker (output device names from query-gpu; the
+  host has no such key yet). Unknown fields are ignored.
+- INI rules = host rules (`core\config.cpp` ReadIni): the launcher writes only what the host reads back unchanged
+  (quoting when needed), keeps comments/order/unknown entries, writes atomically (QSaveFile) and reports what the host
+  would reject (unknown keys in known sections, broken lines) before "Spielen".
+- Automation: `--set section.key=value` (repeatable, schema-validated) `--save`, `--launch [--wait] [--result=<json>]`
+  (exit code = the game's; launcher errors 64..70), `--screenshots=<dir>` (all tabs + wizard pages, de/en; with
+  `-platform offscreen`), `--schema-file=` / `--gpu-file=` (development data). Test runs: `--config=run\<name>\...`
+  keeps everything (INI, `launcher.ini`, cache) out of `%LOCALAPPDATA%`.
+- Test double `<launcher build>\fakegame\futurama.exe` (`launcher\fakegame\fake_futurama.cpp`): canned schema/GPU
+  data, superficial ISO check, fake game run; never packaged (`tools\package.py` rejects a loader < 3 MB).
+- Package: `python tools\package.py --game-build <x86 build> --launcher-build <launcher Release build> [--portable]
+  [--zip]` -> `dist\FuturamaPC\` (git-ignored) with an allow-list of files, German `LIESMICH.txt`, checks against game
+  data and Debug builds.
+- M3c integration: the "Spiel" tab shows the configured image's `--check-iso` verdict (`ui\iso_status.h`
+  `IsoStatusBox`, checked in the background on every change; the wizard shares `IsoVerdictHtml`/`IsoDetailLines`);
+  the graphics tab names what `resolution = auto` renders (`FitAspect43`, `EstimateWindowSize` in
+  `ui\screen_info.h`: the window size at the monitor's `dpi` of `--query-gpu`, or the full-height 4:3 area in
+  fullscreen), offers only 4:3 sizes, shows the window size in pixels and disables `alpha_to_coverage` without MSAA;
+  numbers follow the UI language (`QLocale::setDefault` in `fl::SetLanguage`).
+- M3c review fixes: `GameRunResult::cause()` (the host's `futurama: ...` line, never its `log file:` line; JSON field
+  `cause`); exit code 6 = `fl::kGameExitAlreadyRunning` (category `already_running`, the log of the other game is not
+  shown); `fl::CleanPathInput` strips one pair of enclosing quotes from every path input (wizard, path editors,
+  `--set` of path keys, `SettingsModel::setValue`), a quoted path in the INI is an error (`IssueCode::QuotedPath`);
+  `IniDocument::Problem::code` + `IniDocument::ProblemText` (localized), `hasInvalidUtf8()`, localized save errors with
+  a hint, `<ini>.bak` before a save of a file with invalid UTF-8 (`SettingsModel::lastBackup`); new keys never after a
+  broken line; presets: Maximum = render scale 2 + MSAA 8x + `linear_aa`, both presets step down by the video memory of
+  `--query-gpu` (`BackBufferMemoryMb`, `FitsVideoMemory`, `PresetOutputSize`, `PresetValues::videoMemoryMb /
+  limitedByMemory`); `EditorContext::dynamicDefault` (frame_rate shows the logic rate); "Spielen" asks before an image
+  whose check said unsupported / not Xbox (`IsoStatusBox::currentResult`); the main window fits 90 % of the screen's
+  available area. Automation: unexpected positional arguments = exit code 64 (ctest `launcher_cli_positional`), an INI
+  with invalid UTF-8 is not overwritten (68), one launcher per INI (`QLockFile` `launcher_cache\<ini>.lock`; GUI: the
+  first window comes to the front, automation: exit code 70). Package: `LICENSES\Qt\` (LGPL-3.0, GPL-3.0 from
+  `launcher\licenses\`, Qt source note).
 
 ## 5. Cross-module contracts
 
@@ -726,3 +1057,29 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-05 | M3 phase 5 (review fixes) | `gfx\rhi\rhi.h/.cpp`, `gfx\rhi\d3d11\*`, `src\host\CMakeLists.txt` (two `fut_add_shader` lines `d3d11_present_vs/ps`), `gfx\shaders\ff_ubershader.hlsl` | Persistent back buffers in rotation + present pass into a window-size swap chain with `rhi::PresentScaling` (findings 2, 8, 11); `DeviceDesc::scaling`; the D3D11 context re-binds its state after Present; client size read in the view's DPI context; the "d3d11" exit reporter pumps the info queue on the render thread (finding 10); transformed vertices snapped to 1/16 pixel (`SnapToSubpixelGrid`, finding 9). |
 | 2026-10-05 | M3 phase 5 (review fixes) | `platform\window.h/.cpp`, `platform\frame_pacer.h/.cpp`, `core\config.cpp`, `gfx\gfx_config.*` | `platform::CloseRequested()` (WM_CLOSE -> end after the next frame on the guest main thread, 3 s fallback timer; findings 5/10); `platform::NoteFrameWorkDone()` + frame-work statistics line (finding 3); config key `[render] scaling` (Choice linear\|point\|integer). |
 | 2026-10-05 | M3 phase 5 (review fixes) | `tools\m3_check.py`, `tools\xemu_capture.py`, tests (`rhi_d3d11_tests`, `platform_tests`, `extract_tests`, `ff_render_tests`), `GFX_CONTRACT.md` section 9 "Phase-5 results" + section 11, `docs\loader_design.md` 8.3 (B30-B37), new `docs\m3_report.md` | M3-3 = frame work 99th percentile <= 20 ms + paced average >= 49.5 Hz (finding 3); frontend static mask from `run\xemu_ref` + `run\xemu_ref_steam` and the steam region masked (finding 7); frames without draws checked through the picture they show; `xemu_capture.py --start`. |
+| 2026-10-05 | timing (M3b) | `core\config.cpp` (`kKnownKeys`), `core\config.h` (doc) | New section `[game]`: `tick_rate` (Choice `60\|50`, default 60; anything else = exit code 1). Read by `xapi::ConfiguredTickRate` (section 4.19) and the frame pacer. `frame_clock` (Choice `lockstep\|realtime`, default lockstep): time source of Game::Frame's accumulator (section 4.19). |
+| 2026-10-05 | timing (M3b) | `core\guest.h` | Block "added in M3b" (evidence in the header, `analysis\loader\timing60.md` 2): Game::Init time base instructions `kGameInitVideoStandardBranch` 0xA26BD, `kGameInitNtscFpsLoad` 0xA26CC, `kGameInitNtscDtLoad` 0xA26E3, `kGameInitNtscFpsCopyStore` 0xA26E9, `kGameInitNtscDtMaxStore` 0xA26F3, `kGameInitNtscFrameTimeStore` 0xA26FD, `kGameInitPalFpsLoad` 0xA2714, `kGameInitPalFpsCopyStore` 0xA271A, `kGameInitPalFpsCopy1Store` 0xA2724, `kGameInitPalDtMaxStore` 0xA272A, `kGameInitPalDtLoad` 0xA2734, `kGameInitPalFrameTimeStore` 0xA273A, `kGameInitPalMovieTagStore` 0xA2744, `kGameInitTimeBaseTail` 0xA274E; .rdata `kRdataFloat50` 0x2955AC, `kRdataFloat0p02` 0x2942C0, `kRdataFloat60` 0x2942CC, `kRdataFloatOneSixtieth` 0x29E390; globals `kGameFixedStepVar` 0x2D674C, `kGameDtMinVar` 0x2E7A58, `kGameDtMaxVar` 0x2E7A5C, `kGameFpsCopy1Var` 0x2E7A60, `kGameVideoFrameTimeVar` 0x2E7B68, `kGameFpsCopy2Var` 0x2E7B6C; per-step helper `kGameFixedStepHelper` 0x2C890 and its call `kGameFrameFixedStepCall` 0xA2DD3; game timer `kGameTimer` 0xD2B90, `kGameTimerFrequencyVar` 0x2EB448, `kGameTimerInverseFrequencyVar` 0x2EB450 and the Game::Frame sample returns `kGameFrameClockSampleReturn` 0xA2C6F, `kGameFrameRenderInitSampleReturn` 0xA2FA6, `kGameFrameRenderSampleReturn` 0xA2FBB. |
+| 2026-10-05 | timing (M3b) | `core\host_main.cpp`, `core\selftest_m1.cpp` (core-owned, additive lines only), `xapi\game_probes.h/.cpp` (one call + comment) | HostMain stage 8b `ApplyGameTiming` = `xapi::StageApplyGameTiming(cfg)` between ApplyFsPatches and InstallHooks (one stage line, include, stage comment row; the log now counts `stage N/14`, InstallHooks is 9/14 ... MessageLoop 14/14). Self-test `MappingMatchesFile` also excludes `xapi::AppliedTimingPatches()` (7 ranges at 60 Hz, 0 at 50 Hz). `probe:Game::Init` calls `xapi::NoteGameInitTiming(self)` after its "video standard" line (new log line `game timing: effective after Game::Init: ...`). |
+| 2026-10-05 | timing (M3b) | new `xapi\game_timing.h/.cpp`, new `tests\timing_tests.cpp`, `src\INTERFACES.md` (section 3 row 8b, section 4.19) | 60 Hz logic tick with PAL content (section 4.19): patch table + engine with original-byte checks against image and XBE file, read-back after Game::Init, `probe:Game::FixedStep` (FUN_0002C890) and `probe:Game::Timer` (FUN_000D2B90, lockstep frame clock; +2 `HOOK INFO` lines), self-test `GameTimingPatched` (Mapped), exit reporter "game timing" (`game ticks: ...`, `game clock summary: ...`). New log lines `game timing: ...`, `game clock: ...` (GAME/info). 18 test cases. |
+| 2026-10-05 | pacing (M3b) | `core\config.cpp` (`kKnownKeys`, `[render]` block), `core\config.h` (doc) | `[render] pacing` (Choice `auto\|vsync\|timer\|off`, default auto), `[render] pacing_trace` (Path, default off); documented: `[render] frame_rate` defaults to `[game] tick_rate` (was 50). Section 4.20. |
+| 2026-10-05 | pacing (M3b) | `gfx\rhi\rhi.h` (add-only) | `DeviceDesc::frameLatencyWaitable`, `DeviceInfo::tearingSupported` / `frameLatency`, `PresentDesc::allowTearing` / `skipSwapChain`, `struct PresentTiming`, `Device::FrameLatencyWaitable()` / `LastPresentTiming()` (virtual with default implementations; the test devices stay unchanged). Behaviour change of the D3D11 backend: `DXGI_PRESENT_ALLOW_TEARING` only on request (M3 set it for every sync interval 0). |
+| 2026-10-05 | pacing (M3b) | own: `platform\frame_pacer.h/.cpp` (rewritten; M3 API kept), new `platform\pacer_policy.h/.cpp`, new `platform\pacer_display.h/.cpp`, `gfx\rhi\d3d11\d3d11_device.h/.cpp`, `d3d11_internal.h` (frame-latency waitable swap chain, frame statistics, skipped presents), new `tests\pacer_tests.cpp`; additive: `platform\window.h/.cpp` (`DisplayEnvironment`, `GetDisplayEnvironment`, `NoteDisplayChange`, power/WTS notifications, `#pragma comment(lib, "wtsapi32.lib")`), `gfx\gfx_config.h/.cpp` (`Settings::tickRate/pacing/pacingTrace`, `SettingsFromConfig`, `PacingConfigOf`, frame_rate default), `gfx\nipc_gpu.h/.cpp` (DisplayFrame: `PlanPresent` / `NoteSwapChainPresent`, `frameLatencyWaitable = 1`), `gfx\nipc_renderer.cpp` (OnFrameDisplayed: `EndFrame`), `tests\gfx_tests.cpp` (default frame rate = tick rate), `GFX_CONTRACT.md` section 8 addendum | Display-coupled pacing (section 4.20): vblank k / tearing-timer + VRR probe / display-rate / free / timer / unthrottled / headless; the 50 Hz default is gone. |
+| 2026-10-05 | verify (M3b) | `tools\m2_check.py`, `tools\m3_check.py`, new `tools\timing_compare.py`, `docs\loader_design.md` 8.4 (B38-B46), this file (section 1, 4.18) | Checks at the tick rate: frame numbers are seconds x rate (intro threshold 20 s, scenes 3.0/8.0/13.6/20.0 s, timeout frames/rate + 90 s), M3-3 minimum rate - 0.5 Hz, work p99 <= one tick period, >= 95 % frame starts on period; new timing criteria T1/T2 (`m2_check.check_timing`, in `m3_check` M3b-5/6); M3b pacing statistics reported. Run configs `run\m3b\*`; `run\m3final\*` switched from `[render] frame_rate = 50` to `[game] tick_rate = 50` + `[render] pacing = timer`. No source change. |
+| 2026-10-06 | M3b phase 5 (review fixes) | `platform\pacer_policy.h/.cpp` (`PlanHysteresis` resume exception, new `CadenceGuard` (VRR-aware, alternating shifts, stops after 4), `VrrDetector` warm-up, `OnScreenTracker` jumps + refresh fit, `LastPair`), `platform\frame_pacer.h/.cpp` (slow frames from frame starts, cadence shifts, VRR warm-up/retry, `DescribePlan` "no Present", new `PresentStatistics` fields), `core\config.cpp` (`--set` values unquoted), `gfx\gfx_config.cpp` (GFX/warn for ineffective pacing combinations), `xapi\game_timing.h` (comment), `tests\pacer_tests.cpp`, `tools\m3_check.py` (M3b-7), new `analysis\loader\scripts\timing_review.py` | Review findings 5-11, 13a fixed; findings 1-4 (tick-bound gameplay, NTSC parity) documented in `timing60.md` 12; second `present:` exit line now counts slow frame starts (the M3 prefix is unchanged). Sections 4.19, 4.20. Report `docs\m3b_60hz_report.md`. |
+| 2026-10-06 | M3c phase 1 (host-CLI/schema agent) | new `core\config_schema.h/.cpp` | Schema table of every configuration key (section 4.21): type, default, choices with de/en labels, ranges, de/en label + help for players, UI tab/order/widget, advanced/developer/dynamic-default flags; validation `core::ValidateConfigValue` (+ float, resolution, enforced ranges), shared parsers `core::ParseConfigBool/U32/Float/Resolution`, `MatchesConfigChoice`, `ConfigKeyDefault`, `ConfigChoiceList`. Contains the M3c `[render]` keys `resolution`, `render_scale`, `msaa`, `alpha_to_coverage`, `anisotropy` (contract item 5; the renderer agent added `screenshot_size` through the same table). |
+| 2026-10-06 | M3c phase 1 (host-CLI/schema agent) | `core\config.cpp`, `core\config.h` (shared) | `kKnownKeys`, `KeyType`, `MatchesChoice`, `FindKnownKey`, `IsKnownSection` removed (replaced by the schema table; `IsKnownConfigKey`/`ConfigKeyChoices` keep their signatures and results, choice lists list the visible values first); local `ParseBool`/`ParseU32` delegate to the schema parsers. Added: `core::ConfigLocationMode`, `ConfigLocation`, `ResolveConfigLocation`, `ConfigLocationModeName`, `kConfigFileName`, `kPortableMarkerName`, `kUserdataFolderName`, `Config::configMode/portable`. **Behaviour change (contract item 4):** without `--config` the INI is `%LOCALAPPDATA%\FuturamaPC\futurama.ini` (portable: `<exe dir>\futurama.ini` with `portable.txt`, userdata `<exe dir>`); an `<exe dir>\futurama.ini` alone is ignored with a `config:` warning. `[log] level` is validated as a choice and `[kernel] min_guest_stack` outside 0x10000..0x4000000 is a configuration error (exit 1, was exit 2 from the kernel stage). |
+| 2026-10-06 | M3c phase 1 (host-CLI/schema agent) | new `core\cli_tools.h/.cpp`; `core\host_main.cpp` (core-owned, additive: include, tool dispatch at the start of `RunHost`, stage comment, config log line with the location mode) | Tool modes `--print-config-schema`, `--check-iso` + `--result`, `--query-gpu`, `--print-paths` (contract items 1-3 + extension) before configuration/log/XBE; `core::cli::JsonWriter`, `ConfigSchemaJson`, `CheckIso`/`IsoCheckJson`, `QueryGpu`/`GpuInfoJson`, `PathsJson`, `BuildDescription`, `kProtoNtscXbeSha1`, exit codes `kToolExitOk/Usage/NotSupported`. Log line `config    <file> (<mode>[, portable.txt])` (the `userdata  ` line read by the checks is unchanged). `src\launcher\launcher.c` unchanged (the stub's TLS/placeholder checks run before the tools). |
+| 2026-10-06 | M3c phase 1 (host-CLI/schema agent) | new `tests\schema_tests.cpp`, `tests\cli_tests.cpp`, `tests\cli_json.h`; this file (sections 1, 4.3, new 4.21); `docs\loader_design.md` (4.1 note, new 8.5 rows K1-K6) | Tests and documentation of section 4.21. |
+| 2026-10-06 | M3c phase 1 (renderer agent) | own: `gfx\gfx_config.*`, `gfx\nipc_gpu.*`, `gfx\nipc_renderer.cpp` (one line), `gfx\ff_pipeline.*`, `gfx\shaders\ff_shared.h` + `ff_ubershader.hlsl`, `gfx\rhi\rhi.h` + `rhi.cpp` (add-only), `gfx\rhi\d3d11\*`, `platform\screenshot.*`, `gfx\GFX_CONTRACT.md` (new section 12); new `tests\aa_tests.cpp`, new `tools\m3c_check.py` | Render resolution and anti-aliasing (section 4.22): internal resolution with the guest kept at 640x480, MSAA back buffers + resolve, alpha-to-coverage with alpha sharpening, supersampling downsample (box / Mitchell-Netravali), anisotropic filtering, anti-aliased nearest for point-filtered textures, screenshots at the internal or output size (asynchronous PNG), GPU frame timing. Classic configuration bit-identical to M3. |
+| 2026-10-06 | M3c phase 1 (renderer agent) | `src\host\CMakeLists.txt` (shared, additive) | One `fut_add_shader(d3d11_resample_ps ... ResamplePS ps_4_0)` line in the backend block. |
+| 2026-10-06 | M3c phase 1 (renderer agent) | `core\config_schema.cpp` (host-CLI/schema agent's table, one row as its header asks of a module with a new key) | Row `[render] screenshot_size` (choice `output\|internal`, default output, Advanced tab, order 100) + `kScreenshotSizeChoices`. The renderer's defaults `gfx::kDefault*` equal the schema rows of resolution/render_scale/msaa/alpha_to_coverage/anisotropy (unit test). |
+| 2026-10-06 | M3c phase 1 (renderer agent) | this file (new section 4.22) | Section 4.22. |
+| 2026-10-06 | M3c phase 1 (launcher agent) | new `launcher\**` (own CMake project), new `build_launcher.cmd`, new `tools\package.py`, `.gitignore` (`dist/`, additive), this file (new section 4.23) | Qt 6 launcher `FuturamaLauncher.exe` (section 4.23, `launcher\README.md`): schema-driven tabs, first-run wizard, INI round trip with host rules, game start + result panel, automation modes; player package `dist\FuturamaPC\`. No change to the x86 build or to host files. |
+| 2026-10-06 | M3c phase 2 (integration) | `platform\window.h/.cpp`, `platform\platform.cpp`, `gfx\gfx_config.h/.cpp`, `core\config_schema.cpp` (row), `tests\platform_tests.cpp`, `tests\schema_tests.cpp` | `[render] monitor` (section 4.21): `platform::SelectMonitor`, `WindowOptions::monitor`, window size, DPI and work area of the chosen monitor (`GetDpiForMonitor`, `shcore.lib` via `#pragma comment`), log suffix `monitor <device> (primary)`; schema row (string shown with widget monitor - the one widget exception in `schema_tests`); unit test of the selection. |
+| 2026-10-06 | M3c phase 2 (integration) | `core\config_schema.cpp`, `core\cli_tools.cpp` | Player texts only: `[settings] language` label "Spielsprache"/"Game language", `[render] window_scale` help mentions the Windows scaling, check-iso messages say "europäische Verkaufsversion" (the launcher's wording). No behaviour change. |
+| 2026-10-06 | M3c phase 2 (integration) | `launcher\src\ui\iso_status.*` (new), `key_editors.cpp`, `settings_tab.*`, `main_window.*`, `wizard.cpp`, `screen_info.*`, `automation.cpp`, `launcher\src\core\gpu_info.*`, `l10n.cpp`, `l10n_table.cpp`, `launcher\CMakeLists.txt`, `launcher\tests\tst_ui.cpp`, `launcher\testdata\sample_schema.json` | Launcher against the real host (section 4.23, last item): ISO verdict box on the game tab, correct resolution-auto texts and a 4:3 list, window size in pixels, alpha-to-coverage dependency, one label column per tab, frame-rate display from the tick rate, number format per UI language, screenshots at the default window size; UI tests `displayHelpers`, `dependentKeysAndIsoStatus`. |
+| 2026-10-06 | M3c phase 2 (integration) | `docs\loader_design.md` (section 8 title, new 8.7 rows I1-I8), this file (4.21, 4.23), `launcher\README.md`, `README.md`, `docs\ROADMAP.md` | Integration documentation. |
+| 2026-10-06 | M3c phase 4 (review fixes) | `gfx\rhi\d3d11\d3d11_builtin.hlsl` (`ResamplePS`), `gfx\rhi\d3d11\d3d11_device.cpp`, `d3d11_internal.h`, `gfx\rhi\rhi.h` (add-only `DeviceDesc/DeviceInfo::linearResolve`), `gfx\nipc_gpu.h/.cpp`, `gfx\nipc_renderer.cpp`, `gfx\gfx_config.h/.cpp`, `gfx\ff_pipeline.h/.cpp`, `gfx\GFX_CONTRACT.md` 12, `tests\aa_tests.cpp`, `tools\m3c_check.py` | Section 4.22: Catmull-Rom downsample with anti-ringing (finding 1), quality ladder + `core::Fatal` instead of the invisible null renderer (finding 2), `[render] linear_aa` (finding 3), anisotropy only with MAG = LINEAR (finding 4), destination-alpha rule of alpha-to-coverage (finding 5); log `render:` line + `resolve ...[, reduced from ...]`, `render totals:` + destination-alpha draws; m3c_check variants `max`, `frac`. |
+| 2026-10-06 | M3c phase 4 (review fixes) | `core\host_main.h/.cpp`, `core\config_schema.cpp`, `core\config.cpp`, `core\cli_tools.cpp` | Exit code 6 `core::kExitAlreadyRunning`: named mutex `Local\FuturamaPC-userdata-<hash>` per user data folder before the log opens (finding 15). Schema: row `[render] linear_aa`; `[render] frame_rate` is a developer key (finding 18); `[game]` section "Spiellogik"; player texts (finding 16: Sie, "Zeitquelle der Spiellogik", "Alt+Eingabetaste", "Spielabbild (ISO)", "Verkaufsversion", "Fehlende D3D-Funktionen", "Zeitlimit", "Rückgabecode"); the unknown-key error names no source file; VRR hint reworded. |
+| 2026-10-06 | M3c phase 4 (review fixes) | `launcher\**`, `build_launcher.cmd`, `tools\package.py`, new `launcher\licenses\` | Section 4.23 "M3c review fixes" (findings 7-15, 17-23). |
+| 2026-10-06 | M3c phase 4 (review fixes) | new `docs\m3c_report.md`, `docs\loader_design.md` (new 8.8), `docs\ROADMAP.md`, `README.md`, `launcher\README.md`, this file | M3c report and documentation. |

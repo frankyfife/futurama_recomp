@@ -1,0 +1,60 @@
+== 1. timing block of FUN_000A26A0
+  000A26BD 8b86e8000000           mov eax, dword ptr [esi + 0xe8]
+  000A26C3 bb01000000             mov ebx, 1
+  000A26C8 3bc3                   cmp eax, ebx
+  000A26CA 7548                   jne 0xa2714
+  000A26CC d905cc422900           fld dword ptr [0x2942cc]
+  000A26D2 a164182a00             mov eax, dword ptr [0x2a1864]
+  000A26D7 8a0d68182a00           mov cl, byte ptr [0x2a1868]
+  000A26DD d915607a2e00           fst dword ptr [0x2e7a60]
+  000A26E3 d90590e32900           fld dword ptr [0x29e390]
+  000A26E9 c7056c7b2e0000007042   mov dword ptr [0x2e7b6c], 0x42700000
+  000A26F3 c7055c7a2e008988883c   mov dword ptr [0x2e7a5c], 0x3c888889
+  000A26FD c705687b2e008a4b063d   mov dword ptr [0x2e7b68], 0x3d064b8a
+  000A2707 a3707b2e00             mov dword ptr [0x2e7b70], eax
+  000A270C 880d747b2e00           mov byte ptr [0x2e7b74], cl
+  000A2712 eb3a                   jmp 0xa274e
+  000A2714 d905ac552900           fld dword ptr [0x2955ac]
+  000A271A c7056c7b2e0000004842   mov dword ptr [0x2e7b6c], 0x42480000
+  000A2724 d915607a2e00           fst dword ptr [0x2e7a60]
+  000A272A c7055c7a2e000ad7a33c   mov dword ptr [0x2e7a5c], 0x3ca3d70a
+  000A2734 d905c0422900           fld dword ptr [0x2942c0]
+  000A273A c705687b2e008542213d   mov dword ptr [0x2e7b68], 0x3d214285
+  000A2744 c705707b2e0050414c00   mov dword ptr [0x2e7b70], 0x4c4150
+  000A274E d915587a2e00           fst dword ptr [0x2e7a58]
+  000A2754 881d4c672d00           mov byte ptr [0x2d674c], bl
+  000A275A d9c9                   fxch st(1)
+  000A275C 8bce                   mov ecx, esi
+  000A275E d91d44672d00           fstp dword ptr [0x2d6744]
+  000A2764 d91d48672d00           fstp dword ptr [0x2d6748]
+
+== 2. code references of the fld constants (shared pool -> patch the operand, not the constant)
+  [0x2955AC] = 42480000 (50): 9 code refs (9 raw): 310CD FUN_00030e30, 310E0 FUN_00030e30, 44FE0 FUN_000445a0, 44FEE FUN_000445a0, 45006 FUN_000445a0, A2714 FUN_000a26a0, C0BF9 FUN_000c0ac0, 67139 gap_067033, 6714D gap_067033
+  [0x2942C0] = 3CA3D70A (0.0199999996): 13 code refs (13 raw): 22562 FUN_00022550, 225A4 FUN_00022550, 7820C FUN_00077e50, 78225 FUN_00077e50, 78236 FUN_00077e50, 78C01 FUN_00077e50, 78C1A FUN_00077e50, 78C2B FUN_00077e50, 78DF2 FUN_00077e50, 78DFB FUN_00077e50, 78E04 FUN_00077e50, A2734 FUN_000a26a0, 67153 gap_067033
+  [0x2942CC] = 42700000 (60): 3 code refs (3 raw): A26CC FUN_000a26a0, 24EA60 FUN_0024ea12, 22BEC gap_022B30
+  [0x29E390] = 3C888889 (0.0166666675): 4 code refs (4 raw): 854C7 FUN_00084e60, 854D1 FUN_00084e60, 854DB FUN_00084e60, A26E3 FUN_000a26a0
+  [0x2A1864] = 4353544E (211.329315): 1 code refs (1 raw): A26D2 FUN_000a26a0
+  [0x2A1868] = 00000000 (0): 1 code refs (1 raw): A26D7 FUN_000a26a0
+
+== 3. emulated final values
+  global     PAL (orig)                 NTSC (orig)                PAL + patch               
+  0x2D6744   42480000 (50)              42700000 (60)              42700000 (60)             
+  0x2D6748   3CA3D70A (0.0199999996)    3C888889 (0.0166666675)    3C888889 (0.0166666675)   
+  0x2D674C   byte 1                     byte 1                     byte 1                    
+  0x2E7A58   3CA3D70A (0.0199999996)    3C888889 (0.0166666675)    3C888889 (0.0166666675)   
+  0x2E7A5C   3CA3D70A (0.0199999996)    3C888889 (0.0166666675)    3C888889 (0.0166666675)   
+  0x2E7A60   42480000 (50)              42700000 (60)              42700000 (60)             
+  0x2E7B68   3D214285 (0.0393700786)    3D064B8A (0.0327868834)    3D064B8A (0.0327868834)   
+  0x2E7B6C   42480000 (50)              42700000 (60)              42700000 (60)             
+  0x2E7B70   004C4150 'PAL'             4353544E 'NTSC'            004C4150 'PAL'            
+  0x2E7B74   -                          byte 0                     -                         
+  patched PAL == NTSC in all timing globals and tag stays PAL: True
+
+== 4. patch table (original instruction verified as a whole)
+  0x0A2714  d905ac552900 -> d905cc422900  bytes 0xA2716..0xA2717  fld [0x2955AC] (50.0f)  -> fld [0x2942CC] (60.0f): fps for 0x2E7A60/0x2D6744  [orig ok]
+  0x0A271A  c7056c7b2e0000004842 -> c7056c7b2e0000007042  bytes 0xA2722..0xA2722  mov [0x2E7B6C], 50.0f -> 60.0f  [orig ok]
+  0x0A272A  c7055c7a2e000ad7a33c -> c7055c7a2e008988883c  bytes 0xA2730..0xA2732  mov [0x2E7A5C], 0.02f -> 1/60 (dt clamp max)  [orig ok]
+  0x0A2734  d905c0422900 -> d90590e32900  bytes 0xA2736..0xA2737  fld [0x2942C0] (0.02f)  -> fld [0x29E390] (1/60): dt for 0x2E7A58/0x2D6748  [orig ok]
+  0x0A273A  c705687b2e008542213d -> c705687b2e008a4b063d  bytes 0xA2740..0xA2742  mov [0x2E7B68], 1/25.4 -> 1/30.5 (write-only)  [orig ok]
+  0x2D6744  00004842 -> 00007042  .data initial fps 50.0f -> 60.0f (read before Game::Init by FUN_000E4AA0)  [orig ok]
+  0x2D6748  0ad7a33c -> 8988883c  .data initial dt 0.02f -> 1/60 (consistency; no reader before Game::Init)  [orig ok]

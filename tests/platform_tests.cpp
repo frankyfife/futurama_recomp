@@ -15,6 +15,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -103,6 +104,60 @@ TEST_CASE("platform: 4:3 view layout inside the client area") {
     r = platform::FitAspectRect(0, 100, 640, 480);
     CHECK(r.width == 0);
     CHECK(r.height == 0);
+}
+
+TEST_CASE("platform: [render] monitor selects a monitor by its GDI device name (M3c)") {
+    const HMONITOR primary = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFOEXW mi{};
+    mi.cbSize = sizeof(mi);
+    REQUIRE(GetMonitorInfoW(primary, &mi));
+    char device[40] = {};
+    WideCharToMultiByte(CP_UTF8, 0, mi.szDevice, -1, device, 39, nullptr, nullptr);
+    // primary: default, empty and the word "primary" (any case, blanks around it).
+    for (const char* name : {static_cast<const char*>(nullptr), "", "primary", "  Primary ", "PRIMARY"}) {
+        const platform::MonitorChoice c = platform::SelectMonitor(name);
+        CHECK(c.monitor == primary);
+        CHECK(c.primary);
+        CHECK(c.found);
+        CHECK(std::string(c.device) == device);
+    }
+    // Every connected monitor by its device name (case-insensitive, as --query-gpu lists it).
+    std::vector<std::pair<HMONITOR, std::string>> monitors;
+    EnumDisplayMonitors(
+        nullptr, nullptr,
+        [](HMONITOR m, HDC, LPRECT, LPARAM lp) -> BOOL {
+            MONITORINFOEXW info{};
+            info.cbSize = sizeof(info);
+            if (GetMonitorInfoW(m, &info)) {
+                char name[40] = {};
+                WideCharToMultiByte(CP_UTF8, 0, info.szDevice, -1, name, 39, nullptr, nullptr);
+                reinterpret_cast<std::vector<std::pair<HMONITOR, std::string>>*>(lp)->emplace_back(m, name);
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&monitors));
+    REQUIRE(!monitors.empty());
+    for (const auto& [monitor, name] : monitors) {
+        std::string lower = name;
+        for (char& ch : lower) {
+            ch = static_cast<char>(ch >= 'A' && ch <= 'Z' ? ch - 'A' + 'a' : ch);
+        }
+        for (const std::string& query : {name, lower, " " + name + " "}) {
+            const platform::MonitorChoice c = platform::SelectMonitor(query.c_str());
+            CHECK(c.monitor == monitor);
+            CHECK(c.found);
+            CHECK(c.primary == (monitor == primary));
+            CHECK(std::string(c.device) == name);
+        }
+    }
+    // Not connected: the primary monitor, found = false.
+    for (const char* name : {"\\\\.\\DISPLAY99", "LG TV", "\\\\.\\DISPLAY1x"}) {
+        const platform::MonitorChoice c = platform::SelectMonitor(name);
+        CHECK(c.monitor == primary);
+        CHECK(c.primary);
+        CHECK_FALSE(c.found);
+        CHECK(std::string(c.device) == device);
+    }
 }
 
 TEST_CASE("platform: present statistics") {

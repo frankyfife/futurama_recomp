@@ -1,0 +1,78 @@
+== 1. .rdata constants and their game-code users
+  [0x293B98] f32 1/25                 5 game-code users
+      0001838C  d80d983b2900           fmul    dword ptr [0x293b98]                     FUN_00018250
+      000183AA  d80d983b2900           fmul    dword ptr [0x293b98]                     FUN_00018250
+      00034E83  d80d983b2900           fmul    dword ptr [0x293b98]                     FUN_00034df0
+      0006BE49  d80d983b2900           fmul    dword ptr [0x293b98]                     gap_06BD0B
+      0006BE55  d80d983b2900           fmul    dword ptr [0x293b98]                     gap_06BD0B
+  [0x2942C0] f32 0.02 (PAL dt)        13 game-code users
+      00022562  d815c0422900           fcom    dword ptr [0x2942c0]                     FUN_00022550
+      000225A4  d825c0422900           fsub    dword ptr [0x2942c0]                     FUN_00022550
+      0007820C  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078225  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078236  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078C01  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078C1A  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078C2B  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078DF2  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078DFB  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      00078E04  d80dc0422900           fmul    dword ptr [0x2942c0]                     FUN_00077e50
+      000A2734  d905c0422900           fld     dword ptr [0x2942c0]                     FUN_000a26a0
+      00067153  d80dc0422900           fmul    dword ptr [0x2942c0]                     gap_067033
+  [0x2942CC] f32 60                   2 game-code users
+      000A26CC  d905cc422900           fld     dword ptr [0x2942cc]                     FUN_000a26a0
+      00022BEC  d81dcc422900           fcomp   dword ptr [0x2942cc]                     gap_022B30
+  [0x2955AC] f32 50                   9 game-code users
+      000310CD  d80dac552900           fmul    dword ptr [0x2955ac]                     FUN_00030e30
+      000310E0  d80dac552900           fmul    dword ptr [0x2955ac]                     FUN_00030e30
+      00044FE0  d80dac552900           fmul    dword ptr [0x2955ac]                     FUN_000445a0
+      00044FEE  d80dac552900           fmul    dword ptr [0x2955ac]                     FUN_000445a0
+      00045006  d80dac552900           fmul    dword ptr [0x2955ac]                     FUN_000445a0
+      000A2714  d905ac552900           fld     dword ptr [0x2955ac]                     FUN_000a26a0
+      000C0BF9  d805ac552900           fadd    dword ptr [0x2955ac]                     FUN_000c0ac0
+      00067139  d81dac552900           fcomp   dword ptr [0x2955ac]                     gap_067033
+      0006714D  d82dac552900           fsubr   dword ptr [0x2955ac]                     gap_067033
+  [0x2959F0] f32 1/30                 1 game-code users
+      000E6489  d905f0592900           fld     dword ptr [0x2959f0]                     FUN_000e62a0
+  [0x2971A0] f32 25                   7 game-code users
+      00044F91  d825a0712900           fsub    dword ptr [0x2971a0]                     FUN_000445a0
+      0005D0F8  d81da0712900           fcomp   dword ptr [0x2971a0]                     FUN_0005a700
+      0005D1C0  d81da0712900           fcomp   dword ptr [0x2971a0]                     FUN_0005a700
+      00063CBB  d81da0712900           fcomp   dword ptr [0x2971a0]                     FUN_000639c0
+      000CDCA2  d81da0712900           fcomp   dword ptr [0x2971a0]                     FUN_000cdb50
+      00046D25  d815a0712900           fcom    dword ptr [0x2971a0]                     gap_046C70
+      00046D34  d905a0712900           fld     dword ptr [0x2971a0]                     gap_046C70
+  [0x29759C] f32 30                   13 game-code users
+      00048F40  d81d9c752900           fcomp   dword ptr [0x29759c]                     FUN_00048190
+      0005D330  d81d9c752900           fcomp   dword ptr [0x29759c]                     FUN_0005a700
+      0005D545  d81d9c752900           fcomp   dword ptr [0x29759c]                     FUN_0005a700
+      0007A200  d81d9c752900           fcomp   dword ptr [0x29759c]                     FUN_00079de0
+      0007A322  d81d9c752900           fcomp   dword ptr [0x29759c]                     FUN_00079de0
+      0007BB3D  d80d9c752900           fmul    dword ptr [0x29759c]                     FUN_0007ba40
+      0007EB22  d80d9c752900           fmul    dword ptr [0x29759c]                     FUN_0007def0
+      00080D4E  d8159c752900           fcom    dword ptr [0x29759c]                     FUN_00080690
+      00080D77  d80d9c752900           fmul    dword ptr [0x29759c]                     FUN_00080690
+      00080D8B  d80d9c752900           fmul    dword ptr [0x29759c]                     FUN_00080690
+      00080D9D  d80d9c752900           fmul    dword ptr [0x29759c]                     FUN_00080690
+      000CDEC2  d81d9c752900           fcomp   dword ptr [0x29759c]                     FUN_000cdb50
+      0006D845  d80d9c752900           fmul    dword ptr [0x29759c]                     gap_06D7B0
+  [0x29E390] f32 1/60 (NTSC dt)       4 game-code users
+      000854C7  d80d90e32900           fmul    dword ptr [0x29e390]                     FUN_00084e60
+      000854D1  d80d90e32900           fmul    dword ptr [0x29e390]                     FUN_00084e60
+      000854DB  d80d90e32900           fmul    dword ptr [0x29e390]                     FUN_00084e60
+      000A26E3  d90590e32900           fld     dword ptr [0x29e390]                     FUN_000a26a0
+  [0x2A5180] f32 60                   2 game-code users
+      000E79E3  8b0d80512a00           mov     ecx, dword ptr [0x2a5180]                FUN_000e7980
+      000E7CD7  d82580512a00           fsub    dword ptr [0x2a5180]                     FUN_000e7980
+  [0x2A56B0] f64 60                   1 game-code users
+      000EDA2A  dc0db0562a00           fmul    qword ptr [0x2a56b0]                     FUN_000ed8b0
+
+== 2. float immediates in game code
+  0.02 (PAL dt)        0003BB91  c744243c0ad7a33c       mov     dword ptr [esp + 0x3c], 0x3ca3d70a       FUN_0003b960
+  0.02 (PAL dt)        0003BBA9  c74424480ad7a33c       mov     dword ptr [esp + 0x48], 0x3ca3d70a       FUN_0003b960
+  0.02 (PAL dt)        00043EEC  c746640ad7a33c         mov     dword ptr [esi + 0x64], 0x3ca3d70a       FUN_00043d80
+  1/60 (NTSC dt)       00062815  688988883c             push    0x3c888889                               FUN_00061a70
+  1/60 (NTSC dt)       000A26F3  c7055c7a2e008988883c   mov     dword ptr [0x2e7a5c], 0x3c888889         FUN_000a26a0
+  0.02 (PAL dt)        000A272A  c7055c7a2e000ad7a33c   mov     dword ptr [0x2e7a5c], 0x3ca3d70a         FUN_000a26a0
+  0.02 (PAL dt)        0006BFB6  b80ad7a33c             mov     eax, 0x3ca3d70a                          gap_06BEC6
+  0.02 (PAL dt)        0006C1CA  b80ad7a33c             mov     eax, 0x3ca3d70a                          gap_06C164
