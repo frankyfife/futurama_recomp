@@ -10,6 +10,10 @@
 //                               review M3b finding 11). A value other
 //                               than the tick rate is allowed for experiments and logged as a warning (the
 //                               fixed-step loop then takes 0 or 2 steps in some frames)
+//                               M3d: also "120" (up to 120 frames per second, interpolated) and "display" (the
+//                               refresh, at most 120): Settings::frameRateMode (platform::pacing::FrameRateMode;
+//                               frameRate is then the cap 120). "60" and other numbers keep the M3b meaning
+//   [render] low_latency = on   (M3d) just-in-time frame start on the vblank plans (platform/frame_pacer.h)
 //   [render] pacing = auto      (M3b) auto | vsync | timer | off (platform/pacer_policy.h Mode)
 //   [render] pacing_trace       (M3b) CSV file with one line per frame, default off
 //   [game] tick_rate = 60       (timing agent's key, read here as the default frame rate)
@@ -114,6 +118,10 @@ bool ParseRenderScale(std::string_view text, float* scale) noexcept;
 bool ParseMsaa(std::string_view text, std::uint32_t* samples) noexcept;
 // off | 2 | 4 | 8 | 16 -> maximum anisotropy 1 / 2 / 4 / 8 / 16.
 bool ParseAnisotropy(std::string_view text, std::uint32_t* level) noexcept;
+// M3d [render] frame_rate: "120" -> Max120 with the cap 120, "display" -> Display with the cap 120 (case-insensitive),
+// any other unsigned number (decimal or 0x hex; "60", "0", developer values) -> Fixed with that rate. The schema
+// (core/config_schema.cpp) accepts the same values.
+bool ParseFrameRate(std::string_view text, std::uint32_t* hz, platform::pacing::FrameRateMode* mode) noexcept;
 
 struct Settings {
     std::uint32_t frameLimit = 0;
@@ -146,6 +154,9 @@ struct Settings {
     std::uint32_t anisotropy = kDefaultAnisotropy;           // [render] anisotropy (1 = off)
     ScreenshotSize screenshotSize = kDefaultScreenshotSize;  // [render] screenshot_size
     bool linearAa = kDefaultLinearAa;                        // [render] linear_aa (review M3c finding 3)
+    // M3d (frame rates up to 120 Hz, platform/frame_pacer.h)
+    platform::pacing::FrameRateMode frameRateMode = platform::pacing::FrameRateMode::Fixed;  // [render] frame_rate
+    bool lowLatency = true;                                  // [render] low_latency
 };
 
 // Parses the settings from `cfg` (GetSettings does this once for core::GetConfig(); tests). May throw

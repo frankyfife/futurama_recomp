@@ -1,0 +1,392 @@
+# m3d_perframe.py - per-frame code audit (M3d)
+
+## 1. Call sites in CApp::Frame 0xD2630 and Game::Frame 0xA2C20
+
+  000D2644  dword ptr [eax + 0x44]         CApp::Frame                  
+  000D264B  dword ptr [eax + 0x20]         CApp::Frame                  
+  000D2650  0xa2c20                        CApp::Frame                  FUN_000a2c20
+  000D2668  0xe52d0                        CApp::Frame                  FUN_000e52d0
+  000D266D  0xf2cf0                        CApp::Frame                  FUN_000f2cf0
+  000D2678  0xa3210                        CApp::Frame                  NiAVObject::vf28
+  000D2685  dword ptr [edx + 0x40]         CApp::Frame                  
+  000A2C54  0xd2370                        vor der Schleife             FUN_000d2370
+  000A2C59  0xf2050                        vor der Schleife             FUN_000f2050
+  000A2C60  0xf2680                        vor der Schleife             FUN_000f2680
+  000A2C6A  0xd2b90                        vor der Schleife             FUN_000d2b90
+  000A2C82  0xd2b30                        vor der Schleife             FUN_000d2b30
+  000A2C97  0xd2b30                        vor der Schleife             FUN_000d2b30
+  000A2CA0  0xd2b80                        vor der Schleife             FUN_000d2b80
+  000A2CF8  0xd2b80                        vor der Schleife             FUN_000d2b80
+  000A2D11  0xd2b10                        vor der Schleife             FUN_000d2b10
+  000A2D2F  0xd2b80                        vor der Schleife             FUN_000d2b80
+  000A2D94  0xd2b80                        Schleife (pro Tick)          FUN_000d2b80
+  000A2DBD  0xa3210                        Schleife (pro Tick)          NiAVObject::vf28
+  000A2DCA  dword ptr [edx + 0x28]         Schleife (pro Tick)          
+  000A2DD3  0x2c890                        Schleife (pro Tick)          FUN_0002c890
+  000A2DE0  dword ptr [eax + 8]            Schleife (pro Tick)          
+  000A2DF3  dword ptr [edx + 0x10]         Schleife, Kontextwechsel     
+  000A2DF6  0x2a660                        Schleife, Kontextwechsel     FUN_0002a660
+  000A2DFD  0x108410                       Schleife, Kontextwechsel     FUN_00108410
+  000A2E06  dword ptr [eax + 0x14]         Schleife, Kontextwechsel     
+  000A2E1B  dword ptr [edx]                Schleife, Kontextwechsel     
+  000A2E40  0xa48c0                        Schleife, Kontextwechsel     FUN_000a48c0
+  000A2E47  0xa4900                        Schleife, Kontextwechsel     FUN_000a4900
+  000A2E5E  0x2a4a0                        Schleife, Kontextwechsel     NiAlphaAccumulator::NiAlphaAccumulator
+  000A2E84  dword ptr [eax + 0x14]         Schleife, Kontextwechsel     
+  000A2E9D  dword ptr [edx]                Schleife, Kontextwechsel     
+  000A2EAB  0xb0390                        Schleife, Kontextwechsel     NiObject::vf09
+  000A2EC0  0xaed30                        Schleife, Kontextwechsel     NiUDSTimeController::vf03
+  000A2ECD  dword ptr [edx + 4]            Schleife, Kontextwechsel     
+  000A2ED4  0x9be10                        Schleife, Kontextwechsel     FUN_0009be10
+  000A2EE1  dword ptr [eax + 8]            Schleife, Kontextwechsel     
+  000A2EFB  dword ptr [edx]                Schleife, Kontextwechsel     
+  000A2F0C  0xd2b50                        Schleife (pro Tick)          FUN_000d2b50
+  000A2F3E  dword ptr [edx]                Schleife (pro Tick)          
+  000A2F63  0xd2b30                        Render-Zweig                 FUN_000d2b30
+  000A2F7F  0xa46d0                        Render-Zweig                 FUN_000a46d0
+  000A2FA1  0xd2b90                        Render-Zweig                 FUN_000d2b90
+  000A2FB6  0xd2b90                        Render-Zweig                 FUN_000d2b90
+  000A2FCC  0xd2b30                        Render-Zweig                 FUN_000d2b30
+  000A2FD3  0xd2b80                        Render-Zweig                 FUN_000d2b80
+  000A2FF7  0xb0390                        Render-Zweig                 NiObject::vf09
+  000A3007  0xaed30                        Render-Zweig                 NiUDSTimeController::vf03
+  000A3014  dword ptr [edx + 0xc]          Render-Zweig                 
+  000A3027  0xa3210                        Render-Zweig                 NiAVObject::vf28
+  000A3037  0xaed30                        Render-Zweig                 NiUDSTimeController::vf03
+  000A3047  0xaed30                        Render-Zweig                 NiUDSTimeController::vf03
+  000A3052  0x2c9c0                        Render-Zweig                 FUN_0002c9c0
+  000A3062  0xaed30                        Render-Zweig                 NiUDSTimeController::vf03
+  000A3071  0xd7630                        Render-Zweig                 FUN_000d7630
+
+## 2. Reachable game code from the per-frame roots (direct calls, depth <= 5)
+
+### CApp::Frame - vf8 0xA24A0 Movie (vor Game::Frame) (23 Funktionen/Segmente, 22 indirekte Aufrufe)
+  [NIUPDATE] 5 Stellen
+    d3 FUN_00098ce0   00098D08  e8338b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d3 FUN_00098ce0   00098D13  e8288b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d4 FUN_00099830   00099A9B  e8a07d0600             call    0x101840                                 FUN_00099830 | NiAVObject::Update FUN_00101840
+    d4 FUN_00099830   00099AD8  e8637d0600             call    0x101840                                 FUN_00099830 | NiAVObject::Update FUN_00101840
+    d5 FUN_0009adb0   0009B072  e8c9670600             call    0x101840                                 FUN_0009adb0 | NiAVObject::Update FUN_00101840
+  [GWRITE] 2 Stellen
+    d2 FUN_000ed830   000ED857  890d34fb2e00           mov     dword ptr [0x2efb34], ecx                FUN_000ed830 | schreibt Global 0x2EFB34
+    d2 FUN_000ed830   000ED89E  c70534fb2e0000000000   mov     dword ptr [0x2efb34], 0                  FUN_000ed830 | schreibt Global 0x2EFB34
+  [FIELDCNT] 4 Stellen
+    d4 FUN_00098f40   00098FDA  ff8d20010000           dec     dword ptr [ebp + 0x120]                  FUN_00098f40 | dec Feld +0x120
+    d4 FUN_00099830   0009998D  66ff4644               inc     word ptr [esi + 0x44]                    FUN_00099830 | inc Feld +0x44
+    d5 FUN_00099310   0009956C  ff4748                 inc     dword ptr [edi + 0x48]                   FUN_00099310 | inc Feld +0x48
+    d5 FUN_0009adb0   0009AFBC  ff4754                 inc     dword ptr [edi + 0x54]                   FUN_0009adb0 | inc Feld +0x54
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000a4900 x11, FUN_00101840 x5, FUN_00098b90 x4, FUN_00101e10 x3, FUN_00102100 x3, FUN_000a3880 x3, FUN_000fee90 x2, D3D8::D3DDevice_SetRenderState_YuvEnable x2, FUN_00100c50 x2, FUN_00097eb0 x2, NiObjectNET::NiObjectNET x2, FUN_0009ac70 x2, D3D8::D3DTexture_GetSurfaceLevel2 x1, FUN_00264962 x1, D3D8::D3DResource_Release x1, FUN_00264fdf x1, __stricmp x1, FUN_000981f0 x1, FUN_00098c10 x1, FUN_000d2c70 x1, FUN_0011b090 x1, FUN_001164e0 x1, NiMaterialProperty::NiMaterialProperty x1, FUN_0009a290 x1, FUN_000139f0 x1
+  erreichte Funktionen: FUN_00013a50, FUN_00013d80, FUN_00097f10, FUN_00098ce0, FUN_00098d20, FUN_00098f40, FUN_00098ff0, FUN_00099310, FUN_00099830, FUN_00099fe0, FUN_0009a140, FUN_0009a180, FUN_0009ac50, FUN_0009ad50, FUN_0009adb0, FUN_000a24a0, NiUDSTimeController::vf03, NiObject::vf09, FUN_000d2c50, FUN_000da190, FUN_000ed7f0, FUN_000ed830, FUN_000ede90
+
+### CApp::Frame - FUN_000E52D0 Pause-Overlay (nach Game::Frame, wenn Pause+0xA) (7 Funktionen/Segmente, 2 indirekte Aufrufe)
+  [NIUPDATE] 4 Stellen
+    d1 FUN_000e3310   000E331F  e81ce50100             call    0x101840                                 FUN_000e3310 | NiAVObject::Update FUN_00101840
+    d1 FUN_000e3310   000E335A  e8e1e40100             call    0x101840                                 FUN_000e3310 | NiAVObject::Update FUN_00101840
+    d2 FUN_00098ce0   00098D08  e8338b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d2 FUN_00098ce0   00098D13  e8288b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+  [VCALL40] 1 Stellen
+    d1 FUN_000e3310   000E3348  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000e3310 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+  Blätter außerhalb des Spielcodes (Top 25): FUN_00101840 x4, FUN_00101e10 x1, FUN_00102100 x1, FUN_00100c50 x1
+  erreichte Funktionen: FUN_00098ce0, FUN_00098d20, NiUDSTimeController::vf03, NiObject::vf09, FUN_000e1680, FUN_000e3310, FUN_000e52d0
+
+### CApp::Frame - FUN_000F2CF0 Debug-Overlay (35 Funktionen/Segmente, 34 indirekte Aufrufe)
+  [NIUPDATE] 5 Stellen
+    d1 FUN_00098ce0   00098D08  e8338b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d1 FUN_00098ce0   00098D13  e8288b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d2 FUN_00099830   00099A9B  e8a07d0600             call    0x101840                                 FUN_00099830 | NiAVObject::Update FUN_00101840
+    d2 FUN_00099830   00099AD8  e8637d0600             call    0x101840                                 FUN_00099830 | NiAVObject::Update FUN_00101840
+    d3 FUN_0009adb0   0009B072  e8c9670600             call    0x101840                                 FUN_0009adb0 | NiAVObject::Update FUN_00101840
+  [GWRITE] 12 Stellen
+    d0 FUN_000f2cf0   000F2D67  891db0082f00           mov     dword ptr [0x2f08b0], ebx                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2DAE  a3b0082f00             mov     dword ptr [0x2f08b0], eax                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2DE6  891db0082f00           mov     dword ptr [0x2f08b0], ebx                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2E10  890da8082f00           mov     dword ptr [0x2f08a8], ecx                FUN_000f2cf0 | schreibt Global 0x2F08A8
+    d0 FUN_000f2cf0   000F2E8E  a3b0082f00             mov     dword ptr [0x2f08b0], eax                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2EB2  891db0082f00           mov     dword ptr [0x2f08b0], ebx                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2EF6  a3b0082f00             mov     dword ptr [0x2f08b0], eax                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2F1D  891db0082f00           mov     dword ptr [0x2f08b0], ebx                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2F7F  a3b0082f00             mov     dword ptr [0x2f08b0], eax                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d0 FUN_000f2cf0   000F2F9B  891db0082f00           mov     dword ptr [0x2f08b0], ebx                FUN_000f2cf0 | schreibt Global 0x2F08B0
+    d1 FUN_000d9cf0   000D9D30  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+    d1 FUN_000d9cf0   000D9D46  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+  [FIELDCNT] 12 Stellen
+    d2 FUN_00098f40   00098FDA  ff8d20010000           dec     dword ptr [ebp + 0x120]                  FUN_00098f40 | dec Feld +0x120
+    d2 FUN_00099830   0009998D  66ff4644               inc     word ptr [esi + 0x44]                    FUN_00099830 | inc Feld +0x44
+    d3 FUN_00099310   0009956C  ff4748                 inc     dword ptr [edi + 0x48]                   FUN_00099310 | inc Feld +0x48
+    d3 FUN_0009adb0   0009AFBC  ff4754                 inc     dword ptr [edi + 0x54]                   FUN_0009adb0 | inc Feld +0x54
+    d5 FUN_00097f60   00097F70  ff420c                 inc     dword ptr [edx + 0xc]                    FUN_00097f60 | inc Feld +0xc
+    d5 FUN_00097f60   00097F80  ff421c                 inc     dword ptr [edx + 0x1c]                   FUN_00097f60 | inc Feld +0x1c
+    d5 FUN_00097f60   00097F90  ff422c                 inc     dword ptr [edx + 0x2c]                   FUN_00097f60 | inc Feld +0x2c
+    d5 FUN_00097f60   00097FA0  ff423c                 inc     dword ptr [edx + 0x3c]                   FUN_00097f60 | inc Feld +0x3c
+    d5 FUN_00097f60   00097FB0  ff424c                 inc     dword ptr [edx + 0x4c]                   FUN_00097f60 | inc Feld +0x4c
+    d5 FUN_00097f60   00097FC0  ff425c                 inc     dword ptr [edx + 0x5c]                   FUN_00097f60 | inc Feld +0x5c
+    d5 FUN_00097f60   00097FD0  ff426c                 inc     dword ptr [edx + 0x6c]                   FUN_00097f60 | inc Feld +0x6c
+    d5 FUN_00097f60   00097FE0  ff427c                 inc     dword ptr [edx + 0x7c]                   FUN_00097f60 | inc Feld +0x7c
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000a4900 x15, FUN_000a3880 x9, FUN_00101840 x5, FUN_00167080 x4, FUN_00101e10 x3, FUN_00102100 x3, FUN_00100c50 x2, FUN_00166f54 x2, NiObjectNET::NiObjectNET x2, __stricmp x1, FUN_0011b090 x1, FUN_001164e0 x1, NiMaterialProperty::NiMaterialProperty x1
+  erreichte Funktionen: FUN_000139f0, FUN_00013a50, FUN_00013d80, FUN_00097eb0, FUN_00097f10, FUN_00097f60, FUN_00098100, FUN_000981f0, FUN_00098b90, FUN_00098c10, FUN_00098ce0, FUN_00098d20, FUN_00098f40, FUN_00098ff0, FUN_00099310, FUN_00099830, FUN_00099fe0, FUN_0009a140, FUN_0009a180, FUN_0009a1c0, FUN_0009a290, FUN_0009ac50, FUN_0009ac70, FUN_0009ad50, FUN_0009adb0, NiUDSTimeController::vf03, NiObject::vf09, FUN_000d2c50, FUN_000d2c70, FUN_000d2e20, FUN_000d9a30, FUN_000d9ba0, FUN_000d9cf0, FUN_000da190, FUN_000f2cf0
+
+### Game::Frame vor der Schleife - FUN_000D2370 Async-Ladewarteschlange (8 Funktionen/Segmente, 12 indirekte Aufrufe)
+  Blätter außerhalb des Spielcodes (Top 25): FUN_0013f250 x2, __stricmp x1, FUN_0013f590 x1, FUN_000a4900 x1, FUN_000a3880 x1
+  erreichte Funktionen: FUN_000d1ef0, FUN_000d1f10, FUN_000d1f30, FUN_000d1fb0, FUN_000d1fd0, FUN_000d21f0, FUN_000d22f0, FUN_000d2370
+
+### Game::Frame vor der Schleife - FUN_000F2050 Streaming-Singleton (2 Funktionen/Segmente, 1 indirekte Aufrufe)
+  [GWRITE] 2 Stellen
+    d0 FUN_000f2050   000F2090  a3e0052f00             mov     dword ptr [0x2f05e0], eax                FUN_000f2050 | schreibt Global 0x2F05E0
+    d0 FUN_000f2050   000F20A6  a3e0052f00             mov     dword ptr [0x2f05e0], eax                FUN_000f2050 | schreibt Global 0x2F05E0
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000a4900 x2
+  erreichte Funktionen: FUN_000f1f20, FUN_000f2050
+
+### Game::Frame vor der Schleife - FUN_000F2680 Streaming-Pumpe (6 Funktionen/Segmente, 5 indirekte Aufrufe)
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000a3880 x5, FUN_000a4900 x2, FUN_0013f250 x1, FUN_0013f590 x1, FUN_0011f9c0 x1, FUN_0011f9e0 x1, FUN_000fe270 x1
+  erreichte Funktionen: FUN_0002a400, FUN_000c2630, FUN_000ce370, FUN_000f1ff0, FUN_000f22a0, FUN_000f2680
+
+### Game::Frame Render-Zweig - FUN_000A46D0 Speicherpflege (21 Funktionen/Segmente, 5 indirekte Aufrufe)
+  [GWRITE] 22 Stellen
+    d0 FUN_000a46d0   000A46D9  a3488e2e00             mov     dword ptr [0x2e8e48], eax                FUN_000a46d0 | schreibt Global 0x2E8E48
+    d0 FUN_000a46d0   000A46E5  c705488e2e0000000000   mov     dword ptr [0x2e8e48], 0                  FUN_000a46d0 | schreibt Global 0x2E8E48
+    d0 FUN_000a46d0   000A46FF  a3448e2e00             mov     dword ptr [0x2e8e44], eax                FUN_000a46d0 | schreibt Global 0x2E8E44
+    d0 FUN_000a46d0   000A4706  c705448e2e0000000000   mov     dword ptr [0x2e8e44], 0                  FUN_000a46d0 | schreibt Global 0x2E8E44
+    d1 FUN_000a3b10   000A3B3E  c605408d2e0001         mov     byte ptr [0x2e8d40], 1                   FUN_000a3b10 | schreibt Global 0x2E8D40
+    d1 FUN_000a3b10   000A3B45  c705448d2e0000000000   mov     dword ptr [0x2e8d44], 0                  FUN_000a3b10 | schreibt Global 0x2E8D44
+    d1 FUN_000a3b10   000A3C3D  a3747d2e00             mov     dword ptr [0x2e7d74], eax                FUN_000a3b10 | schreibt Global 0x2E7D74
+    d1 FUN_000a3b10   000A3C9B  c605408d2e0000         mov     byte ptr [0x2e8d40], 0                   FUN_000a3b10 | schreibt Global 0x2E8D40
+    d1 FUN_000a3ce0   000A3D0E  c605408d2e0001         mov     byte ptr [0x2e8d40], 1                   FUN_000a3ce0 | schreibt Global 0x2E8D40
+    d1 FUN_000a3ce0   000A3D15  c705488d2e0000000000   mov     dword ptr [0x2e8d48], 0                  FUN_000a3ce0 | schreibt Global 0x2E8D48
+    d1 FUN_000a3ce0   000A3E0C  890d787d2e00           mov     dword ptr [0x2e7d78], ecx                FUN_000a3ce0 | schreibt Global 0x2E7D78
+    d1 FUN_000a3ce0   000A3E6B  c605408d2e0000         mov     byte ptr [0x2e8d40], 0                   FUN_000a3ce0 | schreibt Global 0x2E8D40
+    d2 FUN_000a3220   000A3229  ff05488d2e00           inc     dword ptr [0x2e8d48]                     FUN_000a3220 | schreibt Global 0x2E8D48
+    d2 FUN_000a3220   000A32C5  8915607d2e00           mov     dword ptr [0x2e7d60], edx                FUN_000a3220 | schreibt Global 0x2E7D60
+    d2 FUN_000a3220   000A32D8  890d647d2e00           mov     dword ptr [0x2e7d64], ecx                FUN_000a3220 | schreibt Global 0x2E7D64
+    d2 FUN_000a3220   000A332F  ff05488d2e00           inc     dword ptr [0x2e8d48]                     FUN_000a3220 | schreibt Global 0x2E8D48
+    d2 FUN_000a3440   000A3449  ff05448d2e00           inc     dword ptr [0x2e8d44]                     FUN_000a3440 | schreibt Global 0x2E8D44
+    d2 FUN_000a3440   000A34E5  8915607d2e00           mov     dword ptr [0x2e7d60], edx                FUN_000a3440 | schreibt Global 0x2E7D60
+    d2 FUN_000a3440   000A34F8  890d647d2e00           mov     dword ptr [0x2e7d64], ecx                FUN_000a3440 | schreibt Global 0x2E7D64
+    d2 FUN_000a3440   000A354F  ff05448d2e00           inc     dword ptr [0x2e8d44]                     FUN_000a3440 | schreibt Global 0x2E8D44
+    d3 FUN_000a4520   000A46B7  890d388d2e00           mov     dword ptr [0x2e8d38], ecx                FUN_000a4520 | schreibt Global 0x2E8D38
+    d4 FUN_000a4920   000A4949  c605358d2e0001         mov     byte ptr [0x2e8d35], 1                   FUN_000a4920 | schreibt Global 0x2E8D35
+  [FIELDCNT] 2 Stellen
+    d2 FUN_000a3220   000A331F  ff4610                 inc     dword ptr [esi + 0x10]                   FUN_000a3220 | inc Feld +0x10
+    d2 FUN_000a3440   000A353F  ff4610                 inc     dword ptr [esi + 0x10]                   FUN_000a3440 | inc Feld +0x10
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000f63da x1, __SEH_prolog x1, FUN_000f8550 x1, FUN_000f4a77 x1, FUN_000f4416 x1, FUN_000f5a70 x1, __SEH_epilog x1
+  erreichte Funktionen: FUN_000a3100, FUN_000a3150, FUN_000a3190, FUN_000a3220, FUN_000a3370, FUN_000a3440, FUN_000a3590, FUN_000a3660, FUN_000a37b0, FUN_000a38d0, FUN_000a39d0, FUN_000a39f0, FUN_000a3b10, FUN_000a3ce0, FUN_000a3eb0, FUN_000a4020, FUN_000a42a0, FUN_000a4520, FUN_000a46d0, FUN_000a4920, FUN_000f52cc
+
+### Game::Frame Render-Zweig - FUN_0002C9C0 Profiler-Reset (1 Funktionen/Segmente, 0 indirekte Aufrufe)
+  Blätter außerhalb des Spielcodes (Top 25): 
+  erreichte Funktionen: FUN_0002c9c0
+
+### Game::Frame Render-Zweig - FUN_000D7630 Objekt [0x2EBD0C] (5 Funktionen/Segmente, 0 indirekte Aufrufe)
+  [NIUPDATE] 2 Stellen
+    d1 FUN_00098ce0   00098D08  e8338b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d1 FUN_00098ce0   00098D13  e8288b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+  Blätter außerhalb des Spielcodes (Top 25): FUN_00101840 x2, FUN_00101e10 x1, FUN_00102100 x1, FUN_00100c50 x1
+  erreichte Funktionen: FUN_00098ce0, FUN_00098d20, NiUDSTimeController::vf03, NiObject::vf09, FUN_000d7630
+
+### Kontext Render (vf3) - Frontend::Render 0x21B60 (13 Funktionen/Segmente, 4 indirekte Aufrufe)
+  [FRAMEDELTA] 1 Stellen
+    d0 FUN_00021b60   00021B6D  8b15887b2e00           mov     edx, dword ptr [0x2e7b88]                FUN_00021b60 | g_frameDelta [0x2E7B88]
+  [NIUPDATE] 9 Stellen
+    d0 FUN_00021b60   00021BF9  e842fc0d00             call    0x101840                                 FUN_00021b60 | NiAVObject::Update FUN_00101840
+    d0 FUN_00021b60   00021C09  e832fc0d00             call    0x101840                                 FUN_00021b60 | NiAVObject::Update FUN_00101840
+    d0 FUN_00021b60   00021C1E  e81dfc0d00             call    0x101840                                 FUN_00021b60 | NiAVObject::Update FUN_00101840
+    d0 FUN_00021b60   00021C2F  e80cfc0d00             call    0x101840                                 FUN_00021b60 | NiAVObject::Update FUN_00101840
+    d0 FUN_00021b60   00021C49  e8f2fb0d00             call    0x101840                                 FUN_00021b60 | NiAVObject::Update FUN_00101840
+    d0 FUN_00021b60   00021C6E  e8cdfb0d00             call    0x101840                                 FUN_00021b60 | NiAVObject::Update FUN_00101840
+    d0 FUN_00021b60   00021C97  e8a4fb0d00             call    0x101840                                 FUN_00021b60 | NiAVObject::Update FUN_00101840
+    d2 FUN_00098ce0   00098D08  e8338b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d2 FUN_00098ce0   00098D13  e8288b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+  [GWRITE] 7 Stellen
+    d0 FUN_00021b60   00021BB4  c705a46f2e0000000000   mov     dword ptr [0x2e6fa4], 0                  FUN_00021b60 | schreibt Global 0x2E6FA4
+    d1 FUN_000f2bf0   000F2C0B  c705b0082f0000000000   mov     dword ptr [0x2f08b0], 0                  FUN_000f2bf0 | schreibt Global 0x2F08B0
+    d1 FUN_000f2bf0   000F2C2E  a3b0082f00             mov     dword ptr [0x2f08b0], eax                FUN_000f2bf0 | schreibt Global 0x2F08B0
+    d1 FUN_000f2bf0   000F2C56  8935b0082f00           mov     dword ptr [0x2f08b0], esi                FUN_000f2bf0 | schreibt Global 0x2F08B0
+    d2 FUN_000d9bf0   000D9C2D  a330c72e00             mov     dword ptr [0x2ec730], eax                FUN_000d9bf0 | schreibt Global 0x2EC730
+    d2 FUN_000d9cf0   000D9D30  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+    d2 FUN_000d9cf0   000D9D46  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+  Blätter außerhalb des Spielcodes (Top 25): FUN_00101840 x9, FUN_000a4900 x5, FUN_00100c50 x1, NiAVObject::vf28 x1, FUN_000a3880 x1, FUN_00101e10 x1, FUN_00102100 x1, __stricmp x1
+  erreichte Funktionen: FUN_00021b60, FUN_00025700, FUN_00098ce0, FUN_0009ba10, FUN_000d2c20, FUN_000d2c50, FUN_000d2c70, FUN_000d9a30, FUN_000d9ba0, FUN_000d9bf0, FUN_000d9cf0, FUN_000da190, FUN_000f2bf0
+
+### Kontext Render (vf3) - Intro::Render 0x2B300 (2 Funktionen/Segmente, 0 indirekte Aufrufe)
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000a3090 x1
+  erreichte Funktionen: FUN_00021320, gap_02B300
+
+### Kontext Render (vf3) - Attract::Render 0xB0390 (leer) (1 Funktionen/Segmente, 0 indirekte Aufrufe)
+  Blätter außerhalb des Spielcodes (Top 25): 
+  erreichte Funktionen: NiObject::vf09
+
+### Kontext Render (vf3) - Ingame::Render 0x2A320 (359 Funktionen/Segmente, 359 indirekte Aufrufe)
+  [DT] 4 Stellen
+    d2 FUN_000c7030   000C70DC  d82548672d00           fsub    dword ptr [0x2d6748]                     FUN_000c7030 | liest/schreibt dt [0x2D6748]
+    d5 FUN_00013060   0001307B  d90548672d00           fld     dword ptr [0x2d6748]                     FUN_00013060 | liest/schreibt dt [0x2D6748]
+    d5 FUN_00013060   00013090  d90548672d00           fld     dword ptr [0x2d6748]                     FUN_00013060 | liest/schreibt dt [0x2D6748]
+    d5 FUN_0003a950   0003A99F  d90548672d00           fld     dword ptr [0x2d6748]                     FUN_0003a950 | liest/schreibt dt [0x2D6748]
+  [FRAMEDELTA] 2 Stellen
+    d1 FUN_000c8e90   000C8EA8  a1887b2e00             mov     eax, dword ptr [0x2e7b88]                FUN_000c8e90 | g_frameDelta [0x2E7B88]
+    d2 FUN_00045f10   00045F1B  d905887b2e00           fld     dword ptr [0x2e7b88]                     FUN_00045f10 | g_frameDelta [0x2E7B88]
+  [RAND] 1 Stellen
+    d2 FUN_00045ef0   00045EF3  e8d4091200             call    0x1668cc                                 FUN_00045ef0 | rand()
+  [SCRIPT] 1 Stellen
+    d1 FUN_000c8e90   000C90F8  e8630fffff             call    0xba060                                  FUN_000c8e90 | Skript-Scheduler FUN_000BA060
+  [NIUPDATE] 17 Stellen
+    d1 FUN_000a4bb0   000A4BE5  e856cc0500             call    0x101840                                 FUN_000a4bb0 | NiAVObject::Update FUN_00101840
+    d1 FUN_000a8290   000A82AE  e88d950500             call    0x101840                                 FUN_000a8290 | NiAVObject::Update FUN_00101840
+    d1 FUN_000a8290   000A82C2  e879950500             call    0x101840                                 FUN_000a8290 | NiAVObject::Update FUN_00101840
+    d1 FUN_000a8290   000A82D0  e86b950500             call    0x101840                                 FUN_000a8290 | NiAVObject::Update FUN_00101840
+    d1 FUN_000a8290   000A82DE  e85d950500             call    0x101840                                 FUN_000a8290 | NiAVObject::Update FUN_00101840
+    d1 FUN_000a8290   000A82F2  e849950500             call    0x101840                                 FUN_000a8290 | NiAVObject::Update FUN_00101840
+    d2 FUN_00012210   00012382  e8b9f40e00             call    0x101840                                 FUN_00012210 | NiAVObject::Update FUN_00101840
+    d2 FUN_00012210   000123FB  e840f40e00             call    0x101840                                 FUN_00012210 | NiAVObject::Update FUN_00101840
+    d2 FUN_00045f10   00045F35  e806b90b00             call    0x101840                                 FUN_00045f10 | NiAVObject::Update FUN_00101840
+    d2 FUN_00098ce0   00098D08  e8338b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d2 FUN_00098ce0   00098D13  e8288b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d2 FUN_000ba900   000BAB27  e8146d0400             call    0x101840                                 FUN_000ba900 | NiAVObject::Update FUN_00101840
+    d2 FUN_000e3310   000E331F  e81ce50100             call    0x101840                                 FUN_000e3310 | NiAVObject::Update FUN_00101840
+    d2 FUN_000e3310   000E335A  e8e1e40100             call    0x101840                                 FUN_000e3310 | NiAVObject::Update FUN_00101840
+    d4 FUN_000d0110   000D0379  e8c2140300             call    0x101840                                 FUN_000d0110 | NiAVObject::Update FUN_00101840
+    d5 FUN_000c4e70   000C5020  e81bc80300             call    0x101840                                 FUN_000c4e70 | NiAVObject::Update FUN_00101840
+    d5 FUN_000d48c0   000D4969  e8d2ce0200             call    0x101840                                 FUN_000d48c0 | NiAVObject::Update FUN_00101840
+  [TIMER] 1 Stellen
+    d5 FUN_000d48c0   000D48CF  e8bce2ffff             call    0xd2b90                                  FUN_000d48c0 | Spieltimer FUN_000D2B90 (QPC)
+  [VCALL40] 13 Stellen
+    d1 FUN_000a4bb0   000A4BCD  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000a4bb0 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000a8290   000A8306  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000a8290 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000c8e90   000C8F4E  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000c8e90 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000c8e90   000C9001  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000c8e90 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000c8e90   000C9013  ff5240                 call    dword ptr [edx + 0x40]                   FUN_000c8e90 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000c8e90   000C9028  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000c8e90 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000c8e90   000C903A  ff5240                 call    dword ptr [edx + 0x40]                   FUN_000c8e90 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000c8e90   000C90DF  ff5044                 call    dword ptr [eax + 0x44]                   FUN_000c8e90 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d1 FUN_000c8e90   000C926F  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000c8e90 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d2 FUN_000e3310   000E3348  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000e3310 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d4 FUN_000b0c40   000B60B6  ff5240                 call    dword ptr [edx + 0x40]                   FUN_000b0c40 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d4 FUN_000b0c40   000B6110  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000b0c40 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+    d5 FUN_000c9b40   000C9B6A  ff5240                 call    dword ptr [edx + 0x40]                   FUN_000c9b40 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+  [GWRITE] 78 Stellen
+    d1 FUN_000c8e90   000C90A1  c7059ca92e0005000000   mov     dword ptr [0x2ea99c], 5                  FUN_000c8e90 | schreibt Global 0x2EA99C
+    d1 FUN_000c8e90   000C90C0  a39ca92e00             mov     dword ptr [0x2ea99c], eax                FUN_000c8e90 | schreibt Global 0x2EA99C
+    d1 FUN_000f2c60   000F2C7F  c705b0082f0000000000   mov     dword ptr [0x2f08b0], 0                  FUN_000f2c60 | schreibt Global 0x2F08B0
+    d1 FUN_000f2c60   000F2CA4  a3b0082f00             mov     dword ptr [0x2f08b0], eax                FUN_000f2c60 | schreibt Global 0x2F08B0
+    d1 FUN_000f2c60   000F2CD0  8935b0082f00           mov     dword ptr [0x2f08b0], esi                FUN_000f2c60 | schreibt Global 0x2F08B0
+    d2 FUN_00012210   000122B1  c70540672d0005000000   mov     dword ptr [0x2d6740], 5                  FUN_00012210 | schreibt Global 0x2D6740
+    d2 FUN_00012210   000122C8  c70540672d0004000000   mov     dword ptr [0x2d6740], 4                  FUN_00012210 | schreibt Global 0x2D6740
+    d2 FUN_000d4dc0   000D4E03  a3c8b72e00             mov     dword ptr [0x2eb7c8], eax                FUN_000d4dc0 | schreibt Global 0x2EB7C8
+    d2 FUN_000d4dc0   000D4E19  a3c8b72e00             mov     dword ptr [0x2eb7c8], eax                FUN_000d4dc0 | schreibt Global 0x2EB7C8
+    d2 FUN_000d9bf0   000D9C2D  a330c72e00             mov     dword ptr [0x2ec730], eax                FUN_000d9bf0 | schreibt Global 0x2EC730
+    d2 FUN_000d9cf0   000D9D30  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+    d2 FUN_000d9cf0   000D9D46  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+    d3 FUN_000b9560   000B9631  ff0d20a22e00           dec     dword ptr [0x2ea220]                     FUN_000b9560 | schreibt Global 0x2EA220
+    d3 FUN_000b97d0   000B97EE  892d1ca22e00           mov     dword ptr [0x2ea21c], ebp                FUN_000b97d0 | schreibt Global 0x2EA21C
+    d3 FUN_000b97d0   000B9CE1  892d1ca22e00           mov     dword ptr [0x2ea21c], ebp                FUN_000b97d0 | schreibt Global 0x2EA21C
+    d3 FUN_000b97d0   000B9CEC  ff0598672d00           inc     dword ptr [0x2d6798]                     FUN_000b97d0 | schreibt Global 0x2D6798
+    d3 FUN_000b97d0   000B9CF4  c70598672d0001000000   mov     dword ptr [0x2d6798], 1                  FUN_000b97d0 | schreibt Global 0x2D6798
+    d3 FUN_000b97d0   000B9E5E  891d1ca22e00           mov     dword ptr [0x2ea21c], ebx                FUN_000b97d0 | schreibt Global 0x2EA21C
+    d3 FUN_000cd340   000CD3E2  a380ae2e00             mov     dword ptr [0x2eae80], eax                FUN_000cd340 | schreibt Global 0x2EAE80
+    d3 FUN_000cd340   000CD3EC  891574ae2e00           mov     dword ptr [0x2eae74], edx                FUN_000cd340 | schreibt Global 0x2EAE74
+    d3 FUN_000cd340   000CD3F2  a378ae2e00             mov     dword ptr [0x2eae78], eax                FUN_000cd340 | schreibt Global 0x2EAE78
+    d3 FUN_000cd340   000CD3F7  890d7cae2e00           mov     dword ptr [0x2eae7c], ecx                FUN_000cd340 | schreibt Global 0x2EAE7C
+    d3 FUN_000cd340   000CD44E  890d74ae2e00           mov     dword ptr [0x2eae74], ecx                FUN_000cd340 | schreibt Global 0x2EAE74
+    d3 FUN_000cd340   000CD459  891578ae2e00           mov     dword ptr [0x2eae78], edx                FUN_000cd340 | schreibt Global 0x2EAE78
+    d3 FUN_000cd340   000CD467  a37cae2e00             mov     dword ptr [0x2eae7c], eax                FUN_000cd340 | schreibt Global 0x2EAE7C
+    d3 FUN_000cd340   000CD47C  c605f86c2d0000         mov     byte ptr [0x2d6cf8], 0                   FUN_000cd340 | schreibt Global 0x2D6CF8
+    d3 FUN_000cd340   000CD483  d91dfc6c2d00           fstp    dword ptr [0x2d6cfc]                     FUN_000cd340 | schreibt Global 0x2D6CFC
+    d3 FUN_000cd340   000CD491  a270ae2e00             mov     byte ptr [0x2eae70], al                  FUN_000cd340 | schreibt Global 0x2EAE70
+    d3 FUN_000d37c0   000D389E  ff05ccb72e00           inc     dword ptr [0x2eb7cc]                     FUN_000d37c0 | schreibt Global 0x2EB7CC
+    d4 FUN_000b0c40   000B0CF8  c7056c9d2e0000000000   mov     dword ptr [0x2e9d6c], 0                  FUN_000b0c40 | schreibt Global 0x2E9D6C
+    d4 FUN_000b0c40   000B0D02  c705689d2e0000000000   mov     dword ptr [0x2e9d68], 0                  FUN_000b0c40 | schreibt Global 0x2E9D68
+    d4 FUN_000b0c40   000B3704  a378612d00             mov     dword ptr [0x2d6178], eax                FUN_000b0c40 | schreibt Global 0x2D6178
+    d4 FUN_000b0c40   000B3E9D  a274612d00             mov     byte ptr [0x2d6174], al                  FUN_000b0c40 | schreibt Global 0x2D6174
+    d4 FUN_000b96d0   000B9710  891520a22e00           mov     dword ptr [0x2ea220], edx                FUN_000b96d0 | schreibt Global 0x2EA220
+    d4 FUN_000b96d0   000B971C  89351ca22e00           mov     dword ptr [0x2ea21c], esi                FUN_000b96d0 | schreibt Global 0x2EA21C
+    d4 FUN_000b96d0   000B97B4  891d1ca22e00           mov     dword ptr [0x2ea21c], ebx                FUN_000b96d0 | schreibt Global 0x2EA21C
+    d5 FUN_00012db0   00012DEF  c70540672d0004000000   mov     dword ptr [0x2d6740], 4                  FUN_00012db0 | schreibt Global 0x2D6740
+    d5 FUN_00037010   0003705B  a2f4d52d00             mov     byte ptr [0x2dd5f4], al                  FUN_00037010 | schreibt Global 0x2DD5F4
+    d5 FUN_00037010   00037068  c605f4d52d0000         mov     byte ptr [0x2dd5f4], 0                   FUN_00037010 | schreibt Global 0x2DD5F4
+    d5 FUN_000767f0   000768BF  a3d8072e00             mov     dword ptr [0x2e07d8], eax                FUN_000767f0 | schreibt Global 0x2E07D8
+    d5 FUN_000767f0   000768C6  d91dd4072e00           fstp    dword ptr [0x2e07d4]                     FUN_000767f0 | schreibt Global 0x2E07D4
+    d5 FUN_000767f0   000768DF  a3d8072e00             mov     dword ptr [0x2e07d8], eax                FUN_000767f0 | schreibt Global 0x2E07D8
+    d5 FUN_000767f0   000768E6  d91dd0072e00           fstp    dword ptr [0x2e07d0]                     FUN_000767f0 | schreibt Global 0x2E07D0
+    d5 FUN_000a2580   000A2588  a24e672d00             mov     byte ptr [0x2d674e], al                  FUN_000a2580 | schreibt Global 0x2D674E
+    d5 FUN_000a2580   000A258D  880d4d672d00           mov     byte ptr [0x2d674d], cl                  FUN_000a2580 | schreibt Global 0x2D674D
+    d5 FUN_000b0270   000B0287  a3649d2e00             mov     dword ptr [0x2e9d64], eax                FUN_000b0270 | schreibt Global 0x2E9D64
+    d5 FUN_000b0290   000B02A3  a3649d2e00             mov     dword ptr [0x2e9d64], eax                FUN_000b0290 | schreibt Global 0x2E9D64
+    d5 FUN_000b02f0   000B0300  890d6c9d2e00           mov     dword ptr [0x2e9d6c], ecx                FUN_000b02f0 | schreibt Global 0x2E9D6C
+    d5 FUN_000b0310   000B0320  890d689d2e00           mov     dword ptr [0x2e9d68], ecx                FUN_000b0310 | schreibt Global 0x2E9D68
+    d5 FUN_000b0780   000B078F  a34c9f2e00             mov     dword ptr [0x2e9f4c], eax                FUN_000b0780 | schreibt Global 0x2E9F4C
+    d5 FUN_000b0780   000B0794  c705409f2e0000000000   mov     dword ptr [0x2e9f40], 0                  FUN_000b0780 | schreibt Global 0x2E9F40
+    d5 FUN_000b0780   000B079E  c705449f2e0000000000   mov     dword ptr [0x2e9f44], 0                  FUN_000b0780 | schreibt Global 0x2E9F44
+    d5 FUN_000b0780   000B07A8  c705489f2e0000000000   mov     dword ptr [0x2e9f48], 0                  FUN_000b0780 | schreibt Global 0x2E9F48
+    d5 FUN_000b0780   000B07B9  a34c9f2e00             mov     dword ptr [0x2e9f4c], eax                FUN_000b0780 | schreibt Global 0x2E9F4C
+    d5 FUN_000b0780   000B07BE  c705349f2e0000000000   mov     dword ptr [0x2e9f34], 0                  FUN_000b0780 | schreibt Global 0x2E9F34
+    d5 FUN_000b0780   000B07C8  c705389f2e0000000000   mov     dword ptr [0x2e9f38], 0                  FUN_000b0780 | schreibt Global 0x2E9F38
+    d5 FUN_000b0780   000B07D2  c7053c9f2e0000000000   mov     dword ptr [0x2e9f3c], 0                  FUN_000b0780 | schreibt Global 0x2E9F3C
+    d5 FUN_000b0780   000B089C  890d409f2e00           mov     dword ptr [0x2e9f40], ecx                FUN_000b0780 | schreibt Global 0x2E9F40
+    d5 FUN_000b0780   000B08A6  8915449f2e00           mov     dword ptr [0x2e9f44], edx                FUN_000b0780 | schreibt Global 0x2E9F44
+    d5 FUN_000b0780   000B08B2  890d489f2e00           mov     dword ptr [0x2e9f48], ecx                FUN_000b0780 | schreibt Global 0x2E9F48
+    ... 18 weitere
+  [FIELDCNT] 2 Stellen
+    d3 FUN_000cd340   000CD552  ff4154                 inc     dword ptr [ecx + 0x54]                   FUN_000cd340 | inc Feld +0x54
+    d5 FUN_000b0400   000B0412  ff808c010000           inc     dword ptr [eax + 0x18c]                  FUN_000b0400 | inc Feld +0x18c
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000a4900 x59, __stricmp x31, FUN_000c3e80 x25, FUN_00101840 x17, FUN_000db000 x14, FUN_000ba520 x13, FUN_000a2540 x12, FUN_000b88a0 x11, FUN_0011f140 x10, FUN_000a3880 x8, _strchr x8, FUN_00011770 x8, FUN_000e2ee0 x7, FUN_00100c50 x6, _atol x6, FUN_00096830 x6, FUN_000c2630 x5, FUN_00167080 x4, FUN_00166f54 x4, FUN_000c2190 x4, FUN_000bb190 x4, FUN_00033e20 x4, FUN_000e5890 x3, FUN_000e59d0 x3, FUN_000c29b0 x3
+  erreichte Funktionen: FUN_000111a0, FUN_00011230, FUN_00011280, FUN_00011290, FUN_000112d0, FUN_00011310, FUN_00011370, FUN_00011380, FUN_00011470, FUN_00011680, FUN_000116a0, FUN_00011960, FUN_00012210, FUN_00012410, FUN_00012450, FUN_00012c70, FUN_00012cc0, FUN_00012d20, FUN_00012db0, FUN_00012e00, FUN_00012fb0, FUN_00013060, FUN_00013130, FUN_000132f0, FUN_00013e20, FUN_00014990, FUN_00014f40, FUN_00015350, FUN_00018520, FUN_00018860, FUN_00018910, FUN_000189d0, FUN_00018a40, FUN_00018b50, FUN_00018de0, FUN_00018e70, FUN_00019110, FUN_00025700, FUN_0002a320, FUN_0002c320, FUN_00030050, FUN_00031460, FUN_000314a0, FUN_000314c0, FUN_000314e0, FUN_00031510, FUN_00031540, FUN_00031550, FUN_00031570, FUN_00031580, FUN_000315b0, FUN_000315c0, FUN_000315e0, FUN_00031600, FUN_00031620, FUN_00031640, FUN_00031660, FUN_00031680, FUN_000316a0, FUN_000316c0, FUN_000316e0, FUN_00031700, FUN_00031720, FUN_00031740, FUN_00031760, FUN_00031780, FUN_000317c0, FUN_000317e0, FUN_000317f0, FUN_000318f0, FUN_00031970, FUN_000319d0, FUN_00031a10, FUN_00031a70, FUN_00031ac0, FUN_00031b10, FUN_00031b60, FUN_00031bd0, FUN_00031bf0, FUN_000325a0, FUN_00032e00, FUN_00032e20, FUN_00032ed0, FUN_00033980, FUN_00036a80, FUN_00036ac0, FUN_00036b10, FUN_00036b80, FUN_00036bf0, FUN_00036c50, FUN_00036cc0, FUN_00036d20, FUN_00036e40, FUN_00036e80, FUN_00036ec0, FUN_00036ef0, FUN_00036f10, FUN_00036f90, FUN_00036fd0, FUN_00037010, FUN_00037090, FUN_000370d0, FUN_00037120, FUN_00037150, FUN_00037180, FUN_000371f0, FUN_00037220, FUN_00037250, FUN_00037280, FUN_000372b0, FUN_000372f0, FUN_00037340, FUN_000373a0, FUN_000378f0, FUN_0003a5e0, FUN_0003a7f0, FUN_0003a930, FUN_0003a950, FUN_0003aa00, FUN_0003aa60, FUN_0003ab40, FUN_0003ab60, FUN_0003ab80, FUN_00042700, FUN_00045ef0, FUN_00045f10, FUN_00049da0, FUN_000678c0, FUN_000678d0, FUN_000678e0, FUN_000678f0, FUN_00067900, FUN_00067910, FUN_0006f0b0, FUN_000767f0, FUN_00091eb0, FUN_00091ec0, FUN_00092260, FUN_000922c0, FUN_00096800, FUN_00097560, FUN_000975e0, FUN_00098440, FUN_00098ce0, FUN_00098d20, FUN_0009b790, FUN_000a2580, FUN_000a4bb0, FUN_000a8290, NiUDSTimeController::vf03, FUN_000b00b0, FUN_000b0110, FUN_000b0130, FUN_000b0160, FUN_000b0180, FUN_000b0190, FUN_000b01d0, FUN_000b0210, FUN_000b0240, FUN_000b0270, FUN_000b0290, FUN_000b02c0, FUN_000b02f0, FUN_000b0310, FUN_000b0360, NiObject::vf09, FUN_000b03b0, FUN_000b03d0, FUN_000b0400, FUN_000b0430, FUN_000b0490, FUN_000b04d0, FUN_000b0520, FUN_000b0640, FUN_000b0730, FUN_000b0760, FUN_000b0780, FUN_000b08e0, FUN_000b0910, FUN_000b0940, FUN_000b0960, FUN_000b0980, FUN_000b09a0, FUN_000b09c0, FUN_000b09e0, FUN_000b0a60, FUN_000b0c40, FUN_000b6f20, FUN_000b6f40, FUN_000b7440, FUN_000b7970, FUN_000b7990, FUN_000b8790, FUN_000b8870, FUN_000b8910, FUN_000b8a00, FUN_000b8af0, FUN_000b8b20, FUN_000b8bb0, FUN_000b8cf0, FUN_000b8d80, FUN_000b8e10, FUN_000b8ee0, FUN_000b9040, FUN_000b9060, FUN_000b90f0, FUN_000b9250, FUN_000b9290, FUN_000b9300, FUN_000b9390, FUN_000b9460, FUN_000b94c0, FUN_000b9560, FUN_000b9680, FUN_000b96d0, FUN_000b97d0, FUN_000ba060, FUN_000ba1e0, FUN_000ba210, FUN_000ba900, FUN_000bffe0, FUN_000c01b0, FUN_000c1240, FUN_000c1e30, FUN_000c1e60, FUN_000c1e90, FUN_000c1ec0, FUN_000c1ef0, FUN_000c1f20, FUN_000c1f50, FUN_000c1f80, FUN_000c1ff0, FUN_000c2040, FUN_000c2290, FUN_000c2c30, FUN_000c2ce0, FUN_000c2d00, FUN_000c2d20, FUN_000c2d50, FUN_000c2da0, FUN_000c2df0, FUN_000c2e40, FUN_000c2e90, FUN_000c2ee0, FUN_000c2f50, FUN_000c2fa0, FUN_000c2fe0, FUN_000c3050, FUN_000c30c0, FUN_000c31e0, FUN_000c3280, FUN_000c3ee0, FUN_000c3fc0, FUN_000c4150, FUN_000c4270, FUN_000c4440, FUN_000c45a0, FUN_000c4610, FUN_000c4680, FUN_000c4710, FUN_000c4780, FUN_000c4850, FUN_000c4870, FUN_000c48e0, FUN_000c4950, FUN_000c4990, FUN_000c4ab0, FUN_000c4ba0, FUN_000c4d90, FUN_000c4dd0, FUN_000c4e70, FUN_000c5060, FUN_000c51b0, FUN_000c6fe0, FUN_000c7030, FUN_000c73c0, FUN_000c7400, FUN_000c74b0, FUN_000c7560, FUN_000c75a0, FUN_000c7650, FUN_000c7880, FUN_000c7cb0, FUN_000c8e90, FUN_000c9300, FUN_000c96e0, FUN_000c97d0, FUN_000c9830, FUN_000c9870, FUN_000c98e0, FUN_000c9910, FUN_000c9970, FUN_000c99d0, FUN_000c9a80, FUN_000c9ab0, FUN_000c9ae0, FUN_000c9b40, FUN_000c9b70, FUN_000c9be0, FUN_000c9c10, FUN_000c9c60, FUN_000caa10, FUN_000cabf0, FUN_000cd340, FUN_000ce2b0, FUN_000ce350, FUN_000ce380, FUN_000ce460, FUN_000ce4a0, FUN_000cecc0, FUN_000d0000, FUN_000d0110, FUN_000d20d0, FUN_000d2c20, FUN_000d2c50, FUN_000d2c70, FUN_000d2ce0, FUN_000d3110, FUN_000d35d0, FUN_000d37c0, FUN_000d48c0, FUN_000d4dc0, FUN_000d5780, FUN_000d7ce0, FUN_000d7d80, FUN_000d7f40, FUN_000d9a30, FUN_000d9ba0, FUN_000d9bf0, FUN_000d9cf0, FUN_000da190, FUN_000da640, FUN_000da750, FUN_000dadc0, FUN_000db300, FUN_000db380, FUN_000db400, FUN_000db460, FUN_000db490, FUN_000db4f0, FUN_000db520, FUN_000db5a0, FUN_000db650, FUN_000db6d0, FUN_000db8c0, FUN_000db9c0, FUN_000dba10, FUN_000dba40, FUN_000dbb40, FUN_000dbbd0, FUN_000dbe80, FUN_000dbf80, FUN_000e2f90, FUN_000e3310, FUN_000e5870, FUN_000e5b00, FUN_000e5b30, FUN_000f0d70, FUN_000f2c60
+
+### Kontext Render (vf3) - Death::Render 0x2BF10 (1 Funktionen/Segmente, 1 indirekte Aufrufe)
+  Blätter außerhalb des Spielcodes (Top 25): 
+  erreichte Funktionen: FUN_0002bf10
+
+### Kontext Render (vf3) - Intermission::Render 0xD62E0 (11 Funktionen/Segmente, 21 indirekte Aufrufe)
+  [NIUPDATE] 1 Stellen
+    d2 FUN_000d47e0   000D48B4  e887cf0200             call    0x101840                                 FUN_000d47e0 | NiAVObject::Update FUN_00101840
+  [VCALL40] 1 Stellen
+    d0 FUN_000d62e0   000D636A  ff5244                 call    dword ptr [edx + 0x44]                   FUN_000d62e0 | call [vt+0x40/0x44] (Renderer DisplayFrame/ClearBuffer?)
+  [GWRITE] 2 Stellen
+    d0 FUN_000d62e0   000D6372  c60534902f0001         mov     byte ptr [0x2f9034], 1                   FUN_000d62e0 | schreibt Global 0x2F9034
+    d0 FUN_000d62e0   000D6385  c60534902f0000         mov     byte ptr [0x2f9034], 0                   FUN_000d62e0 | schreibt Global 0x2F9034
+  [FIELDCNT] 1 Stellen
+    d3 FUN_000193b0   00019445  ff4710                 inc     dword ptr [edi + 0x10]                   FUN_000193b0 | inc Feld +0x10
+  Blätter außerhalb des Spielcodes (Top 25): FUN_000a4900 x4, FUN_00100f30 x2, FUN_00100c50 x2, FUN_00106d50 x2, FUN_0013c750 x1, NiObjectNET::NiObjectNET x1, __stricmp x1, FUN_00101e10 x1, FUN_00102100 x1, FUN_00101840 x1, FUN_0012b760 x1, ??_L@YGXPAXIHP6EX0@Z1@Z x1, ??_M@YGXPAXIHP6EX0@Z@Z x1, FUN_000a3880 x1
+  erreichte Funktionen: FUN_00011470, FUN_00011740, FUN_00013cc0, FUN_000186f0, FUN_000193b0, FUN_00019460, FUN_000d3480, FUN_000d47e0, FUN_000d4ef0, FUN_000d5e00, FUN_000d62e0
+
+### pro Tick (Vergleich) - CApp vf10 0xD25D0 (43 Funktionen/Segmente, 21 indirekte Aufrufe)
+  [DT] 6 Stellen
+    d1 FUN_0009be10   0009BE30  d82548672d00           fsub    dword ptr [0x2d6748]                     FUN_0009be10 | liest/schreibt dt [0x2D6748]
+    d1 FUN_0009be10   0009BEA5  d90548672d00           fld     dword ptr [0x2d6748]                     FUN_0009be10 | liest/schreibt dt [0x2D6748]
+    d1 FUN_0009be10   0009BF03  d80548672d00           fadd    dword ptr [0x2d6748]                     FUN_0009be10 | liest/schreibt dt [0x2D6748]
+    d2 FUN_000e1660   000E1660  d90548672d00           fld     dword ptr [0x2d6748]                     FUN_000e1660 | liest/schreibt dt [0x2D6748]
+    d2 FUN_000e4970   000E4984  d90548672d00           fld     dword ptr [0x2d6748]                     FUN_000e4970 | liest/schreibt dt [0x2D6748]
+    d2 FUN_000e4970   000E49B3  d90548672d00           fld     dword ptr [0x2d6748]                     FUN_000e4970 | liest/schreibt dt [0x2D6748]
+  [NIUPDATE] 4 Stellen
+    d4 FUN_00098ce0   00098D08  e8338b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d4 FUN_00098ce0   00098D13  e8288b0600             call    0x101840                                 FUN_00098ce0 | NiAVObject::Update FUN_00101840
+    d5 FUN_00099830   00099A9B  e8a07d0600             call    0x101840                                 FUN_00099830 | NiAVObject::Update FUN_00101840
+    d5 FUN_00099830   00099AD8  e8637d0600             call    0x101840                                 FUN_00099830 | NiAVObject::Update FUN_00101840
+  [GWRITE] 8 Stellen
+    d1 FUN_0009be10   0009BE36  d9159c6f2e00           fst     dword ptr [0x2e6f9c]                     FUN_0009be10 | schreibt Global 0x2E6F9C
+    d1 FUN_0009be10   0009BE54  c7059c6f2e0000000000   mov     dword ptr [0x2e6f9c], 0                  FUN_0009be10 | schreibt Global 0x2E6F9C
+    d1 FUN_0009be10   0009BE8B  a29c652d00             mov     byte ptr [0x2d659c], al                  FUN_0009be10 | schreibt Global 0x2D659C
+    d1 FUN_0009be10   0009BF09  d915986f2e00           fst     dword ptr [0x2e6f98]                     FUN_0009be10 | schreibt Global 0x2E6F98
+    d1 FUN_0009be10   0009BF2E  d91d986f2e00           fstp    dword ptr [0x2e6f98]                     FUN_0009be10 | schreibt Global 0x2E6F98
+    d4 FUN_000d9bf0   000D9C2D  a330c72e00             mov     dword ptr [0x2ec730], eax                FUN_000d9bf0 | schreibt Global 0x2EC730
+    d4 FUN_000d9cf0   000D9D30  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+    d4 FUN_000d9cf0   000D9D46  a340c62e00             mov     dword ptr [0x2ec640], eax                FUN_000d9cf0 | schreibt Global 0x2EC640
+  [FIELDCNT] 2 Stellen
+    d4 FUN_00098f40   00098FDA  ff8d20010000           dec     dword ptr [ebp + 0x120]                  FUN_00098f40 | dec Feld +0x120
+    d5 FUN_00099830   0009998D  66ff4644               inc     word ptr [esi + 0x44]                    FUN_00099830 | inc Feld +0x44
+  Blätter außerhalb des Spielcodes (Top 25): FUN_0012fa20 x11, FUN_000a4900 x6, FUN_00101840 x4, NiObject::vf09 x4, XAPILIB::XInputClose x2, FUN_00101e10 x2, FUN_00102100 x2, FUN_0009ac70 x2, FUN_000a3880 x2, FUN_000da190 x2, FUN_0009a140 x2, XAPILIB::XGetDeviceChanges x1, XAPILIB::XInputOpen x1, FUN_0012f310 x1, FUN_00099310 x1, FUN_0009ac50 x1, FUN_0009a180 x1, FUN_0009adb0 x1, FUN_00013d80 x1, FUN_00013a50 x1
+  erreichte Funktionen: FUN_00097f10, FUN_00098ce0, FUN_00098f40, FUN_00098ff0, FUN_00099830, FUN_0009a010, FUN_0009ad50, FUN_0009b120, FUN_0009b1d0, FUN_0009b210, FUN_0009b270, FUN_0009b340, FUN_0009b3e0, FUN_0009b480, FUN_0009b600, FUN_0009b630, FUN_0009b780, FUN_0009b790, FUN_0009b8d0, FUN_0009bac0, FUN_0009bb50, FUN_0009be10, FUN_0009c140, NiUDSTimeController::vf03, FUN_000d25d0, FUN_000d2c20, FUN_000d2c50, FUN_000d9a30, FUN_000d9ba0, FUN_000d9bf0, FUN_000d9cf0, FUN_000df320, FUN_000df340, FUN_000e1660, FUN_000e2fb0, FUN_000e2ff0, FUN_000e3010, FUN_000e3700, FUN_000e3970, FUN_000e4970, FUN_000e4b50, FUN_000e5180, FUN_000e52f0
+
+## 3. Summary (flags per root)
+  vf8 0xA24A0 Movie (vor Game::Frame)                          FIELDCNT 4, GWRITE 2, NIUPDATE 5
+  FUN_000E52D0 Pause-Overlay (nach Game::Frame, wenn Pause+0xA) NIUPDATE 4, VCALL40 1
+  FUN_000F2CF0 Debug-Overlay                                   FIELDCNT 12, GWRITE 12, NIUPDATE 5
+  FUN_000D2370 Async-Ladewarteschlange                         
+  FUN_000F2050 Streaming-Singleton                             GWRITE 2
+  FUN_000F2680 Streaming-Pumpe                                 
+  FUN_000A46D0 Speicherpflege                                  FIELDCNT 2, GWRITE 22
+  FUN_0002C9C0 Profiler-Reset                                  
+  FUN_000D7630 Objekt [0x2EBD0C]                               NIUPDATE 2
+  Frontend::Render 0x21B60                                     FRAMEDELTA 1, GWRITE 7, NIUPDATE 9
+  Intro::Render 0x2B300                                        
+  Attract::Render 0xB0390 (leer)                               
+  Ingame::Render 0x2A320                                       DT 4, FIELDCNT 2, FRAMEDELTA 2, GWRITE 78, NIUPDATE 17, RAND 1, SCRIPT 1, TIMER 1, VCALL40 13
+  Death::Render 0x2BF10                                        
+  Intermission::Render 0xD62E0                                 FIELDCNT 1, GWRITE 2, NIUPDATE 1, VCALL40 1
+  CApp vf10 0xD25D0                                            DT 6, FIELDCNT 2, GWRITE 8, NIUPDATE 4

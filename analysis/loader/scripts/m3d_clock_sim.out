@@ -1,0 +1,15 @@
+## 1. guest step arithmetic (dt = f32(1/60) = 0.0166666675)
+QPF        ticks(dt)  min elapsed for a step (53 bit / 64 bit)  q_a/q_b   cap remainder ticks(6dt)-6*ticks(dt)
+10000000   166666     166667               166667               83333/83333   4
+3579545    59659      59660                59660                29829/29830   0
+2929687    48828      48829                48829                24414/24414   0
+24000000   400000     400001               400001               200000/200000   0
+733333333  12222222   12222224             12222224             6111111/6111111   5
+
+## 2. clock variants, 600 s at 120 frames/s, QPF 10 MHz, ticks(dt) 166666, step threshold 166667, cap 1000000
+variant              corrections aligns breaks  phase real-V min/max ms   alpha (rounded, top 3)        shown-time increments (top 3)            backwards
+minimal              148         0      107        -6.25 / 6.08       0.500 x36002, 0.000 x35998     83333 x71851, 166666 x100, 999996 x20    0
+recenter             168         0      128        -6.25 / 6.08       0.500 x36001, 0.000 x35999     83333 x71831, 166666 x81, 0 x41          0
+recenter+align A     143         30     117        -6.22 / 6.19       0.501 x35999, 0.001 x35971, 0.000 x30 83333 x71827, 166666 x65, 0 x28          0
+recenter+align B     195         30     186        -6.94 / 6.25       0.499 x36003, 0.999 x35967, 0.000 x30 83333 x71775, 166666 x89, 0 x56          0
+minimal+align B      175         30     165        -5.97 / 6.25       0.499 x35994, 0.999 x35976, 0.000 x30 83333 x71794, 166666 x110, 0 x36         0

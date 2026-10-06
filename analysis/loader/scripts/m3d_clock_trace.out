@@ -1,0 +1,34 @@
+====================================================================================================
+run ../../../run/analyse_m3d_clock/e120ha: 10168 frames
+steps per frame: 0 x 5080, 1 x 5084, 2 x 1, 3+ x 3
+consecutive frames with the same step count (pattern breaks of 1/0 or 1/1): 9
+alpha: min 0.499028 max 0.999028
+alpha rounded to 0.01 (top 8): 0.50 x 5086, 1.00 x 5081
+  frames with 0 step(s): alpha median 0.999028, p1 0.999028, p99 0.999028, n 5079
+  frames with 1 step(s): alpha median 0.499028, p1 0.499028, p99 0.499028, n 5084
+  frames with 2 step(s): alpha median 0.499028, p1 0.499028, p99 0.499028, n 1
+  frames with 3 step(s): alpha median 0.999028, p1 0.499028, p99 0.999028, n 3
+leftover (ticks) most common: 83171 x 5086, 166504 x 5081, -162 x 1
+leftover mod q (q = 83333): 83171 x 10167
+g_frameDelta (ms) most common: 8.333 x 10155, 16.667 x 6, 75.000 x 3, 0.000 x 2, 25.000 x 2
+phase real - V (ms): min -6.048 p1 -5.936 median 2.099 p99 2.848 max 5.996
+sample delay = sample_qpc - CApp::Frame entry (ms): median 0.007 p90 0.011 p99 0.087 p99.9 1.281 max 8.434
+  sample delay in Intro      n  1557 median 0.007 p99 0.278 max 8.434 ms
+  sample delay in Frontend   n  8610 median 0.007 p99 0.029 max 7.997 ms
+  sample delay in Attract    n     1 median 0.007 p99 0.007 max 0.007 ms
+CApp::Frame entry intervals (ms): median 8.333 p1 6.881 p99 9.787 max 78.966
+FUN_000A46D0 counter [0x2E8E48] increments per frame (mod 41): 1 x 10167
+coalescing runs: FUN_000A3CE0 248 (2.92/s), FUN_000A3B10 50 (0.59/s) over 85.0 s
+frames per context by (steps, picture): EMPTY = no draw and no colour clear (shows the picture of two presents ago)
+  Intro      0/EMPTY 666, 0/clear 2, 0/draw 109, 1/EMPTY 5, 1/clear 6, 1/draw 768, 2/draw 1
+  Frontend   0/draw 4303, 1/draw 4304, 2/draw 3
+  Attract    1/clear 1
+frames with >= 2 steps: 4
+  frame 39 ctx Intro steps 2 leftover 83171 alpha 0.499028 phase -1.511 ms delay 0.014 ms align 0
+  frame 1559 ctx Frontend steps 4 leftover 166504 alpha 0.999028 phase -1.965 ms delay 0.008 ms align 0
+  frame 8769 ctx Frontend steps 4 leftover 166504 alpha 0.999028 phase 5.852 ms delay 0.008 ms align 0
+  frame 8770 ctx Frontend steps 5 leftover 83171 alpha 0.499028 phase 5.996 ms delay 0.156 ms align 0
+frames with an alignment shift: 1
+  frame 1 ctx Intro shift -4107 ticks, steps 0, leftover -162 alpha -1.000000
+shown simulation time (ticks of the guest timer) per frame: median step 83333, min 0, max 749997, backwards 0
+  increments most common: 83333 x 10154, 166666 x 6, 749997 x 3, 249999 x 2, 0 x 1

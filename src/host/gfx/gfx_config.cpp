@@ -121,6 +121,39 @@ bool ParseAnisotropy(std::string_view text, std::uint32_t* level) noexcept {
     return true;
 }
 
+bool ParseFrameRate(std::string_view text, std::uint32_t* hz, platform::pacing::FrameRateMode* mode) noexcept {
+    text = TrimView(text);
+    std::uint32_t rate = 0;
+    platform::pacing::FrameRateMode m = platform::pacing::FrameRateMode::Fixed;
+    const auto equalsNoCase = [&](std::string_view word) {
+        if (text.size() != word.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < word.size(); ++i) {
+            if ((text[i] | 0x20) != word[i]) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (equalsNoCase("display")) {
+        m = platform::pacing::FrameRateMode::Display;
+        rate = static_cast<std::uint32_t>(platform::pacing::kMaxFrameRate);
+    } else if (text == "120") {
+        m = platform::pacing::FrameRateMode::Max120;
+        rate = static_cast<std::uint32_t>(platform::pacing::kMaxFrameRate);
+    } else if (!core::ParseConfigU32(text, rate)) {
+        return false;
+    }
+    if (hz != nullptr) {
+        *hz = rate;
+    }
+    if (mode != nullptr) {
+        *mode = m;
+    }
+    return true;
+}
+
 Settings SettingsFromConfig(const core::Config& cfg) {
     Settings s;
     s.frameLimit = cfg.GetU32("debug", "frames", 0);
@@ -130,12 +163,24 @@ Settings SettingsFromConfig(const core::Config& cfg) {
     if (s.tickRate == 0) {
         s.tickRate = 60;
     }
-    s.frameRate = cfg.Has("render", "frame_rate") ? cfg.GetU32("render", "frame_rate", s.tickRate) : s.tickRate;
-    if (s.frameRate != 0 && s.frameRate != s.tickRate) {
+    s.frameRate = s.tickRate;
+    // M3d: "120" / "display" choose the rate from the refresh (interpolated above the tick rate); numbers keep M3b.
+    if (cfg.Has("render", "frame_rate")) {
+        const std::string text = cfg.GetString("render", "frame_rate");
+        if (!ParseFrameRate(text, &s.frameRate, &s.frameRateMode)) {
+            FUT_LOGW(Gfx, "[render] frame_rate = '%s' is not 60|120|display or a number - using the tick rate %u",
+                     text.c_str(), s.tickRate);
+            s.frameRate = s.tickRate;
+            s.frameRateMode = platform::pacing::FrameRateMode::Fixed;
+        }
+    }
+    if (s.frameRateMode == platform::pacing::FrameRateMode::Fixed && s.frameRate != 0 && s.frameRate != s.tickRate) {
         FUT_LOGW(Gfx, "[render] frame_rate = %u differs from [game] tick_rate = %u: the game steps %u times per "
                  "second but shows %u frames, so some frames get 0 or 2 steps (remove frame_rate to follow the tick "
-                 "rate)", s.frameRate, s.tickRate, s.tickRate, s.frameRate);
+                 "rate; M3d: frame_rate = 120 or display shows up to 120 interpolated frames)", s.frameRate, s.tickRate,
+                 s.tickRate, s.frameRate);
     }
+    s.lowLatency = cfg.GetBool("render", "low_latency", true);
     const std::string pacing = Lower(cfg.GetString("render", "pacing", "auto"));  // validated choice
     if (!platform::pacing::ParseMode(pacing, &s.pacing)) {
         FUT_LOGW(Gfx, "[render] pacing = '%s' is not auto|vsync|timer|off - using auto", pacing.c_str());
@@ -244,6 +289,8 @@ platform::PacingConfig PacingConfigOf(const Settings& settings) noexcept {
     c.targetHz = static_cast<double>(settings.frameRate != 0 ? settings.frameRate : settings.tickRate);
     c.tickHz = settings.tickRate;
     c.tracePath = settings.pacingTrace.empty() ? nullptr : settings.pacingTrace.c_str();
+    c.rateMode = settings.frameRateMode;  // M3d
+    c.justInTime = settings.lowLatency;
     return c;
 }
 

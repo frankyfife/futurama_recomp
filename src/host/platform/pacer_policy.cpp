@@ -68,6 +68,8 @@ const char* PathName(Path path) noexcept {
         return "unthrottled";
     case Path::Headless:
         return "headless";
+    case Path::Cadence:
+        return "cadence";
     case Path::Count:
         break;
     }
@@ -75,7 +77,19 @@ const char* PathName(Path path) noexcept {
 }
 
 bool IsVblankPath(Path path) noexcept {
-    return path == Path::VblankLocked || path == Path::DisplayRate;
+    return path == Path::VblankLocked || path == Path::DisplayRate || path == Path::Cadence;
+}
+
+const char* FrameRateModeName(FrameRateMode mode) noexcept {
+    switch (mode) {
+    case FrameRateMode::Fixed:
+        return "fixed";
+    case FrameRateMode::Max120:
+        return "120";
+    case FrameRateMode::Display:
+        return "display";
+    }
+    return "?";
 }
 
 bool IsTimerPath(Path path) noexcept {
@@ -113,12 +127,194 @@ RefreshClass ClassifyRefresh(double refreshHz, double targetHz) noexcept {
     return r;
 }
 
+// ---- M3d: frame rate request -------------------------------------------------------------------------------------
+
+RateChoice ChooseFrameRate(FrameRateMode mode, double refreshHz, double capHz) noexcept {
+    RateChoice c;
+    const double cap = capHz > 0.0 ? capHz : kMaxFrameRate;
+    c.frameHz = cap;
+    if (!(refreshHz > 0.0)) {
+        return c;
+    }
+    if (refreshHz <= cap * (1.0 + kIntegerTolerance)) {
+        c.frameHz = refreshHz;  // 60, 75, 100, 119.88, 120 Hz: one frame per refresh
+        c.k = 1;
+        return c;
+    }
+    const RefreshClass rc = ClassifyRefresh(refreshHz, cap);
+    if (rc.integer && rc.k >= 1 && rc.k <= kMaxSyncInterval) {
+        c.frameHz = refreshHz / rc.k;  // 240 Hz: 120, 360 Hz: 120
+        c.k = rc.k;
+        return c;
+    }
+    if (mode == FrameRateMode::Display) {
+        const double k = std::ceil(refreshHz / (cap * (1.0 + kIntegerTolerance)));
+        if (k >= 2.0 && k <= static_cast<double>(kMaxSyncInterval)) {
+            c.k = static_cast<std::uint32_t>(k);  // 144 -> 72, 165 -> 82.5, 180 -> 90, 200 -> 100
+            c.frameHz = refreshHz / k;
+        }
+    }
+    return c;
+}
+
+void CadencePattern::Reset(double ratio) noexcept {
+    ratio_ = ratio >= 1.0 && ratio <= 64.0 ? ratio : 0.0;
+    acc_ = 0.0;
+}
+
+std::uint32_t CadencePattern::Next() noexcept {
+    if (ratio_ < 1.0) {
+        return 1;
+    }
+    const double next = acc_ + ratio_;
+    const double s = std::floor(next + 0.5) - std::floor(acc_ + 0.5);
+    acc_ = next;
+    if (acc_ >= 1048576.0) {
+        acc_ -= std::floor(acc_);  // a whole number: the rounding differences stay the same
+    }
+    return s >= 1.0 ? static_cast<std::uint32_t>(s) : 1u;
+}
+
 // ---- plan selection ------------------------------------------------------------------------------------------
 
+namespace {
+
+// [render] frame_rate = 120 | display (m3d_frameclock.md 3.2/3.3; header comment of FrameRateMode).
+Plan SelectPlanM3d(const PlanInput& in) noexcept {
+    Plan p;
+    const double cap = in.targetHz > 0.0 ? in.targetHz : kMaxFrameRate;
+    const double refresh = in.refreshHz > 0.0 ? in.refreshHz : 0.0;
+    const RateChoice even = ChooseFrameRate(in.rateMode, refresh, cap);
+    // Timer plans (background, minimized, pacing = timer/off, vsync off, headless) keep the rate the foreground plan
+    // shows evenly, else the cap (the VRR timer and the cadence reach it on average).
+    const double timerHz = even.k != 0 ? even.frameHz : cap;
+    p.nominalHz = timerHz;
+    p.periodSeconds = 1.0 / timerHz;
+    const Environment& e = in.env;
+    if (!e.swapChain) {
+        p.path = in.mode == Mode::Off ? Path::Unthrottled : Path::Headless;
+        p.presentToSwapChain = false;
+        p.reason = "no swap chain";
+        return p;
+    }
+    const bool hidden = e.minimized || !e.displayOn || e.sessionLocked;
+    p.presentToSwapChain = !hidden;
+    if (in.mode == Mode::Off) {
+        p.path = Path::Unthrottled;
+        p.allowTearing = in.tearingSupported && !in.vsync;
+        p.reason = "[render] pacing = off";
+        return p;
+    }
+    if (in.mode == Mode::Timer) {
+        p.path = Path::Timer;
+        p.allowTearing = in.tearingSupported && !in.vsync;
+        p.reason = "[render] pacing = timer";
+        return p;
+    }
+    if (in.mode == Mode::Auto && !in.vsync) {
+        p.path = Path::Timer;
+        p.allowTearing = in.tearingSupported;
+        p.reason = "[render] vsync = 0";
+        return p;
+    }
+    if (hidden) {
+        p.path = Path::Free;
+        p.reason = e.minimized ? "window minimized" : !e.displayOn ? "display off" : "session locked";
+        return p;
+    }
+    if (in.mode == Mode::Auto && (!e.foreground || e.displayLimited)) {
+        p.path = Path::Free;
+        p.reason = e.displayLimited ? "the display holds the pace (vblank waits too long)" : "window not in the foreground";
+        return p;
+    }
+    const auto vblank = [&](const RateChoice& c, const char* reason) {
+        p.path = Path::VblankLocked;
+        p.syncInterval = c.k;
+        p.k = c.k;
+        p.nominalHz = c.frameHz;
+        p.periodSeconds = static_cast<double>(c.k) / refresh;
+        p.reason = reason;
+    };
+    const auto cadence = [&](const char* reason) {
+        p.path = Path::Cadence;
+        p.syncInterval = 1;
+        p.k = 0;
+        p.nominalHz = cap;
+        p.periodSeconds = 1.0 / cap;
+        p.cadenceRatio = refresh / cap;
+        p.reason = reason;
+    };
+    // An even rate that needs no VRR: one frame per refresh up to the cap, k frames on k x the cap.
+    if (refresh > 0.0 && even.k == 1) {
+        vblank(even, "refresh up to the frame rate cap: one frame per refresh");
+        return p;
+    }
+    if (refresh > 0.0 && even.k >= 2 && ClassifyRefresh(refresh, cap).integer) {
+        vblank(even, "refresh = integer multiple of the frame rate cap");
+        return p;
+    }
+    const bool cadenceFits = refresh > 0.0 && refresh / cap <= static_cast<double>(kMaxSyncInterval);
+    if (in.mode == Mode::Vsync) {
+        if (even.k >= 2) {
+            vblank(even, "[render] pacing = vsync: an even divisor of the refresh");
+        } else if (cadenceFits) {
+            cadence("[render] pacing = vsync: refresh not a multiple of the frame rate cap");
+        } else {
+            p.path = Path::DisplayRate;
+            p.syncInterval = 1;
+            p.k = 1;
+            p.nominalHz = refresh > 0.0 ? refresh : cap;
+            p.periodSeconds = 1.0 / p.nominalHz;
+            p.reason = refresh > 0.0 ? "[render] pacing = vsync, refresh above 4x the cap" : "[render] pacing = vsync, refresh unknown";
+        }
+        return p;
+    }
+    if (in.tearingSupported && in.vrr != VrrState::Rejected) {
+        p.path = Path::TearingTimer;
+        p.allowTearing = true;
+        p.nominalHz = cap;
+        p.periodSeconds = 1.0 / cap;
+        p.reason = refresh > 0.0 ? "refresh not a multiple of the frame rate cap, tearing supported (VRR timer)"
+                                 : "refresh unknown, tearing supported";
+        return p;
+    }
+    if (even.k >= 2) {
+        vblank(even, in.tearingSupported ? "VRR rejected: an even divisor of the refresh"
+                                         : "no tearing support: an even divisor of the refresh");
+        return p;
+    }
+    if (cadenceFits) {
+        cadence(in.tearingSupported ? "VRR rejected: 1-2 refreshes per frame, the cap on average"
+                                    : "no tearing support: 1-2 refreshes per frame, the cap on average");
+        return p;
+    }
+    if (refresh > 0.0) {
+        // Above 4 x the cap without VRR (no sync interval > 4): the timer at the cap into free slots.
+        p.path = Path::Timer;
+        p.nominalHz = cap;
+        p.periodSeconds = 1.0 / cap;
+        p.reason = "refresh above 4x the frame rate cap without VRR: timer";
+        return p;
+    }
+    p.path = Path::DisplayRate;
+    p.syncInterval = 1;
+    p.k = 1;
+    p.nominalHz = cap;
+    p.periodSeconds = 1.0 / cap;
+    p.reason = "refresh unknown, no tearing: one frame per refresh";
+    return p;
+}
+
+}  // namespace
+
 Plan SelectPlan(const PlanInput& in) noexcept {
+    if (in.rateMode != FrameRateMode::Fixed) {
+        return SelectPlanM3d(in);
+    }
     Plan p;
     const double target = in.targetHz > 0.0 ? in.targetHz : 60.0;
     p.periodSeconds = 1.0 / target;
+    p.nominalHz = target;  // M3d: the frame clock locks to the configured rate (60 = M3b)
     const Environment& e = in.env;
     if (!e.swapChain) {
         p.path = in.mode == Mode::Off ? Path::Unthrottled : Path::Headless;
@@ -193,7 +389,104 @@ Plan SelectPlan(const PlanInput& in) noexcept {
 bool SamePlan(const Plan& a, const Plan& b) noexcept {
     return a.path == b.path && a.syncInterval == b.syncInterval && a.allowTearing == b.allowTearing &&
            a.presentToSwapChain == b.presentToSwapChain && a.k == b.k &&
-           std::fabs(a.periodSeconds - b.periodSeconds) <= 1.0e-9;
+           std::fabs(a.periodSeconds - b.periodSeconds) <= 1.0e-9 && std::fabs(a.cadenceRatio - b.cadenceRatio) <= 1.0e-9;
+}
+
+// ---- M3d: frame advance for the frame clock -------------------------------------------------------------------
+
+std::uint32_t FramesPerTick(double nominalHz, double tickHz) noexcept {
+    if (!(nominalHz > 0.0) || !(tickHz > 0.0)) {
+        return 0;
+    }
+    const double n = std::floor(nominalHz / tickHz + 0.5);
+    if (n < 1.0 || n > 16.0) {
+        return 0;
+    }
+    return std::fabs(nominalHz - n * tickHz) <= kFrameLockTolerance * nominalHz ? static_cast<std::uint32_t>(n) : 0u;
+}
+
+FrameAdvance FrameAdvanceOf(const Plan& plan, double tickHz, double refreshHz, std::uint32_t lastRefreshes) noexcept {
+    FrameAdvance a;
+    if (plan.path == Path::None) {
+        return a;
+    }
+    a.known = true;
+    const double nominal =
+        plan.nominalHz > 0.0 ? plan.nominalHz : plan.periodSeconds > 0.0 ? 1.0 / plan.periodSeconds : 0.0;
+    a.nominalSeconds = nominal > 0.0 ? 1.0 / nominal : 0.0;
+    // The cadence varies its display time per frame: a fixed fraction of a tick would put the content up to half a
+    // refresh away from its display time (m3d_frameclock.md 3.2: 5.6 ms on 144 Hz).
+    a.framesPerTick = plan.path == Path::Cadence ? 0u : FramesPerTick(nominal, tickHz);
+    const bool refreshKnown = refreshHz > 0.0;
+    switch (plan.path) {
+    case Path::VblankLocked:
+        a.seconds = refreshKnown && plan.k != 0 ? static_cast<double>(plan.k) / refreshHz : plan.periodSeconds;
+        break;
+    case Path::DisplayRate:
+        a.seconds = refreshKnown ? 1.0 / refreshHz : plan.periodSeconds;
+        break;
+    case Path::Cadence:
+        a.variable = true;
+        a.seconds = refreshKnown ? static_cast<double>(lastRefreshes != 0 ? lastRefreshes : 1u) / refreshHz
+                                 : plan.periodSeconds;
+        break;
+    default:
+        a.seconds = plan.periodSeconds;
+        break;
+    }
+    return a;
+}
+
+// ---- M3d: just-in-time frame start --------------------------------------------------------------------------------
+
+void LatencyBudget::AddWork(double seconds) noexcept {
+    if (!(seconds >= 0.0)) {
+        return;
+    }
+    work_[next_] = seconds;
+    next_ = (next_ + 1) % kWindow;
+    count_ = count_ < kWindow ? count_ + 1 : kWindow;
+    if (++sinceSort_ < 30 && count_ >= 30) {
+        return;  // the percentile is refreshed every 30 frames (and for every frame of the first 30)
+    }
+    sinceSort_ = 0;
+    double sorted[kWindow];
+    std::copy(work_, work_ + count_, sorted);
+    const std::uint32_t index = (count_ * 99 + 99) / 100 - 1;  // 99th percentile (nearest rank)
+    std::nth_element(sorted, sorted + index, sorted + count_);
+    p99_ = sorted[index];
+}
+
+void LatencyBudget::NoteMiss(double nowSeconds) noexcept {
+    ++misses_;
+    factor_ = factor_ * 2 <= kMaxFactor ? factor_ * 2 : kMaxFactor;
+    lastMiss_ = nowSeconds;
+}
+
+double LatencyBudget::Seconds(double nowSeconds) noexcept {
+    if (factor_ > 1 && nowSeconds - lastMiss_ > kRelaxSeconds) {
+        factor_ /= 2;
+        lastMiss_ = nowSeconds;
+    }
+    return std::max(kMinSeconds, p99_ + kMarginSeconds) * static_cast<double>(factor_);
+}
+
+void LatencyBudget::Reset() noexcept {
+    const std::uint64_t misses = misses_;
+    *this = LatencyBudget{};
+    misses_ = misses;
+}
+
+std::int64_t JustInTimeStart(std::int64_t now, std::int64_t visibleQpc, std::int64_t budgetTicks,
+                             std::int64_t maxWaitTicks) noexcept {
+    if (visibleQpc <= 0 || budgetTicks <= 0 || maxWaitTicks <= 0) {
+        return 0;
+    }
+    const std::int64_t start = visibleQpc - budgetTicks;
+    if (start <= now || start - now > maxWaitTicks) {
+        return 0;
+    }
+    return start;
 }
 
 bool PlanHysteresis::Accept(const Plan& current, const Plan& desired, bool immediate) noexcept {
@@ -545,6 +838,37 @@ double OnScreenTracker::NoteStatistics(std::uint32_t presentCount, std::uint32_t
     lastRefresh_ = syncRefreshCount;
     lastQpc_ = syncQpc;
     return interval;
+}
+
+bool OnScreenTracker::PredictNextVisible(double refreshSeconds, std::int64_t* qpc) const noexcept {
+    if (!haveLast_ || !(refreshSeconds > 0.0) || presents_ == 0 || qpc == nullptr) {
+        return false;
+    }
+    const Entry& newest = ring_[(next_ + kRing - 1) % kRing];
+    if (!newest.used) {
+        return false;
+    }
+    const std::uint32_t chain = newest.id - lastCount_;  // presents issued after the newest visible one
+    if (static_cast<std::int32_t>(chain) < 0 || chain > kMaxPredictChain) {
+        return false;
+    }
+    std::uint64_t refreshes = 0;
+    for (std::uint32_t i = 0; i <= chain; ++i) {
+        const Entry* e = Find(lastCount_ + i);
+        if (e == nullptr || e->planned == 0) {
+            return false;
+        }
+        refreshes += e->planned;
+    }
+    *qpc = lastQpc_ + static_cast<std::int64_t>(std::llround(static_cast<double>(refreshes) * refreshSeconds * qpf_));
+    return true;
+}
+
+void OnScreenTracker::ExtendLastPresent(std::uint32_t refreshes) noexcept {
+    Entry& newest = ring_[(next_ + kRing - 1) % kRing];
+    if (newest.used && newest.planned != 0) {
+        newest.planned += refreshes;
+    }
 }
 
 void OnScreenTracker::Reset() noexcept {

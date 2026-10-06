@@ -1,8 +1,11 @@
 // GPU path of NiPCRenderer (nipc_gpu.h; GFX_CONTRACT.md 2, 9; design 6 M3).
 #include "gfx/nipc_gpu.h"
 
+#include "core/config.h"
+#include "core/guest.h"
 #include "core/log.h"
 #include "gfx/gfx_config.h"
+#include "gfx/interp_history.h"
 #include "gfx/rhi/d3d11/d3d11_device.h"
 #include "platform/frame_pacer.h"
 #include "platform/screenshot.h"
@@ -288,6 +291,10 @@ struct GpuRenderer::Impl {
     RenderSizes pendingSizes;     // a changed view size waiting for kResizeSettleFrames frames
     std::uint32_t pendingFrames = 0;
     std::uint64_t resizes = 0, resizeFailures = 0;
+
+    // M3d: renderer-level interpolation between the last two logic ticks (gfx/interp_history.h). Passes every
+    // camera and draw through unchanged while the frame clock produces no intermediate frames (60 fps).
+    std::unique_ptr<interp::History> history;
 
     rhi::CommandContext& Ctx() noexcept { return device->Context(); }
 
@@ -812,6 +819,18 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
     d.Ctx().SetRenderTargets({}, {});
     d.ApplyViewport(d.camera.viewport);
     d.shadow.Reset();
+    // M3d: [render] interpolation / interpolation_debug (an unreadable configuration keeps the defaults).
+    try {
+        interp::Settings interpolation;
+        try {
+            interpolation = interp::SettingsFromConfig(core::GetConfig());
+        } catch (...) {
+        }
+        d.history = std::make_unique<interp::History>(interpolation);
+        d.history->LogConfiguration();
+    } catch (...) {
+        FUT_LOGW(Gfx, "interpolation: not available (out of memory)");
+    }
     d.PrepareFrame(1);
     return r;
 }
@@ -934,7 +953,10 @@ void GpuRenderer::BeginScene() noexcept {
 void GpuRenderer::SetCameraData(const ni::CameraInput& input) noexcept {
     Impl& d = *impl_;
     ++d.cameras;
-    ni::CameraInput in = input;
+    // M3d: NiCamera::Click passes cam+0xA0 as the location - the camera object keys the history.
+    ni::CameraInput in = d.history != nullptr && input.location != nullptr
+                             ? d.history->Camera(guest::Addr(input.location) - ni::kNiCameraWorldLocation, input)
+                             : input;
     in.targetWidth = d.targetWidth;
     in.targetHeight = d.targetHeight;
     in.leftRightSwap = d.leftRightSwap;
@@ -956,22 +978,33 @@ void GpuRenderer::DrawGeometry(ni::DrawKind kind, const ni::GeometryInput& input
         return;
     }
     const ni::ExtractContext c = d.Context();
+    // M3d: the transform / skin instance of the interpolated state (arena copies) or the guest input as is.
+    interp::GeometryResult interpolated;
+    interpolated.input = input;
+    if (d.history != nullptr) {
+        interpolated = d.history->Geometry(kind, input, d.arena);
+    }
+    const ni::GeometryInput& in = interpolated.input;
     ni::ExtractStatus status = ni::ExtractStatus::Unsupported;
     switch (kind) {
     case ni::DrawKind::Shape:
-        status = ni::ExtractShape(c, input, &d.item);
+        status = ni::ExtractShape(c, in, &d.item);
         break;
     case ni::DrawKind::Triangles:
-        status = ni::ExtractTriangles(c, input, &d.item);
+        status = ni::ExtractTriangles(c, in, &d.item);
         break;
     case ni::DrawKind::TriStrip:
-        status = ni::ExtractTriStrip(c, input, &d.item);
+        status = ni::ExtractTriStrip(c, in, &d.item);
         break;
     case ni::DrawKind::TriStrips:
-        status = ni::ExtractStrips(c, input, &d.item);
+        status = ni::ExtractStrips(c, in, &d.item);
         break;
     default:
         break;
+    }
+    float tint[4];
+    if (status == ni::ExtractStatus::Ok && interp::TintColor(interpolated.tint, tint)) {
+        interp::ApplyTint(&d.item, tint);  // [render] interpolation_debug = tint
     }
     d.Submit(kind, input.data, status);
 }
@@ -1083,6 +1116,9 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
     }
     d.backBuffer = (d.backBuffer + 1) % Impl::kBackBuffers;  // the device moved on (rhi Device::Present)
     platform::NotePresentedFrame();  // first call: shows the window, registers the "present" reporter
+    if (d.history != nullptr) {
+        d.history->EndFrame(frame, d.traceFrame);  // M3d: before the arena reset (interpolated transforms live there)
+    }
     d.arenaPeak = std::max(d.arenaPeak, d.arena.BytesUsed());
     d.arena.Reset();
     d.framesDone = frame;
@@ -1225,6 +1261,9 @@ void GpuRenderer::LogStatistics() noexcept {
     FUT_LOGI(Gfx, "d3d11 gpu frame time: %llu frames timed, average %.2f ms, 99th percentile %.1f ms, longest %.1f ms",
              static_cast<unsigned long long>(ds.gpuFramesTimed), ds.gpuFrameMsAverage, ds.gpuFrameMsP99,
              ds.gpuFrameMsMax);
+    if (d.history != nullptr) {
+        d.history->LogStatistics();  // M3d: "interpolation: ..."
+    }
 }
 
 }  // namespace gfx

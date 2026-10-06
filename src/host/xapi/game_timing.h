@@ -260,12 +260,127 @@ private:
     Stats stats_;
 };
 
+// ---- M3d: frame clock in quanta (half-tick clock; analysis/loader/m3d_frameclock.md 2) -------------------------
+//
+// The M3b clock advances ticks(dt) per frame. M3d generalises it to a quantum per frame that the frame pacer chooses
+// (platform::CurrentFrameAdvance, platform/pacer_policy.h FrameAdvance):
+//   - N frames per tick (the plan's rate is N x the tick rate within 100 ppm): quanta of ticks(dt) / N - for N = 2
+//     alternately floor and ceil, so two quanta are exactly ticks(dt). N = 1 is the M3b clock bit for bit (unit test).
+//   - otherwise (75/100/119.88 Hz, the cadence plan, 72 fps on 144 Hz): the display time of the frame in QPC ticks
+//     with a fractional accumulator, so the game time follows the display exactly.
+// Corrections as in M3b: catch up by whole quanta when real time is more than 3/4 quantum ahead, hold one frame
+// when it is more than 3/4 quantum behind (never behind the previous frame). With N >= 2 the guest's remainder is
+// aligned once ("phase B", m3d_frameclock.md 2.3) so that the largest remainder of the pattern is ticks(dt) - mu
+// (mu = max(16, ticks(dt) / 1024)): alpha is then exactly 1/N, 2/N, ..., 1 - for N = 2 1/2 in the frame that runs
+// the tick and 1 in the frame between (a tick's input shows half its effect in its own frame). Alignment happens
+// in the second frame, after the guest's 6 dt cap and after a change of the regime (frames per tick, nominal period
+// or ticks(dt)); a regime change is reported as a clock reset.
+struct ClockQuantum {
+    std::uint32_t framesPerTick = 1;  // N >= 1: quanta of ticks(dt) / N; 0 = `ticks`
+    double ticks = 0.0;               // N == 0: QPC ticks of this frame's display time (fractions accumulate)
+    double nominalTicks = 0.0;        // N == 0: QPC ticks of the regime's nominal period (margin and regime identity)
+};
+
+class FrameClock {
+public:
+    struct Stats {
+        std::uint64_t samples = 0;    // Advance calls
+        std::uint64_t single = 0;     // advanced by exactly one quantum
+        std::uint64_t catchUps = 0;   // advanced by 2 or more quanta
+        std::uint64_t holds = 0;      // did not advance
+        std::int64_t maxCatchUpQuanta = 0;
+        std::int64_t minPhase = 0;    // real - virtual after the sample, in ticks (excluding the first sample)
+        std::int64_t maxPhase = 0;
+        std::uint64_t resets = 0;     // regime changes after the first sample
+        std::uint64_t aligns = 0;     // phase B corrections
+    };
+    struct Sample {
+        std::int64_t value = 0;   // the virtual time V handed to the guest
+        bool reset = false;       // first sample or a regime change
+        bool aligned = false;     // the remainder was moved to phase B in this sample
+        std::int64_t quanta = 0;  // quanta added: 0 hold, 1 normal, >= 2 catch-up
+    };
+    // Accumulator sample of Game::Frame. `real` = the guest's timer value (minus the pacer's deliberate start delay),
+    // `step` = ticks(dt) > 0, `lastPrev` = CApp+0xC8 before this frame (0 = unknown: no alignment), `capTicks` =
+    // the guest's cap ticks(6 dt) (0 = unknown). The first sample returns `real`.
+    Sample Advance(std::int64_t real, std::int64_t step, const ClockQuantum& quantum, std::int64_t lastPrev,
+                   std::int64_t capTicks) noexcept;
+    bool Started() const noexcept { return started_; }
+    std::int64_t Now() const noexcept { return virtual_; }
+    // The remainder pattern is aligned to phase B (N >= 2, no cap or reset since the alignment).
+    bool PhaseB() const noexcept { return phaseB_; }
+    std::uint32_t FramesPerTick() const noexcept { return regimeN_; }
+    const Stats& GetStats() const noexcept { return stats_; }
+    // mu of phase B: max(16, ticks(dt) / 1024) ticks below the guest's step threshold.
+    static std::int64_t PhaseMargin(std::int64_t step) noexcept;
+    // Quantum i (0 .. N-1) of a tick split into N: floor((i + 1) * step / N) - floor(i * step / N).
+    static std::int64_t TickQuantum(std::int64_t step, std::uint32_t n, std::uint32_t i) noexcept;
+
+private:
+    std::int64_t PeekQuantum(std::int64_t step) const noexcept;
+    void Consume(std::int64_t step) noexcept;
+    bool started_ = false;
+    std::int64_t virtual_ = 0;
+    // Regime.
+    std::uint32_t regimeN_ = 1;
+    std::int64_t regimeStep_ = 0;
+    double regimeNominal_ = 0.0;
+    // Quantum state.
+    std::uint32_t phase_ = 0;    // N >= 2: index of the next quantum
+    double ticks_ = 0.0;         // N == 0: this frame's quantum
+    double fraction_ = 0.0;      // N == 0: accumulated fraction of a tick
+    bool alignPending_ = false;
+    bool phaseB_ = false;
+    Stats stats_;
+};
+
+// alpha of the frame being rendered (m3d_frameclock.md 2.5, m3d_interpolation.md 6.1): the weight of the newest
+// tick state, alpha = clamp(1 - (L - rest) / step, 0, 1) with rest = the guest's remainder (accumulator time - CApp+0xC8
+// after the step loop) and L = the largest remainder the clock produces: ticks(dt) - mu in phase B, else ticks(dt).
+// With N >= 2 a value within 0.01 of a multiple of 1/N is that multiple (phase B: exactly 1/2 and 1); >= 0.999 is 1.
+float FrameAlpha(std::int64_t rest, std::int64_t step, std::uint32_t framesPerTick, bool phaseB) noexcept;
+
+// ---- M3d: interpolation values for the renderer -----------------------------------------------------------------
+//
+// Published at the render sample of Game::Frame (return 0xA2FBB, after `last` 0xA2F6A, before cur->Render() 0xA3014)
+// and valid for every draw until CApp::Frame returns (pause and debug overlays included). Inside the step loop
+// (draws from Update: intro screens, the eight cleared frames of a context switch) and outside Game::Frame (the movie
+// before it) the values say "as is" (alpha 1, kFrameInterpInsideStep). The flags have the bit values of the renderer's
+// contract (gfx/interp_frame.h); the stage registers CurrentFrameInterp there.
+inline constexpr std::uint32_t kFrameInterpSnapAll = 1u << 0;     // context switch, catch-up, 6 dt cap, clock reset
+inline constexpr std::uint32_t kFrameInterpInsideStep = 1u << 1;  // drawn from Update or outside Game::Frame
+inline constexpr std::uint32_t kFrameInterpClockReset = 1u << 2;  // first frame or a regime change of the clock
+
+struct FrameInterp {
+    std::uint64_t tick = 0;            // completed fixed steps (probe:Game::FixedStep) = generation G
+    std::uint32_t stepsThisFrame = 0;  // fixed steps of the current CApp::Frame
+    std::uint32_t pairTicks = 1;       // ticks between the two newest rendered states (steps of the last tick frame)
+    float alpha = 1.0f;                // weight of S[G]: display = interp(S[G-1], S[G], alpha)
+    std::uint32_t flags = 0;
+    bool enabled = false;              // the clock produces frames between ticks (frame rate above the tick rate)
+    std::uint64_t frame = 0;           // render samples so far (changes once per rendered frame)
+};
+FrameInterp CurrentFrameInterp() noexcept;
+// The fixes for code that runs per frame instead of per tick (xapi/frame_fixes.cpp, m3d_frameclock.md 4.2): true while
+// the clock produces frames between ticks (never at 60 fps on a 60 Hz tick: bit-identical).
+bool SubTickFramesActive() noexcept;
+// True while a frame that ran no fixed step renders (sub-tick mode only).
+bool RenderingFrameWithoutStep() noexcept;
+
 struct FrameClockStats {
     FrameClockMode mode = FrameClockMode::Realtime;
     std::int64_t step = 0;  // last ticks(dt)
     std::int64_t qpf = 0;   // guest timer frequency [0x2EB448]
     LockstepClock::Stats clock;
     std::uint64_t renderSamples = 0;  // samples at 0xA2FA6 / 0xA2FBB answered with the virtual time
+    // M3d.
+    std::uint32_t framesPerTick = 1;  // regime of the last accumulator sample (0 = display time)
+    std::uint64_t resets = 0, aligns = 0;
+    std::uint64_t renderedFrames = 0;               // render samples at 0xA2FBB
+    std::uint64_t subTickFrames = 0;                // ... in the sub-tick mode
+    std::uint64_t alphaHalf = 0, alphaOne = 0, alphaOther = 0;  // alpha of the sub-tick frames
+    std::uint64_t snapSwitch = 0, snapCatchUp = 0, snapCap = 0, snapReset = 0;  // kFrameInterpSnapAll reasons
+    std::uint64_t startDelays = 0;                  // samples corrected by the pacer's just-in-time delay
 };
 FrameClockStats GetFrameClockStats() noexcept;
 

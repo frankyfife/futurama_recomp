@@ -26,6 +26,15 @@
 // Present(1), no tearing path, no background switch while the window is visible), timer = the absolute
 // timer at T with non-blocking Present(0) (tearing with [render] vsync = 0), off = no wait at all
 // (benchmarks; Present(0) only into free slots).
+//
+// M3d (frame rates up to 120 Hz, analysis/loader/m3d_frameclock.md 3; owned by the frame-clock/pacing agent):
+// [render] frame_rate = 120 | display picks the frame rate F from the refresh R (FrameRateMode, ChooseFrameRate;
+// the logic keeps its tick rate T, the renderer interpolates between the last two ticks), "60" and developer
+// numbers keep the M3b selection above (FrameRateMode::Fixed). New plan Cadence (Present(s_n) with s_n = 1 or 2
+// refreshes, 120 frames per second on a 144/165/180 Hz display without VRR). Per plan the frame clock of the game
+// (xapi/game_timing.h) gets the display time per frame (FrameAdvanceOf); a frame whose plan rate is N x T advances
+// the clock by exactly 1/N tick. Latency (M3c review finding 6): LatencyBudget and JustInTimeStart start a frame
+// of a vblank plan shortly before the vblank at which it becomes visible instead of right after the previous one.
 #pragma once
 
 #include <cstddef>
@@ -53,6 +62,40 @@ struct RefreshClass {
 };
 RefreshClass ClassifyRefresh(double refreshHz, double targetHz) noexcept;
 
+// ---- M3d: frame rate request ([render] frame_rate) -----------------------------------------------------------
+//
+// Fixed    a number: "60" (the tick rate, M3b exactly) or a developer value; plans as in M3b at that rate
+// Max120   "120": up to kMaxFrameRate frames per second - one frame per refresh up to 120 Hz, k frames on
+//          k x 120 Hz, the VRR timer at 120 on 144/165/180 Hz with VRR, else the Cadence plan (120 on average)
+// Display  "display": like Max120, but without VRR an even divisor R / k <= 120 instead of the cadence (72 fps on
+//          144 Hz, 82.5 on 165 Hz, 90 on 180 Hz): every frame stays the same number of refreshes
+enum class FrameRateMode : std::uint8_t { Fixed, Max120, Display };
+inline constexpr double kMaxFrameRate = 120.0;  // user requirement: at most 120 frames per second
+const char* FrameRateModeName(FrameRateMode mode) noexcept;  // "fixed", "120", "display"
+
+// The rate a refresh allows without VRR (pure; m3d_frameclock.md 3.2): R unknown -> cap, k 0; R <= cap (+0.2 %)
+// -> R, k 1; R = k x cap (k <= 4) -> R / k, k; Display -> R / ceil(R / cap) with k = ceil(R / cap) <= 4; otherwise
+// (Max120, or k > 4) -> cap with k 0 (no even divisor: cadence or timer).
+struct RateChoice {
+    double frameHz = 0.0;  // frames per second F
+    std::uint32_t k = 0;   // refreshes per frame of a vblank plan (1..4); 0 = none (cadence, timer)
+};
+RateChoice ChooseFrameRate(FrameRateMode mode, double refreshHz, double capHz) noexcept;
+
+// Refreshes per frame of the Cadence plan: s_n = round((n + 1) * ratio) - round(n * ratio) with ratio = R / F > 1,
+// so F frames per second reach the screen on average and no frame stays more than ceil(ratio) refreshes
+// (144 / 120: 1, 1, 2, 1, 1; 180 / 120: 2, 1). Exact over any length (the accumulator is rebased on whole numbers).
+class CadencePattern {
+public:
+    void Reset(double ratio) noexcept;
+    std::uint32_t Next() noexcept;  // refreshes of the next frame (>= 1); 1 if not reset with a ratio >= 1
+    double Ratio() const noexcept { return ratio_; }
+
+private:
+    double ratio_ = 0.0;
+    double acc_ = 0.0;  // n * ratio (minus a whole number)
+};
+
 // ---- plan selection ------------------------------------------------------------------------------------------
 
 enum class Path : std::uint8_t {
@@ -64,11 +107,12 @@ enum class Path : std::uint8_t {
     Free,          // like Timer while the window is in the background, minimized, display off, locked ...
     Unthrottled,   // no wait ([render] pacing = off)
     Headless,      // no swap chain (null backend, tests): absolute timer at the target rate
+    Cadence,       // M3d: frame-latency waitable + Present(s_n), s_n = 1 or 2 refreshes (CadencePattern)
     Count
 };
 inline constexpr std::size_t kPathCount = static_cast<std::size_t>(Path::Count);
 const char* PathName(Path path) noexcept;  // "none", "vblank", "display-rate", "tearing-timer", "timer", ...
-// True for the paths that wait on the frame-latency waitable object (the vblank is the clock).
+// True for the paths that wait on the frame-latency waitable object (the vblank is the clock; incl. Cadence).
 bool IsVblankPath(Path path) noexcept;
 // True for the paths whose clock is the absolute timer (FrameSchedule).
 bool IsTimerPath(Path path) noexcept;
@@ -88,26 +132,94 @@ struct Environment {
 struct PlanInput {
     Mode mode = Mode::Auto;
     bool vsync = true;              // [render] vsync (0: auto behaves like timer, timer/off may tear)
-    double targetHz = 60.0;         // game frames per second ([render] frame_rate, default [game] tick_rate)
+    double targetHz = 60.0;         // game frames per second ([render] frame_rate, default [game] tick_rate);
+                                    // M3d modes: the cap (kMaxFrameRate)
     double refreshHz = 0.0;         // display refresh, 0 = unknown
     bool tearingSupported = false;  // DXGI_FEATURE_PRESENT_ALLOW_TEARING + swap chain flag
     bool waitable = false;          // the swap chain has a frame-latency waitable object
     VrrState vrr = VrrState::Unknown;
     Environment env;
+    FrameRateMode rateMode = FrameRateMode::Fixed;  // M3d: [render] frame_rate = 120 | display
 };
 
 struct Plan {
     Path path = Path::None;
-    std::uint32_t syncInterval = 0;  // Present sync interval
+    std::uint32_t syncInterval = 0;  // Present sync interval (Cadence: CadencePattern per frame, this is 1)
     bool allowTearing = false;       // DXGI_PRESENT_ALLOW_TEARING (only with syncInterval 0)
     bool presentToSwapChain = true;  // false: minimized / display off / locked -> only rotate the back buffers
-    std::uint32_t k = 0;             // VblankLocked: refreshes per frame; DisplayRate: 1
-    double periodSeconds = 0.0;      // planned frame period (1/T; DisplayRate: 1/R)
+    std::uint32_t k = 0;             // VblankLocked: refreshes per frame; DisplayRate: 1; Cadence: 0
+    double periodSeconds = 0.0;      // planned frame period (1/T; DisplayRate: 1/R; M3d vblank k: k/R)
     const char* reason = "";         // static text for the log
+    // M3d: frames per second the plan aims at (Fixed: the configured rate, also on a refresh within 0.2 % of
+    // k x the rate; M3d modes: F chosen from the refresh). The frame clock compares it with the tick rate.
+    double nominalHz = 0.0;
+    double cadenceRatio = 0.0;       // Cadence: refreshes per frame on average (R / F)
 };
 Plan SelectPlan(const PlanInput& in) noexcept;
-// Same path, sync interval, tearing, present flag and period (within 1e-9 s).
+// Same path, sync interval, tearing, present flag, period (within 1e-9 s) and cadence ratio.
 bool SamePlan(const Plan& a, const Plan& b) noexcept;
+
+// ---- M3d: display time per frame for the frame clock ----------------------------------------------------------
+
+// What the frame clock (xapi/game_timing.h FrameClock) needs from the pacer for the NEXT frame (pure: FrameAdvanceOf).
+struct FrameAdvance {
+    bool known = false;               // a plan exists (false before the first frame was planned: the clock runs M3b)
+    std::uint32_t framesPerTick = 0;  // N >= 1 when the plan's nominal rate is N x the tick rate (within 100 ppm):
+                                      // the clock advances by ticks(dt) / N per frame; 0 = no whole number (the
+                                      // clock advances by `seconds`)
+    double seconds = 0.0;             // display time from this frame's first vblank to the next frame's (the quantum
+                                      // when framesPerTick == 0): k / R, the cadence frame's s_n / R, timer periods
+    double nominalSeconds = 0.0;      // 1 / nominal rate: identifies the clock's regime (a change = clock reset)
+    bool variable = false;            // Cadence: `seconds` changes from frame to frame within one regime
+    std::int64_t startDelayTicks = 0; // QPC ticks the pacer deliberately delayed this frame's start (just-in-time
+                                      // start): the clock compares real time minus this with its virtual time
+};
+inline constexpr double kFrameLockTolerance = 1.0e-4;  // 100 ppm (m3d_frameclock.md 3.3)
+// Frames per tick N when `nominalHz` is within kFrameLockTolerance of N x `tickHz` (N >= 1), else 0.
+std::uint32_t FramesPerTick(double nominalHz, double tickHz) noexcept;
+// The advance for a frame of plan `plan`: `refreshHz` the display (0 = unknown: the plan period), `lastRefreshes`
+// = refreshes the frame just presented stays on screen (Cadence; 0 = the plan's k).
+FrameAdvance FrameAdvanceOf(const Plan& plan, double tickHz, double refreshHz, std::uint32_t lastRefreshes) noexcept;
+
+// ---- M3d: just-in-time frame start (M3c review finding 6) -------------------------------------------------------
+//
+// Measured (m3d_frameclock.md 3.1/3.5): on vblank k = 2 the frame-latency waitable releases the next frame right
+// after the vblank at which the previous one became visible; the frame needs about 1 ms and then waits 15.7 ms in
+// the queue (frame start -> visible 16.6 ms). The pacer predicts the vblank at which the next present becomes visible
+// (OnScreenTracker::PredictNextVisible) and starts the frame `budget` before it: input and game state are sampled
+// about 12 ms later, the picture reaches the same vblank. Budget = max(kMinSeconds, 99th percentile of the frame work
+// over the last kWindow frames + kMarginSeconds) (the GPU time of the "Maximum" preset, p99 2.8 ms, is inside the
+// margin), doubled after every frame that reached the screen late (up to 4x), halved again after kRelaxSeconds
+// without one. JustInTimeStart returns 0 (start at once) when the start would not lie between now and
+// now + maxWait.
+class LatencyBudget {
+public:
+    static constexpr double kMinSeconds = 0.004;
+    static constexpr double kMarginSeconds = 0.0035;
+    static constexpr std::uint32_t kWindow = 240;  // frames (2 s at 120 fps, 4 s at 60 fps)
+    static constexpr double kRelaxSeconds = 2.0;
+    static constexpr std::uint32_t kMaxFactor = 4;
+    void AddWork(double seconds) noexcept;
+    // A frame that started just in time stayed in the queue past its vblank (`nowSeconds`: any monotonic clock).
+    void NoteMiss(double nowSeconds) noexcept;
+    double Seconds(double nowSeconds) noexcept;  // the budget B (also relaxes the miss factor)
+    std::uint32_t Factor() const noexcept { return factor_; }
+    std::uint64_t Misses() const noexcept { return misses_; }
+    void Reset() noexcept;
+
+private:
+    double work_[kWindow] = {};
+    std::uint32_t count_ = 0, next_ = 0;
+    double p99_ = 0.0;
+    std::uint32_t sinceSort_ = 0;
+    std::uint32_t factor_ = 1;
+    double lastMiss_ = 0.0;
+    std::uint64_t misses_ = 0;
+};
+// Start time of the next frame (QPC): visible - budget when that is later than `now` and earlier than
+// now + maxWait; 0 = start at once.
+std::int64_t JustInTimeStart(std::int64_t now, std::int64_t visibleQpc, std::int64_t budgetTicks,
+                             std::int64_t maxWaitTicks) noexcept;
 
 // Hysteresis between plans (pacing60.md 4.3): a change INTO a timer-driven or presentation-less plan
 // (Free, Headless, Unthrottled, Timer) and any change that the configuration or the display forces (the
@@ -333,6 +445,16 @@ public:
         double seconds = 0.0;
     };
     LastPair Last() const noexcept { return last_; }
+
+    // M3d (just-in-time start): the vblank (QPC) at which a present issued after the newest one (NotePresent) becomes
+    // visible = SyncQPCTime of the newest visible present + the planned refreshes of it and of every later present x
+    // `refreshSeconds`. False when that chain is incomplete (a present without a planned refresh count, the visible
+    // present no longer in the ring, more than kMaxPredictChain presents in flight) or there is no sample.
+    static constexpr std::uint32_t kMaxPredictChain = 8;
+    bool PredictNextVisible(double refreshSeconds, std::int64_t* qpc) const noexcept;
+    // M3d (repeated picture): the newest present stays `refreshes` longer than planned (a frame after it was not
+    // presented because it would have shown nothing new).
+    void ExtendLastPresent(std::uint32_t refreshes) noexcept;
 
     struct Result {
         std::uint64_t presents = 0;      // NotePresent calls

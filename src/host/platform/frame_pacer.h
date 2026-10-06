@@ -64,6 +64,22 @@
 //
 // Threading: PlanPresent, NoteSwapChainPresent, EndFrame, PaceFrame, NoteFrameWorkDone, NotePresentedFrame run
 // on the render thread; GetPresentStatistics / LogPresentStatistics on any thread. No lock is held while waiting.
+//
+// M3d (frame rates up to 120 Hz; analysis/loader/m3d_frameclock.md 3; the frame-clock/pacing agent):
+//   - PacingConfig::rateMode ([render] frame_rate = 120 | display): the plan's frame rate comes from the refresh
+//     (pacing::SelectPlan, pacer_policy.h), e.g. vblank k = 1 at 120 fps on 120 Hz, the VRR timer at 120 on
+//     144/165 Hz, the Cadence plan (Present(1)/Present(2) per frame) or an even R / k without VRR.
+//   - CurrentFrameAdvance(): what the game's frame clock (xapi/game_timing.h FrameClock) advances for the next frame
+//     (frames per tick, display time, the just-in-time delay). The clock reports the fixed steps of each rendered
+//     frame back with NoteFrameTicks.
+//   - Repeated picture (m3d_frameclock.md 1.3 F1): a frame that ran no fixed step and drew nothing (SwapChainInfo::
+//     frameUnchanged; the intro draws its legal screen and tech notice in Update) is not presented when the frame rate
+//     is above the tick rate - the previous picture stays one frame longer instead of the back buffer of two presents
+//     ago (the tech notice flickered at 120 fps). Vblank plans then keep the frame grid on the timer.
+//   - Just-in-time start (M3c review finding 6, PacingConfig::justInTime = [render] low_latency): on the vblank plans
+//     the next frame starts pacing::LatencyBudget before the vblank at which it becomes visible (predicted from the
+//     frame statistics) instead of right after the previous vblank: at 60 fps on 120 Hz about 12 ms less latency.
+//   Exit line "present: frame rate ..." (LogPresentStatistics) after the M3b lines.
 #pragma once
 
 #include "platform/pacer_display.h"
@@ -80,8 +96,11 @@ struct PacingConfig {
     pacing::Mode mode = pacing::Mode::Auto;  // [render] pacing
     bool vsync = true;                       // [render] vsync
     double targetHz = 60.0;                  // game frames per second: [render] frame_rate, default the tick rate
-    std::uint32_t tickHz = 60;               // [game] tick_rate (log)
+                                             // (M3d modes: the cap, pacing::kMaxFrameRate)
+    std::uint32_t tickHz = 60;               // [game] tick_rate (log; M3d: the frame clock's frames per tick)
     const wchar_t* tracePath = nullptr;      // [render] pacing_trace (nullptr or "" = off); must stay valid
+    pacing::FrameRateMode rateMode = pacing::FrameRateMode::Fixed;  // M3d: [render] frame_rate = 120 | display
+    bool justInTime = true;                  // M3d: [render] low_latency (just-in-time frame start)
 };
 
 // ---- per frame -----------------------------------------------------------------------------------------------
@@ -89,11 +108,17 @@ struct PacingConfig {
 struct SwapChainInfo {
     void* frameLatencyWaitable = nullptr;  // rhi::Device::FrameLatencyWaitable (HANDLE)
     bool tearingSupported = false;         // rhi::DeviceInfo::tearingSupported
+    // M3d: the frame drew nothing and cleared no color (its back buffer holds the picture of two presents ago); the
+    // pacer may then keep the previous picture (PresentRequest::repeatPrevious).
+    bool frameUnchanged = false;
 };
 struct PresentRequest {
     std::uint32_t syncInterval = 0;
     bool allowTearing = false;
     bool skipSwapChain = false;
+    // M3d: skipSwapChain because the frame repeats the previous picture (F1); the back buffers rotate as for any
+    // skipped frame.
+    bool repeatPrevious = false;
 };
 // Before Present (render thread). Never waits.
 PresentRequest PlanPresent(const PacingConfig& config, const SwapChainInfo& swapChain) noexcept;
@@ -124,6 +149,13 @@ void NoteFrameWorkDone() noexcept;
 
 // Records one presented frame (QPC time stamp) for the statistics below. Guest main thread.
 void NotePresentedFrame() noexcept;
+
+// M3d: the advance of the game's frame clock for the frame that starts now (planned by the last EndFrame;
+// FrameAdvance::known = false before the first frame). Render thread (the guest main thread).
+pacing::FrameAdvance CurrentFrameAdvance() noexcept;
+// M3d: fixed steps the frame being rendered ran (the frame clock at its render sample). Frames that never report
+// (context-switch black frames, movie ends) count as unknown. Render thread.
+void NoteFrameTicks(std::uint32_t steps) noexcept;
 
 struct PresentStatistics {
     std::uint64_t frames = 0;
@@ -175,6 +207,18 @@ struct PresentStatistics {
     pacing::OnScreenTracker::Result onScreen;
     std::uint64_t foregroundFrames = 0, backgroundFrames = 0, minimizedFrames = 0, displayOffFrames = 0,
                   lockedFrames = 0, limitedFrames = 0;
+    // M3d.
+    pacing::FrameRateMode rateMode = pacing::FrameRateMode::Fixed;
+    pacing::FrameAdvance advance;                 // of the current plan (frames per tick, display time)
+    std::uint64_t cadenceFrames[3] = {};          // Cadence plan: frames shown 1, 2, 3+ refreshes
+    std::uint64_t repeatedFrames = 0;             // F1: frames without a tick and without a draw, not presented
+    std::uint64_t ticklessFrames = 0;             // rendered frames that ran no fixed step (NoteFrameTicks 0)
+    bool justInTime = false;                      // [render] low_latency
+    std::uint64_t vblankFrames = 0;               // frames that waited on the frame-latency waitable
+    std::uint64_t justInTimeFrames = 0;           // ... and then started just in time
+    double justInTimeDelayMs = 0.0;               // average delay of those frames
+    double latencyBudgetMs = 0.0;                 // the last budget
+    std::uint64_t justInTimeMisses = 0;           // just-in-time frames that reached the screen late
 };
 PresentStatistics GetPresentStatistics() noexcept;  // thread-safe
 void LogPresentStatistics() noexcept;               // thread-safe (exit reporter)

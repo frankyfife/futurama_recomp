@@ -10,7 +10,8 @@
 //   [settings] kernel/kernel_settings.cpp kLanguages + KernelSettings defaults
 //   [saves]    kernel/kernel_settings.cpp (key_mode, signature_key, xbox_cert_key)
 //   [render]   gfx/gfx_config.cpp (M2/M3/M3b keys); M3c keys resolution, render_scale, msaa, alpha_to_coverage,
-//              anisotropy (shared contract item 5, read by the renderer)
+//              anisotropy (shared contract item 5, read by the renderer); M3d interpolation, interpolation_debug
+//              (gfx/interp_history.cpp SettingsFromConfig)
 //   [audio]    audio/dsound_stubs.cpp
 //   [game]     xapi/game_timing.cpp (tick_rate, frame_clock)
 #include "core/config_schema.h"
@@ -135,6 +136,23 @@ constexpr ConfigChoice kTickRateChoices[] = {
 constexpr ConfigChoice kFrameClockChoices[] = {
     {"lockstep", {"Bildsynchron (empfohlen)", "Frame-locked (recommended)"}},
     {"realtime", {"Echtzeit (wie das Original)", "Real time (like the original)"}},
+};
+// M3d (frame-clock/pacing agent): [render] frame_rate, gfx/gfx_config.cpp ParseFrameRate (unit test "pacer m3d:
+// ParseFrameRate accepts exactly the schema choices"). 60 = the M3b behaviour; 120 and display choose the rate from
+// the refresh (platform/pacer_policy.h FrameRateMode). 50 (the PAL logic rate, which an unset frame_rate follows) and
+// the numbers 0..1000 stay accepted as developer values (0 = unthrottled).
+constexpr ConfigChoice kFrameRateChoices[] = {
+    {"60", {"60 fps", "60 fps"}},
+    {"120", {"120 fps (interpoliert)", "120 fps (interpolated)"}},
+    {"display", {"Bildschirm (max. 120)", "Display (max. 120)"}},
+    {"50", {"50 fps (PAL-Logik-Takt)", "50 fps (PAL logic rate)"}, true},
+    {"0..1000", {"Feste Bildrate (Entwicklerwert)", "Fixed frame rate (developer value)"}, true},
+};
+// M3d (interpolation agent): gfx/interp_history.h ParseDebugMode.
+constexpr ConfigChoice kInterpolationDebugChoices[] = {
+    {"off", {"Aus", "Off"}},
+    {"tint", {"Nicht interpolierte Objekte einfärben", "Tint objects that are not interpolated"}},
+    {"trace", {"Zähler je Bild in eine CSV-Datei", "Per-frame counters to a CSV file"}},
 };
 
 #ifdef NDEBUG
@@ -270,15 +288,31 @@ constexpr ConfigKeyDef kKeys[] = {
               "How the frames are spaced in time. Automatic couples to the display (every second refresh at "
               "120 Hz) or uses a timer with VRR."},
      .tab = Tab::Graphics, .order = 100, .widget = W::Combo, .flags = kAdv},
-    {.section = "render", .name = "frame_rate", .type = T::Int, .defaultValue = "60", .ranged = true, .min = 0,
-     .max = 240, .step = 1, .label = {"Bildrate (Bilder pro Sekunde)", "Frame rate (frames per second)"},
-     .help = {"Angezeigte Bilder pro Sekunde. Standard: wie der Logik-Takt. Andere Werte sind nur für Tests "
-              "gedacht und lassen das Spiel ruckeln; 0 = ungebremst.",
-              "Displayed frames per second. Default: same as the game logic rate. Other values are meant for "
-              "testing and make the game stutter; 0 = unthrottled."},
-     // Review M3c finding 18: a developer key until M3d (the launcher shows the effective rate in the graphics
-     // tab; a stray edit of a visible spin box would pin a rate that differs from the logic rate).
-     .tab = Tab::Graphics, .order = 110, .widget = W::Spin, .flags = kDev | kDyn | kHint},
+    // M3d (frame-clock/pacing agent): a choice since M3d (M3b/M3c: an int developer key). Unset = the logic rate
+    // (dynamic default, review M3c finding 18): 60 with [game] tick_rate = 60, 50 with 50.
+    {.section = "render", .name = "frame_rate", .type = T::Choice, .defaultValue = "60", .choices = kFrameRateChoices,
+     .label = {"Bildrate", "Frame rate"},
+     .help = {"Wie viele Bilder pro Sekunde das Spiel zeigt. Die Spiellogik bleibt beim Logik-Takt (Reiter "
+              "„Spiel“). „120 fps“ und „Bildschirm“ zeigen auf Bildschirmen mit mehr als 60 Hz bis zu 120 Bilder pro "
+              "Sekunde und berechnen die Bilder zwischen zwei Logikschritten. „Bildschirm“ nimmt die höchste "
+              "gleichmäßige Rate (120 bei 120 oder 240 Hz, 72 bei 144 Hz ohne VRR), „120 fps“ bleibt dort bei 120 mit "
+              "unterschiedlich langen Bildern. An einem 60-Hz-Bildschirm zeigen alle drei 60 Bilder pro Sekunde.",
+              "How many frames per second the game shows. The game logic keeps its logic rate (tab \"Game\"). "
+              "\"120 fps\" and \"Display\" show up to 120 frames per second on displays above 60 Hz and compute the "
+              "frames between two logic steps. \"Display\" takes the highest even rate (120 at 120 or 240 Hz, 72 at "
+              "144 Hz without VRR), \"120 fps\" stays at 120 there with frames of different length. On a 60 Hz "
+              "display all three show 60 frames per second."},
+     .tab = Tab::Graphics, .order = 110, .widget = W::Combo, .flags = kDyn},
+    // M3d (frame-clock/pacing agent): just-in-time frame start, platform/frame_pacer.h (M3c review finding 6).
+    {.section = "render", .name = "low_latency", .type = T::Bool, .defaultValue = "on",
+     .label = {"Geringe Verzögerung", "Low latency"},
+     .help = {"Beginnt jedes Bild erst kurz bevor der Bildschirm es zeigen kann, statt direkt nach dem vorherigen. "
+              "Das Spiel liest die Eingaben dadurch später und reagiert schneller (bei 60 Bildern pro Sekunde auf "
+              "einem 120-Hz-Bildschirm etwa 12 ms). Wird die Zeit knapp, vergrößert das Spiel den Abstand selbst.",
+              "Starts every frame only shortly before the display can show it instead of right after the previous "
+              "one. The game reads the input later and reacts faster (about 12 ms at 60 frames per second on a "
+              "120 Hz display). If the time gets short, the game widens the gap by itself."},
+     .tab = Tab::Graphics, .order = 105, .widget = W::Check, .flags = kAdv},
     {.section = "render", .name = "screenshot_dir", .type = T::PathDir,
      .label = {"Screenshot-Ordner", "Screenshot folder"},
      .help = {"Hier werden PNG-Screenshots gespeichert. Leer = Ordner „screenshots“ in den Benutzerdaten.",
@@ -345,6 +379,26 @@ constexpr ConfigKeyDef kKeys[] = {
      .help = {"Für Entwickler: schreibt eine CSV-Datei mit einer Zeile pro Bild (Zeitmessung des Bildtakts).",
               "For developers: writes a CSV file with one line per frame (frame pacing measurements)."},
      .tab = Tab::Advanced, .order = 540, .widget = W::File, .flags = kDev, .fileFilter = "*.csv"},
+    // [render] - M3d interpolation between logic ticks (interpolation agent, gfx/interp_history.h)
+    {.section = "render", .name = "interpolation", .type = T::Bool, .defaultValue = "on",
+     .label = {"Zwischenbilder berechnen", "Compute in-between frames"},
+     .help = {"Bei mehr als 60 Bildern pro Sekunde werden Kamera, Figuren und Objekte zwischen zwei Schritten der "
+              "Spiellogik interpoliert. Die Bewegung wird flüssiger und läuft dafür einen halben Logik-Schritt "
+              "(8 ms) hinterher. Aus: Jedes Bild der Spiellogik wird zweimal gezeigt. Bei 60 Bildern pro Sekunde "
+              "ohne Wirkung.",
+              "With more than 60 frames per second, the camera, characters and objects are interpolated between two "
+              "game logic steps. Motion becomes smoother and in return lags half a logic step (8 ms) behind. Off: "
+              "every game logic picture is shown twice. No effect at 60 frames per second."},
+     .tab = Tab::Graphics, .order = 112, .widget = W::Check, .flags = kAdv},
+    {.section = "render", .name = "interpolation_debug", .type = T::Choice, .defaultValue = "off",
+     .choices = kInterpolationDebugChoices, .label = {"Zwischenbilder prüfen", "Inspect in-between frames"},
+     .help = {"Für Entwickler: „Einfärben“ zeigt Objekte, die nicht interpoliert werden (rot: Sprung oder neues "
+              "Objekt, gelb: neu sichtbar, cyan: bildgetrieben, magenta: Kontextwechsel). „CSV“ schreibt je Bild eine "
+              "Zeile mit den Zählern nach logs\\interp_trace.csv in den Benutzerdaten.",
+              "For developers: tint shows objects that are not interpolated (red: jump or new object, yellow: newly "
+              "visible, cyan: frame-driven, magenta: context switch). CSV writes one line of counters per frame to "
+              "logs\\interp_trace.csv in the user data."},
+     .tab = Tab::Advanced, .order = 548, .widget = W::Combo, .flags = kDev},
 
     // [paths]
     {.section = "paths", .name = "iso", .type = T::PathFile, .label = {"Spielabbild (ISO)", "Game image (ISO)"},

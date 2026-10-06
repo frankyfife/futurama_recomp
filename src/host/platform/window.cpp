@@ -100,8 +100,8 @@ void LayoutView(HWND frame) noexcept {
     }
     RECT rc{};
     GetClientRect(frame, &rc);
-    const ViewRect r = FitAspectRect(static_cast<std::uint32_t>(rc.right - rc.left),
-                                     static_cast<std::uint32_t>(rc.bottom - rc.top), kViewWidth, kViewHeight);
+    const ViewRect r = ViewLayout(static_cast<std::uint32_t>(rc.right - rc.left),
+                                  static_cast<std::uint32_t>(rc.bottom - rc.top), g_fullscreen);
     MoveWindow(view, r.x, r.y, static_cast<int>(r.width), static_cast<int>(r.height), TRUE);
     g_viewWidth.store(r.width);
     g_viewHeight.store(r.height);
@@ -363,6 +363,16 @@ ViewRect FitAspectRect(std::uint32_t clientW, std::uint32_t clientH, std::uint32
     }
     r.x = static_cast<std::int32_t>((clientW - r.width) / 2);
     r.y = static_cast<std::int32_t>((clientH - r.height) / 2);
+    return r;
+}
+
+ViewRect ViewLayout(std::uint32_t clientW, std::uint32_t clientH, bool fullscreen) noexcept {
+    if (!fullscreen) {
+        return FitAspectRect(clientW, clientH, kViewWidth, kViewHeight);
+    }
+    ViewRect r;
+    r.width = clientW;
+    r.height = clientH;
     return r;
 }
 

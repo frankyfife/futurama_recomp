@@ -16,7 +16,8 @@
 // monitor in physical pixels, shrunk to the largest 4:3 area that fits its work area; [render] fullscreen =
 // borderless window on the whole monitor) with a
 // black background and one child "view" window that keeps the 4:3 aspect of the back buffer, centered
-// (letterbox/pillarbox). MainWindow() is the VIEW: the swap chain has its client size (the D3D11 backend
+// (letterbox/pillarbox; M3d: in borderless fullscreen the view covers the whole monitor, ViewLayout, and the present
+// pass draws the bars). MainWindow() is the VIEW: the swap chain has its client size (the D3D11 backend
 // resizes it in Present) and the present pass scales the 640x480 back buffer onto it ([render] scaling =
 // linear | point | integer, gfx/rhi/rhi.h PresentScaling). The view is transparent for the mouse
 // (HTTRANSPARENT) and never takes the keyboard focus, so input goes to the frame.
@@ -110,5 +111,10 @@ struct ViewRect {
     std::uint32_t width = 0, height = 0;
 };
 ViewRect FitAspectRect(std::uint32_t clientW, std::uint32_t clientH, std::uint32_t aspectW, std::uint32_t aspectH) noexcept;
+// M3d (frame-clock/pacing agent; M3c report: VRR in fullscreen): the view inside the frame's client area. Windowed:
+// the centered 4:3 rectangle (FitAspectRect, unchanged). Borderless fullscreen: the whole client area, i.e. the whole
+// monitor - only a swap chain that covers the monitor can use independent flip (VRR, tearing); the present pass
+// draws the 4:3 picture with black bars itself (gfx/rhi PresentScaling, the renderer's 4:3 output size). Pure (tests).
+ViewRect ViewLayout(std::uint32_t clientW, std::uint32_t clientH, bool fullscreen) noexcept;
 
 }  // namespace platform
