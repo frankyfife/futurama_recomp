@@ -9,8 +9,11 @@
 #include "gfx/freecam.h"
 #include "input/input_script.h"
 #include "input/kbm_window.h"
+#include "input/level_skip.h"
+#include "input/stick_curve.h"
 #include "input/xpp_hle.h"
 #include "platform/window.h"
+#include "xapi/camera_response.h"
 
 #include <atomic>
 #include <cstdio>
@@ -38,6 +41,16 @@ InputSettings& Settings() noexcept {
 
 std::uint32_t ReadGuestU32(guest::GuestAddr p) noexcept {
     return (p != 0 && guest::IsReadable(p, 4)) ? guest::Read<std::uint32_t>(p) : 0;
+}
+
+// G5 (precise camera response): the right stick of a controller with a small radial dead zone and a linear curve
+// (stick_curve.h PreciseStickOutput), encoded so that the game's own curve yields it. Not while the port is diverted
+// (the freecam reads the raw stick).
+void PreciseRightStick(int port, PadState& state) noexcept {
+    if (GlobalRouter().Diverted(port)) {
+        return;
+    }
+    PreciseStickToGameThumbs(state.thumb[kAxisRX], state.thumb[kAxisRY]);
 }
 
 void StopMotorsCrashReporter() noexcept {
@@ -111,6 +124,13 @@ void StartInput() noexcept {
         router.SetFocusQuery(&GameWindowFocused);
         gfx::freecam::Configure();  // M4b: L3+R3 / key toggle, held-back chord buttons
         router.SetSampleFilter(&gfx::freecam::SampleFilter);
+        levelskip::Configure();  // G7: A A B B A A B B A A in a level -> regular level end
+        router.AddSampleFilter(&levelskip::SampleFilter);
+        // G5: [input] camera_response = precise - smaller dead zone of the controllers' right stick.
+        xapi::camera::LogConfiguration();
+        SetPadShaper(xapi::camera::ResponseFromConfig(core::GetConfig()) == xapi::camera::Response::Precise
+                         ? &PreciseRightStick
+                         : nullptr);
 
         XInputApi& xinput = SystemXInput();
         for (std::uint32_t i = 0; i < kXInputUsers; ++i) {

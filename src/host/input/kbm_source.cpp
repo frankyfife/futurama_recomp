@@ -186,6 +186,10 @@ bool KeyboardMouseSource::KeyDown(std::uint16_t vk) const noexcept {
     return vk < 256 && down_[vk];
 }
 
+void KeyboardMouseSource::SetMouseMotionQuery(MouseMotionQuery query) noexcept {
+    mouseMotionQuery_.store(query, std::memory_order_relaxed);
+}
+
 void KeyboardMouseSource::SetPadEmulation(bool on) noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     padEmulation_ = on;
@@ -200,6 +204,8 @@ bool KeyboardMouseSource::Connected() const noexcept {
 bool KeyboardMouseSource::Sample(int port, std::uint64_t tick, PadState& out) noexcept {
     (void)port;
     (void)tick;
+    const MouseMotionQuery motionQuery = mouseMotionQuery_.load(std::memory_order_relaxed);
+    const bool motionTaken = motionQuery != nullptr && motionQuery();  // G6 first-person view
     std::unique_lock<std::mutex> lock(mutex_);
     if (!enabled_) {
         return false;
@@ -223,7 +229,7 @@ bool KeyboardMouseSource::Sample(int port, std::uint64_t tick, PadState& out) no
     f.mouseButtons = static_cast<std::uint8_t>(buttonsDown_ | buttonsTapped_);
     buttonsTapped_ = 0;
     f.wheel = static_cast<std::uint8_t>((wheel_[0].Step() ? 1 : 0) | (wheel_[1].Step() ? 2 : 0));
-    const float scale = sensitivity_ / kMouseCountsPerFullDeflection;
+    const float scale = motionTaken ? 0.0f : sensitivity_ / kMouseCountsPerFullDeflection;
     f.move[0] = dy_ < 0 ? static_cast<float>(-dy_) * scale : 0.0f;  // up
     f.move[1] = dy_ > 0 ? static_cast<float>(dy_) * scale : 0.0f;   // down
     f.move[2] = dx_ < 0 ? static_cast<float>(-dx_) * scale : 0.0f;  // left

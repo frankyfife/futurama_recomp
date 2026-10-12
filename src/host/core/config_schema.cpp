@@ -18,8 +18,10 @@
 //              (audio/capture_session.cpp, tooling agent); M5 speakers, reverb (audio/audio_engine.cpp) and
 //              positional, trim_3d (audio/spatial_x3d.cpp, codec/3D/reverb agent)
 //   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos);
-//              G4 xapi/game_select.cpp (start_level, play_as)
-//   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26)
+//              G4 xapi/game_select.cpp (start_level, play_as), G7 input/level_skip.cpp (level_skip_cheat)
+//   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26);
+//              G5 xapi/camera_response.cpp (camera_response); G6 xapi/first_person.cpp (first_person,
+//              first_person_look_speed)
 #include "core/config_schema.h"
 
 #include "input/bindings.h"  // M4: validators of the [input] binding lists
@@ -238,6 +240,16 @@ constexpr ConfigChoice kPadModeChoices[] = {
     {"single", {"Ein Spieler: alle Controller an Anschluss 1", "One player: all controllers on port 1"}},
     {"per_port", {"Ein Anschluss je Controller", "One port per controller"}},
 };
+// G5: [input] camera_response (xapi/camera_response.h).
+constexpr ConfigChoice kCameraResponseChoices[] = {
+    {"original", {"Original (träge, mit Nachlauf)", "Original (sluggish, glides on)"}},
+    {"precise", {"Präzise (direkt und schnell)", "Precise (direct and fast)"}},
+};
+// G6: [input] first_person (xapi/first_person.h).
+constexpr ConfigChoice kFirstPersonChoices[] = {
+    {"off", {"Aus (wie im Original)", "Off (as in the original)"}},
+    {"on", {"An: Ego-Steuerung", "On: first-person control"}},
+};
 // [freecam] toggles (M4b, gfx/freecam.cpp).
 constexpr ConfigChoice kFreecamPadChoices[] = {
     {"l3r3", {"Beide Sticks drücken (L3+R3)", "Press both sticks (L3+R3)"}},
@@ -379,6 +391,18 @@ constexpr ConfigKeyDef kKeys[] = {
               "level can be finished this way is not tested. Levels 1-7 (Chicken Walker), 2-6 (cannon), 4-1 (rat) "
               "and 5-3 (railgun) always keep their character."},
      .tab = Tab::Game, .order = 50, .widget = W::Combo},
+    {.section = "game", .name = "level_skip_cheat", .type = T::Bool, .defaultValue = "1",
+     .label = {"Level-Skip-Cheat (A A B B A A B B A A)", "Level skip cheat (A A B B A A B B A A)"},
+     .help = {"Im Level die Tasten A A B B A A B B A A zügig nacheinander drücken (innerhalb von 4 Sekunden, "
+              "höchstens 1 Sekunde Pause): Das Level gilt als geschafft und endet regulär mit dem "
+              "Statistikbildschirm (Speichern, Weiter zum nächsten Level). Wirkt nur, solange die Spielfigur "
+              "steuerbar ist (nicht in Menüs, Zwischensequenzen oder der Pause). Die Tastendrücke erreichen auch "
+              "das Spiel (Springen/Angreifen).",
+              "In a level press A A B B A A B B A A in quick succession (within 4 seconds, at most 1 second "
+              "between presses): the level counts as finished and ends the regular way with the statistics screen "
+              "(save, continue to the next level). Only works while the character is controllable (not in menus, "
+              "cut scenes or the pause). The presses also reach the game (jump/attack)."},
+     .tab = Tab::Game, .order = 60, .widget = W::Check},
 
     // [render] - window and output (M3, gfx/gfx_config.h)
     // M3c (integration): monitor selection, platform/window.h WindowOptions::monitor. Type string: the values are
@@ -671,6 +695,45 @@ constexpr ConfigKeyDef kKeys[] = {
               "How strongly the mouse turns the camera. The mouse acts like the right stick; the game sets the "
               "highest turning speed."},
      .tab = Tab::Controls, .order = 50, .widget = W::Slider, .unit = "×"},
+    {.section = "input", .name = "camera_response", .type = T::Choice, .defaultValue = "original",
+     .choices = kCameraResponseChoices, .label = {"Kamera am rechten Stick", "Camera on the right stick"},
+     .help = {"Wie die Spielkamera dem rechten Stick (und der Maus) folgt. Original: wie auf der Xbox – die Kamera "
+              "beschleunigt erst langsam (etwa eine Sekunde bis zur vollen Drehgeschwindigkeit), dreht bei "
+              "halbem Ausschlag nur mit einem Viertel und läuft nach dem Loslassen nach. Präzise: die Drehung "
+              "folgt dem Stick sofort und proportional zum Ausschlag, hält beim Loslassen an und ist bei vollem "
+              "Ausschlag schneller; der rechte Stick des Controllers bekommt eine kleinere tote Zone. Höhe, "
+              "Abstand, Kollision und automatisches Nachführen der Kamera bleiben wie im Original.",
+              "How the game camera follows the right stick (and the mouse). Original: as on the Xbox - the camera "
+              "accelerates slowly (about a second to its full turn rate), turns at a quarter of the rate at half "
+              "deflection and glides on after the stick is released. Precise: the turn follows the stick at once "
+              "and in proportion to the deflection, stops on release and is faster at full deflection; the "
+              "controller's right stick gets a smaller dead zone. Height, distance, collision and the automatic "
+              "follow of the camera stay as in the original."},
+     .tab = Tab::Controls, .order = 55, .widget = W::Combo},
+    {.section = "input", .name = "first_person", .type = T::Choice, .defaultValue = "off",
+     .choices = kFirstPersonChoices, .label = {"Egoperspektive (experimentell)", "First person (experimental)"},
+     .help = {"An: Die Ego-Ansicht des Spiels (rechten Stick drücken, Tastatur V, mittlere Maustaste) wird spielbar "
+              "und ist im Level von Anfang an aktiv. Die Kamera sitzt im Kopf der Figur, der rechte Stick oder die "
+              "Maus sieht sich um, der linke Stick bzw. WASD läuft in Blickrichtung und seitwärts, Springen und "
+              "Angriffe gehen in Blickrichtung (Frys Waffen zielen auf die Bildmitte). Rechten Stick drücken wechselt "
+              "zwischen Ego- und Verfolgerkamera. Zwischensequenzen, Kamerafahrten und die Level mit Fahrzeug "
+              "(Chickenwalker, Kanone, Ratte, Railgun) behalten die Kamera des Spiels. Die Option „Ziel umkehren“ "
+              "im Spiel kehrt das Auf- und Abschauen um. Aus: unverändert wie im Original.",
+              "On: the game's first-person view (press the right stick, keyboard V, middle mouse button) becomes "
+              "playable and is active from the start of a level. The camera sits in the character's head, the right "
+              "stick or the mouse looks around, the left stick or WASD walks along the view and sideways, jumps and "
+              "attacks go along the view (Fry's weapons aim at the centre of the screen). Pressing the right stick "
+              "switches between first-person and follow camera. Cut scenes, camera moves and the levels with a "
+              "vehicle (Chicken Walker, cannon, rat, railgun) keep the game's camera. The game's option \"invert "
+              "aim\" inverts looking up and down. Off: unchanged as in the original."},
+     .tab = Tab::Controls, .order = 56, .widget = W::Combo},
+    {.section = "input", .name = "first_person_look_speed", .type = T::Float, .defaultValue = "180", .ranged = true,
+     .min = 30.0, .max = 720.0, .step = 10.0, .label = {"Ego: Drehtempo am Stick", "First person: stick turn speed"},
+     .help = {"Drehtempo der Egoperspektive mit dem rechten Stick bei vollem Ausschlag, in Grad pro Sekunde. Die Maus "
+              "dreht um 0,08 Grad je Zählschritt mal „Mausempfindlichkeit“.",
+              "Turn speed of the first-person view with the right stick at full deflection, in degrees per second. "
+              "The mouse turns by 0.08 degrees per count times \"Mouse sensitivity\"."},
+     .tab = Tab::Controls, .order = 57, .widget = W::DSpin, .unit = "°/s"},
     {.section = "input", .name = "mouse_capture", .type = T::Bool, .defaultValue = "1",
      .label = {"Maus im Fenster fangen", "Capture the mouse"},
      .help = {"Ein Klick ins Spielfenster fängt die Maus: Der Mauszeiger verschwindet und bleibt im Fenster, bis das "

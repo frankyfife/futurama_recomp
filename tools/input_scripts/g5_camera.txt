@@ -1,0 +1,36 @@
+# g5_camera.txt - G5: step response of the follow camera in Level 1-1 with `game camera_trace on` (one log line per
+# tick with the camera's yaw): RX = -1.0 for 1 s, release; +1.0 for 1 s, release; -0.6 and +0.6 for 1.5 s each
+# (game curve 0.433), release. Run once with [input] camera_response = original and once with precise, then
+# python analysis\loader\scripts\g5_camera_trace.py <userdata>\logs\futurama.log (docs\g5_g7_report.md 2).
+# The directions stay inside the free arc of the hangar (+RX from the start runs into a wall after 72 deg). About 40 s.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 120t
+screenshot cam_start
+game camera_trace on
+wait 30t
+hold RX=-1.0 60t
+wait 90t
+hold RX=1.0 60t
+wait 90t
+hold RX=-0.6 90t
+wait 90t
+hold RX=0.6 90t
+wait 90t
+game camera_trace off
+screenshot cam_end
+quit 0

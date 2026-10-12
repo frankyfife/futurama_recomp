@@ -76,6 +76,23 @@ inline void GameStickInverse(float ox, float oy, float& rx, float& ry) noexcept 
     ry = GameStickRawFor(oy, kGameStickDeadzone);
 }
 
+// G5 ([input] camera_response = precise, xapi/camera_response.h): the right stick of a controller gets a small radial
+// dead zone and a linear response instead of the game's 0.4 per-axis dead zone. Raw stick (x, y) -> the deflection
+// (ox, oy) the game should see: 0 inside kPreciseStickDeadzone, then the magnitude rises linearly to 1 at
+// kPreciseStickFull, direction kept.
+inline constexpr float kPreciseStickDeadzone = 0.18f;
+inline constexpr float kPreciseStickFull = 0.95f;
+inline void PreciseStickOutput(float x, float y, float& ox, float& oy) noexcept {
+    const float m = std::sqrt(x * x + y * y);
+    if (!(m > kPreciseStickDeadzone)) {
+        ox = oy = 0.0f;
+        return;
+    }
+    const float s = std::min(1.0f, (m - kPreciseStickDeadzone) / (kPreciseStickFull - kPreciseStickDeadzone));
+    ox = x / m * s;
+    oy = y / m * s;
+}
+
 // -1..1 -> XINPUT thumb value (the game divides by 32768; rounding up keeps the deflection at least the wish).
 inline std::int16_t ThumbFromUnit(float v) noexcept {
     const float c = std::clamp(v, -1.0f, 1.0f);
@@ -85,6 +102,18 @@ inline std::int16_t ThumbFromUnit(float v) noexcept {
 }
 inline float UnitFromThumb(std::int16_t v) noexcept {
     return static_cast<float>(v) / 32768.0f;
+}
+
+// G5: raw thumb values of a controller's right stick -> thumb values whose game curve gives PreciseStickOutput.
+inline void PreciseStickToGameThumbs(std::int16_t& tx, std::int16_t& ty) noexcept {
+    float ox = 0.0f;
+    float oy = 0.0f;
+    PreciseStickOutput(UnitFromThumb(tx), UnitFromThumb(ty), ox, oy);
+    float rx = 0.0f;
+    float ry = 0.0f;
+    GameStickInverse(ox, oy, rx, ry);
+    tx = ox == 0.0f ? std::int16_t{0} : ThumbFromUnit(rx);
+    ty = oy == 0.0f ? std::int16_t{0} : ThumbFromUnit(ry);
 }
 
 }  // namespace inp

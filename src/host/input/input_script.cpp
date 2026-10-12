@@ -11,6 +11,7 @@
 #include "core/log.h"
 #include "platform/window.h"
 #include "xapi/game_probes.h"
+#include "xapi/camera_response.h"
 #include "xapi/save_probes.h"
 
 #include <intrin.h>
@@ -618,11 +619,17 @@ bool Parse(std::string_view text, std::uint32_t tickRate, Program& out, std::str
         } else if (cmd == "game") {
             // (M7) debug actions on the game: `level_end <NextLevel>` ends the level like the level scripts
             // (native FsChangeLevel -> Breakdown screen with "Speichern").
+            // (G5) `camera_trace on|off` logs the follow camera's yaw once per tick.
             ins.op = Op::Game;
-            if (last != 3 || Lower(t[1].text) != "level_end" || t[2].text.empty() || t[2].text.size() > 8) {
-                return fail("game takes one action: level_end <NextLevel> (a level name of 1..8 characters)");
+            const std::string action = last >= 2 ? Lower(t[1].text) : std::string();
+            if (action == "camera_trace" && last == 3 && (Lower(t[2].text) == "on" || Lower(t[2].text) == "off")) {
+                ins.text = "camera_trace " + Lower(t[2].text);
+            } else if (action == "level_end" && last == 3 && !t[2].text.empty() && t[2].text.size() <= 8) {
+                ins.text = "level_end " + t[2].text;
+            } else {
+                return fail("game takes one action: level_end <NextLevel> (a level name of 1..8 characters) or "
+                            "camera_trace on|off");
             }
-            ins.text = "level_end " + t[2].text;
         } else if (cmd == "quit") {
             ins.op = Op::Quit;
             std::uint64_t code64 = 0;
@@ -1121,6 +1128,11 @@ public:
     // sample (XInputGetState) under the source's lock.
     bool GameAction(const std::string& action) noexcept override {
         static constexpr std::string_view kLevelEnd = "level_end ";
+        static constexpr std::string_view kCameraTrace = "camera_trace ";
+        if (action.rfind(kCameraTrace, 0) == 0) {
+            xapi::camera::SetTrace(action.substr(kCameraTrace.size()) == "on");  // (G5)
+            return true;
+        }
         return action.rfind(kLevelEnd, 0) == 0 && xapi::RequestLevelEnd(action.c_str() + kLevelEnd.size());
     }
     bool Unplug(bool unplugged) noexcept override {
@@ -1350,12 +1362,22 @@ ScriptStats GetScriptStats() noexcept {
     return ScriptSourceImpl::Instance().Stats();
 }
 
+bool GameControllable() noexcept {
+    try {
+        return g_levelReady.load() == 1 && InContext("Ingame") && PlayerInputEnabled() && !CutsceneActive() &&
+               !PauseOpen() && !DialogOpen();
+    } catch (...) {
+        return false;
+    }
+}
+
 // FUN_0009C140 controller hotplug check (cdecl, no args, plain ret 0x9C214; guest.h kGameHotplugCheck): called
 // once per logic tick by CApp vf10 (return 0xD25D8) - the script's tick heartbeat (see OnHeartbeat); the call from
 // the disc error loop (0xF3004) is not a tick.
 std::uint32_t __cdecl HotplugCheckProbe() noexcept {
     if (guest::Addr(_ReturnAddress()) == guest::kGameHotplugCheckTickReturn) {
         xapi::RunPendingGameActions();  // (M7) `game level_end` of the previous tick
+        xapi::camera::TraceTick();      // (G5) `game camera_trace on`
         ScriptSourceImpl::Instance().OnHeartbeat();
     }
     return core::CallGuest(Trampoline(guest::kGameHotplugCheck));

@@ -16,6 +16,7 @@
 #include "input/input_api.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 
@@ -36,6 +37,11 @@ public:
     // M4b: false = Sample feeds no pad state (the freecam reads keys and mouse through ReadRaw instead); events are
     // still tracked. Motion and taps collected meanwhile are dropped, so returning to the game does not jump.
     void SetPadEmulation(bool on) noexcept;
+    // G6: while `query` returns true, mouse motion is not mapped to the bound controls (it is dropped from the pad
+    // emulation; ReadRaw still reports it) - the first-person view (xapi/first_person.h) reads the raw counts.
+    // nullptr = always mapped. The query runs outside the source's lock.
+    using MouseMotionQuery = bool (*)() noexcept;
+    void SetMouseMotionQuery(MouseMotionQuery query) noexcept;
 
     // ---- events (any thread) -----------------------------------------------------------------------------
     void KeyEvent(std::uint16_t vk, bool down) noexcept;  // vk 1..255, left/right modifiers (VK_LSHIFT ...)
@@ -90,6 +96,7 @@ private:
     MenuQuery menuQuery_ = nullptr;
     bool enabled_ = true;
     bool padEmulation_ = true;
+    std::atomic<MouseMotionQuery> mouseMotionQuery_{nullptr};  // G6
 
     std::array<bool, 256> down_{};
     std::array<bool, 256> tapped_{};

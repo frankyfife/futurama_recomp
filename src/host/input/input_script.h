@@ -27,6 +27,8 @@
 //                                           (InputRouter::SimulateUnplug; in-game the game pauses, ERRCTRLINGAME)
 //   game level_end Level1-2                 (M7) end the level like the level scripts (native FsChangeLevel: the
 //                                           Breakdown screen with "Speichern"; xapi::RequestLevelEnd, next tick)
+//   game camera_trace on|off                (G5) one log line per tick with the follow camera's yaw
+//                                           (xapi::camera::TraceTick at the tick heartbeat)
 //
 // Controls: A B X Y BLACK WHITE LT RT (analog 0..1, digital = 1), START BACK UP DOWN LEFT RIGHT (D-pad;
 // DPAD_UP.. too) LS RS (stick clicks; LSCLICK/RSCLICK too), axes LX LY RX RY (-1..1, +Y = up; raw value
@@ -261,5 +263,9 @@ struct ScriptStats {
     PlayerState state = PlayerState::Running;
 };
 ScriptStats GetScriptStats() noexcept;
+
+// G7: the condition `controllable` without a script (Ingame, level loaded, player input enabled, no cut scene, no
+// pause, no save dialog); uses the always-installed observer probes of this file.
+bool GameControllable() noexcept;
 
 }  // namespace inp::script

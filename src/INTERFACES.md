@@ -1616,6 +1616,72 @@ ipc_renderer.h`);
 - **Tests**: `tests\save_tests.cpp` (creation-order listing, snapshot while deleting, free-space limit, XAPI's HMAC
   over the XcSHA exports against a Python value, `game level_end` parsing and player). Report: `docs\m7_report.md`.
 
+### 4.35 G5 camera response and G7 level skip cheat - `xapi\camera_response.h`, `input\level_skip.h`, `input\host_router.h`
+
+- **`[input] camera_response = original|precise`** (Controls tab, default `original`; `xapi::camera::ResponseFromConfig`).
+  `precise` installs two conditional probes (`FUT_PROBE_IF`, nothing with `original`): `probe:Camera::FollowUpdate`
+  0x15990 (follow camera, camera mode 0; prologue `55 8B EC 83 E4 F0`) computes the turn of the tick from the
+  player's `+0xB38` (`PreciseTurn`: linear, 200 deg/s, 20 ms smoothing) and clears the game's turn filter state
+  (`+0x154`, `[+0xE4]+0xC`) after the original; `probe:NiMatrix3::MakeYRotation` 0x103020 (`D9 44 24 04 33 C0`)
+  replaces the angle only for the follow camera's call (return address 0x17B30) while a precise turn is active. The
+  game's collision runs afterwards unchanged. Exit reporter "camera". Evidence: `analysis\loader\g5_camera.md`.
+  The G6 first-person probes (`xapi\first_person.h`) use other addresses (camera mode 3 is 0x18250).
+- **Pad shaper** (`input\xinput_source.h`, additive): `inp::SetPadShaper(fn)` - a process-wide
+  `void(int port, PadState&)` applied to every controller's mapped state in `XInputPadSource::Sample` (after the
+  bindings and `pad_deadzone`); `nullptr` = none (default). `precise` sets `PreciseRightStick` (`input_system.cpp`):
+  radial dead zone 0.18 on the right stick, linear to 1 at 0.95, encoded through `GameStickInverse` so that the
+  game's curve yields it (`stick_curve.h` `PreciseStickOutput`, `PreciseStickToGameThumbs`); skipped while the port is
+  diverted. Keyboard/mouse and scripts are not shaped (the mouse already arrives as the exact game deflection).
+- **Camera trace** (tests): input-script command `game camera_trace on|off` -> `xapi::camera::SetTrace`; the tick
+  heartbeat probe calls `xapi::camera::TraceTick()` (one INFO line `camera trace: <n> mode M yaw Y pos x y z v ..
+  w .. rate .. hrate .. stick S ctrl C` per tick, guest reads only, also with `original`).
+  `analysis\loader\scripts\g5_camera_trace.py` evaluates it.
+- **`[game] level_skip_cheat`** (bool, Game tab, default on; `inp::levelskip`): A A B B A A B B A A within 4 s (at
+  most 1 s between presses; a press is a rising edge of the analog A/B from 30/256, released in between; any other
+  button, A+B together or a longer pause starts over; sticks are ignored) while the character is controllable
+  (`inp::script::GameControllable()`: Ingame, level loaded, `+0x630`, no cut scene, pause or save dialog; no
+  Breakdown screen `[0x2E8E4C]+1`; port not diverted) calls `xapi::RequestLevelEnd(next)` - at the next tick the
+  level-script native FsChangeLevel `FUN_000B0520(next)`, `next` = the level's own successor
+  (`inp::levelskip::NextLevel`, the opcode-0xA1 argument of `scripts\levelN-M.ful`; Level5-3 -> Level1-1 without the
+  credits). Log `cheat: level skip (A A B B A A B B A A, port N) in <Level> - level end via the script native
+  FsChangeLevel("<Next>") ...`; presses that do not count are logged at debug level.
+- **Router filter chain** (`input\host_router.h`, additive): `HostRouter::AddSampleFilter(fn)` - up to
+  `kMaxChainedFilters` (4) further sample filters, called after the `SetSampleFilter` filter (freecam) in the order
+  added, before the divert check; `HostRouter::Diverted(port)`. The input system adds `inp::levelskip::SampleFilter`.
+- **Input script**: `inp::script::GameControllable()` (the `controllable` condition without a script, additive);
+  `game camera_trace on|off`. Scripts `tools\input_scripts\g5_camera.txt`, `g7_level_skip.txt`.
+- **Tests**: `tests\g5_g7_tests.cpp`. Report: `docs\g5_g7_report.md`.
+
+### 4.36 G6 first-person control - `xapi\first_person.h`, `input\kbm_source.h`
+
+- **`[input] first_person = off|on`** (Controls tab, "Egoperspektive (experimentell)", default `off`;
+  `xapi::fp::ModeFromConfig`) and **`[input] first_person_look_speed`** (float 30..720, default 180 deg/s at full
+  right-stick deflection). `on` installs six conditional probes (`FUT_PROBE_IF`, condition `xapi::fp::HooksWanted`;
+  nothing with `off`, hook total unchanged): `probe:Player::SetFirstPerson` 0x54DA0, `probe:Player::vfViewToggle`
+  0x588B0, `probe:Player::Move` 0x54AE0, `probe:Player::MoveDirection` 0x536D0, `probe:Player::vfJump` 0x50D10,
+  `probe:Camera::FirstPersonUpdate` 0x18250 (prologues `55 8B EC 83 E4 F0` / `83 EC 24 56 8B F1` /
+  `83 EC 10 56 8B F1`). They turn the game's own R3 view (camera mode 3) into a playable view: automatic entry while
+  wanted (R3 toggles the wish), walking/jumping with the lock byte `+0xB88` cleared for the call, the move direction
+  from the left stick relative to the view rows, the automatic exit of `FUN_00057940` (return 0x587F8) skipped unless
+  dead or `+0x7A0`, own yaw/pitch (right stick of the active controller object, own curve; mouse counts), near plane
+  0.1, HUD on and Bender's visor off after each entry. Levels of `xapi::select::IsPlayAsBlockedLevel` and cut scenes
+  keep the game's camera. Exit reporter "first person"; with `[debug] trace = game` one TRACE line
+  `first person trace: ...` per view tick (`analysis\loader\scripts\g6_firstperson_trace.py`). Evidence:
+  `analysis\loader\g6_firstperson.md`.
+- **Extra function starts** (`tools\gen\extra_function_starts.tsv`, regenerated `gen\xbe_functions.gen.inc`):
+  0x50D10 `Player_vfJump` (size 0x163), 0x588B0 `Player_vfViewToggle` (size 0x12E) - vtable-only player methods,
+  hook targets of G6.
+- **Keyboard/mouse** (`input\kbm_source.h`, additive): `KeyboardMouseSource::SetMouseMotionQuery(fn)` with
+  `using MouseMotionQuery = bool (*)() noexcept` (`nullptr` = none, default). While `fn()` returns true, `Sample`
+  drops the mouse motion instead of mapping it to the bound controls (keys, buttons, wheel unchanged); `ReadRaw` still
+  reports it. The query runs outside the source's lock. G6 sets `xapi::fp::MouseLookActive` (true while the camera
+  hook ran within the last 150 ms).
+- **G5 interplay:** with `camera_response = precise` the controller's right stick reaches the game encoded for the
+  game curve (`inp::SetPadShaper`); the first-person view decodes it with `inp::GameStickOutput` before its own curve
+  (`xapi::fp::LookDeflection(..., gameEncoded = true)`). G5 owns camera mode 0, G6 mode 3; no shared hook address.
+- **Tests**: `tests\first_person_tests.cpp`. Script `tools\input_scripts\g6_first_person.txt`. Report:
+  `docs\g6_report.md`.
+
 ## 5. Cross-module contracts
 
 | Contract | Provider -> user |
@@ -1831,3 +1897,5 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-12 | M7 (save games) | `vfs\vfs.h` (`CreateHostDirDevice(..., freeSpaceLimit = 0)`, additive default), `vfs\host_dir_device.cpp`, `vfs\vfs_init.cpp`, `core\config_schema.cpp` (row `[saves] free_space_limit`, developer), `tests\schema_tests.cpp` (only the two key rows of `[saves]` get a hex value) | Directory scans are snapshots in creation order on writable host directories (FATX order of the save lists); developer key to simulate a full disk. |
 | 2026-10-12 | M7 (save games) | `xapi\xapi_hooks.cpp`, `kernel\io_apc.cpp` | XLaunchNewImageA `{2, 0, 'U', n}` returns to the game (message instead of the dashboard, design 4.5); latency log line of the save write completion (R16). |
 | 2026-10-12 | M7 (save games) | new `tools\verify_save.py`, `tools\m7_check.py`, `tools\input_scripts\m7_*.txt` (5), `tests\save_tests.cpp`, `analysis\loader\m7_saves.md`, `docs\m7_report.md`; `docs\loader_design.md` (new section 8.18, R11/R16, M7), `docs\ROADMAP.md`, `README.md`, this file (4.33) | M7 tools, tests, analysis, report and documentation. |
+| 2026-10-12 | G5/G7 | new `xapi\camera_response.h/.cpp`, `input\level_skip.h/.cpp`, `tests\g5_g7_tests.cpp`, `analysis\loader\g5_camera.md`, `analysis\loader\scripts\g5_camera_trace.py`, `tools\input_scripts\g5_camera.txt`, `g7_level_skip.txt`, `docs\g5_g7_report.md`; `input\host_router.h/.cpp` (additive: `AddSampleFilter`, `Diverted`), `input\xinput_source.h/.cpp` (additive: `SetPadShaper`), `input\stick_curve.h` (additive: `PreciseStickOutput`, `PreciseStickToGameThumbs`), `input\input_system.cpp` (wiring), `input\input_script.h/.cpp` (additive: `GameControllable`, `game camera_trace on\|off`, the heartbeat calls `xapi::camera::TraceTick`), `core\config_schema.cpp` (2 rows + choice list), `tools\input_scripts\README.md` | `[input] camera_response = original\|precise` (2 conditional probes 0x15990/0x103020, pad right-stick shaper), `[game] level_skip_cheat` (A A B B A A B B A A -> FsChangeLevel with the level's successor). Section 4.35, `loader_design.md` 8.19. |
+| 2026-10-12 | G6 first person | new `xapi\first_person.h/.cpp`, `tests\first_person_tests.cpp`, `analysis\loader\g6_firstperson.md`, `analysis\loader\scripts\g6_firstperson_trace.py`, `tools\input_scripts\g6_first_person.txt`, `docs\g6_report.md`; `input\kbm_source.h/.cpp` (additive: `SetMouseMotionQuery`), `tools\gen\extra_function_starts.tsv` + regenerated `gen\xbe_functions.gen.inc` (0x50D10, 0x588B0), `core\config_schema.cpp` (2 rows + choice list), `tools\input_scripts\README.md` | `[input] first_person = off\|on` (6 conditional probes 0x54DA0/0x588B0/0x54AE0/0x536D0/0x50D10/0x18250, nothing with `off`), `[input] first_person_look_speed`. Section 4.36, `loader_design.md` 8.20. |

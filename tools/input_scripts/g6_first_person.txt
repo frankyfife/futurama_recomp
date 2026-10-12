@@ -1,0 +1,73 @@
+# g6_first_person.txt - G6 first-person control ([input] first_person = on) in the level of [game] start_level:
+# walk forward, strafe right, turn, look up/down, back-left, jump, attacks, lock-on (RT), R3 to the follow camera and back.
+# Run with [debug] trace = game: the camera hook then logs one "first person trace" line per tick, evaluated by
+# analysis\loader\scripts\g6_firstperson_trace.py (moves along the view?). About 35 s. Format: README.md in this folder.
+
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 60t
+log "G6: start"
+screenshot fp_start
+log "G6: forward"
+hold LY=1.0 60t
+screenshot fp_forward
+log "G6: strafe right"
+hold LX=1.0 60t
+screenshot fp_strafe
+log "G6: turn right"
+hold RX=1.0 30t
+screenshot fp_turn
+log "G6: look up"
+hold RY=-1.0 15t
+screenshot fp_look
+hold RY=1.0 15t
+log "G6: back left"
+hold LX=-1.0 LY=-1.0 45t
+log "G6: jump"
+press B 3t
+hold LY=1.0 20t
+screenshot fp_jump
+wait 40t
+log "G6: attack"
+press A 3t
+wait 10t
+screenshot fp_attack
+wait 30t
+press X 3t
+wait 10t
+screenshot fp_attack2
+wait 20t
+log "G6: lock-on"
+hold RT
+wait 20t
+press A 3t
+wait 10t
+screenshot fp_lockon
+release RT
+wait 20t
+log "G6: R3 third person"
+press RS 3t
+wait 30t
+screenshot tp_r3
+hold LY=1.0 30t
+log "G6: R3 first person"
+press RS 3t
+wait 30t
+screenshot fp_r3_back
+expect controllable
+log "G6: end"
+quit 0

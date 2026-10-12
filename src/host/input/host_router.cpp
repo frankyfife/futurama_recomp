@@ -296,6 +296,11 @@ bool HostRouter::SampleGamePort(int port, PadState& out) noexcept {
     if (sampleFilter_ != nullptr) {
         sampleFilter_(port, merged);
     }
+    for (const SampleFilter f : chainedFilters_) {  // G7
+        if (f != nullptr) {
+            f(port, merged);
+        }
+    }
     if (InputConsumer* c = consumer_[port]) {
         ++st.divertedSamples;
         c->Consume(port, tick, merged);
@@ -315,6 +320,31 @@ bool HostRouter::SampleGamePort(int port, PadState& out) noexcept {
 void HostRouter::SetSampleFilter(SampleFilter filter) noexcept {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     sampleFilter_ = filter;
+}
+
+bool HostRouter::AddSampleFilter(SampleFilter filter) noexcept {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    if (filter == nullptr || filter == sampleFilter_) {
+        return false;
+    }
+    for (SampleFilter& f : chainedFilters_) {
+        if (f == filter) {
+            return false;
+        }
+        if (f == nullptr) {
+            f = filter;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool HostRouter::Diverted(int port) const noexcept {
+    if (port < 0 || port >= kPortCount) {
+        return false;
+    }
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return consumer_[port] != nullptr;
 }
 
 void HostRouter::Divert(int port, InputConsumer* consumer) noexcept {

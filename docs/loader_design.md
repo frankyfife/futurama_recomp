@@ -729,7 +729,7 @@ Offen, aber für die ersten Meilensteine unkritisch:
 
 ---
 
-## 8. Abweichungen in M1, M2, M3, M3b, M3c, M3d, M4, M5, M6, G4 und M7
+## 8. Abweichungen in M1, M2, M3, M3b, M3c, M3d, M4, M5, M6, G4, M7, G5 und G7
 
 ### 8.1 Abweichungen in M1
 
@@ -1319,6 +1319,30 @@ Stand: M7, 2026-10-12. Bauten: MSVC RelWithDebInfo `build\m7`, Debug `build\m7-d
 | S8 | R16 | Zustellzeit gemessen und protokolliert: „I/O APC: save write completion 0x000E01A0 delivered N ms after the write“ (`kernel\io_apc.cpp`, Zeitstempel je APC) | 10,6–16,4 ms in allen Läufen (Poll 0xE0030 einmal pro Frame); keine Änderung der Zustellung nötig |
 | S9 | M7 Exit 2: `tools/verify_save.py` prüft | Zusätzlich `--resign` (Signatur mit dem eingestellten Schlüssel neu schreiben), `--json`, Prüfung von `SaveMeta.xbx` und Verzeichnis-Hash; als Modul von `m7_check` benutzt (signierte Testdateien) | Import von Sicherungen mit fremdem Schlüssel (R11) und die 25-Sicherungen-Prüfung (24 signierte Kopien). Gegenprobe Python ↔ XAPI über die XcSHA-Exporte in `tests\save_tests.cpp` |
 | S10 | 4.1 `<userdata>` | Prüfwerkzeuge benutzen immer eigene Benutzerdaten (`run\m7\check\main`, `…\nospace`); `m7_check` verweigert Ordner unter `%LOCALAPPDATA%\FuturamaPC` | Nutzerwunsch: eigene Spielstände nie anfassen |
+
+### 8.19 Abweichungen in G5 und G7: Kamera am rechten Stick, Level-Skip-Cheat
+
+Stand: G5/G7, 2026-10-12. Bauten: MSVC RelWithDebInfo `build\g5g7`, Debug `build\g5g7-werr` und clang-cl Debug `build\g5g7-clang` (beide `FUT_WERROR=ON`); `fut_tests` in allen drei Bauten bestanden; `tools\m4_check.py` mit der Konfiguration von `run\verify-m5\futurama.ini` (eigene Benutzerdaten `run\g5g7\verify-m5`) ALL PASS. Bericht [`g5_g7_report.md`](g5_g7_report.md), Analyse [`g5_camera.md`](../analysis/loader/g5_camera.md).
+
+| # | Plan (Abschnitt) | Abweichung | Grund / Beleg |
+|---|---|---|---|
+| G5-1 | 6 Meilensteine: kein Eingriff in die Spiellogik | Mit `[input] camera_response = precise` ersetzt der Port den Drehwinkel der Folgekamera je Tick (`probe:Camera::FollowUpdate` 0x15990, `probe:NiMatrix3::MakeYRotation` 0x103020 nur für den Aufruf 0x17B2B) und löscht danach den Filterzustand des Spiels (`+0x154`, `[+0xE4]+0xC`). Standard `original`: keine Hooks (`FUT_PROBE_IF`, Hook-Summe 181 wie ohne G5) | Nutzerwunsch „präzisere, reaktionsfreudigere Kamera“. Ersetzt wird nur der Winkel an der Stelle, an der das Spiel ihn anwendet; Kollision, Höhe, Abstand und Nachführen bleiben Code des Spiels (g5_camera.md 4). Messung: 90 % der Drehrate nach 33 statt 483–650 ms, Nachlauf 0,1–1 statt 6–18° |
+| G5-2 | 3.1 Hooks auf häufig gerufene Funktionen vermeiden | `MakeYRotation` hat 46 Aufrufer; die Probe filtert über die Rückkehradresse (0x17B30) und reicht alle anderen unverändert durch | Ein Patch des einen `call` (0x17B2B) wäre kein Funktionsanfang und passt nicht zur Hook-Mechanik (Funktionsanfang, Prüfung gegen `xbe_functions.gen.inc`). Kosten: ein Host-Aufruf je `MakeYRotation`, nur mit `precise` |
+| G5-3 | 8.11 M4: Eingabe 1:1, Totzone nur `pad_deadzone` | Mit `precise` formt der Host den **rechten Stick der Controller** um (radiale Totzone 0,18, linear; über die Umkehrung der Spielkurve, `inp::SetPadShaper`), außer während der Port umgeleitet ist (Freecam) | Die Totzone 0,4 des Spiels macht kleine Drehungen unmöglich; erlaubt, weil sie auf der Host-Seite liegt. Maus und Eingabeskript unverändert |
+| G7-1 | M7 S1: FsChangeLevel nur als Debug-Aktion für Prüfläufe | Der Spieler erreicht dasselbe Native (`FUN_000B0520`) mit der Tastenfolge A A B B A A B B A A im Level (`[game] level_skip_cheat`, Standard an). Das Folgelevel steht in einer Tabelle (= Argument von Opcode 0xA1 in jedem `levelN-M.ful`) | Nutzerwunsch. Was das Levelskript **vor** seinem FsChangeLevel tut (Schlussszene, in 5-3 der Abspann `credits.avi`), entfällt; Statistik, Bestzeit, Speichern und Folgelevel sind die des Spiels. Geprüft in 1-1, 1-2, 1-6 (Chickenwalker), 2-1, 2-5, 2-6, 3-1, 4-1 (Ratte), 5-1, 5-3 (→ 1-1) |
+| G7-2 | 8.11 M4b: ein Sample-Filter (Freecam) | `HostRouter::AddSampleFilter` (Kette nach dem Freecam-Filter, höchstens 4) und `HostRouter::Diverted` | Vorgabe: Freecam-Filter verketten, nicht ersetzen; G6 kann die Kette ebenso nutzen |
+
+### 8.20 Abweichungen in G6: Ego-Steuerung
+
+Stand: G6, 2026-10-12. Bauten: MSVC RelWithDebInfo `build\g6-fp`, Debug `build\g6-werr` und clang-cl Debug `build\g6-clang` (beide `FUT_WERROR=ON`); `fut_tests` in allen drei Bauten bestanden; `tools\m4_check.py` (`run\verify-m5\futurama.ini`, Option aus) ALL PASS. Bericht [`g6_report.md`](g6_report.md), Analyse [`g6_firstperson.md`](../analysis/loader/g6_firstperson.md).
+
+| # | Plan (Abschnitt) | Abweichung | Grund / Beleg |
+|---|---|---|---|
+| FP-1 | 6 Meilensteine: kein Eingriff in die Spiellogik | Mit `[input] first_person = on` erweitert der Port die Ego-Ansicht des Spiels (Kameramodus 3) zu einer Steuerung: 6 bedingte Probes (`FUT_PROBE_IF`) auf `FUN_00054DA0` (Ein/Aus, automatisches Verlassen 0x587F8 überspringen), `Player::vf+0x11C` 0x588B0 (automatischer Eintritt), `FUN_00054AE0`/`Player::vf+0x104` 0x50D10 (Laufen/Springen mit gelöschtem Sperrbit `+0xB88`), `FUN_000536D0` (Bewegung relativ zum Blick) und `FUN_00018250` (Blick, Position, near-Ebene). Standard `off`: keine Hooks (Hook-Summe 181) | Nutzerwunsch Egoperspektive. Bewegung, Tempo, Kollision, Animation, Zielen der Waffen und Körperdrehung bleiben Code des Spiels; ersetzt werden nur die Sperren, die Bewegungsrichtung und die Blickglättung (g6_firstperson.md 5, 6) |
+| FP-2 | 3.2 Hook-Ziele nur aus `xbe_functions.gen.inc` | Zwei nur über die vtable erreichte Funktionen sind neue Einträge in `tools\gen\extra_function_starts.tsv` (0x50D10 `Player_vfJump`, 0x588B0 `Player_vfViewToggle`), Tabelle neu erzeugt | Beide stehen in allen fünf Spieler-vtables (Unit-Test gegen die XBE); Prologe ganze Befehle, kein Sprung in die übernommenen Bytes |
+| FP-3 | 8.11 M4: Maus wirkt als rechter Stick | Solange die Ego-Ansicht läuft, gibt `KeyboardMouseSource` Mausbewegung nicht an die Belegung, der Blick liest die rohen Zählschritte (`SetMouseMotionQuery`, additiv) | Für Zielen mit der Maus ist ein fester Winkel je Zählschritt nötig; über den Stick ginge die Bewegung durch Totzone und Kennlinie des Spiels. Tasten und Stick-Belegungen bleiben |
+| FP-4 | – | Mit G5 `camera_response = precise` dekodiert die Ego-Ansicht den umgeformten rechten Stick über die Spielkurve und wendet danach ihre eigene Kennlinie an | G5 und G6 wirken nicht gegeneinander: Die Folgekamera (Modus 0) gehört G5, Modus 3 G6 (Lauf `fp11precise`: 189 Hooks, beide aktiv) |
+| FP-5 | 4 Renderer: Frustum wie vom Spiel | In der Ego-Ansicht setzt der Hook das Frustum mit near 0,1 (Minimum der Engine, `FUN_00011960`) statt 0,25 und hält die Kamera mindestens 0,4 Einheiten von Wänden (Kamerastrahl `FUN_00011000`) | Kein Durchblick durch nahe Geometrie; normale Wände bleiben laut Messung ≥ 1,9 Einheiten entfernt |
 
 ## Anhang A: Kernel-Implementierungsplan nach Meilenstein
 

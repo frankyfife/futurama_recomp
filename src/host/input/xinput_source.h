@@ -38,6 +38,11 @@ public:
 // The process-wide XInput (loads the DLL on first use; thread-safe).
 XInputApi& SystemXInput() noexcept;
 
+// G5: optional process-wide shaping of every controller's mapped state (after bindings and pad_deadzone), e.g. the
+// right-stick dead zone of [input] camera_response = precise (input_system.cpp). nullptr = none (default).
+using PadShaper = void (*)(int port, PadState& state) noexcept;
+void SetPadShaper(PadShaper shaper) noexcept;
+
 // Milliseconds of a monotonic clock (tests inject their own).
 using MillisecondClock = std::uint64_t (*)() noexcept;
 

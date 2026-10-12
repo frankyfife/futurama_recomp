@@ -3,7 +3,7 @@
 // Sources:   analysis/retail_eu_export/functions.tsv, tools/gen/extra_function_starts.tsv
 //
 // Initializer rows for guest::FunctionInfo (core/guest.h), sorted by address.
-// 7014 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
+// 7016 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
 // { address, size, flags (0 ghidra, 1 extra start, 2 synthetic range), name },
 { 0x00011000u, 0x69u, 0, "FUN_00011000" },
 { 0x00011070u, 0x69u, 0, "FUN_00011070" },
@@ -855,6 +855,7 @@
 { 0x00050B00u, 0x85u, 0, "FUN_00050b00" },
 { 0x00050B90u, 0xB2u, 0, "FUN_00050b90" },
 { 0x00050C50u, 0xB2u, 0, "FUN_00050c50" },
+{ 0x00050D10u, 0x163u, 1, "Player_vfJump" },
 { 0x00050F00u, 0xD7u, 0, "FUN_00050f00" },
 { 0x00050FE0u, 0x1C6u, 0, "FUN_00050fe0" },
 { 0x000511B0u, 0x91u, 0, "FUN_000511b0" },
@@ -886,6 +887,7 @@
 { 0x00057660u, 0x2AAu, 0, "FUN_00057660" },
 { 0x00057910u, 0x2Fu, 0, "FUN_00057910" },
 { 0x00057940u, 0xF58u, 0, "FUN_00057940" },
+{ 0x000588B0u, 0x12Eu, 1, "Player_vfViewToggle" },
 { 0x000589E0u, 0x530u, 0, "FUN_000589e0" },
 { 0x00058F10u, 0x17CBu, 0, "FUN_00058f10" },
 { 0x0005A6E0u, 0x15u, 0, "FUN_0005a6e0" },

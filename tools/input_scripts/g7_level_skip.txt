@@ -1,0 +1,88 @@
+# g7_level_skip.txt - G7 level skip cheat: in the first level (Level1-1, or [game] start_level) enter
+# A A B B A A B B A A -> statistics screen "Breakdown" -> "Weiter" -> the next level loads -> the sequence again in
+# that level. Format: README.md in this folder; cheat: src\host\input\level_skip.h, docs\g5_g7_report.md.
+# The log lines "cheat: level skip ... in <Level> ... FsChangeLevel("<Next>")" name both levels. About 50-70 s.
+
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+wait log "game: level loading" timeout 5s      # consume the first level's lines (log conditions count once)
+wait log "game: level loaded" timeout 5s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 90t
+screenshot level_a
+
+# A A B B A A B B A A (each press 3 ticks, then 5 ticks released: about 1.3 s for the whole sequence)
+repeat 2
+  press A 3t
+  wait 4t
+  press A 3t
+  wait 4t
+  press B 3t
+  wait 4t
+  press B 3t
+  wait 4t
+end
+press A 3t
+wait 4t
+press A 3t
+wait log "cheat: level skip (" timeout 5s
+wait log "save: debug action: level end" timeout 5s
+wait 180t
+screenshot breakdown
+# Breakdown: Speichern | Weiter | Wiederholen | Beenden (left/right, A confirms); "Weiter" is the second entry.
+press RIGHT 3t
+wait 30t
+screenshot breakdown_continue
+press A 3t
+# "Weiter? Sie können erst am Ende des nächsten Levels wieder speichern!" - Ja | Nein (preselected): LEFT, A.
+wait 60t
+press LEFT 3t
+wait 30t
+screenshot continue_yes
+press A 3t
+wait log "game: level loading" timeout 30s
+wait log "game: level loaded" timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+# Some levels (e.g. Level2-6) start with an in-engine scene right after the first controllable tick: wait until the
+# character stays controllable.
+wait 300t
+wait controllable timeout 120s
+wait 60t
+expect controllable
+screenshot level_b
+
+repeat 2
+  press A 3t
+  wait 4t
+  press A 3t
+  wait 4t
+  press B 3t
+  wait 4t
+  press B 3t
+  wait 4t
+end
+press A 3t
+wait 4t
+press A 3t
+wait log "cheat: level skip (" timeout 5s
+wait log "save: debug action: level end" timeout 5s
+wait 180t
+screenshot breakdown_b
+log "G7: level skip done twice"
+quit 0

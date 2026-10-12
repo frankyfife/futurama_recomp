@@ -45,6 +45,12 @@ public:
     // back chord buttons). It may change the state and call Divert. nullptr = none.
     using SampleFilter = void (*)(int port, PadState& merged) noexcept;
     void SetSampleFilter(SampleFilter filter) noexcept;
+    // G7: further filters, called after the SetSampleFilter filter in the order added (a chain; the G7 level-skip
+    // cheat). False if the chain is full (kMaxChainedFilters) or `filter` is nullptr / already added.
+    static constexpr int kMaxChainedFilters = 4;
+    bool AddSampleFilter(SampleFilter filter) noexcept;
+    // G7: true while `port` is diverted to an InputConsumer (the game sees a neutral pad), e.g. the freecam.
+    bool Diverted(int port) const noexcept;
 
     // ---- InputRouter -------------------------------------------------------------------------------------
     std::uint32_t ConnectedPorts() const noexcept override;
@@ -99,6 +105,7 @@ private:
     Options options_{};
     FocusQuery focusQuery_ = nullptr;
     SampleFilter sampleFilter_ = nullptr;
+    std::array<SampleFilter, kMaxChainedFilters> chainedFilters_{};  // G7
     bool explicitSources_ = false;
     std::vector<InputSource*> sources_;
 

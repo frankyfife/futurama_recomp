@@ -6,6 +6,7 @@
 #include <Xinput.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 
 namespace inp {
@@ -77,6 +78,14 @@ std::uint64_t TickCountClock() noexcept {
 }
 
 }  // namespace
+
+namespace {
+std::atomic<PadShaper> g_padShaper{nullptr};  // G5
+}  // namespace
+
+void SetPadShaper(PadShaper shaper) noexcept {
+    g_padShaper.store(shaper, std::memory_order_release);
+}
 
 XInputApi& SystemXInput() noexcept {
     static SystemXInputApi api;  // thread-safe static initialization
@@ -151,6 +160,9 @@ bool XInputPadSource::Sample(int port, std::uint64_t tick, PadState& out) noexce
         return false;
     }
     out = MapPad(ApplyStickDeadzone(pad, deadzone_), bindings_ != nullptr ? *bindings_ : DefaultBindings());
+    if (const PadShaper shaper = g_padShaper.load(std::memory_order_acquire)) {
+        shaper(port, out);  // G5
+    }
     return true;
 }
 
