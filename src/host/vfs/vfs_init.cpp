@@ -63,7 +63,15 @@ bool StageInitVfs(const core::Config& config) {
                 return false;
             }
         }
-        std::shared_ptr<Device> hdd = CreateHostDirDevice(partition1, false);
+        // (M7) [saves] free_space_limit: developer key, caps the reported free space of partition1 (T:, U:)
+        // to reach the game's "not enough free blocks" dialog (MEMCARD_047, m7_saves.md 5) without a full
+        // disk.
+        const std::uint32_t freeLimit = config.GetU32("saves", "free_space_limit", 0);
+        if (freeLimit != 0) {
+            FUT_LOGW(Vfs, "[saves] free_space_limit = %u: %s reports at most %u free bytes", freeLimit,
+                     kPartition1, freeLimit);
+        }
+        std::shared_ptr<Device> hdd = CreateHostDirDevice(partition1, false, freeLimit);
         if (!hdd || !AddDevice(kPartition1, hdd)) {
             FUT_LOGE(Vfs, "cannot register %s (%s)", kPartition1,
                      core::WideToUtf8(partition1.wstring()).c_str());

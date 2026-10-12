@@ -36,6 +36,7 @@ Eine Anweisung pro Zeile, `#` beginnt einen Kommentar (außerhalb von Anführung
 | `log "text"` | Zeile `input script: line N: log: text` ins Protokoll |
 | `screenshot name` | Bildschirmfoto des nächsten Bildes (`[render] screenshot_dir`), wartet 2 Bilder |
 | `unplug` / `replug` | Abziehen bzw. Wiedereinstecken des Skript-Ports simulieren (Ingame: Pause mit „Controller anschließen“) |
+| `game level_end Level1-2` | (M7) beendet das laufende Level wie das Levelskript an seinem Ende (Native FsChangeLevel `FUN_000B0520`): Statistikbildschirm „Breakdown“ mit *Speichern / Weiter / Wiederholen / Beenden*; der Name ist das nächste Level (1–8 Zeichen). Läuft beim nächsten Tick; ohne laufendes Level schlägt das Skript fehl. So erreicht ein kurzer Lauf den Speicherpunkt, ohne das Level durchzuspielen |
 | `quit [code]` | Prozess mit diesem Rückgabecode beenden (Standard 0) |
 | `fail "text"` | Skript absichtlich fehlschlagen lassen |
 
@@ -76,4 +77,5 @@ Jede ausgeführte Anweisung steht als `input script: line N: … (tick T, frame 
 * `m6_level.txt`: „Neues Spiel“ → Film 1-1-01 beim ersten Ansehen 9 s lang (deutsche Sprache ab 4 s), Screenshot, A überspringt (mit `[game] skip_videos = always`), danach steuerbar (etwa 40 s). Mit `skip_videos = original` scheitert das Skript am Ende erwartungsgemäß (Protokoll: „keep playing“).
 * `m6_attract.txt`: Frontend ohne Eingabe → Attract-Modus (Attract-PAL.xmv, 25 fps) nach etwa 60 s, Screenshot, A kehrt zurück (etwa 80 s).
 * **Seit M6 laufen die Filme in Echtzeit** (Logos und Intro zusammen etwa 50 s). Die Skripte drücken deshalb bis zum Frontend START (`loop timeout 120s until context Frontend` … `press START 3t` … `wait 30t`), jeder Druck überspringt einen Intro-Schritt (`Intro::Update` 0x2B9B0). Prüfungen mit festen Bildnummern ohne Skript (m2/m3/m3c/m3d) laufen mit `--set=debug.movies=skip` (Filme enden sofort wie vor M6).
+* `m7_save.txt`, `m7_load.txt`, `m7_damaged.txt`, `m7_slots.txt`, `m7_nospace.txt` (M7): Spielstände – Optionen speichern, Neues Spiel, Levelende mit `game level_end` und Speichern; Neustart, Optionen/Extras geladen, Spielstand laden und erneut speichern; beschädigte Sicherung löschen; 25 Sicherungen und Überschreiben; zu wenig Platz (`[saves] free_space_limit`). Jeweils 20–55 s, nur zusammen mit `tools\m7_check.py` sinnvoll (es bereitet die Dateien vor und prüft sie). Die Skripte warten auf die Protokollzeilen der Spielstand-Proben (`wait log "save: dialog MEMCARD_007"` usw., `src\INTERFACES.md` 4.33) und drücken bei Ja/Nein-Fragen erst LINKS („Ja“; vorausgewählt ist „Nein“, beim Platzdialog `MEMCARD_047` aber „Steuerung“).
 * Eigene Skripte für Testläufe gehören nach `run\<name>\` (nicht ins Repository).

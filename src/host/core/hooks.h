@@ -30,6 +30,10 @@
 // (check with capstone before adding a probe). The installer verifies the bytes against the XBE file,
 // copies them into an executable trampoline followed by `jmp address+stolenBytes` and then writes the
 // usual 5-byte jmp. Only the 5 jmp bytes change in the image.
+//
+// Conditional probes (G4, FUT_PROBE_IF): `condition(config)` decides at StageInstallHooks whether the probe is
+// installed. A probe whose condition is false is skipped silently: no log line, not counted in the "hooks: ..."
+// summary, the image stays untouched - a run with the option off logs exactly the hooks of a build without it.
 #pragma once
 
 #include "core/config.h"
@@ -57,6 +61,8 @@ struct HookDesc {
     // Probe hooks only: number of original bytes copied into the trampoline (5..16, must equal the
     // length of expectedBytes). 0 = plain detour without trampoline.
     std::uint8_t trampolineBytes = 0;
+    // G4: optional install condition (FUT_PROBE_IF); nullptr = always (subject to defaultOn and [hooks] disable).
+    bool (*condition)(const Config& config) = nullptr;
 };
 
 void RegisterHook(const HookDesc& desc) noexcept;
@@ -125,5 +131,13 @@ const void* CodeAddress(F f) noexcept {
     const ::core::HookRegistrar FUT_HOOK_CAT(futHookRegistrar_, __LINE__)(::core::HookDesc{                  \
         (address), ::core::detail::CodeAddress(replacement), ::core::HookConv::conv, (name), (prologueHex),  \
         true, __FILE__, (stolenBytes)});                                                                     \
+    }                                                                                                        \
+    static_assert((stolenBytes) >= 5 && (stolenBytes) <= 16, "probe: 5..16 stolen bytes")
+// G4: probe hook installed only if condition(config) is true (see the header comment).
+#define FUT_PROBE_IF(address, replacement, conv, name, prologueHex, stolenBytes, condition)                  \
+    namespace {                                                                                              \
+    const ::core::HookRegistrar FUT_HOOK_CAT(futHookRegistrar_, __LINE__)(::core::HookDesc{                  \
+        (address), ::core::detail::CodeAddress(replacement), ::core::HookConv::conv, (name), (prologueHex),  \
+        true, __FILE__, (stolenBytes), (condition)});                                                        \
     }                                                                                                        \
     static_assert((stolenBytes) >= 5 && (stolenBytes) <= 16, "probe: 5..16 stolen bytes")

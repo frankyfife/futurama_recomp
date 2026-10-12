@@ -1,0 +1,73 @@
+# m7_load.txt - M7 run 2 (tools\m7_check.py, after m7_save.txt): restart, the options and extras load at the first
+# confirm; lower the SFX volume once more and save (m7_check: the value must go down from the run-1 value - with the
+# defaults it would equal run 1; "Uebernehmen" without a change saves nothing and asks nothing); load the save game
+# from "Spiel laden" (level 1-2), end that level and save in a new slot. About 50 s.
+
+loop timeout 60s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 30s
+wait 30t
+
+# Options again: the first confirm loads Options.dat and Unlock.dat (no dialog: MEMCARD_049/053 would be errors).
+press DOWN 1t
+wait 20t
+press A 3t
+wait 150t
+expect no_dialog
+screenshot options_loaded                          # the SFX slider shows the value saved in run 1
+hold LEFT 40t
+wait 20t
+repeat 7
+  press DOWN 3t
+  wait 40t
+end
+press A 3t
+wait log "save: dialog MEMCARD_037" timeout 10s
+wait 40t
+press LEFT 3t
+wait 30t
+press A 3t
+wait log "save: write Options.dat" timeout 15s
+wait log "save: dialog MEMCARD_007" timeout 15s
+wait 60t
+press A 3t
+wait 60t
+press B 3t
+wait main_menu timeout 10s
+wait 30t
+
+# "Spiel laden" (entry 2): the list shows the save of run 1 first (oldest first, FATX order); A loads it.
+press DOWN 1t
+wait 30t
+press A 3t
+wait 200t
+screenshot loadmenu
+press A 3t
+wait log "save: loaded game data" timeout 15s
+wait context Ingame timeout 30s
+wait level_loaded timeout 120s
+loop timeout 120s until controllable
+  wait 30t
+  press A 3t
+end
+wait 60t
+screenshot loaded_level
+log "M7: save game loaded"
+
+# End level 1-2 and save in a new slot (entry 0 "Leerer Platz"; the run-1 save is entry 1).
+game level_end Level1-3
+wait 180t
+press A 3t
+wait log "save: save menu opened" timeout 10s
+wait 120t
+screenshot savemenu2
+press A 3t
+wait log "save: write Futurama.dat" timeout 15s
+wait log "save: dialog MEMCARD_007" timeout 15s
+wait 60t
+press A 3t
+wait 60t
+log "M7: second game saved"
+quit 0

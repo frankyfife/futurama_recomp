@@ -270,8 +270,12 @@ bool StageInstallHooks(const Config& config) {
     std::sort(hooks.begin(), hooks.end(),
               [](const HookDesc& a, const HookDesc& b) { return a.address < b.address; });
     bool ok = true;
-    std::size_t installed = 0, disabled = 0;
+    std::size_t installed = 0, disabled = 0, conditionalOff = 0;
     for (const HookDesc& d : hooks) {
+        if (d.condition != nullptr && !d.condition(config)) {
+            ++conditionalOff;  // G4: option off - no log line, not counted (header comment of hooks.h)
+            continue;
+        }
         if (!d.defaultOn || IsHookDisabled(d, config)) {
             ++disabled;
             FUT_LOGI(Hook, "hook %s at 0x%08X disabled", d.name, d.address);
@@ -294,7 +298,8 @@ bool StageInstallHooks(const Config& config) {
                      entry.c_str());
         }
     }
-    FUT_LOGI(Hook, "hooks: %zu installed, %zu disabled, %zu registered", installed, disabled, hooks.size());
+    FUT_LOGI(Hook, "hooks: %zu installed, %zu disabled, %zu registered", installed, disabled,
+             hooks.size() - conditionalOff);
     return ok;
 }
 

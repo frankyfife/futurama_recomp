@@ -25,6 +25,8 @@
 //   log "text" | screenshot <name> | quit [code] | fail "text"
 //   unplug | replug                         simulated removal / re-insertion of the script's port
 //                                           (InputRouter::SimulateUnplug; in-game the game pauses, ERRCTRLINGAME)
+//   game level_end Level1-2                 (M7) end the level like the level scripts (native FsChangeLevel: the
+//                                           Breakdown screen with "Speichern"; xapi::RequestLevelEnd, next tick)
 //
 // Controls: A B X Y BLACK WHITE LT RT (analog 0..1, digital = 1), START BACK UP DOWN LEFT RIGHT (D-pad;
 // DPAD_UP.. too) LS RS (stick clicks; LSCLICK/RSCLICK too), axes LX LY RX RY (-1..1, +Y = up; raw value
@@ -116,6 +118,7 @@ enum class Op : std::uint8_t {
     Fail,        // text
     Unplug,      // simulated removal of the script's port (InputRouter::SimulateUnplug)
     Replug,      // ... and re-insertion
+    Game,        // (M7) debug action on the game, text = action ("level_end Level1-2")
 };
 
 struct Instruction {
@@ -165,6 +168,11 @@ public:
     // Simulated unplug (true) / replug (false) of the script's port; false if not supported (no router).
     virtual bool Unplug(bool unplugged) noexcept {
         (void)unplugged;
+        return false;
+    }
+    // (M7) Debug action on the game (`game level_end Level1-2`); false if unknown or not possible now.
+    virtual bool GameAction(const std::string& action) noexcept {
+        (void)action;
         return false;
     }
 };

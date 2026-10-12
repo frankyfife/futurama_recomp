@@ -1,0 +1,24 @@
+# m7_nospace.txt - M7 run 5 (tools\m7_check.py, fresh userdata, [saves] free_space_limit = 65536): "Neues Spiel" ->
+# "Die Xbox hat nicht genuegend freie Bloecke..." (MEMCARD_047). Option 0 "Xbox Dashboard" calls XLaunchNewImageA;
+# on the PC the hook reports it and returns to the game, which goes on into level 1-1 (instead of ending the
+# process like before M7). About 30 s.
+
+loop timeout 60s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 30s
+wait 30t
+press A 3t
+wait log "save: dialog MEMCARD_047" timeout 10s
+wait 60t
+screenshot no_space
+press LEFT 3t                                      # option 0 "Xbox Dashboard"
+wait 30t
+screenshot no_space_dashboard
+press A 3t
+wait log "asks for the Xbox dashboard" timeout 10s
+wait context Ingame timeout 30s
+wait level_loaded timeout 120s
+log "M7: back in the game after the dashboard request"
+quit 0

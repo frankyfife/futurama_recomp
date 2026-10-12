@@ -1,6 +1,6 @@
 # Roadmap: Futurama-PC-Port
 
-Stand: 2026-10-12. Diese Seite ist die Agenda. Die technischen Details stehen in [`loader_design.md`](loader_design.md), Abschnitt 6 (Meilensteine), und in den Berichten `m1_report.md` bis `m6_report.md`.
+Stand: 2026-10-12. Diese Seite ist die Agenda. Die technischen Details stehen in [`loader_design.md`](loader_design.md), Abschnitt 6 (Meilensteine), und in den Berichten `m1_report.md` bis `m7_report.md`.
 
 ## Erledigt
 
@@ -17,21 +17,22 @@ Stand: 2026-10-12. Diese Seite ist die Agenda. Die technischen Details stehen in
 | M4b | Freecam ([Bericht](m4b_report.md)): ein/aus mit L3+R3 (einzelne Stick-Klicks erreichen das Spiel weiter, höchstens 4 Ticks verzögert) oder F6, im 3D-Hauptmenü, in Levels und Zwischensequenzen. Probe-Hook auf `NiCamera::Click`: Kulling und Bild nutzen die Freecam, danach bekommt das Spiel seine Kamera zurück (Spiellogik und 3D-Ton bleiben bei der Spielkamera). Gamepad und Tastatur/Maus, Tempo und Zoom im Flug verstellbar, HUD ausblendbar, Optionen im Launcher-Reiter „Steuerung“. Geprüft mit Eingabeskript `m4b_freecam.txt`, Unit-Tests und `m4_check` (ALL PASS) |
 | M6 | Video ([Bericht](m6_report.md)): Alle 47 Filme laufen – Logos, Intro, Zwischensequenzen, Attract-Modus, Abspann, Trailer. Eigener XMV-Demuxer, WMV2 über den in Windows eingebauten WMVideo-Decoder (kein FFmpeg, kein Download), Ton der gewählten Sprache über einen DSOUND-HLE-Stream, Bild strikt nach pts am Audiotakt (15- und 25-fps-Dateien in richtiger Geschwindigkeit, höchstens 29 ms nach dem Soll), YUY2 wie im Original in die Filmtextur des Spiels. Testmodus `--decode-movies`: 47/47 Dateien, 39 602 Bilder ohne Fehler, Bild und Ton gegen FFmpeg geprüft (Ton bitgleich, Luma ≥ 61 dB). **Alle Filme überspringbar** mit A/START, auch die beim ersten Ansehen gesperrten: `[game] skip_videos = always` (Standard) oder `original`. **Ansehen/Anhören durch den Nutzer steht aus** (Checkliste im Bericht) |
 | G1 | Konturen einstellbar ([Analyse und Umsetzung](../analysis/loader/g1_outlines.md)): Die Konturen sind vorgefertigte, um 0,05 aufgeblasene Rückseiten-Schalen (`QDOutline`, 75 % schwarz) bzw. beim HUD-Kopf `NiOutline`-Bänder – der Port zeichnete sie schon. Neu: `[render] outline_color` (original/RRGGBB), `outline_opacity`, `outline_thickness` (0–2,5; 0 = aus) im Reiter „Grafik“; Standard unverändert (kein neuer Code aktiv, Trace gleich). Dicke über die Paarung Schale↔Körper (Bereiche ohne Linie bleiben ohne). Freecam dazu: Rückseiten von außen (B), schwarze Leere |
+| G4 | Level- und Figurenauswahl ([Bericht](g4_report.md), [Analyse](../analysis/loader/g4_select.md)): `[game] start_level` im Reiter „Spiel“ – „Neues Spiel“ beginnt in einem der 22 erreichbaren Level, mit dem Startzustand (Waffen, Werte) aus der Tabelle des Spiels, wie der eingebaute Debug-Cheat. `[game] play_as = fry|bender|leela` (experimentell) tauscht die Spielfigur über den Def-Namen; Fry ohne Angriff in Bender-/Leela-Leveln, 1-6/2-5/4-1/5-3 behalten ihre Figur. Standard `original`: keine Hooks, Spiel unverändert. Die 29 eingebauten Cheatcodes sind dokumentiert |
+| M7 | Spielstände ([Bericht](m7_report.md), [Analyse](../analysis/loader/m7_saves.md)): Speichern am Levelende (Statistikbildschirm „Speichern“ – der einzige Speicherpunkt des Spiels), Neustart, „Spiel laden“, Optionen und Extras, Überschreiben, beschädigte Spielstände (Signatur HMAC-SHA1 bei 0xFEC) löschen, 25 Spielstände, „zu wenig Platz“ – alles mit dem Code des Spiels auf der Kernel-HLE. Neu: Listen in Erstellreihenfolge wie auf der Xbox-Festplatte, Rückkehr ins Spiel statt Prozessende beim Dashboard-Aufruf, `tools\verify_save.py` (Signatur prüfen/neu signieren), `tools\m7_check.py` (5 kurze Läufe, alle Kriterien PASS). Spielstände liegen unter `<Benutzerdaten>\hdd\partition1\UDATA\46490002\`. Fehler im Original: Bestzeiten der Extras gehen nach einem Neustart verloren. **Durchspielen bis zu einem echten Levelende durch den Nutzer steht aus** (Checkliste im Bericht) |
 
 ## In Arbeit
 
 | Meilenstein | Inhalt |
 |---|---|
-| M7 | Spielstände – als Nächstes (Nutzer 2026-10-12: Speichern ist noch ungetestet): Speichern, Neustart, Laden, Optionen/Extras, Signatur, Löschen |
+| – | (nichts; nächste Schritte siehe unten) |
 
 ## Als Nächstes
 
-Reihenfolge laut Nutzer (2026-10-12, nach dem Hörtest von M5: „Ton klingt gut“): Freecam (erledigt) → Konturen (erledigt) → Videos (erledigt, M6) → Spielstände (M7).
+Reihenfolge laut Nutzer (2026-10-12, nach dem Hörtest von M5: „Ton klingt gut“): Freecam (erledigt) → Konturen (erledigt) → Videos (erledigt, M6) → Spielstände (erledigt, M7). Level- und Figurenauswahl (G4) ist ebenfalls erledigt. Als Nächstes: M8 (spielbares Level), G3 (Breitbild), G2 (Texturen).
 
 | Meilenstein | Inhalt |
 |---|---|
 | M3e (Renderer P2) | Rest nach G1: Render to Texture (Avatarbild in der Lebensanzeige oben links: separat gerenderter Kopf, Konturen `NiOutline`), Partikel (Slot 52), schwarze Schiffsunterseite, fehlende Texturen ([`m4_report.md`](m4_report.md) 6.1) |
-| G4 | **Level- und Figurenauswahl** (Nutzerwunsch 2026-10-12). Das Spiel hat keine eingebaute Auswahl (Strings durchsucht: kein Debug-/Cheat-Menü; die Extras-Freischaltung über `menu/extras/unlock.txt` betrifft nur Bilder/Musik/Videos). Plan: (1) **Levelauswahl:** „Neues Spiel“ startet fest `Level1-1` (String 0x2940C0, Nutzer 0x20090/0x20B60/0xA26A0); Liste aller Level aus den Archiven (`LevelN-M`, z. B. 1-1…5-3), Auswahl im Launcher (`[game] start_level`) und optional als eigener Eintrag im Hauptmenü bzw. Overlay; prüfen, welchen Spielstand-/Fortschrittszustand ein Level beim Einstieg erwartet (Waffen, Leben, Zwischensequenzen). (2) **Figurenauswahl:** klären, wo ein Level die Spielfigur festlegt (Fry/Bender/Leela; Leveldaten oder Code), dann Figur pro Level wählbar machen – nur wo Fähigkeiten/Skript es zulassen, sonst als „experimentell“ markiert. Prüfung: Kurzläufe in jedes Level mit Screenshot und `controllable`. |
 | G3 | **Breitbild** (Nutzerwunsch 2026-10-12): Option 16:9 / 16:10 / 21:9 / Monitor im Launcher statt 4:3 mit Seitenbalken. 3D mit Hor+-Sichtfeld (vertikales Sichtfeld bleibt, horizontal mehr Bild; Frustum der Szenenkamera, Kulling-Ebenen wie bei der Freecam über `NiCamera::Click` neu berechnet). **HUD korrekt platziert:** HUD-Elemente an ihrem Bildrand verankern (Lebensanzeige/Avatar oben links, Zähler unten links/rechts) statt sie zu strecken oder mittig im 4:3-Bereich zu lassen; Menüs, Texte und Vollbild-Elemente (Ladebilder, Videos) bleiben 4:3-zentriert mit Balken. Vorher klären: welche Bildschirmpolygone/HUD-Kameras zu welchem Rand gehören (Position im 640×480-Raster), Ausnahmen per Tabelle. Prüfung mit Screenshots in Menü, Level 1-1 und Zwischensequenz gegen 4:3. |
 | G2 | Texturen artstyle-gerecht aufwerten: Austauschsystem im Renderer und lokales Upscale-Werkzeug (nach M4b, für Vorher/Nachher-Vergleiche mit der Freecam) |
 | – | Takt bei 120 Hz: In der M5-Endprüfung (Fernseher an) bestanden `m3_check` inkl. M3b-7 und die 60-Hz-Varianten von `m3d_check`, aber D1 (120 Hz: nur 43 % der Bilder genau ein Refresh) und L1 scheiterten – mit dem M4-Bau genauso, also Anzeige-Umgebung, nicht M5 ([`m5_report.md`](m5_report.md) 7, 10). Fernseher-Modus/VRR und Treiber prüfen, dann `m3d_check` ohne `--display-optional` wiederholen. Mit echtem Controller sind Controller, Vibration und Bild bestätigt (Nutzertest 2026-10-12). |
@@ -139,7 +140,6 @@ Eine frei bewegliche Kamera für Screenshots, Fehlersuche und Level-Inspektion.
 
 | Meilenstein | Inhalt |
 |---|---|
-| M7 | Spielstände: XAPI-SaveGame auf Host-Ordner, Signaturschlüssel |
 | M8 | Spielbares Level von Anfang bis Ende, Vergleich mit xemu |
 | M9 | Schrittweise Dekompilierung (re3-Stil), Funktion für Funktion |
 | M10 | Vulkan- bzw. D3D12-Backend hinter der vorhandenen RHI |

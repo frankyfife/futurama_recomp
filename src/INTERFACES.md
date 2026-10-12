@@ -1576,6 +1576,46 @@ ipc_renderer.h`);
   entries without callbacks). Scripts `tools\input_scripts\m6_boot.txt`, `m6_level.txt`, `m6_attract.txt`.
   Report: `docs\m6_report.md`.
 
+### 4.33 Save games (M7): save probes, `game level_end`, FATX listing order, free-space test key - `xapi\save_probes.h`, `vfs\vfs.h`
+
+- **Unchanged path**: the game's save layer (0xE0040..0xE1500) and XAPILIB (`XCreateSaveGame`, `XDeleteSaveGame`,
+  `XFindFirst/NextSaveGame`, `XCalculateSignature*`, `CopyFileA`, `WriteFileEx`, ...) run natively on the kernel HLE
+  of M1/M2. Layout, container format, signature and flows: `analysis\loader\m7_saves.md`.
+- **Observer probes** (`xapi\save_probes.h`, all default on, `[hooks] disable = probe:Save::*` etc.):
+  `probe:XAPILIB::XCreateSaveGame` 0xF6987 (9 bytes), `probe:XAPILIB::XDeleteSaveGame` 0xF6BEA (9),
+  `probe:Save::ReadContainer` 0xE0210 (7), `probe:Save::VerifySignature` 0xE0340 (5), `probe:Save::WriteContainer`
+  0xE0B00 (6), `probe:Save::OpenSaveMenu` 0xE4F70 (7), `probe:Save::Dialog` 0xDF750 (7). Log lines (XAPI/info),
+  meant for input scripts (`wait log "..."`) and `tools\m7_check.py`: `save: XCreateSaveGame(U:\, "<name>",
+  OPEN_ALWAYS|OPEN_EXISTING, flags 0) -> <err> U:\<dir>\`, `save: XDeleteSaveGame(U:\, "<name>") -> 0 (directory
+  removed)`, `save: read <path> -> ok|missing|wrong size (not 4096 bytes)|read error`, `save: signature of <path>
+  ok|MISMATCH (the game reports it as damaged)`, `save: loaded game data: <Futurama.dat text>`, `save: write
+  <file> for "<name>" (icon <xbx>) -> ok|FAILED`, `save: saved game data: <text>`, `save: save menu opened|not
+  opened (...)`, `save: dialog MEMCARD_0xx (MEMHINT_00x|no hint)`, exit reporter `save summary: ...`
+  (`xapi::GetSaveObserverStats`). Guest constants: `core\guest.h` section "added in M7".
+- **Debug action** `xapi::RequestLevelEnd(nextLevel)` / `RunPendingGameActions()`: the input script command
+  `game level_end <NextLevel>` (`inp::script::Op::Game`, `Environment::GameAction`, default false) asks for it; the
+  tick heartbeat probe `probe:Game::HotplugCheck` runs it at the next tick, outside the XPP/router locks: cdecl
+  `FUN_000B0520(nextLevel)` = the level-script native FID 0xA1 (FsChangeLevel) -> the game's Breakdown screen with
+  "Speichern". Refused (script fails) while no level object exists. FsGameSave (0xB0180) alone is not offered: after
+  a successful save the dialog writes `[0x2E8E4C]+0x90` (Breakdown) and crashes without it.
+- **VFS** (`vfs\host_dir_device.cpp`): a directory scan (`File::NextDirEntry`, NtQueryDirectoryFile) is a snapshot
+  taken at the (re)start; writable host directories list their entries in creation order (ties: name), like FATX
+  (the save lists are in enumeration order), read-only ones in the host's name order (XDVDFS). `vfs::
+  CreateHostDirDevice(root, readOnly, freeSpaceLimit = 0)`: `freeSpaceLimit` caps the reported free bytes
+  (partition1 only, from `[saves] free_space_limit`, developer key, 0 = off; `vfs_init.cpp`).
+- **XLaunchNewImageA** (`xapi\xapi_hooks.cpp`): the memory dashboard request `{2, 0, 'U', blocks}` (MEMCARD_047
+  "Steuerung", `FUN_000E4B00`) logs a warning, shows a message box with `[debug] msgbox` and returns
+  `ERROR_NOT_SUPPORTED` to the game (before M7: process exit with code 4). Every other request still ends the
+  process.
+- **Kernel** (`kernel\io_apc.cpp`): the delivery of the save layer's WriteFileEx completion 0xE01A0 is logged with
+  its latency (`I/O APC: save write completion 0x000E01A0 delivered N ms after the write`, design R16).
+- **Tools**: `tools\verify_save.py` (HMAC check with the configured key, `--resign`, `--json`; module functions
+  `fixed_key`, `xbox_key`, `sign`, `make_container`, `check_container`, `save_dir_name`, `save_meta`),
+  `tools\m7_check.py` (5 scripted runs on `run\m7\check`, criteria M7-1..M7-8), scripts
+  `tools\input_scripts\m7_save.txt`, `m7_load.txt`, `m7_damaged.txt`, `m7_slots.txt`, `m7_nospace.txt`.
+- **Tests**: `tests\save_tests.cpp` (creation-order listing, snapshot while deleting, free-space limit, XAPI's HMAC
+  over the XcSHA exports against a Python value, `game level_end` parsing and player). Report: `docs\m7_report.md`.
+
 ## 5. Cross-module contracts
 
 | Contract | Provider -> user |
@@ -1785,3 +1825,9 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-12 | M6 (video) | `core\config_schema.cpp`, `core\cli_tools.h/.cpp`, `src\host\CMakeLists.txt` | `[game] skip_videos` (always\|original, tab Game), `[debug] movies` (play\|skip, developer); tool mode `--decode-movies` (+ `--movie-dump`, `--movie-filter`, `--result`); `ole32.lib` (CoTaskMemFree for the DMO media types). |
 | 2026-10-12 | M6 (video) | `tools\m6_check.py` (new), `tools\m2_check.py`, `m3_check.py`, `m3c_check.py`, `m3d_check.py`, `tools\input_scripts\m4_newgame.txt`, `m4_rumble.txt`, `m4b_freecam.txt`, `m5_frontend.txt`, new `m6_boot.txt`, `m6_level.txt`, `m6_attract.txt` | Frame-timeline checks run with `--set=debug.movies=skip`; the scripts press START until the front end (the boot movies play in real time since M6). |
 | 2026-10-12 | M6 (video) | `docs\loader_design.md` (new section 8.16), `docs\m6_report.md` (new), `gfx\GFX_CONTRACT.md` (section 15), `docs\ROADMAP.md`, `README.md` | M6 deviations, report (German), movie texture contract, roadmap, player notes. |
+| 2026-10-12 | G4 select | new `xapi\game_select.h/.cpp`, `tests\game_select_tests.cpp`; `core\hooks.h/.cpp` (additive: `HookDesc::condition`, `FUT_PROBE_IF`; a probe whose condition is false is skipped without log line and not counted), `core\config_schema.cpp` (2 rows + choice lists) | `[game] start_level` (original\|Level1-1..Level5-3 in game order, tab Game): probe `FUN_000A2340` only at the "Neues Spiel" call (return 0x200B8) sets name + start state of table 0x2D60BC (`FUN_000C1D30`). `[game] play_as` (original\|fry\|bender\|leela, experimental): probes 0x5E580/0xC3E80/0xC3F20 rename the player def; blocked Level1-6/2-5/4-1/5-3. Both `original` = no hook installed. `docs\g4_report.md`, `loader_design.md` 8.17. |
+| 2026-10-12 | M7 (save games) | new `xapi\save_probes.h/.cpp`; `core\guest.h` (section "added in M7": `kXapiXCreateSaveGame`, `kXapiXDeleteSaveGame`, `kGameSaveReadContainer`, `kGameSaveVerifySignature`, `kGameSaveWriteContainer`, `kGameOpenSaveMenu`, `kGameSaveDialogCtor`, `kGameNativeFsGameSave`, `kGameNativeFsChangeLevel`, `kGameBreakdownPtr`, `kSaveObjectContainerOffset`, `kGameSaveWriteCompletion`, `kGameSavingEnabledVar`) | Save observer probes (7 probes, log lines `save: ...`, exit reporter "save"), debug action `RequestLevelEnd`/`RunPendingGameActions` (section 4.33). |
+| 2026-10-12 | M7 (save games) | `input\input_script.h/.cpp` (additive: `Op::Game`, `Environment::GameAction` default false, command `game level_end <NextLevel>`; the tick heartbeat probe calls `xapi::RunPendingGameActions`), `tools\input_scripts\README.md` | Input scripts reach the game's end-of-level screen (save point) without playing the level. |
+| 2026-10-12 | M7 (save games) | `vfs\vfs.h` (`CreateHostDirDevice(..., freeSpaceLimit = 0)`, additive default), `vfs\host_dir_device.cpp`, `vfs\vfs_init.cpp`, `core\config_schema.cpp` (row `[saves] free_space_limit`, developer), `tests\schema_tests.cpp` (only the two key rows of `[saves]` get a hex value) | Directory scans are snapshots in creation order on writable host directories (FATX order of the save lists); developer key to simulate a full disk. |
+| 2026-10-12 | M7 (save games) | `xapi\xapi_hooks.cpp`, `kernel\io_apc.cpp` | XLaunchNewImageA `{2, 0, 'U', n}` returns to the game (message instead of the dashboard, design 4.5); latency log line of the save write completion (R16). |
+| 2026-10-12 | M7 (save games) | new `tools\verify_save.py`, `tools\m7_check.py`, `tools\input_scripts\m7_*.txt` (5), `tests\save_tests.cpp`, `analysis\loader\m7_saves.md`, `docs\m7_report.md`; `docs\loader_design.md` (new section 8.18, R11/R16, M7), `docs\ROADMAP.md`, `README.md`, this file (4.33) | M7 tools, tests, analysis, report and documentation. |

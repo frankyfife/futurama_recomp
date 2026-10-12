@@ -460,6 +460,46 @@ inline constexpr GuestAddr kGameCheatSkipCutscenesVar = 0x002EB7D4;
 inline constexpr GuestAddr kMovieGetNextPacket = 0x000EDBA0;
 inline constexpr GuestAddr kMovieReleasePreviousPacket = 0x000EDE60;
 
+// --- added in M7 (save games, xapi/save_probes.cpp; analysis/loader/m7_saves.md; see Changelog) ---------------------
+// XAPILIB save-game API (XbSymbolDatabase names in the Ghidra export; stdcall):
+//   XCreateSaveGame(LPCSTR root "U:\", LPCWSTR name, DWORD disposition (3 OPEN_EXISTING, 4 OPEN_ALWAYS), DWORD flags,
+//   LPSTR pathOut, UINT cchPath) -> DWORD Win32 error, ret 0x18. Prologue 55 8B EC 81 EC 58 02 00 00 (9 bytes).
+//   XDeleteSaveGame(LPCSTR root, LPCWSTR name) -> DWORD Win32 error, ret 8. Prologue 55 8B EC 81 EC 44 01 00 00.
+inline constexpr GuestAddr kXapiXCreateSaveGame = 0x000F6987;
+inline constexpr GuestAddr kXapiXDeleteSaveGame = 0x000F6BEA;
+// Save layer of the game (save object = [[kGameAppPtr]+0xF4]+0xC, vtable 0x2A4DB0; files.md 4.2, m7_saves.md 2):
+//   ReadContainer FUN_000E0210 thiscall(save, LPCSTR path, BYTE** buffer, DWORD* bytes) ret 0xC -> 0 size != 0x1000,
+//     1 ReadFile failed, 2 open failed (missing), 3 read. Prologue 51 56 8B F1 8B 46 20 (7 bytes).
+//   VerifySignature FUN_000E0340 stdcall(const BYTE* container, DWORD size = 0x1000) ret 8 -> al = 1 if the 20 bytes
+//     at size-0x14 equal XCalculateSignature(container[0..size-0x14)). Prologue 53 8B 5C 24 0C (5 bytes).
+//   WriteContainer FUN_000E0B00 thiscall(save, LPCSTR fileName, LPCWSTR saveName (0 = the name chosen in the save
+//     menu), DWORD icon 0 game / 1 options / 2 extras) ret 0xC -> al; the container is save+0x28 (4096 bytes).
+//     Prologue 55 8B EC 83 E4 F8 (6 bytes).
+//   OpenSaveMenu FUN_000E4F70 thiscall(save UI = [[kGameAppPtr]+0xF4]) plain ret -> al (0 if saving is disabled,
+//     flag 0x2D6D80). Callers: Breakdown entry "Speichern" 0xA5D32 and the script native FsGameSave 0xB0180
+//     (`mov ecx,[[0x2EB310]+0xF4]; jmp 0xE4F70`). Prologue 6A FF 68 4B 91 17 00 (7 bytes).
+inline constexpr GuestAddr kGameSaveReadContainer = 0x000E0210;
+inline constexpr GuestAddr kGameSaveVerifySignature = 0x000E0340;
+inline constexpr GuestAddr kGameSaveWriteContainer = 0x000E0B00;
+inline constexpr GuestAddr kGameOpenSaveMenu = 0x000E4F70;
+//   SaveDialog ctor FUN_000DF750 thiscall(dialog, LPCSTR text label "MEMCARD_0xx", LPCSTR hint label "MEMHINT_00x",
+//     options, value) ret 0x10: every message box of the save layer (XBOXMEM.ldb / MEMHINTS_XBOX.ldb labels;
+//     wrappers FUN_000DCA10 (hint MEMHINT_001) and FUN_000DC9E0 (MEMCARD_007)). Prologue 6A FF 68 B9 8D 17 00.
+inline constexpr GuestAddr kGameSaveDialogCtor = 0x000DF750;
+inline constexpr GuestAddr kGameNativeFsGameSave = 0x000B0180;  // cdecl, no args (script native CID 0 FID 0xBC)
+// Script native FsChangeLevel (CID 0 FID 0xA1): cdecl FUN_000B0520(const char* nextLevel), plain ret 0xB0634. Records
+// the level time, sets the next level (FUN_000A2340), creates/opens the Breakdown screen [0x2E8E4C] (FUN_000A4DE0,
+// FUN_000A62B0) and builds the save text (FUN_000C26E0). The save dialog writes Breakdown+0x90 after a successful
+// save (0xDD37E), so the save menu must only be opened from there (FsGameSave alone crashes with [0x2E8E4C] = 0).
+inline constexpr GuestAddr kGameNativeFsChangeLevel = 0x000B0520;
+inline constexpr GuestAddr kGameBreakdownPtr = 0x002E8E4C;
+inline constexpr std::uint32_t kSaveObjectContainerOffset = 0x28;  // BYTE* (4096-byte container being written)
+// WriteFileEx completion of the save write (APC routine, `ret 0xC`; not a Ghidra function).
+inline constexpr GuestAddr kGameSaveWriteCompletion = 0x000E01A0;
+// "Saving allowed" flag (u8, initial 1; FUN_000E0010 reads, FUN_000E0020 writes; cleared by "continue without
+// saving" in the MEMCARD_047 dialog FUN_000DC290 when no save exists).
+inline constexpr GuestAddr kGameSavingEnabledVar = 0x002D6D80;
+
 // ---------------------------------------------------------------------------------------------
 // Memory helpers
 // ---------------------------------------------------------------------------------------------

@@ -258,7 +258,8 @@ TEST_CASE("schema: the configuration accepts exactly the schema keys") {
         if (std::string(k.section) == "saves" && std::string(k.name) == "key_mode") {
             value = "fixed";
         }
-        if (std::string(k.section) == "saves" && std::string(k.name) != "key_mode") {
+        if (std::string(k.section) == "saves" &&
+            (std::string(k.name) == "signature_key" || std::string(k.name) == "xbox_cert_key")) {
             value = "00112233445566778899aabbccddeeff";
         }
         if (std::string(k.section) == "paths" && std::string(k.name) == "userdata") {

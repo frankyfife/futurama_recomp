@@ -1,0 +1,30 @@
+# m7_damaged.txt - M7 run 3 (tools\m7_check.py manipulated the oldest Futurama.dat first): "Spiel laden" -> the
+# damaged save -> signature mismatch -> "Das gespeicherte Spiel konnte nicht geladen werden. Moechten Sie das
+# beschaedigte Spiel loeschen?" (MEMCARD_052, default "Nein") -> LEFT "Ja" -> XDeleteSaveGame removes the directory.
+# About 25 s.
+
+loop timeout 60s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 30s
+wait 30t
+press DOWN 1t
+wait 20t
+press DOWN 1t
+wait 20t
+press A 3t
+wait 200t
+screenshot loadmenu
+press A 3t                                         # entry 0 = the oldest save = the manipulated one
+wait log "save: dialog MEMCARD_052" timeout 15s
+wait 60t
+screenshot damaged
+press LEFT 3t
+wait 30t
+press A 3t
+wait log "save: XDeleteSaveGame" timeout 10s
+wait 120t
+screenshot after_delete
+log "M7: damaged save deleted"
+quit 0

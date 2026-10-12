@@ -460,7 +460,7 @@ Die `.img`-Archive liest das Spiel selbst (`FUN_0013FE70`/`FUN_0013FC40`). Der V
   - Freier Platz < 4 GiB.
   - `LocalAlloc` darf nicht scheitern (NULL-Zugriff in `FUN_000E0340`).
   - `WriteFileEx`-APC wird über den alertable Poll 0xE0030 zugestellt.
-  - `XLaunchNewImageA` mit Reason 2/`'U'` (zu wenig Platz) → Meldung statt Dashboard.
+  - `XLaunchNewImageA` mit Reason 2/`'U'` (zu wenig Platz) → Meldung statt Dashboard (umgesetzt in M7: Meldung und Rückkehr ins Spiel, 8.18 S3).
 
 ---
 
@@ -653,6 +653,8 @@ Reihenfolge laut [`docs/ROADMAP.md`](ROADMAP.md): nach M3c (Launcher), vor M4. V
 4. Löschen über das Menü entfernt das Verzeichnis.
 5. Bis zu 25 Spielstände funktionieren.
 
+**Stand (M7, 2026-10-12):** alle fünf Kriterien erfüllt, `tools\m7_check.py` M7-1 bis M7-8 PASS (fünf Läufe von 21–53 s); Abweichungen in 8.18, Bericht [`m7_report.md`](m7_report.md), Analyse [`m7_saves.md`](../analysis/loader/m7_saves.md). Offen: R11 (Schlüssel einer echten Xbox).
+
 ### M8 – Spielbares Level
 
 **Umfang:**
@@ -705,12 +707,12 @@ Danach (außerhalb dieses Dokuments): Ablösung des XBE, sobald der gesamte Code
 | R8 | Renderer-Semantik unbekannt (Mehrpass, NiTextureEffect, Lichttypen, VS-Tabellen; [REN] 8, [D3D] 11) | optische Fehler | REN-Code als Spezifikation lesen bzw. dekompilieren; xemu-Vergleich (M3/M8); Laufzeitinspektion der Pipeline-Objekte |
 | R9 | 50-Hz-Simulation auf 60-Hz-Monitoren (keine Interpolation, [STA] 3.2) | Ruckeln | **Für 60 Hz gelöst (M3b, 8.4 B38–B48):** 60-Hz-Tick mit PAL-Inhalten, Lockstep-Uhr und bildsynchroner Takt; auf dem 120-Hz-Messrechner 60,00–60,01 Hz mit 99,7–100 % der Frames genau 2 Refreshes. Rest: Auf Anzeigen mit 59,94 Hz läuft der Port mit 59,94 fps und holt alle 16,6 s einen Doppelschritt auf; Anzeigen ohne ganzzahliges Verhältnis brauchen VRR (sonst ein Spielbild je Refresh mit 0 oder 1 Schritten). **Mehr als 60 Hz** (120/144/165 Hz mit verschiedenen Bildern) braucht Interpolation zwischen zwei Simulationsständen (M3d, bis 120 Hz). Ein höherer Tick ist kein Ersatz: Er beschleunigt alle tick-gebundenen Stellen (timing60.md 4.10) über das getestete NTSC-Verhalten hinaus |
 | R10 | FFmpeg für x86: Verfügbarkeit, LGPL | M6 verzögert | vcpkg `x86-windows` früh testen (vor M5); Fallback: eigener XMV-Demuxer ([AVI] 3.3) + nur libavcodec. **M6: ohne FFmpeg gelöst** – eigener Demuxer + WMV-Decoder von Windows (8.16 V1) |
-| R11 | Ableitung von `XboxSignatureKey` unbelegt ([FIL] 4.3) | Xbox-Saves nicht importierbar | Modus `fixed` als Default; `xbox`-Modus mit einem echten Save prüfen (M7) |
+| R11 | Ableitung von `XboxSignatureKey` unbelegt ([FIL] 4.3) | Xbox-Saves nicht importierbar | Modus `fixed` als Default; `xbox`-Modus mit einem echten Save prüfen. **Weiter offen nach M7** (kein echter Xbox-Spielstand vorhanden); `tools\verify_save.py --xbox-cert-key … --check-xbox` prüft ihn, sobald einer vorliegt; Umweg ohne Schlüssel: `--resign` signiert eine importierte Datei mit dem eigenen Schlüssel neu |
 | R12 | Ghidra-Lücken und fehlende Funktionsstarts | Hooks und Callgraph unvollständig | `extra_function_starts.tsv` pflegen; Ghidra-Neuanalyse nur in einem eigenen, exklusiven Schritt (Projektsperre, keine parallelen Agenten) |
 | R13 | Nicht standardisierte Registerkonventionen im Spielcode (MSVC 7 /GL, Vermutung) | falsche Ersatz-Signatur | vor jeder Dekompilierung die Aufrufstellen auf Registerargumente prüfen; MASM-Adapter (3.3) |
 | R14 | Widersprüche zwischen Berichten: Grafikgrenze [D3D]↔[REN]; Fibers [CPU] „ersetzen“ ↔ [AVI] „Original lassen“; Header-Schreibzugriff [CPU] 5 ↔ [STA] 9.10 | – | entschieden in E6, E9 und 1.4.5 (Header RW, der Zweig wird nicht genommen) |
 | R15 | [PRB] hat keinen unabhängigen Verifikationsabschnitt | Launcher-Annahmen falsch | M1 wiederholt alle [PRB]-Tests automatisch (Selbsttest) |
-| R16 | Häufigkeit des Save-APC-Polls 0xE0030 zur Laufzeit ([FIL] 6) | verzögertes Speichern | in M7 Zustellzeit messen; notfalls Zustellung auch beim nächsten `SleepEx(0,TRUE)` |
+| R16 | Häufigkeit des Save-APC-Polls 0xE0030 zur Laufzeit ([FIL] 6) | verzögertes Speichern | **Erledigt (M7, 8.18 S8):** gemessen 10,6–16,4 ms vom `WriteFileEx` bis zur Completion 0xE01A0 (höchstens ein Frame), Protokollzeile „save write completion … delivered N ms after the write“ |
 | R17 | Erreichbarkeit von „toten“ Pfaden (NiTCache, CRT-`fopen`, `Test.ldb`/Lipsync, Ambience-Streaming; [FIL] 6, [AVI] 7) | unerwartete Datei-/API-Nutzung | Fallen und VFS-Trace zeigen sie sofort; `fopen` über `CreateFileA` funktioniert ohnehin |
 | R18 | Uniprozessor-Annahmen im Gastcode ([CPU] 3) | Races | Regel E10; Prozessaffinität optional auf einen Kern (Konfig, Vermutung: nur zur Fehlersuche nötig) |
 | R19 | Identität der Ordinale 258/357/360 ohne Ghidra-Beleg | – | durch ghidra-xbe `kernelExports[]` bestätigt ([KRN] Verifikation); keine Aktion |
@@ -727,7 +729,7 @@ Offen, aber für die ersten Meilensteine unkritisch:
 
 ---
 
-## 8. Abweichungen in M1, M2, M3, M3b, M3c, M3d, M4, M5 und M6
+## 8. Abweichungen in M1, M2, M3, M3b, M3c, M3d, M4, M5, M6, G4 und M7
 
 ### 8.1 Abweichungen in M1
 
@@ -1291,6 +1293,32 @@ Stand: M6, 2026-10-12. Bauten: MSVC RelWithDebInfo `build\m6`, Debug `build\m6-d
 | V13 | 8.13 (DSOUND): Unterlauf-Warnung „ran out of packets (dropout)“ | Nach `Discontinuity` (Datenende) meldet der Stream kein Unterlaufen mehr (`endOfData`, gelöscht vom nächsten `Process`) | Jeder Film endete sonst mit einer WARN-Zeile |
 
 ---
+
+### 8.17 Abweichungen in G4: Start-Level und Spielfigur
+
+Stand: G4, 2026-10-12. Bauten: MSVC RelWithDebInfo `build\g4-select`, Debug `build\g4-werr` und clang-cl Debug `build\g4-clang` (beide `FUT_WERROR=ON`, 0 Warnungen); `fut_tests` 467/467 (1 übersprungen), `tools\m4_check.py` ALL PASS, Launcher-Tests 4/4 (`build\g4-launcher`). Bericht `docs\g4_report.md`, Analyse `analysis\loader\g4_select.md`.
+
+| # | Plan (Abschnitt) | Abweichung | Grund / Beleg |
+|---|---|---|---|
+| G4-1 | 3.2 Hook-Installation: jeder registrierte Hook ist an (`defaultOn`) oder per `[hooks] disable` aus und erscheint im Log | **Bedingte Probes** `FUT_PROBE_IF` (`core::HookDesc::condition`): Ist die Bedingung falsch, wird der Hook still übersprungen – keine Logzeile, nicht in der Summe „hooks: N installed, M disabled, K registered“, Abbild unverändert | Nutzerwunsch: Mit `[game] start_level = original` und `play_as = original` darf das Spiel nicht verändert werden und das Hook-Protokoll muss gleich bleiben. Beleg: Hook-Zeilen eines Laufs ohne die Schlüssel und eines Laufs mit beiden auf `original` sind gleich (182 Zeilen, ohne Host-Adressen), mit `play_as = bender` kommen genau `probe:PlayerDef::Ctor`, `probe:Level::FindDef`, `probe:Level::FindCharDef` dazu |
+| G4-2 | 6 Meilensteine: kein Eingriff in Spiellogik oder Spielinhalte | `play_as` tauscht die Spielfigur, indem es beim Laden den Def-Namen der Figur umbenennt (PlayerDef-ctor 0x5E580, `FindDef` 0xC3E80, `FindCharDef` 0xC3F20) und Waffen (`Pickup=`/`Equip=`) aus dem anstehenden Startzustand entfernt; Level 1-6, 2-5, 4-1 und 5-3 behalten ihre Figur | Nutzerwunsch Figurenwahl. Als experimentell gekennzeichnet (Launcher-Text, Hilfe); Standard `original` installiert nichts |
+
+### 8.18 Abweichungen in M7: Spielstände
+
+Stand: M7, 2026-10-12. Bauten: MSVC RelWithDebInfo `build\m7`, Debug `build\m7-debug` und clang-cl Debug `build\m7-clang` (beide `FUT_WERROR=ON`, 0 Warnungen); `fut_tests` 467/467 (1 übersprungen) in allen drei Bauten; `tools\m7_check.py` M7-1 bis M7-8 PASS; `tools\m4_check.py` (`run\verify-m5\futurama.ini`) ALL PASS. Bericht [`m7_report.md`](m7_report.md), Analyse [`m7_saves.md`](../analysis/loader/m7_saves.md).
+
+| # | Plan (Abschnitt) | Abweichung | Grund / Beleg |
+|---|---|---|---|
+| S1 | M7 Exit 1: „Speichern, Neustart und Laden eines Spielstands“ – gemeint im normalen Spielablauf | Der einzige Speicherpunkt ist das Levelende (Breakdown, m7_saves.md 1.1). Die Prüfläufe erreichen ihn mit der Eingabeskript-Aktion **`game level_end <NächstesLevel>`**, die zum nächsten Tick das Levelskript-Native FID 0xA1 (FsChangeLevel, `FUN_000B0520`) aufruft – dasselbe, was ein Level an seinem Ende tut. Alles danach (Breakdown, Speichermenü, Dialoge, Dateien) ist der Code des Spiels | Ein Level durchzuspielen dauert Minuten und ist mit Eingabeskripten nicht sicher; der Nutzer wünscht kurze Läufe. FsGameSave (FID 0xBC) allein scheidet aus: Nach dem Erfolg schreibt der Dialog `[0x2E8E4C]+0x90` (Breakdown) und stürzt ohne Breakdown ab (Lauf `explore2`: Schreibzugriff auf 0x90 bei 0xA4964). Das Durchspielen eines echten Levelendes prüft der Nutzer (Checkliste im Bericht) |
+| S2 | 4.2 Punkt 5 / 4.3 `NtQueryDirectoryFile`: Host-Verzeichnis 1:1 | Beschreibbare Host-Verzeichnisse (partition1, Z:) liefern ihre Einträge **nach Erstellzeit** (bei Gleichstand nach Namen), schreibgeschützte (entpackte Disc) weiter nach Namen; jeder Durchlauf ist ein **Schnappschuss** beim (Neu-)Start | Lade- und Speichermenü zeigen die Sicherungen in Aufzählungsreihenfolge (`FUN_000E1270` sortiert nicht). FATX hängt neue Einträge an (älteste zuerst), NTFS sortiert nach den Hash-Namen. Beobachtet: „U-Bahn …“, „M7 Test 01“, „M7 Test 02“ … Der Schnappschuss bleibt stabil, während XAPI die zurückgegebenen Einträge löscht (`FUN_000F8709`). Unit-Tests `tests\save_tests.cpp` |
+| S3 | 4.5 Pflichtwerte: `XLaunchNewImageA` Reason 2/`'U'` → Meldung statt Dashboard; bis M7: Prozessende (Exitcode 4) | Der Hook protokolliert die Anfrage (WARN „asks for the Xbox dashboard … back to the game“), zeigt bei `[debug] msgbox` ein Meldungsfenster mit dem Spielstand-Ordner und gibt `ERROR_NOT_SUPPORTED` zurück; alle anderen Anfragen beenden den Prozess weiter | Einziger Aufrufer `FUN_000E4B00` ignoriert die Rückgabe, `FUN_000DC290` schließt den Dialog; das Spiel geht ins Level wie nach „Weiter“, nur bleibt Speichern erlaubt (ein späterer Fehlschlag meldet das Spiel selbst, `MEMCARD_006`). Wichtig, weil im Dialog `MEMCARD_047` „Steuerung“ (Dashboard) **vorausgewählt** ist. Lauf `check/nospace`: Dialog, Rückkehr, Level 1-1 geladen, Exitcode 0 |
+| S4 | – (nicht vorhergesehen) | Neuer Entwicklerschlüssel `[saves] free_space_limit` (Byte, 0 = aus): begrenzt den gemeldeten freien Platz von partition1 (`vfs::CreateHostDirDevice(..., freeSpaceLimit)`) | Der Platzdialog `MEMCARD_047` ist sonst nur mit einer vollen Platte erreichbar. Mit 65536 Byte: „8 zusätzliche Blöcke“ (192 KiB nötig) |
+| S5 | 5.4 Logging | Sieben Beobachter-Proben auf Spielstand-Code und XAPI (`probe:XAPILIB::XCreateSaveGame`, `…XDeleteSaveGame`, `probe:Save::ReadContainer`, `VerifySignature`, `WriteContainer`, `OpenSaveMenu`, `Dialog`) mit Protokollzeilen „save: …“ und Summe „save summary: …“ | Eingabeskripte warten auf die Dialoge (`wait log "save: dialog MEMCARD_007"`), `m7_check` wertet Lesen, Signatur, Schreiben und Löschen aus. Prologe mit capstone geprüft, kein Sprung in die übernommenen Bytes (Rohsuche) |
+| S6 | M7 Exit 4: „Löschen über das Menü entfernt das Verzeichnis“ | Das Spiel hat keinen Menüpunkt „Löschen“ (`HINTS_040` „… mit Y löschen“ ist nirgends referenziert; Y wirkt nicht). Gelöscht wird auf den beiden Wegen des Spiels: „beschädigtes Spiel löschen?“ (`MEMCARD_052` → Ja) und Überschreiben (`MEMCARD_016` → Ja löscht die alte Sicherung vor dem Schreiben). Beide geprüft | m7_saves.md 4.2/4.3; Läufe `check/damaged` und `check/slots`: `XDeleteSaveGame(...) -> 0`, Verzeichnis weg |
+| S7 | M7 Exit 1: „… Optionen und Extras“ | Optionen: vollständig. Extras: die Freischalt-Flags bleiben über Neustarts erhalten, die **Bestzeiten nicht** – das ist Verhalten des Originals und bleibt so | `FUN_000F3B90` führt Datei und Speicher mit **vorzeichenbehaftetem** Minimum zusammen (`jge` bei 0xF3C5E); −1 („keine Zeit“) der frischen Tabelle gewinnt (m7_saves.md 3.4). Lauf `check/load`: Flag kept, Bestzeit 1-1 2 s → −1. Ein optionaler Fix wäre ein Hook auf `FUN_000F3B90` |
+| S8 | R16 | Zustellzeit gemessen und protokolliert: „I/O APC: save write completion 0x000E01A0 delivered N ms after the write“ (`kernel\io_apc.cpp`, Zeitstempel je APC) | 10,6–16,4 ms in allen Läufen (Poll 0xE0030 einmal pro Frame); keine Änderung der Zustellung nötig |
+| S9 | M7 Exit 2: `tools/verify_save.py` prüft | Zusätzlich `--resign` (Signatur mit dem eingestellten Schlüssel neu schreiben), `--json`, Prüfung von `SaveMeta.xbx` und Verzeichnis-Hash; als Modul von `m7_check` benutzt (signierte Testdateien) | Import von Sicherungen mit fremdem Schlüssel (R11) und die 25-Sicherungen-Prüfung (24 signierte Kopien). Gegenprobe Python ↔ XAPI über die XcSHA-Exporte in `tests\save_tests.cpp` |
+| S10 | 4.1 `<userdata>` | Prüfwerkzeuge benutzen immer eigene Benutzerdaten (`run\m7\check\main`, `…\nospace`); `m7_check` verweigert Ordner unter `%LOCALAPPDATA%\FuturamaPC` | Nutzerwunsch: eigene Spielstände nie anfassen |
 
 ## Anhang A: Kernel-Implementierungsplan nach Meilenstein
 

@@ -137,9 +137,6 @@ public:
     HostFile& operator=(const HostFile&) = delete;
 
     ~HostFile() override {
-        if (find_ != INVALID_HANDLE_VALUE) {
-            FindClose(find_);
-        }
         if (handle_ != INVALID_HANDLE_VALUE) {
             CloseHandle(handle_);
         }
@@ -293,47 +290,20 @@ public:
         }
         try {
             if (restart || !started_) {
-                if (find_ != INVALID_HANDLE_VALUE) {
-                    FindClose(find_);
-                    find_ = INVALID_HANDLE_VALUE;
-                }
                 started_ = true;
-                exhausted_ = false;
-                find_ = FindFirstFileExW(JoinHost(hostPath_, L"*").c_str(), FindExInfoBasic, &findData_,
-                                         FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
-                if (find_ == INVALID_HANDLE_VALUE) {
-                    const DWORD err = GetLastError();
-                    if (err != ERROR_FILE_NOT_FOUND && err != ERROR_NO_MORE_FILES) {
-                        return detail::Win32ErrorToStatus(err);
-                    }
-                    exhausted_ = true;
+                next_ = 0;
+                const NTSTATUS s = ReadDirectory();
+                if (!NT_SUCCESS(s)) {
+                    entries_.clear();
+                    return s;
                 }
-                pending_ = !exhausted_;
             }
-            while (!exhausted_) {
-                if (!pending_) {
-                    if (!FindNextFileW(find_, &findData_)) {
-                        exhausted_ = true;
-                        break;
-                    }
+            while (next_ < entries_.size()) {
+                DirEntry& e = entries_[next_++];
+                if (MatchFileMask(e.name, mask)) {
+                    out = std::move(e);
+                    return STATUS_SUCCESS;
                 }
-                pending_ = false;
-                if (std::wcscmp(findData_.cFileName, L".") == 0 ||
-                    std::wcscmp(findData_.cFileName, L"..") == 0) {
-                    continue;
-                }
-                std::string name;
-                if (!detail::WideToGuest(findData_.cFileName, name)) {
-                    FUT_LOGD(Vfs, "skipping host name not representable in the guest code page: %s",
-                             core::WideToUtf8(findData_.cFileName).c_str());
-                    continue;
-                }
-                if (!MatchFileMask(name, mask)) {
-                    continue;
-                }
-                out.name = std::move(name);
-                out.info = InfoFromFindData(findData_);
-                return STATUS_SUCCESS;
             }
         } catch (...) {
             return STATUS_NO_MEMORY;
@@ -342,23 +312,64 @@ public:
     }
 
 private:
+    // (M7) Snapshot of the directory at the start of a scan. Writable devices (FATX on the Xbox: partition1,
+    // Z:) return the entries in creation order like a FATX directory, whose entries are appended in creation
+    // order (the save menus list XFindFirst/NextSaveGame in this order: oldest save first, m7_saves.md 6);
+    // NTFS would return them sorted by name, i.e. by the hash directory names. Read-only devices (an
+    // extracted disc, XDVDFS: sorted by name) keep the host's name order. The snapshot also keeps a scan
+    // stable while XAPI deletes the entries it returns (recursive delete FUN_000F8709).
+    NTSTATUS ReadDirectory() {
+        entries_.clear();
+        WIN32_FIND_DATAW fd{};
+        const HANDLE find = FindFirstFileExW(JoinHost(hostPath_, L"*").c_str(), FindExInfoBasic, &fd,
+                                             FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+        if (find == INVALID_HANDLE_VALUE) {
+            const DWORD err = GetLastError();
+            return err == ERROR_FILE_NOT_FOUND || err == ERROR_NO_MORE_FILES
+                       ? STATUS_SUCCESS
+                       : detail::Win32ErrorToStatus(err);
+        }
+        do {
+            if (std::wcscmp(fd.cFileName, L".") == 0 || std::wcscmp(fd.cFileName, L"..") == 0) {
+                continue;
+            }
+            DirEntry e;
+            if (!detail::WideToGuest(fd.cFileName, e.name)) {
+                FUT_LOGD(Vfs, "skipping host name not representable in the guest code page: %s",
+                         core::WideToUtf8(fd.cFileName).c_str());
+                continue;
+            }
+            e.info = InfoFromFindData(fd);
+            entries_.push_back(std::move(e));
+        } while (FindNextFileW(find, &fd));
+        FindClose(find);
+        if (!readOnly_) {
+            std::stable_sort(entries_.begin(), entries_.end(), [](const DirEntry& x, const DirEntry& y) {
+                if (x.info.creationTime != y.info.creationTime) {
+                    return x.info.creationTime < y.info.creationTime;
+                }
+                return detail::ToLowerAscii(x.name) < detail::ToLowerAscii(y.name);
+            });
+        }
+        return STATUS_SUCCESS;
+    }
+
+private:
     HANDLE handle_;
     std::wstring hostPath_;
     bool isDirectory_;
     bool readOnly_;
     bool deleteOnClose_ = false;
-    // directory enumeration
-    HANDLE find_ = INVALID_HANDLE_VALUE;
-    WIN32_FIND_DATAW findData_{};
+    // directory enumeration (snapshot, see ReadDirectory)
+    std::vector<DirEntry> entries_;
+    std::size_t next_ = 0;
     bool started_ = false;
-    bool exhausted_ = false;
-    bool pending_ = false;  // findData_ holds an entry that was not returned yet
 };
 
 class HostDirDevice final : public Device {
 public:
-    HostDirDevice(std::wstring rootNative, bool readOnly)
-        : root_(std::move(rootNative)), readOnly_(readOnly) {}
+    HostDirDevice(std::wstring rootNative, bool readOnly, std::uint64_t freeSpaceLimit)
+        : root_(std::move(rootNative)), readOnly_(readOnly), freeSpaceLimit_(freeSpaceLimit) {}
 
     const char* Kind() const noexcept override { return readOnly_ ? "HostDirDevice(ro)" : "HostDirDevice"; }
     bool IsReadOnly() const noexcept override { return readOnly_; }
@@ -408,6 +419,9 @@ public:
         }
         // files.md 4.4 / design 4.3: free space must stay below 4 GiB (guest computes `high | low`).
         freeBytes = std::min<std::uint64_t>(freeBytes, detail::kHostMaxFreeBytes);
+        if (freeSpaceLimit_ != 0) {
+            freeBytes = std::min(freeBytes, freeSpaceLimit_);  // (M7) [saves] free_space_limit
+        }
         info.availableAllocationUnits = readOnly_ ? 0 : freeBytes / kHostClusterSize;
         info.totalAllocationUnits =
             std::max<std::uint64_t>(totalBytes / kHostClusterSize, info.availableAllocationUnits);
@@ -568,6 +582,7 @@ private:
 
     std::wstring root_;  // "\\?\D:\...\partition1" (no trailing separator except for a drive root)
     bool readOnly_;
+    std::uint64_t freeSpaceLimit_;  // 0 = the host's free space (capped below 4 GiB); else min(that, limit)
 };
 
 // "\\?\" form of an absolute directory path without trailing separator (a drive root keeps "C:\").
@@ -635,7 +650,8 @@ bool CreateHostDirectories(const std::filesystem::path& dir, std::string& error)
     }
 }
 
-std::shared_ptr<Device> CreateHostDirDevice(const std::filesystem::path& root, bool readOnly) {
+std::shared_ptr<Device> CreateHostDirDevice(const std::filesystem::path& root, bool readOnly,
+                                            std::uint64_t freeSpaceLimit) {
     try {
         if (!readOnly) {
             std::string error;
@@ -651,7 +667,7 @@ std::shared_ptr<Device> CreateHostDirDevice(const std::filesystem::path& root, b
             FUT_LOGE(Vfs, "host directory %s does not exist", core::WideToUtf8(native).c_str());
             return nullptr;
         }
-        return std::make_shared<HostDirDevice>(std::move(native), readOnly);
+        return std::make_shared<HostDirDevice>(std::move(native), readOnly, freeSpaceLimit);
     } catch (const std::exception& e) {
         FUT_LOGE(Vfs, "CreateHostDirDevice: %s", e.what());
         return nullptr;

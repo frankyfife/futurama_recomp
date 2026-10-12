@@ -17,7 +17,8 @@
 //              is obsolete since M5); M5 capture keys capture_wav, capture_format, capture_stems, event_log
 //              (audio/capture_session.cpp, tooling agent); M5 speakers, reverb (audio/audio_engine.cpp) and
 //              positional, trim_3d (audio/spatial_x3d.cpp, codec/3D/reverb agent)
-//   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos)
+//   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos);
+//              G4 xapi/game_select.cpp (start_level, play_as)
 //   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26)
 #include "core/config_schema.h"
 
@@ -176,6 +177,39 @@ constexpr ConfigChoice kSkipVideosChoices[] = {
     {"always", {"Immer (Standard)", "Always (default)"}},
     {"original", {"Wie im Original", "As in the original"}},
 };
+// G4: [game] start_level / play_as (xapi/game_select.cpp; the levels in game order = rows of the table 0x2D60BC,
+// unit test "G4: the start_level choices are the level table").
+constexpr ConfigChoice kStartLevelChoices[] = {
+    {"original", {"Wie im Original (Level 1-1)", "As in the original (level 1-1)"}},
+    {"Level1-1", {"1-1 Planet Express (Fry)", "1-1 Planet Express (Fry)"}},
+    {"Level1-2", {"1-2 Kanalisation (Fry)", "1-2 Sewers (Fry)"}},
+    {"Level1-3", {"1-3 U-Bahn (Fry)", "1-3 Subway (Fry)"}},
+    {"Level1-4", {"1-4 Old New York (Fry)", "1-4 Old New York (Fry)"}},
+    {"Level1-5", {"1-5 Rotlichtviertel (Fry)", "1-5 Red Light (Fry)"}},
+    {"Level1-7", {"1-6 Uptown (Fry)", "1-6 Uptown (Fry)"}},
+    {"Level1-6", {"1-7 New New York (Fry im Chickenwalker)", "1-7 New New York (Fry in the Chicken Walker)"}},
+    {"Level2-1", {"2-1 Canyon (Bender)", "2-1 Canyon (Bender)"}},
+    {"Level2-6", {"2-2 Minentunnel (Bender)", "2-2 Mine Tunnel (Bender)"}},
+    {"Level2-2", {"2-3 Mine (Bender)", "2-3 Mine (Bender)"}},
+    {"Level2-3", {"2-4 Schrottplatz 1 (Bender)", "2-4 Junkyard 1 (Bender)"}},
+    {"Level2-4", {"2-5 Schrottplatz 2 (Bender)", "2-5 Junkyard 2 (Bender)"}},
+    {"Level2-5", {"2-6 Schrottplatz 3 (Bender)", "2-6 Junkyard 3 (Bender)"}},
+    {"Level3-1", {"3-1 Innenhof I (Leela)", "3-1 Courtyard I (Leela)"}},
+    {"Level3-2", {"3-2 Linker Flügel (Leela)", "3-2 Left Wing (Leela)"}},
+    {"Level3-3", {"3-3 Rechter Flügel (Leela)", "3-3 Right Wing (Leela)"}},
+    {"Level3-6", {"3-4 Innenhof II (Leela)", "3-4 Courtyard II (Leela)"}},
+    {"Level3-4", {"3-5 Innerer Tempel (Leela)", "3-5 Inner Temple (Leela)"}},
+    {"Level4-1", {"4-1 Bogad-Sumpf (Zoidberg)", "4-1 Bogad Swamp (Zoidberg)"}},
+    {"Level5-1", {"5-1 Moms Hauptquartier (Bender)", "5-1 Mom's HQ (Bender)"}},
+    {"Level5-2", {"5-2 Moms Hauptquartier (Leela)", "5-2 Mom's HQ (Leela)"}},
+    {"Level5-3", {"5-3 Moms Hauptquartier (Fry)", "5-3 Mom's HQ (Fry)"}},
+};
+constexpr ConfigChoice kPlayAsChoices[] = {
+    {"original", {"Figur des Levels (Standard)", "The level's character (default)"}},
+    {"fry", {"Fry (experimentell)", "Fry (experimental)"}},
+    {"bender", {"Bender (experimentell)", "Bender (experimental)"}},
+    {"leela", {"Leela (experimentell)", "Leela (experimental)"}},
+};
 constexpr ConfigChoice kFrameClockChoices[] = {
     {"lockstep", {"Bildsynchron (empfohlen)", "Frame-locked (recommended)"}},
     {"realtime", {"Echtzeit (wie das Original)", "Real time (like the original)"}},
@@ -320,6 +354,31 @@ constexpr ConfigKeyDef kKeys[] = {
               "right away; \"As in the original\" locks the first two movies of level 1-1 on first viewing and "
               "every cut scene in its first 2.5 seconds."},
      .tab = Tab::Game, .order = 30, .widget = W::Combo},
+    // G4 (xapi/game_select.cpp): start level of "Neues Spiel" (probe FUN_000A2340 at the call 0x200B3) and the
+    // player character (probes PlayerDef ctor 0x5E580, FindDef 0xC3E80, FindCharDef 0xC3F20). "original" installs
+    // no hook.
+    {.section = "game", .name = "start_level", .type = T::Choice, .defaultValue = "original",
+     .choices = kStartLevelChoices, .label = {"Startlevel", "Start level"},
+     .help = {"In welchem Level „Neues Spiel“ beginnt. Das Spiel startet dann mit den Waffen und Werten, die die "
+              "Entwickler für dieses Level vorgesehen haben (dieselbe Tabelle wie die eingebauten Cheatcodes). "
+              "Danach geht es ganz normal mit dem nächsten Level weiter. „Spiel laden“ ist davon nicht betroffen.",
+              "The level \"New game\" starts in. The game then starts with the weapons and values the developers "
+              "provided for that level (the same table as the built-in cheat codes). Afterwards it continues with "
+              "the next level as usual. \"Load game\" is not affected."},
+     .tab = Tab::Game, .order = 40, .widget = W::Combo},
+    {.section = "game", .name = "play_as", .type = T::Choice, .defaultValue = "original",
+     .choices = kPlayAsChoices, .label = {"Spielfigur (experimentell)", "Player character (experimental)"},
+     .help = {"Experimentell: spielt jedes Level mit Fry, Bender oder Leela statt mit der Figur des Levels. "
+              "Grenzen: Fry hat in Bender- und Leela-Leveln keine Waffen und kann nicht angreifen; Hinweistexte, "
+              "Stimmen und Filme bleiben die der ursprünglichen Figur; das Symbol der Sammelobjekte im HUD kann "
+              "fehlen; ob sich jedes Level so durchspielen lässt, ist nicht geprüft. Level 1-7 (Chickenwalker), "
+              "2-6 (Kanone), 4-1 (Ratte) und 5-3 (Railgun) behalten immer ihre Figur.",
+              "Experimental: plays every level as Fry, Bender or Leela instead of the level's character. Limits: "
+              "Fry has no weapons in Bender's and Leela's levels and cannot attack; hint texts, voices and movies "
+              "stay those of the original character; the collectible icon of the HUD may be missing; whether every "
+              "level can be finished this way is not tested. Levels 1-7 (Chicken Walker), 2-6 (cannon), 4-1 (rat) "
+              "and 5-3 (railgun) always keep their character."},
+     .tab = Tab::Game, .order = 50, .widget = W::Combo},
 
     // [render] - window and output (M3, gfx/gfx_config.h)
     // M3c (integration): monitor selection, platform/window.h WindowOptions::monitor. Type string: the values are
@@ -908,6 +967,13 @@ constexpr ConfigKeyDef kKeys[] = {
      .help = {"Für Entwickler: 32 Hex-Ziffern der eigenen Konsole; nötig für „Schlüssel einer echten Xbox“.",
               "For developers: 32 hex digits of your own console; needed for \"Key of a real Xbox\"."},
      .tab = Tab::Advanced, .order = 720, .widget = W::Text, .flags = kDev},
+    {.section = "saves", .name = "free_space_limit", .type = T::Int, .defaultValue = "0", .ranged = true, .min = 0,
+     .max = 4294901760.0, .step = 16384, .label = {"Freier Platz (Test)", "Free space (test)"},
+     .help = {"Für Entwickler: meldet dem Spiel höchstens so viele freie Bytes für Spielstände (0 = echter freier "
+              "Platz). Damit lässt sich die Meldung „nicht genügend freie Blöcke“ prüfen.",
+              "For developers: reports at most this many free bytes for save games to the game (0 = the real free "
+              "space). Used to test the \"not enough free blocks\" message."},
+     .tab = Tab::Advanced, .order = 730, .widget = W::Spin, .flags = kDev},
 
     // [audio] engine (M5 DSOUND core agent, audio/audio_engine.cpp EngineConfigFromSettings; src/INTERFACES.md 4.29)
     {.section = "audio", .name = "enabled", .type = T::Bool, .defaultValue = "1",

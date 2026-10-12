@@ -1,0 +1,46 @@
+# m7_slots.txt - M7 run 4 (tools\m7_check.py filled U: up to 25 save games): "Neues Spiel" shows "Sie haben die
+# hoechstmoegliche Zahl von Spielen gespeichert..." (MEMCARD_050, only OK); the save menu at the end of level 1-1 has
+# no empty slot any more, so the run overwrites entry 0: MEMCARD_016 -> "Ja" deletes it (XDeleteSaveGame) and saves
+# the new game. About 45 s.
+
+loop timeout 60s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 30s
+wait 30t
+press A 3t
+wait log "save: dialog MEMCARD_050" timeout 10s
+wait 60t
+screenshot max_saves
+press A 3t                                         # OK
+loop timeout 30s until context Ingame
+  wait 30t
+  expect not log "save: dialog MEMCARD_047"
+end
+wait level_loaded timeout 120s
+loop timeout 120s until controllable
+  wait 30t
+  press A 3t
+end
+wait 60t
+game level_end Level1-2
+wait 180t
+press A 3t
+wait log "save: save menu opened" timeout 10s
+wait 120t
+screenshot savemenu_full
+press A 3t                                         # entry 0 is an existing save: "ueberschreiben?"
+wait log "save: dialog MEMCARD_016" timeout 10s
+wait 40t
+press LEFT 3t
+wait 30t
+press A 3t
+wait log "save: XDeleteSaveGame" timeout 10s
+wait log "save: write Futurama.dat" timeout 15s
+wait log "save: dialog MEMCARD_007" timeout 15s
+wait 60t
+press A 3t
+wait 60t
+log "M7: overwrite with 25 save games done"
+quit 0

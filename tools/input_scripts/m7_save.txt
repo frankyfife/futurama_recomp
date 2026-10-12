@@ -1,0 +1,73 @@
+# m7_save.txt - M7 run 1 (tools\m7_check.py, fresh userdata): change and save the options, start a new game, end
+# level 1-1 with the game's own end-of-level screen and save there. Format: README.md in this folder; save flow:
+# analysis\loader\m7_saves.md. The "save: ..." log lines come from xapi\save_probes.cpp. About 45 s.
+
+# Intro -> Frontend (START skips each intro step; with [debug] movies = skip the movies end at once).
+loop timeout 60s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 30s
+wait 30t
+
+# Options: SFX volume down, "Uebernehmen" (8th entry), "Moechten Sie diese Aenderungen speichern?" (MEMCARD_037,
+# default "Nein") -> LEFT selects "Ja" -> Options.dat in "Futurama Options".
+press DOWN 1t
+wait 20t
+press A 3t
+wait 150t
+hold LEFT 40t
+wait 20t
+repeat 7
+  press DOWN 3t
+  wait 40t
+end
+press A 3t
+wait log "save: dialog MEMCARD_037" timeout 10s
+wait 40t
+press LEFT 3t
+wait 30t
+press A 3t
+wait log "save: write Options.dat" timeout 15s
+wait log "save: dialog MEMCARD_007" timeout 15s   # "Speichern erfolgreich."
+wait 60t
+press A 3t
+wait 60t
+press B 3t                                         # back to the main menu (cursor on "Optionen")
+wait main_menu timeout 10s
+wait 30t
+press UP 1t                                        # "Neues Spiel"
+wait 30t
+
+# New game: the space checks show no dialog with enough free space (m4_input.md 4.3). Never press A blindly on a
+# save dialog: MEMCARD_047 "Xbox Dashboard" would be option 0.
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 120s
+loop timeout 120s until controllable
+  wait 30t
+  press A 3t                                       # skip the level movies / cut scenes
+end
+wait 60t
+
+# End of level 1-1 like the level script does (native FsChangeLevel "Level1-2") -> Breakdown screen, entry 0
+# "Speichern" -> save menu, entry 0 "Leerer Platz" -> "Daten werden gespeichert" (MEMCARD_005) -> MEMCARD_007.
+game level_end Level1-2
+wait 180t
+screenshot breakdown
+press A 3t
+wait log "save: save menu opened" timeout 10s
+wait 120t
+screenshot savemenu
+press A 3t
+wait log "save: write Futurama.dat" timeout 15s
+wait log "save: dialog MEMCARD_007" timeout 15s
+wait 60t
+screenshot saved
+press A 3t
+wait 60t
+log "M7: game saved"
+quit 0

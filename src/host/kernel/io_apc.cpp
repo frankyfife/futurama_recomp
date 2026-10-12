@@ -23,7 +23,20 @@ struct IoApc {
     xbox::IO_STATUS_BLOCK* ioStatusBlock;
     NTSTATUS status;
     std::uint32_t information;
+    std::int64_t queuedQpc;  // (M7) QueryPerformanceCounter at QueueIoApc (save-write delivery latency, R16)
 };
+
+std::int64_t NowQpc() noexcept {
+    LARGE_INTEGER t{};
+    QueryPerformanceCounter(&t);
+    return t.QuadPart;
+}
+
+double QpcToMs(std::int64_t ticks) noexcept {
+    LARGE_INTEGER f{};
+    QueryPerformanceFrequency(&f);
+    return f.QuadPart > 0 ? static_cast<double>(ticks) * 1000.0 / static_cast<double>(f.QuadPart) : 0.0;
+}
 
 struct ApcQueues {
     SRWLOCK lock = SRWLOCK_INIT;
@@ -92,6 +105,14 @@ void CallApc(const IoApc& apc) noexcept {
                  guest::Symbolize(guest::Addr(apc.context)).c_str(), error, apc.information,
                  static_cast<void*>(apc.ioStatusBlock));
         const guest::GuestAddr completion = guest::Addr(apc.context);
+        if (completion == guest::kGameSaveWriteCompletion) {
+            // (M7, design R16) The save layer polls with SleepEx(0, TRUE) at 0xE0030; how long the
+            // WriteFileEx completion of a save container waits for that poll.
+            FUT_LOGI(Krnl,
+                     "I/O APC: save write completion 0x%08X delivered %.1f ms after the write (err %u, bytes "
+                     "0x%X)",
+                     completion, QpcToMs(NowQpc() - apc.queuedQpc), error, apc.information);
+        }
         core::CallGuest(completion, {error, apc.information, guest::Addr(apc.ioStatusBlock)});
         if (guest::InXbeImage(completion)) {
             // M2 exit criterion 5 evidence: a completion routine of the game (0x13F1D0 / 0xE01A0) ran.
@@ -126,7 +147,7 @@ bool QueueIoApc(IoApcRoutine routine, void* context, xbox::IO_STATUS_BLOCK* ioSt
     AcquireSRWLockExclusive(&q.lock);
     try {
         auto& queue = q.perThread[tid];
-        queue.push_back(IoApc{routine, context, ioStatusBlock, status, information});
+        queue.push_back(IoApc{routine, context, ioStatusBlock, status, information, NowQpc()});
         pending = static_cast<std::uint32_t>(queue.size());
     } catch (...) {
         ok = false;

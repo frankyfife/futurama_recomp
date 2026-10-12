@@ -11,6 +11,7 @@
 #include "core/log.h"
 #include "platform/window.h"
 #include "xapi/game_probes.h"
+#include "xapi/save_probes.h"
 
 #include <intrin.h>
 
@@ -614,6 +615,14 @@ bool Parse(std::string_view text, std::uint32_t tickRate, Program& out, std::str
             if (last != 1) {
                 return fail(cmd + " takes no argument (it acts on the script's port)");
             }
+        } else if (cmd == "game") {
+            // (M7) debug actions on the game: `level_end <NextLevel>` ends the level like the level scripts
+            // (native FsChangeLevel -> Breakdown screen with "Speichern").
+            ins.op = Op::Game;
+            if (last != 3 || Lower(t[1].text) != "level_end" || t[2].text.empty() || t[2].text.size() > 8) {
+                return fail("game takes one action: level_end <NextLevel> (a level name of 1..8 characters)");
+            }
+            ins.text = "level_end " + t[2].text;
         } else if (cmd == "quit") {
             ins.op = Op::Quit;
             std::uint64_t code64 = 0;
@@ -875,6 +884,14 @@ bool Player::Execute() noexcept {
         }
         ++pc_;
         return true;
+    case Op::Game:
+        Info(ins.source);
+        if (!env_.GameAction(ins.text)) {
+            Fail(ins.source + ": the game cannot run this action now");
+            return false;
+        }
+        ++pc_;
+        return true;
     }
     return false;
 }
@@ -1099,6 +1116,12 @@ public:
         }
         FUT_LOGI(Inp, "input script: ending the process with exit code %d (%s)", quitCode, quitReason.c_str());
         core::ExitHostProcess(quitCode, quitReason.c_str());
+    }
+    // (M7) Deferred to the next tick heartbeat (xapi::RunPendingGameActions): the player runs inside the router's
+    // sample (XInputGetState) under the source's lock.
+    bool GameAction(const std::string& action) noexcept override {
+        static constexpr std::string_view kLevelEnd = "level_end ";
+        return action.rfind(kLevelEnd, 0) == 0 && xapi::RequestLevelEnd(action.c_str() + kLevelEnd.size());
     }
     bool Unplug(bool unplugged) noexcept override {
         InputRouter* router = GetRouter();
@@ -1332,6 +1355,7 @@ ScriptStats GetScriptStats() noexcept {
 // the disc error loop (0xF3004) is not a tick.
 std::uint32_t __cdecl HotplugCheckProbe() noexcept {
     if (guest::Addr(_ReturnAddress()) == guest::kGameHotplugCheckTickReturn) {
+        xapi::RunPendingGameActions();  // (M7) `game level_end` of the previous tick
         ScriptSourceImpl::Instance().OnHeartbeat();
     }
     return core::CallGuest(Trampoline(guest::kGameHotplugCheck));

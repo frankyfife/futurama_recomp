@@ -176,8 +176,10 @@ FUT_HOOK_EX(guest::kXapiXMountUtilityDrive, &XMountUtilityDriveHle, Stdcall, "XA
 // (XapiBootToDash returns with ret 0xC, startup.md 3.5). Callers: XapiBootToDash 0xF8FCA (boot
 // errors and after main returns) and FUN_000E4B00 ({2, 0, 'U', blocks}: not enough space on U:).
 // Replacement: log the request (decoded LD_LAUNCH_DASHBOARD) and end the process with
-// core::kExitGuestShutdown. Evidence: decomp 0xF82E3, disassembly ret 8 at 0xF841D, startup.md 3.5,
-// files.md 4.4, design 1.10 "Ende" and 4.5 (Pflichtwerte, last item).
+// core::kExitGuestShutdown - except the memory dashboard request {2, 0, 'U', blocks} (M7): message, then
+// return ERROR_NOT_SUPPORTED to the game (the only caller FUN_000E4B00 ignores the result). Evidence: decomp
+// 0xF82E3, disassembly ret 8 at 0xF841D, startup.md 3.5, files.md 4.4, design 1.10 "Ende" and 4.5
+// (Pflichtwerte, last item).
 DWORD __stdcall XLaunchNewImageAHle(const char* titlePath, const std::uint32_t* launchData) noexcept {
     try {
         const std::string path =
@@ -190,14 +192,30 @@ DWORD __stdcall XLaunchNewImageAHle(const char* titlePath, const std::uint32_t* 
         const void* ret = _ReturnAddress();
         const std::string caller = guest::Symbolize(guest::Addr(ret));
         if (titlePath == nullptr && haveData && ld[0] == 2 && ld[2] == 'U') {
-            FUT_LOGE(Xapi,
-                     "the game reports not enough free space on U: (%u blocks needed) and wants the memory "
-                     "dashboard (XLaunchNewImageA from %s)",
-                     ld[3], caller.c_str());
+            // (M7, design 4.5 "Meldung statt Dashboard") The player chose "Xbox Dashboard" in the dialog
+            // MEMCARD_047 (not enough free blocks; FUN_000DC290 -> FUN_000E4B00). There is no dashboard on
+            // the PC: report it and return to the game. FUN_000E4B00 ignores the result and FUN_000DC290
+            // closes the dialog (+0x18 = 2), so the game goes on as after "continue" - with saving still
+            // enabled (0x2D6D80 stays 1); a later save on a full disk fails with the game's own message
+            // MEMCARD_006 (m7_saves.md 5).
+            FUT_LOGW(Xapi,
+                     "the game reports not enough free space for save games on U: (%u blocks of 16 KiB "
+                     "needed) and "
+                     "asks for the Xbox dashboard (XLaunchNewImageA from %s) - not available on the PC, back "
+                     "to the "
+                     "game; free disk space at %s",
+                     ld[3], caller.c_str(),
+                     core::WideToUtf8(core::GetConfig().Partition1Directory().wstring()).c_str());
             if (core::GetConfig().msgbox) {
-                MessageBoxA(nullptr, "Not enough free space for saved games (drive U:).", "Futurama",
-                            MB_OK | MB_ICONWARNING);
+                const std::string text =
+                    "Not enough free disk space for saved games (" + std::to_string(ld[3]) +
+                    " blocks of 16 KiB needed).\n\nThe Xbox dashboard is not available on the PC. Free some "
+                    "space "
+                    "on the drive of\n" +
+                    core::WideToUtf8(core::GetConfig().Partition1Directory().wstring()) + "\nand try again.";
+                MessageBoxA(nullptr, text.c_str(), "Futurama", MB_OK | MB_ICONWARNING);
             }
+            return ERROR_NOT_SUPPORTED;
         } else if (titlePath == nullptr && haveData && ld[0] == 1) {
             FUT_LOGE(
                 Xapi,
