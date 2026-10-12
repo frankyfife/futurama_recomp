@@ -15,6 +15,7 @@
 #include "core/xbe_loader.h"
 #include "gfx/interp_frame.h"
 #include "platform/frame_pacer.h"
+#include "xapi/frame_fixes.h"
 #include "xapi/game_probes.h"
 
 #include <intrin.h>
@@ -239,6 +240,9 @@ std::int64_t g_clockStep = 0;
 std::int64_t g_clockQpf = 0;
 std::uint64_t g_clockRenderSamples = 0;
 std::uint64_t g_clockStartDelays = 0;
+std::uint64_t g_clockFrameStarts = 0;       // samples fed with the pacer's frame start (review finding 11)
+std::int64_t g_clockLastFrameStart = 0;     // FrameAdvance::frameStartQpc of the last sample (staleness check)
+std::uint32_t g_clockPlanSerial = 0;        // FrameAdvance::planSerial of the last sample
 std::uint64_t g_regimeLogs = 0;
 std::uint64_t g_alignLogs = 0;
 constexpr std::uint64_t kMaxClockLogs = 8;
@@ -434,7 +438,19 @@ void AccumulatorSample(std::int64_t real, guest::GuestAddr out, bool lockstep) {
         std::lock_guard<std::mutex> lock(g_lock);
         const bool wasStarted = g_clock.Started();
         firstSample = !wasStarted;
-        sample = g_clock.Advance(real - advance.startDelayTicks, step, quantum, lastPrev, cap);
+        // Review finding 11: the sub-tick regimes compare the pacer's frame start (the guest samples its timer only
+        // after the streaming pumps) - when it is fresh (EndFrame ran for this frame) and plausible.
+        std::int64_t clockReal = real;
+        const bool subTickRegime = advance.known && quantum.framesPerTick != 1;
+        if (subTickRegime && advance.frameStartQpc > 0 && advance.frameStartQpc != g_clockLastFrameStart &&
+            advance.frameStartQpc <= real && real - advance.frameStartQpc < qpf) {
+            clockReal = advance.frameStartQpc;
+            ++g_clockFrameStarts;
+        }
+        g_clockLastFrameStart = advance.frameStartQpc;
+        quantum.rephase = subTickRegime && wasStarted && advance.planSerial != g_clockPlanSerial;
+        g_clockPlanSerial = advance.planSerial;
+        sample = g_clock.Advance(clockReal - advance.startDelayTicks, step, quantum, lastPrev, cap);
         value = sample.value;
         g_clockStep = step;
         g_clockQpf = qpf;
@@ -527,8 +543,12 @@ void RenderSample() {
         if (st.resetThisFrame) {
             f.flags |= kFrameInterpClockReset | kFrameInterpSnapAll;
         }
-        if (switched || catchUp || st.capThisFrame) {
+        if (switched) {
             f.flags |= kFrameInterpSnapAll;
+        }
+        if (catchUp || st.capThisFrame) {
+            // Interpolated over the pair of the last `pairTicks` ticks (review finding 10), not snapped.
+            f.flags |= kFrameInterpCatchUp;
         }
         if (st.subTick) {
             ++st.subTickFrames;
@@ -579,11 +599,13 @@ void OnGameFrameTimerSample(guest::GuestAddr returnAddress, guest::GuestAddr out
 static_assert(kFrameInterpSnapAll == gfx::interp::kFrameInterpSnapAll);
 static_assert(kFrameInterpInsideStep == gfx::interp::kFrameInterpInsideStep);
 static_assert(kFrameInterpClockReset == gfx::interp::kFrameInterpClockReset);
+static_assert(kFrameInterpCatchUp == gfx::interp::kFrameInterpCatchUp);
 gfx::interp::FrameInterp RendererFrameInterp() noexcept {
     const FrameInterp f = CurrentFrameInterp();
     gfx::interp::FrameInterp r;
     r.tick = f.tick;
     r.stepsThisFrame = f.stepsThisFrame;
+    r.pairTicks = f.pairTicks;
     r.alpha = f.alpha;
     r.flags = f.flags;
     r.enabled = f.enabled;
@@ -738,10 +760,11 @@ void FrameClock::Consume(std::int64_t step) noexcept {
     }
 }
 
-FrameClock::Sample FrameClock::Advance(std::int64_t real, std::int64_t step, const ClockQuantum& quantum,
+FrameClock::Sample FrameClock::Advance(std::int64_t realIn, std::int64_t step, const ClockQuantum& quantum,
                                        std::int64_t lastPrev, std::int64_t capTicks) noexcept {
     Sample out;
     ++stats_.samples;
+    std::int64_t real = realIn;
     std::uint32_t n = quantum.framesPerTick;
     if (n == 0 && !(quantum.ticks >= 1.0)) {
         n = 1;  // no usable display time: one tick per frame (M3b)
@@ -752,6 +775,7 @@ FrameClock::Sample FrameClock::Advance(std::int64_t real, std::int64_t step, con
         // First sample (M3b: the virtual time starts at real time). The remainder is aligned in the next sample.
         started_ = true;
         virtual_ = real;
+        offset_ = 0;
         regimeN_ = n;
         regimeStep_ = step;
         regimeNominal_ = nominal;
@@ -777,14 +801,28 @@ FrameClock::Sample FrameClock::Advance(std::int64_t real, std::int64_t step, con
         fraction_ = 0.0;
         alignPending_ = n >= 2;
         phaseB_ = false;
+        if (n == 1) {
+            offset_ = 0;  // the M3b clock has no offset
+        }
     }
     ticks_ = quantum.ticks;
     const std::int64_t previous = virtual_;
     // Margin 3/4 of the nominal quantum (N = 1: step * 3 / 4 exactly as M3b).
     const std::int64_t nominalQuantum = n >= 1 ? step / static_cast<std::int64_t>(n) : std::llround(nominal);
     const std::int64_t margin = n == 1 ? step * 3 / 4 : nominalQuantum * 3 / 4;
-    const std::int64_t d = real - virtual_;
     const std::int64_t q0 = PeekQuantum(step);
+    if (quantum.rephase && n != 1) {
+        // A pacing plan change moved the frame starts to another grid (review finding 11): absorb the jump (at most
+        // one tick) so that this frame advances by exactly one quantum.
+        const std::int64_t jump = real - offset_ - virtual_ - q0;
+        if (jump != 0 && jump >= -step && jump <= step) {
+            offset_ += jump;
+            ++stats_.rephases;
+            out.rephased = true;
+        }
+    }
+    real -= offset_;
+    const std::int64_t d = real - virtual_;
     std::int64_t count = 0;
     if (d - q0 > margin) {
         // Catch up: the smallest number of quanta that brings real - V to <= margin.
@@ -833,10 +871,12 @@ FrameClock::Sample FrameClock::Advance(std::int64_t real, std::int64_t step, con
     // modulo ticks(dt) and so modulo the quantum. Move V once so that r = ticks(dt) - mu (mod quantum): the largest
     // remainder of the pattern is then ticks(dt) - mu (m3d_frameclock.md 2.3). Candidates delta + k * quantum (k -1, 0,
     // 1): the one closest to real time that does not move V behind the previous frame.
+    // An elapsed time outside (0, 5 ticks) (the guest's 6 dt cap applies in this frame, or an unknown CApp+0xC8)
+    // keeps the alignment pending for the next frame.
     if (alignPending_ && n >= 2 && lastPrev != 0) {
-        alignPending_ = false;
         const std::int64_t el = virtual_ - lastPrev;
         if (el > 0 && el < 5 * step) {
+            alignPending_ = false;
             const double q = static_cast<double>(step) / static_cast<double>(n);
             const std::int64_t mu = PhaseMargin(step);
             const double phi = std::fmod(static_cast<double>(step - mu), q);
@@ -952,6 +992,8 @@ FrameClockStats GetFrameClockStats() noexcept {
         s.resets = c.resets;
         s.aligns = c.aligns;
         s.startDelays = g_clockStartDelays;
+        s.frameStartSamples = g_clockFrameStarts;
+        s.rephases = c.rephases;
     }
     std::lock_guard<std::mutex> lock(g_interpLock);
     const InterpState& st = g_interp;
@@ -1171,6 +1213,7 @@ bool StageApplyGameTiming(const core::Config& config) {
             return false;
         }
         core::AddExitReporter("game timing", &LogGameTickSummary);
+        RegisterFrameFixReporter();  // M3d: "frame fixes: ..." (xapi/frame_fixes.h)
         const auto patches = TimingPatches(rate);
         if (!patches.empty()) {
             GuestImageMemory memory;
@@ -1383,13 +1426,15 @@ void LogGameTickSummary() noexcept {
         FUT_LOGI(Game,
                  "game clock M3d: %s; %llu regime changes, %llu phase B alignments, %llu samples after a just-in-time "
                  "start; %llu rendered frames, %llu between ticks enabled: alpha 1/2 x %llu, 1 x %llu, other x %llu; "
-                 "snap-all: context switch %llu, catch-up %llu, 6 dt cap %llu, clock reset %llu",
+                 "snap-all: context switch %llu, clock reset %llu; interpolated over the step pair: catch-up %llu, 6 dt "
+                 "cap %llu; clock input: frame start x %llu, plan-change rephase x %llu",
                  regime, static_cast<unsigned long long>(c.resets), static_cast<unsigned long long>(c.aligns),
                  static_cast<unsigned long long>(c.startDelays), static_cast<unsigned long long>(c.renderedFrames),
                  static_cast<unsigned long long>(c.subTickFrames), static_cast<unsigned long long>(c.alphaHalf),
                  static_cast<unsigned long long>(c.alphaOne), static_cast<unsigned long long>(c.alphaOther),
-                 static_cast<unsigned long long>(c.snapSwitch), static_cast<unsigned long long>(c.snapCatchUp),
-                 static_cast<unsigned long long>(c.snapCap), static_cast<unsigned long long>(c.snapReset));
+                 static_cast<unsigned long long>(c.snapSwitch), static_cast<unsigned long long>(c.snapReset),
+                 static_cast<unsigned long long>(c.snapCatchUp), static_cast<unsigned long long>(c.snapCap),
+                 static_cast<unsigned long long>(c.frameStartSamples), static_cast<unsigned long long>(c.rephases));
     } catch (...) {
     }
 }

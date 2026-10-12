@@ -73,9 +73,11 @@
 //     (frames per tick, display time, the just-in-time delay). The clock reports the fixed steps of each rendered
 //     frame back with NoteFrameTicks.
 //   - Repeated picture (m3d_frameclock.md 1.3 F1): a frame that ran no fixed step and drew nothing (SwapChainInfo::
-//     frameUnchanged; the intro draws its legal screen and tech notice in Update) is not presented when the frame rate
-//     is above the tick rate - the previous picture stays one frame longer instead of the back buffer of two presents
-//     ago (the tech notice flickered at 120 fps). Vblank plans then keep the frame grid on the timer.
+//     frameUnchanged; the intro draws its legal screen and tech notice in Update) presents the previous picture again
+//     when the frame rate is above the tick rate (PresentRequest::repeatPrevious -> rhi::Device::
+//     RepeatPreviousPicture) instead of the back buffer of two presents ago (the tech notice flickered at 120 fps).
+//     It is a normal Present for the plan (sync interval, waitable): a frame that was not presented at all left the
+//     waitable without a queued flip, so the next frame's wait returned right after its GPU work (verify phase).
 //   - Just-in-time start (M3c review finding 6, PacingConfig::justInTime = [render] low_latency): on the vblank plans
 //     the next frame starts pacing::LatencyBudget before the vblank at which it becomes visible (predicted from the
 //     frame statistics) instead of right after the previous vblank: at 60 fps on 120 Hz about 12 ms less latency.
@@ -116,8 +118,8 @@ struct PresentRequest {
     std::uint32_t syncInterval = 0;
     bool allowTearing = false;
     bool skipSwapChain = false;
-    // M3d: skipSwapChain because the frame repeats the previous picture (F1); the back buffers rotate as for any
-    // skipped frame.
+    // M3d F1: the frame repeats the previous picture - the renderer presents the buffer of the previous Present again
+    // and keeps the rotation (rhi::Device::RepeatPreviousPicture); presented like any frame otherwise.
     bool repeatPrevious = false;
 };
 // Before Present (render thread). Never waits.
@@ -219,6 +221,8 @@ struct PresentStatistics {
     double justInTimeDelayMs = 0.0;               // average delay of those frames
     double latencyBudgetMs = 0.0;                 // the last budget
     std::uint64_t justInTimeMisses = 0;           // just-in-time frames that reached the screen late
+    std::uint32_t latencyRelaxFailures = 0;       // relax steps followed by a late frame (review finding 9)
+    bool latencyHeld = false;                     // ... the budget factor holds until the next plan change
 };
 PresentStatistics GetPresentStatistics() noexcept;  // thread-safe
 void LogPresentStatistics() noexcept;               // thread-safe (exit reporter)

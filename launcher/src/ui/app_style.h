@@ -31,4 +31,11 @@ QPixmap AppIconPixmap(int logicalSize, qreal devicePixelRatio);
 // A label font scaled relative to the widget's font (no fixed pixel sizes: high DPI).
 void ScaleFont(QWidget* widget, qreal factor, bool bold = false);
 
+// Asks before an edit that changes several settings at once (resets of the controls tab; review M4 finding 14):
+// a question box with `acceptText` and "Abbrechen" (default). Tests and automation install a hook instead of the box
+// (nullptr restores the box); the hook gets the question text and returns the answer.
+using ConfirmHook = bool (*)(const QString& text);
+void SetConfirmHook(ConfirmHook hook);
+bool ConfirmChange(QWidget* parent, const QString& text, const QString& acceptText);
+
 }  // namespace fl::ui

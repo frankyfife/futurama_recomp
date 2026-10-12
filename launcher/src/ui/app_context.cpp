@@ -189,6 +189,21 @@ void LoadGpu(AppContext& ctx, const StartupOptions& options) {
     ctx.gpuFromScreens = true;
 }
 
+void LoadAudioDevices(AppContext& ctx, const StartupOptions& options) {
+    if (!options.audioFile.isEmpty()) {
+        QString readError;
+        QString parseError;
+        const QByteArray json = ReadFile(options.audioFile, &readError);
+        if (!json.isEmpty() && ParseAudioDeviceList(json, &ctx.audio, &parseError)) {
+            return;
+        }
+        ctx.audio = AudioDeviceList{};
+        ctx.audio.error = readError.isEmpty() ? parseError : readError;
+        return;
+    }
+    ctx.audio = EnumerateAudioDevices();
+}
+
 bool LoadIni(AppContext& ctx, QString* error) {
     if (ctx.paths.iniPath.isEmpty()) {
         *error = T("startup.no_ini_location");

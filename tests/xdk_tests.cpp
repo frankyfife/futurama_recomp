@@ -1,36 +1,20 @@
-// Unit tests of the XDK stubs (DSOUND/XMV/XPP, M2; xdk agent). Run without the XBE: the stubs are called
-// directly from host code with host buffers standing in for guest memory (same address space).
+// Unit tests of the XDK replacements (XMV stubs, M2; DSOUND HLE smoke test, M5; xdk agent) and an end-to-end check of the XPP HLE (M4). Run without
+// the XBE: the stubs are called directly from host code with host buffers standing in for guest memory (same address space).
 #include "doctest.h"
 
-#include "audio/dsound_stubs.h"
+#include "audio/audio_engine.h"
+#include "audio/dsound_hle.h"
 #include "audio/xdk_entries.h"
 #include "core/guest.h"
-#include "input/xpp_stubs.h"
+#include "input/xpp_hle.h"
 #include "video/xmv_stubs.h"
 
 #include <cstring>
+#include <memory>
 #include <set>
 #include <string>
 
 namespace {
-
-std::int64_t QpcNow() {
-    LARGE_INTEGER t;
-    QueryPerformanceCounter(&t);
-    return t.QuadPart;
-}
-std::int64_t QpcFrequency() {
-    LARGE_INTEGER f;
-    QueryPerformanceFrequency(&f);
-    return f.QuadPart;
-}
-
-// Guest vtable slot of an XDK dummy object (+0 = guest pointer to the vtable).
-template <class Fn>
-Fn VtableSlot(const void* object, std::uint32_t slot) {
-    const std::uint32_t vtable = guest::Read<std::uint32_t>(guest::Addr(object));
-    return reinterpret_cast<Fn>(static_cast<std::uintptr_t>(guest::Read<std::uint32_t>(vtable + 4 * slot)));
-}
 
 // Two distinct call sites of the same stub (not inlined, no tail call: the result is used).
 __declspec(noinline) std::uint32_t CallXGetDevicesSiteA() {
@@ -39,10 +23,6 @@ __declspec(noinline) std::uint32_t CallXGetDevicesSiteA() {
 __declspec(noinline) std::uint32_t CallXGetDevicesSiteB() {
     return inp::XGetDevicesHle(nullptr) + 2;
 }
-
-using StreamProcessFn = std::int32_t(__stdcall*)(void*, const snd::XMediaPacket*, const snd::XMediaPacket*);
-using StreamGetStatusFn = std::int32_t(__stdcall*)(void*, std::uint32_t*);
-using StreamRefFn = std::uint32_t(__stdcall*)(void*);
 
 }  // namespace
 
@@ -94,7 +74,7 @@ TEST_CASE("XDK stubs pop exactly ret N (measured on a probe thread with zero arg
         CHECK(m.purgeBytes == e.purgeBytes);
         CHECK(xdk::CallCount(e.entry) == calls);  // probe calls are not counted
     }
-    CHECK_FALSE(snd::IsDummyDevice(nullptr));
+    CHECK_FALSE(snd::IsDsoundDevice(nullptr));
 }
 
 TEST_CASE("XDK guest object pool: below 0x80000000, freed objects carry the trap vtable") {
@@ -113,142 +93,45 @@ TEST_CASE("XDK guest object pool: below 0x80000000, freed objects carry the trap
     xdk::FreeGuestObject(nullptr);  // tolerated
 }
 
-TEST_CASE("DSOUND stubs: device singleton, NULL buffers/streams, GetStatus = 0") {
-    snd::SetDummyStreams(false);
+TEST_CASE("DSOUND HLE (M5): device singleton, NULL handles tolerated, GetStatus always written") {
+    // The DSOUND entries are HLE since M5 (audio/dsound_hle.cpp); their behaviour is tested in
+    // tests/audio_dsound_tests.cpp. Here only the guarantees the old stub tests covered, on a software engine.
+    snd::EngineConfig config;
+    config.enabled = false;
+    config.softwareRealtime = false;
+    const std::unique_ptr<snd::AudioEngine> engine = snd::CreateSoftwareEngine(config);
+    REQUIRE(engine != nullptr);
+    snd::SetEngineForTesting(engine.get());
+    snd::ResetDsoundForTesting();
     void* ds1 = nullptr;
     void* ds2 = reinterpret_cast<void*>(1);
     REQUIRE(snd::DirectSoundCreateHle(nullptr, &ds1, nullptr) == snd::kS_OK);
     REQUIRE(snd::DirectSoundCreateHle(nullptr, &ds2, nullptr) == snd::kS_OK);
     CHECK(ds1 != nullptr);
     CHECK(ds1 == ds2);  // singleton (avi.md 2.3)
-    CHECK(snd::IsDummyDevice(ds1));
+    CHECK(snd::IsDsoundDevice(ds1));
     CHECK(static_cast<std::uint64_t>(guest::Addr(ds1)) < guest::kGuestMemoryLimit);
     CHECK(guest::Read<std::uint32_t>(guest::Addr(ds1)) == guest::Addr(xdk::TrapVtable()));
     const std::uint32_t refs = snd::IDirectSound_ReleaseHle(ds2);
     CHECK(snd::IDirectSound_ReleaseHle(ds1) + 1 == refs);
-    CHECK(snd::IsDummyDevice(ds1));  // never torn down
-
-    // Buffers: *pp = NULL, every buffer function accepts NULL.
-    snd::XDsBufferDesc bd{0x18, 0x60110, 0, 0, 0, 0};
-    void* buffer = reinterpret_cast<void*>(0x1234);
-    CHECK(snd::DirectSoundCreateBufferHle(&bd, &buffer) == snd::kS_OK);
-    CHECK(buffer == nullptr);
+    CHECK(snd::IsDsoundDevice(ds1));  // never torn down
     std::uint32_t status = 0xFFFFFFFFu;
     CHECK(snd::IDirectSoundBuffer_GetStatusHle(nullptr, &status) == snd::kS_OK);
     CHECK(status == 0);  // voice destructor 0xCC030 spins otherwise
     CHECK(snd::IDirectSoundBuffer_PlayHle(nullptr, 0, 0, 1) == snd::kS_OK);
     CHECK(snd::IDirectSoundBuffer_SetBufferDataHle(nullptr, nullptr, 0) == snd::kS_OK);
     CHECK(snd::IDirectSoundBuffer_SetPositionHle(nullptr, 1.0f, 2.0f, 3.0f, 1) == snd::kS_OK);
+    CHECK(snd::IDirectSoundBuffer_SetI3DL2SourceHle(nullptr, nullptr, 1) == snd::kS_OK);  // 3D streams pass NULL
     CHECK(snd::IDirectSoundBuffer_ReleaseHle(nullptr) == 0);
-
-    // Streams (default): *pp = NULL.
-    snd::XWaveFormatEx wfx{snd::kWaveFormatPcm, 2, 22050, 88200, 4, 16, 0x12};
-    snd::XDsStreamDesc sd{0, 10, guest::Addr(&wfx), 0, 0, 0};
-    void* stream = reinterpret_cast<void*>(0x1234);
-    CHECK(snd::DirectSoundCreateStreamHle(&sd, &stream) == snd::kS_OK);
-    CHECK(stream == nullptr);
     CHECK(snd::IDirectSoundStream_PauseHle(nullptr, snd::kStreamPause) == snd::kS_OK);
     CHECK(snd::IDirectSoundStream_FlushExHle(nullptr, 0, 1) == snd::kS_OK);
-
-    // DownloadEffectsImage: S_OK, *ppDesc = NULL (the game never reads either, avi.md 2.1).
     std::uint32_t desc = 0xFFFFFFFFu;
-    CHECK(snd::IDirectSound_DownloadEffectsImageHle(ds1, &wfx, sizeof(wfx), nullptr, &desc) == snd::kS_OK);
+    CHECK(snd::IDirectSound_DownloadEffectsImageHle(ds1, &status, sizeof(status), nullptr, &desc) == snd::kS_OK);
     CHECK(desc == 0);
     snd::DirectSoundDoWorkHle();
     snd::DirectSoundUseFullHRTFHle();
-}
-
-TEST_CASE("DSOUND stub streams ([audio] dummy_streams): XMediaObject vtable and packet status") {
-    snd::SetDummyStreams(true);
-    snd::XWaveFormatEx wfx{snd::kWaveFormatPcm, 2, 22050, 0, 4, 16, 0x12};  // 88200 bytes/s
-    snd::XDsStreamDesc sd{0, 2, guest::Addr(&wfx), 0, 0, 0};
-    void* stream = nullptr;
-    REQUIRE(snd::DirectSoundCreateStreamHle(&sd, &stream) == snd::kS_OK);
-    REQUIRE(stream != nullptr);
-    CHECK(snd::IsStubStream(stream));
-    CHECK(static_cast<std::uint64_t>(guest::Addr(stream)) < guest::kGuestMemoryLimit);
-
-    const auto process = VtableSlot<StreamProcessFn>(stream, xdk::stream::Process::slot);
-    const auto getStatus = VtableSlot<StreamGetStatusFn>(stream, xdk::stream::GetStatus::slot);
-    const auto addRef = VtableSlot<StreamRefFn>(stream, xdk::stream::AddRef::slot);
-    const auto release = VtableSlot<StreamRefFn>(stream, xdk::stream::Release::slot);
-
-    std::uint32_t status[3] = {0, 0, 0};
-    std::uint32_t completed[3] = {7, 7, 7};
-    snd::XMediaPacket pkt[3] = {};
-    for (int i = 0; i < 3; ++i) {
-        pkt[i].dwMaxSize = 8820;  // 0.1 s
-        pkt[i].pdwStatus = guest::Addr(&status[i]);
-        pkt[i].pdwCompletedSize = guest::Addr(&completed[i]);
-    }
-    const std::int64_t t0 = QpcNow();
-    CHECK(process(stream, &pkt[0], nullptr) == snd::kS_OK);
-    CHECK(status[0] == snd::kPacketPending);  // synchronous E_PENDING (pump 0xCB5D4)
-    CHECK(completed[0] == 0);
-    CHECK(process(stream, &pkt[1], nullptr) == snd::kS_OK);
-    // Queue full (dwMaxAttachedPackets = 2): DSERR_INVALIDCALL, status untouched (original 0x24B1C4).
-    CHECK(process(stream, &pkt[2], nullptr) == snd::kDsErrInvalidCall);
-    CHECK(status[2] == 0);
-    CHECK(snd::StubStreamQueuedPackets(stream) == 2);
-    std::uint32_t st = 0;
-    CHECK(getStatus(stream, &st) == snd::kS_OK);
-    CHECK((st & snd::kStreamStatusPlaying) != 0);
-
-    // 0.15 s later: the first packet has played, the second not yet.
-    const std::int64_t f = QpcFrequency();
-    CHECK(snd::PumpStubStreams(t0 + f * 15 / 100) == 1);
-    CHECK(status[0] == snd::kPacketSuccess);
-    CHECK(completed[0] == 8820);
-    CHECK(status[1] == snd::kPacketPending);
-
-    // Paused streams keep their packets; FlushEx completes them as flushed and clears PLAYING.
-    CHECK(snd::IDirectSoundStream_PauseHle(stream, snd::kStreamPause) == snd::kS_OK);
-    CHECK(snd::PumpStubStreams(t0 + f * 10) == 0);
-    CHECK(status[1] == snd::kPacketPending);
-    CHECK(snd::IDirectSoundStream_FlushExHle(stream, 0, 1) == snd::kS_OK);
-    CHECK(status[1] == snd::kPacketFlushed);
-    CHECK(completed[1] == 0);
-    CHECK(getStatus(stream, &st) == snd::kS_OK);
-    CHECK((st & snd::kStreamStatusPlaying) == 0);  // XMV CloseDecoder spin ends
-
-    // Reference counting through the vtable; the last Release frees the guest object.
-    CHECK(addRef(stream) == 2);
-    CHECK(release(stream) == 1);
-    CHECK(snd::IsStubStream(stream));
-    CHECK(release(stream) == 0);
-    CHECK_FALSE(snd::IsStubStream(stream));
-    CHECK_FALSE(xdk::IsGuestObject(stream));
-    const snd::StubStreamStatistics stats = snd::GetStubStreamStatistics();
-    CHECK(stats.created >= 1);
-    CHECK(stats.packetsSubmitted >= 2);
-    CHECK(stats.packetsCompleted >= 1);
-    CHECK(stats.packetsFlushed >= 1);
-    CHECK(stats.packetsRejected >= 1);
-    snd::SetDummyStreams(false);
-}
-
-TEST_CASE("DSOUND stub streams: Xbox ADPCM packets last 64 samples per 36-byte block") {
-    snd::SetDummyStreams(true);
-    snd::XWaveFormatEx wfx{snd::kWaveFormatXboxAdpcm, 1, 22050, 0, 36, 4, 0x12};  // 12403 bytes/s
-    snd::XDsStreamDesc sd{0, 10, guest::Addr(&wfx), 0, 0, 0};
-    void* stream = nullptr;
-    REQUIRE(snd::DirectSoundCreateStreamHle(&sd, &stream) == snd::kS_OK);
-    REQUIRE(stream != nullptr);
-    std::uint32_t status = 0;
-    snd::XMediaPacket pkt{};
-    pkt.dwMaxSize = 12403;  // ~1 s
-    pkt.pdwStatus = guest::Addr(&status);
-    const std::int64_t t0 = QpcNow();
-    const auto process = VtableSlot<StreamProcessFn>(stream, xdk::stream::Process::slot);
-    REQUIRE(process(stream, &pkt, nullptr) == snd::kS_OK);
-    const std::int64_t f = QpcFrequency();
-    CHECK(snd::PumpStubStreams(t0 + f / 2) == 0);
-    CHECK(status == snd::kPacketPending);
-    CHECK(snd::PumpStubStreams(t0 + f * 2) == 1);
-    CHECK(status == snd::kPacketSuccess);
-    const auto release = VtableSlot<StreamRefFn>(stream, xdk::stream::Release::slot);
-    CHECK(release(stream) == 0);
-    snd::SetDummyStreams(false);
+    snd::ResetDsoundForTesting();
+    snd::SetEngineForTesting(nullptr);
 }
 
 TEST_CASE("XMV stubs: decoder from the header, end of file on the first frame") {
@@ -293,29 +176,38 @@ TEST_CASE("XMV stubs: decoder from the header, end of file on the first frame") 
     CHECK(none == reinterpret_cast<void*>(0x1234));
 }
 
-TEST_CASE("XPP stubs: no devices, not-connected results, rumble status never pending") {
+// M4: the XPP entries are no longer stubs (input/xpp_hle.h). The detailed tests are in tests/input_router_tests.cpp; this
+// case only checks the hooked entries end to end with the process-wide input layer (default settings, no window:
+// keyboard/mouse keeps port 1 connected, so the result does not depend on a real controller).
+TEST_CASE("XPP HLE: port 1 connected, handles, synchronous rumble status") {
     const void* gamepad = guest::Ptr<const void>(guest::kXppDeviceTypeGamepad);
+    const void* memoryUnit = guest::Ptr<const void>(guest::kXppDeviceTypeMemoryUnit);
     inp::XInitDevicesHle(1, nullptr);
-    CHECK(inp::XGetDevicesHle(gamepad) == 0);
+    CHECK((inp::XGetDevicesHle(gamepad) & 1u) == 1u);
+    CHECK(inp::XGetDevicesHle(memoryUnit) == 0);
     std::uint32_t ins = 0xFFFFFFFFu, rem = 0xFFFFFFFFu;
-    CHECK(inp::XGetDeviceChangesHle(gamepad, &ins, &rem) == FALSE);
+    CHECK(inp::XGetDeviceChangesHle(memoryUnit, &ins, &rem) == FALSE);
     CHECK(ins == 0);
     CHECK(rem == 0);
-    CHECK(inp::XInputOpenHle(gamepad, 0, 0, nullptr) == nullptr);
-    inp::XInputCloseHle(nullptr);
+    void* handle = inp::XInputOpenHle(gamepad, 0, 0, nullptr);
+    REQUIRE(handle != nullptr);
+    CHECK(guest::Addr(handle) < 0x80000000u);
+    inp::XInputCloseHle(nullptr);  // ignored
 
     inp::XInputState state;
     std::memset(&state, 0xAB, sizeof(state));
-    CHECK(inp::XInputGetStateHle(nullptr, &state) == inp::kErrorDeviceNotConnected);
-    CHECK(state.dwPacketNumber == 0);
+    CHECK(inp::XInputGetStateHle(nullptr, &state) == inp::kErrorInvalidParameter);
     CHECK(state.Gamepad.wButtons == 0);
-    CHECK(state.Gamepad.sThumbRY == 0);
+    CHECK(inp::XInputGetStateHle(handle, &state) == inp::kErrorSuccess);
 
     inp::XInputFeedback fb{};
     fb.dwStatus = inp::kErrorIoPending;
-    fb.wLeftMotorSpeed = 0xFFFF;
-    CHECK(inp::XInputSetStateHle(nullptr, &fb) == inp::kErrorDeviceNotConnected);
+    CHECK(inp::XInputSetStateHle(nullptr, &fb) == inp::kErrorInvalidParameter);
     CHECK(fb.dwStatus != inp::kErrorIoPending);  // rumble 0x9C229 can send again
+    fb.dwStatus = inp::kErrorIoPending;
+    CHECK(inp::XInputSetStateHle(handle, &fb) == inp::kErrorSuccess);  // motors 0: no real controller vibrates
+    CHECK(fb.dwStatus == inp::kErrorSuccess);
+    inp::XInputCloseHle(handle);
 }
 
 TEST_CASE("XDK call tracing counts calls and call sites") {

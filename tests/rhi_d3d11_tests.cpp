@@ -863,3 +863,41 @@ TEST_CASE("rhi d3d11: persistent back buffers keep the picture of bufferCount pr
         CHECK(DebugErrors(*device) == 0);
     }
 }
+
+TEST_CASE("rhi d3d11: a repeated picture presents the previous buffer again and keeps the rotation (M3d F1)") {
+    // Frames between two logic ticks that draw nothing (intro at 120 fps): the device shows the picture of the
+    // previous Present once more instead of the back buffer of two presents ago, and the next frame draws into the
+    // buffer that was current before the repeat.
+    const float red[4] = {1, 0, 0, 1};
+    const float green[4] = {0, 1, 0, 1};
+    const float blue[4] = {0, 0, 1, 1};
+    DeviceDesc d;
+    d.backend = Backend::D3D11;
+    d.softwareAdapter = true;
+    d.debugLayer = true;
+    d.width = 16;
+    d.height = 16;
+    d.bufferCount = 2;
+    std::string error;
+    auto device = CreateDevice(d, &error);
+    REQUIRE_MESSAGE(device != nullptr, error);
+    CommandContext& ctx = device->Context();
+    ctx.Clear(kClearColor, red, 1.0f, 0, nullptr);  // buffer 0
+    CHECK(device->Present(PresentDesc{}) == PresentResult::Ok);
+    ctx.Clear(kClearColor, green, 1.0f, 0, nullptr);  // buffer 1
+    CHECK(device->Present(PresentDesc{}) == PresentResult::Ok);
+    // The frame draws nothing: without a repeat it would show red (buffer 0, two presents ago).
+    CHECK(Pixel(Capture(*device), 5, 5) == 0xFFFF0000u);
+    REQUIRE(device->RepeatPreviousPicture());
+    CHECK(Pixel(Capture(*device), 5, 5) == 0xFF00FF00u);  // captures show the repeated picture (green)
+    Image output;
+    REQUIRE(device->CaptureOutput(output));
+    CHECK(Pixel(output, 5, 5) == 0xFF00FF00u);
+    CHECK(device->Present(PresentDesc{}) == PresentResult::Ok);
+    // The rotation stayed: the current back buffer is still buffer 0 (red), and the repeat flag is gone.
+    CHECK(Pixel(Capture(*device), 5, 5) == 0xFFFF0000u);
+    ctx.Clear(kClearColor, blue, 1.0f, 0, nullptr);  // buffer 0
+    CHECK(device->Present(PresentDesc{}) == PresentResult::Ok);
+    CHECK(Pixel(Capture(*device), 5, 5) == 0xFF00FF00u);  // buffer 1 again: green
+    CHECK(DebugErrors(*device) == 0);
+}

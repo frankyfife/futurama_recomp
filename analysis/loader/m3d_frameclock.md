@@ -248,8 +248,8 @@ von S[G]).
 | Fall | Erkennung | alpha / Merker |
 |---|---|---|
 | Normal (1 Tick oder 0 Ticks) | Schritte des Frames ≤ 1 | wie oben |
-| Aufholen (n ≥ 2 Ticks) | Zähler `probe:Game::FixedStep` seit der letzten Render-Probe ≥ 2 (gemessen bei Wechseln 4–5) | `snapAll` (alpha 1). Verfeinerung: Gewicht über n Ticks `w = 1 − (L − rest)/(n·step)`, das vermeidet ein stehendes Bild danach (Analyse B rastet über die Generationslücke ein) |
-| Kappung (> 6 dt) | `V_frame − lastPrev > ticks(6·dt)` | `snapAll`, Ausrichtung im nächsten Frame |
+| Aufholen (n ≥ 2 Ticks) | Zähler `probe:Game::FixedStep` seit der letzten Render-Probe ≥ 2 (gemessen bei Wechseln 4–5) | **Seit dem M3d-Review (Befund 10):** kein `snapAll` mehr, Merker `kFrameInterpCatchUp`; der Renderer interpoliert über das Paar der letzten `pairTicks` = n Ticks mit dem Gewicht `(n − 1 + alpha)/n`, die angezeigte Zeit bleibt `G − 1 + alpha` und steht danach nicht still (vorher: `snapAll`, Einrasten über die Generationslücke, ein stehendes Bild) |
+| Kappung (> 6 dt) | `V_frame − lastPrev > ticks(6·dt)` | wie Aufholen über das Paar der 6 Ticks (alpha 0 → angezeigt G − 1); Ausrichtung im nächsten Frame (alpha ½ → G − ½, kein Schritt zurück) |
 | Kontextwechsel | `probe:Game::ContextSwitch` (0xA2E45) in diesem Frame | `snapAll` |
 | Erster Frame, Uhr-Reset, Planwechsel mit anderem Quant | Uhrzustand | `snapAll` |
 | Frames ohne `Game::Frame` (1.1) | keine Render-Probe | keine Interpolation, Historie nicht weiterschalten (sie zeichnen nur Löschbilder) |
@@ -276,8 +276,12 @@ aber Bildstart → sichtbar 16,6 ms, 3.1) ist 120 fps mit Phase B insgesamt schn
 - **119,88 Hz:** Quant = 1/119,88 s statt step/2: die Spielzeit bleibt exakt Echtzeit, alpha wandert langsam (das
   1/0-Muster verschiebt sich alle ≈ 1000 Bilder um einen Frame), die angezeigte Zeit bleibt stetig – kein
   Doppelschritt wie bei M3b (alle 16,6 s), keine Verlangsamung wie `tick_lock = display`.
-- **59,94 Hz** mit „Monitor“: dasselbe mit N < 1 – die Interpolation beseitigt den M3b-Doppelschritt. Bei genau 60 Hz
-  bleibt N = 1 ohne Interpolation (Vorgabe).
+- **59,94 Hz** mit „Monitor“: ~~dasselbe mit N < 1 – die Interpolation beseitigt den M3b-Doppelschritt.~~
+  **Korrektur nach dem M3d-Review (Befund 8):** Unter dem Tick-Takt laufen mit Anzeigezeit-Quanten regelmäßig Frames
+  mit 2 Schritten; der Renderer kann ohne S[G−1] nur einrasten (Sprung plus Standbild statt des Doppelschritts, bei
+  50 Hz jedes 5. Bild fast 1 Tick Versatz) und die Inhaltsverzögerung steigt um 1 Tick. Daher gilt jetzt: Bildrate ≤
+  Tickrate × 1,002 (50, 59,94, 59,95, 60, 60,02 Hz) → N = 1, M3b-Uhr ohne Interpolation, genau wie „60“
+  (`pacing::FramesPerTick`). Bei genau 60 Hz bleibt N = 1 ohne Interpolation (Vorgabe).
 - **75/90/100 Hz**, Kadenz bei 144/165 Hz ohne VRR: Quant = Anzeigezeit des Bildes (`s_n/R`), alpha beliebig in [0, 1].
 - Phase B lohnt nur bei N = 2 anzeigegekoppelt; sonst alpha ohne Ausrichtung.
 
@@ -306,7 +310,7 @@ voller Refresh, pacing60.md 2.4). 120 fps tragen hier auch „Maximum“ problem
 | Anzeige | „60“ | „120 (interpoliert)“ | „Monitor (max. 120)“ |
 |---|---|---|---|
 | 60 Hz | vblank k=1, 60 fps | 60 fps (mehr geht nicht), N = 1, ohne Interpolation | wie links |
-| 59,94 Hz | M3b (59,94 fps, Doppelschritt alle 16,6 s) | 59,94 fps interpoliert (2.7) | wie links |
+| 59,94 Hz | M3b (59,94 fps, Doppelschritt alle 16,6 s) | ~~59,94 fps interpoliert~~ 59,94 fps, M3b-Uhr ohne Interpolation wie „60“ (Korrektur nach Review-Befund 8, 2.7) | wie links |
 | 75 / 100 Hz | M3b `display-rate` (60 Ticks, Bilder wiederholen sich: Halten 13,3/26,7 bzw. 10/20 ms) | 75 / 100 fps (k = 1), interpoliert | wie links |
 | 120 Hz | vblank k = 2 | vblank k = 1, 120 fps | wie links |
 | 119,88 Hz | k = 2, 59,94 fps | k = 1, 119,88 fps interpoliert, Quant aus der Anzeigezeit | wie links |

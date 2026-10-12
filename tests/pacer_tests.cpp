@@ -509,6 +509,16 @@ TEST_CASE("pacer: display-limit detector (3 of 8 slow vblank waits)") {
     CHECK(d.FireHoldSeconds(110.0) == doctest::Approx(8.0));
     CHECK(d.FireHoldSeconds(119.0) == doctest::Approx(8.0));
     CHECK(d.FireHoldSeconds(200.0) == doctest::Approx(1.0));
+    // M3d: after entering a vblank plan the first kWarmupWaits waits are not judged (the transient of a composed
+    // window at 120 fps: 16, 29, 19 ms waits right after the switch), slow waits after that still are.
+    const double period120 = 1.0 / 120.0;
+    d.StartWarmup();
+    for (std::uint32_t i = 0; i < pc::DisplayLimitDetector::kWarmupWaits; ++i) {
+        CHECK_FALSE(d.AddWait(i % 2 == 0 ? 0.029 : 0.0, period120, i % 2 != 0));
+    }
+    CHECK_FALSE(d.AddWait(0.020, period120, false));
+    CHECK_FALSE(d.AddWait(0.020, period120, false));
+    CHECK(d.AddWait(0.020, period120, false));
 }
 
 TEST_CASE("pacer: VRR detector on synthetic frame statistics (T5)") {
@@ -892,6 +902,11 @@ TEST_CASE("pacer: refresh rate of the primary monitor (QueryDisplayConfig)") {
     CHECK(t.denominator != 0);
     CHECK(t.hz == doctest::Approx(static_cast<double>(t.numerator) / t.denominator));
     CHECK(std::string(t.source) != "none");
+    if (std::string(t.source) == "gdi" && std::string(t.device).rfind("\\\\.\\DISPLAY", 0) != 0) {
+        // No active display output (TV off, remote session): GDI reports Windows' placeholder "WinDisc" at 60 Hz.
+        MESSAGE("no active display output - GDI placeholder " << t.device);
+        return;
+    }
     CHECK(std::string(t.device).rfind("\\\\.\\DISPLAY", 0) == 0);
 }
 

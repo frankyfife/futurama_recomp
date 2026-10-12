@@ -54,6 +54,7 @@ Added in phase 2 (core): `4` the guest ended itself (`XLaunchNewImageA` hook, `H
 guest threads exited), `5` `[debug] timeout` watchdog (thread dump + minidump in the log directory).
 Added in M3c (review finding 15): `6` another game process already runs with the same user data folder (named mutex
 per user data folder, taken before the log is opened; stderr line, nothing written).
+Added in M4 (test automation): `7` the input script failed (`[debug] input_script`: timeout, `expect`, `fail`; section 4.27).
 Core debug keys: `[debug] timeout = <s>` (0 = off), `minidump = 1`, `mmio_trap = 1` (reserve 0xFD000000..0xFEFFFFFF),
 `crash_test = 1` (provokes an unhandled guest access violation before entry to check the crash path, exit 3).
 M1 boot path verified (core run 2026-10-04, `--stop-at=main --selftest`): all self-tests pass, entry ->
@@ -380,7 +381,8 @@ checked in; the build needs no Python. New function starts outside Ghidra go int
 ### 4.13 XDK stubs (DSOUND, XMV, XPP) - `audio\xdk_entries.h` (M2, xdk agent)
 
 The 54 XDK entry points the game calls (design E7, Anhang B: 40 DSOUND, 7 XMV, 7 XPP) are replaced by
-silent stubs in `audio\dsound_stubs.cpp`, `video\xmv_stubs.cpp`, `input\xpp_stubs.cpp` (namespaces `snd`,
+silent stubs in `audio\dsound_stubs.cpp`, `video\xmv_stubs.cpp`, `input\xpp_stubs.cpp` (the XPP part is replaced
+by the HLE `input\xpp_hle.cpp` since M4, section 4.28) (namespaces `snd`,
 `vid`, `inp`; declarations in the matching `.h` for tests). Every stub has a header comment with
 address, `ret N`, arguments and the checked game call sites.
 
@@ -411,6 +413,8 @@ XDK_HOOK(DirectSoundCreate, &DirectSoundCreateHle);  // static_assert stdcall no
   `XInputOpen` NULL, `XInputGetState`/`SetState` 0x48F, rumble `dwStatus` never left at 0x3E5).
 - `[audio] dummy_streams = 1`: `DirectSoundCreateStream` returns stub streams (XMediaObject vtable;
   `Process` sets E_PENDING synchronously, packets complete after their play time in `DirectSoundDoWork`).
+- **M5:** the 40 DSOUND entries are HLE (`audio\dsound_hle.cpp`, section 4.29 "DSOUND core"; `dsound_stubs.*`
+  deleted); the DSOUND stub behaviour above and `[audio] dummy_streams` are history (the key is still accepted).
 - Log: one INFO line per library on first use (`DSOUND: stub device`, `XMV: stub decoder`, `XPP: stub
   input`), every call site once at debug on SND/VID/INP (`XDK <LIB>::<Id>(args) -> result ret=<site>`).
 
@@ -942,6 +946,573 @@ build. Details (German): `launcher\README.md`.
   first window comes to the front, automation: exit code 70). Package: `LICENSES\Qt\` (LGPL-3.0, GPL-3.0 from
   `launcher\licenses\`, Qt source note).
 
+### 4.24 Frame rates up to 120 Hz: frame clock in quanta, `FrameInterp`, pacing - `xapi\game_timing.h`, `xapi\frame_fixes.h`, `platform\pacer_policy.h`, `platform\frame_pacer.h` (M3d, frame-clock/pacing agent)
+
+Design and measurements: `analysis\loader\m3d_frameclock.md` (German). Header comments of the four headers are the
+reference. Logic stays at `[game] tick_rate` (60 Hz); frames between two ticks show the renderer's interpolation
+(`gfx\interp_*`, interpolation agent) with the clock's alpha. At 60 fps (one frame per tick) everything is the M3b
+behaviour bit for bit (unit test `frameclock: one frame per tick is the M3b lockstep clock bit for bit`).
+
+- Config: `[render] frame_rate = 60 | 120 | display` is a choice since M3d (de/en "60" / "120 (interpoliert)" /
+  "Monitor (max. 120)" - the labels of the user requirement since the review, finding 12; hidden: `50` and the developer numbers `0..1000` with their M3b meaning; unset = `[game]
+  tick_rate`, dynamic default). `gfx::ParseFrameRate(text, &hz, &mode)` -> `platform::pacing::FrameRateMode {Fixed,
+  Max120, Display}` (`kMaxFrameRate` 120); `gfx::Settings::frameRateMode/lowLatency`, `platform::PacingConfig::
+  rateMode/justInTime`. `[render] low_latency = on | off` (bool, advanced, default on): just-in-time frame start.
+- Plans (`pacer_policy.h`, pure): `ChooseFrameRate(mode, refresh, cap)` -> `RateChoice {frameHz, k}`; `SelectPlan`
+  with `PlanInput::rateMode` != Fixed: refresh <= 120 Hz (+0.2 %) -> `vblank k = 1` at the refresh (60 Hz: 60 fps,
+  one frame per tick, no interpolation); k x 120 Hz -> `vblank k`; otherwise with tearing support the VRR timer at
+  120 (`tearing-timer`), without VRR (or VRR rejected) "120" -> new `Path::Cadence` (frame-latency waitable +
+  Present(s_n), s_n = 1 or 2 refreshes from `CadencePattern`, 120 frames per second on average) and "display" ->
+  `vblank k = ceil(R / 120)` (72 fps on 144 Hz, 82.5 on 165 Hz). Background / minimized / timer overrides run at
+  the even rate. `Plan::nominalHz` (all plans; Fixed: the configured rate), `Plan::cadenceRatio`; `SamePlan`
+  compares the ratio. Fixed mode = the M3b selection unchanged.
+- Frame clock (`game_timing.h`): `FrameClock::Advance(real, step, ClockQuantum, lastPrev, capTicks)` -> `Sample
+  {value, reset, aligned, quanta}` generalises `LockstepClock`: N frames per tick -> quanta `TickQuantum(step, N, i)`
+  (floor/ceil, N quanta = ticks(dt)); N = 0 -> the frame's display time in QPC ticks with a fraction carry. M3b
+  corrections at 3/4 quantum (catch-up in whole quanta, hold). Phase B: the guest remainder is aligned once to
+  `ticks(dt) - mu (mod quantum)`, `mu = PhaseMargin(step) = max(16, step / 1024)`, in the second frame, after the
+  guest's 6 dt cap and after a regime change (frames per tick, nominal period or ticks(dt) changed = `reset`).
+  The pacer supplies the regime: `platform::CurrentFrameAdvance()` -> `pacing::FrameAdvance {known, framesPerTick,
+  seconds, nominalSeconds, variable, startDelayTicks}` (`FrameAdvanceOf(plan, tickHz, refreshHz, lastRefreshes)`,
+  `FramesPerTick(nominalHz, tickHz)` within 100 ppm, and 1 for every rate up to the tick rate x 1.002 - review
+  finding 8; the Cadence plan always uses display time). The clock compares `real - startDelayTicks` with its virtual
+  time (just-in-time start); in the sub-tick regimes `real` is the pacer's frame start (review finding 11, below).
+- Interpolation values: `xapi::FrameAlpha(rest, step, N, phaseB)` = `clamp(1 - (L - rest) / step, 0, 1)`, L = step
+  - mu in phase B, else step; on the 1/N grid within 0.01, >= 0.999 -> 1. Published at the render sample (return
+  0xA2FBB): `xapi::CurrentFrameInterp()` -> `FrameInterp {tick, stepsThisFrame, pairTicks, alpha, flags, enabled,
+  frame}`; flags `kFrameInterpSnapAll` (context switch, clock reset), `kFrameInterpInsideStep` (draws inside the step
+  loop or outside Game::Frame: alpha 1), `kFrameInterpClockReset`, `kFrameInterpCatchUp` (catch-up above the regime's
+  steps or the 6 dt cap: interpolated over the pair of `pairTicks` ticks, review finding 10).
+  The stage registers it as the renderer's source (`gfx::interp::SetFrameInterpSource`, `gfx\interp_frame.h`, same
+  flag bits). Contract: display = interp(S[G-1], S[G], alpha); at 120 fps alpha is 1/2 in the frame that runs the
+  tick and exactly 1 in the frame between (displayed time + 1/2 tick per frame). `xapi::SubTickFramesActive()`,
+  `xapi::RenderingFrameWithoutStep()`, `xapi::GetFrameClockStats()` (M3d fields).
+- Per-frame fixes, active only while the clock produces frames between ticks (`xapi\frame_fixes.h`): F1 the pacer
+  keeps the previous picture for a frame without a fixed step that drew nothing and cleared no color
+  (`SwapChainInfo::frameUnchanged`, set by `GpuRenderer::DisplayFrame`; `PresentRequest::repeatPrevious`;
+  `platform::NoteFrameTicks(steps)` from the render sample; the intro's legal screen and tech notice are drawn in
+  Update). Verify phase: the frame is PRESENTED - `rhi::Device::RepeatPreviousPicture()` (add-only) makes the present
+  pass and the captures read the buffer of the previous Present and keeps the rotation - so the vblank plans keep one
+  Present (and one waitable signal) per frame; the draw summary says "shows the picture of frame M (...), repeated
+  (previous present)" and a screenshot shows what is on screen. (Not presenting it let the next frame start as soon
+  as its GPU work was done: 146 fps in the intro on the 120 Hz plan, 77 % of the frames on plan.) F2 `probe:Death::Render` 0x2BF10 (6 stolen bytes) sets the update time +0x20 to 0 after the original,
+  F3 `probe:Session::OccluderFade` 0xCD340 (6 bytes) is skipped in frames without a step, F4
+  `Session::RandomFlicker` 0x45EF0 (replacement) calls the guest's rand (0x1668CC, `CallGuest`) only in frames with a
+  step (`xapi::FlickerValue`). Exit line `frame fixes (frames between ticks): ...` (reporter "frame fixes").
+- Latency (M3c review finding 6): `pacing::LatencyBudget` (max(4 ms, p99 work + 3.5 ms), x2 per late frame up to x4,
+  halved after a relax interval of 2 s; review finding 9: a late frame within one interval after a relax step doubles
+  the interval up to `kMaxRelaxSeconds` 32 s, after `kMaxRelaxFailures` 2 such failures the factor holds until
+  `NotePlanChange()` - called by the pacer on every plan change; `RelaxFailures()`, `Held()`),
+  `pacing::JustInTimeStart`, `OnScreenTracker::PredictNextVisible(refreshSeconds, &qpc)`: on `vblank`/`display-rate`
+  plans the next frame starts `budget` before the vblank at which it becomes visible.
+- Display-limited detector (M3b, `pacing::DisplayLimitDetector`): `StartWarmup()` - the first `kWarmupWaits` (12) vblank waits after
+  entering a vblank plan are not judged (verify phase: the transient of a composed window fired it at every start at
+  120 fps).
+- Window (`platform\window.h`): `platform::ViewLayout(clientW, clientH, fullscreen)` - in borderless fullscreen the
+  view (swap chain) covers the whole monitor (independent flip, VRR, tearing); the present pass draws the 4:3
+  picture with bars (`ComputeRenderSizes` fits 4:3 inside the view). Windowed unchanged.
+- Logs: `game clock: 2 frames per tick (quanta 83333/83333 ticks ...)` / `1 frame per tick (... M3b)` / `display time
+  per frame (...)`, exit `game clock M3d: <regime>; R regime changes, A phase B alignments, J samples after a
+  just-in-time start; F rendered frames, S between ticks enabled: alpha 1/2 x a, 1 x b, other x c; snap-all: context
+  switch w, clock reset z; interpolated over the step pair: catch-up x, 6 dt cap y; clock input: frame start x f,
+  plan-change rephase x p`, `present: frame rate <fixed|120|display> (plan P Hz, N frames per tick); cadence frames
+  1:a 2:b 3+:c; repeated pictures R (of T frames without a fixed step); just-in-time start on|off: J of V vblank
+  frames (average delay D ms, budget B ms, L late; K failed relax steps[, budget held])`; pacing trace columns
+  `frame_ticks, repeat, refreshes, jit_ms` appended.
+- Review fixes (phase 5, `docs\m3d_report.md`): (8) `FramesPerTick` returns 1 up to the tick rate x (1 +
+  `kIntegerTolerance`): "120"/"display" on 50/59.94/59.95/60.02 Hz run the M3b clock without interpolation like "60"
+  (launcher `IsLogicRate` likewise). (10) catch-up/cap frames are no snap-all; `gfx::interp::FrameInterp::pairTicks`
+  carries k and the renderer shows `interp(S[G-k], S[G], (k - 1 + alpha) / k)` for k <= `kMaxPairTicks` (6). (11)
+  `FrameAdvance::frameStartQpc` (the pacer's release of the frame) and `planSerial` (every accepted plan change):
+  in the sub-tick regimes the clock compares the frame start (fresh and <= the guest's sample, else the sample) and
+  absorbs the start phase jump of a plan change once (`ClockQuantum::rephase`, `FrameClock` offset, at most one tick,
+  never with N = 1; `Stats::rephases`, `Sample::rephased`).
+- Launcher (`launcher\src\core\frame_rate.h`): `fl::EstimateFrameRate(value, refreshHz, tearing, tickRate)`,
+  `fl::FrameRateNote` - the graphics tab names what "120" / "display" give on the selected monitor; the window size
+  is disabled with a note while borderless fullscreen is on (M3c review nit).
+- Tests: `tests\frameclock_tests.cpp` (exact guest accumulator model at QPF 10 MHz / 3.58 MHz / 24 MHz / 733 MHz,
+  N = 1 vs `LockstepClock`, 1/0 pattern and alpha 1/2 / 1, events, regime changes, display-time quanta, fix
+  targets vs the XBE), `tests\pacer_m3d_tests.cpp` (rate choice, cadence, plans, advance, budget, prediction,
+  config/schema, `ViewLayout`), launcher `MiscTest::frameRateEstimate`, `UiTest::dependentKeysAndIsoStatus`.
+
+### 4.25 Renderer interpolation between logic ticks - `gfx\interp_frame.h`, `gfx\interp_history.h`, `gfx\interp_math.h` (M3d, interpolation agent)
+
+Design and evidence: `analysis\loader\m3d_interpolation.md` (German). The header comments are the reference. The
+renderer shows `interp(S[G-1], S[G], alpha)` of the frame clock's values (section 4.24); `alpha >= 1 - 1e-3` and every
+frame while the clock produces no frames between ticks (60 fps) pass the guest pointers through untouched (zero
+visual change; unit test `interp history: 60 fps and interpolation off pass every camera and draw through
+unchanged`).
+
+- Source (`interp_frame.h`): `gfx::interp::FrameInterp {tick, stepsThisFrame, pairTicks, alpha, flags, enabled}`,
+  flags `kFrameInterpSnapAll` / `kFrameInterpInsideStep` / `kFrameInterpClockReset` / `kFrameInterpCatchUp` (same bits
+  as `xapi::`), `kMaxPairTicks` 6;
+  `SetFrameInterpSource(fn)` (registered by `xapi::StageApplyGameTiming`), `CurrentFrameInterp()`,
+  `StubFrameInterp()` (no source: `enabled = false`), `FrameInterpSourceName()`. Developer source
+  `FUT_INTERP_STUB=steps` (environment, only without a registered source): 1 step -> alpha 1/2, 0 steps -> 1, >= 2 ->
+  snap-all (`StepsFrameInterp`, pure).
+- History (`interp_history.h`): one `History` per `GpuRenderer` (D3D11 path only; null renderer and `validate`
+  unchanged). Calls: `SetCameraData` -> `Camera(location - 0xA0, in)` (latches the frame values, swaps the tables
+  when the tick advanced; returns host copies of the interpolated camera), `DrawGeometry` (slots 48-51, not for
+  texture targets) -> `Geometry(kind, in, arena)` -> `GeometryResult {input, reason, tint}` (transform and skin
+  instance replaced by guest-visible arena copies when interpolated; `ni_extract` unchanged), `PrepareFrame` ->
+  `BeginFrame(frame, traceFrame)`, `DisplayFrame` -> `EndFrame(frame, traceFrame)` before the arena reset,
+  `GpuRenderer::LogStatistics` -> `LogStatistics()`.
+- Keys and snaps: key (object = transform - 0x70, camera, occurrence), signature (vtable, data, skin, property state),
+  two generation-stamped open-addressing tables (Fibonacci hash on the high bits); interpolation only from exactly
+  G-1. `SnapReason` (None, Disabled, AlphaOne, Static, FirstSight, GenerationGap, Identity, Destroyed, Translation,
+  Rotation, Scale, Mirror, NotOrthonormal, FrameDriven, SnapAll, CameraCut, BoneCount); `SnapLimits` (rules R2/R4 of
+  analysis 3.4, camera cut rule 3.7, frame-driven hold 120 frames).
+- Stage 1b, hierarchy (`[render] interpolation_hierarchy`, default on): every recorded draw records its parent chain
+  (`NiAVObject +0x14`, `kMaxHierarchyDepth` 16) once per generation in two node tables keyed (node, camera); an
+  interpolated draw gets `W_parent(alpha) * interp(L_prev, L_cur, alpha)`, `L = W_parent^-1 * W`, the topmost node
+  with history in world space; node motion is evaluated once per generation (growth rule of the next tick), the
+  interpolated world once per frame. Reason (measured, two-tick midpoint test against the real middle state, frontend
+  fly-in at 640x480): world interpolation p99 13.6 px / max 108.6 px, hierarchy p99 0.09 px / max 17.5 px; steady
+  frontend 0.41 / 1.13 px -> 0.04 / 0.11 px.
+- Skinning: relative bone poses `root^-1 * bone` interpolated per bone, the original `FUN_0014F710` deforms a
+  substitute `NiSkinInstance` in the arena (+0x08 real data, +0x0C identity root, +0x10 substitute bones with the pose
+  at +0x70); self-test of the first 4 skinned draws against the real instance (log `interpolation: skin self-test`).
+- Frame-driven objects (changed within one tick generation, `g_frameDelta` animation in Render) and cameras are drawn
+  as given for 120 frames after the last change.
+- `probe:NiAVObject::Destroy` on `FUN_00102CE0` (thiscall, 7 stolen bytes `6A FF 68 93 A4 17 00`): records destroyed
+  addresses while some History records (a key captured before the destruction snaps, `Destroyed`). Installed always
+  (hooks are installed only by the HostMain stage, before the configuration of the frame rate is known); at 60 fps it
+  only calls the original. `[hooks] disable = probe:NiAVObject::Destroy` removes it.
+- Config (schema rows, de/en): `[render] interpolation` (bool, default on, graphics tab, advanced),
+  `interpolation_hierarchy` (bool, default on, developer), `interpolation_debug = off | tint | trace` (developer):
+  `tint` = snapped draws get an extra texture stage multiplying with TFACTOR (red jump/identity/gap, yellow first
+  sight, cyan frame-driven, magenta snap-all; `TintColor`, `ApplyTint`), `trace` = `<logs>\interp_trace.csv` (one
+  line per frame), for the `[render] trace_frames` frames also `<logs>\interp_draws.csv` (one line per draw: reason,
+  hierarchy, motion, prev/cur/shown/world-lerp translation), `<logs>\interp_nodes.csv` (node worlds of each traced
+  tick) and log lines `interp camera frame N: ...`.
+- Logs: start `interpolation: on ([render] interpolation_hierarchy = on, interpolation_debug = off; frame clock
+  source clock; ...)` | `off (...)`, `interpolation: active from frame N ...` / `inactive from frame N (...)`,
+  `interp frame N: tick G alpha A, D draws (I interpolated [H along the hierarchy, N nodes], ...)` for the
+  `trace_frames` frames, exit (reporter "gfx"): `interpolation: N frames (R recorded, M with alpha < 1); draws ...`,
+  `interpolation: cameras ...; skinned draws ...`, `interpolation: G generations ...; cost average A us, p99 P us, max
+  X us per recorded frame`, `interpolation: hierarchy: ...`.
+- Review fixes (phase 5, `docs\m3d_report.md`): (1) jump rule: `MotionReference` / `MotionSnapRule` - the reference
+  is the larger of the last two known per-tick motions (`Entry::refStep/refAngleCenti`, `NodeEntry::refStep/refAngle`,
+  `BoneRecord::refStep`); with an unknown previous motion only steps above `SnapLimits::unknownStepRadii` (16) x r or
+  angles above `unknownAngleDeg` (90) snap; with the hierarchy the parent chain decides the jump of a drawn object that
+  has a parent with history (only a node whose own local transform jumped snaps; `kChainSnap` marks it and its
+  descendants; `FrameCounters::chainDecisions`). (3) a recapture of an address destroyed since the earlier capture
+  restarts the entry (no frame-driven mark; `recaptureDestroyed`); an entry captured after a destruction in the same
+  frame (`kAfterDestroy`) ignores that destruction. (4) `Camera()` checks the destroyed registry (`CameraEntry::
+  destroyedCheckFrom`, camera reason `Destroyed`). (6) the readable-page cache of the hierarchy walk is dropped when
+  `guest::MemoryReleaseEpoch()` moved (`kernel\mm.cpp` calls `guest::NoteMemoryReleased()` on every release or
+  decommit; `Stats::readableCacheResets`). (10) a tick advance by exactly `pairTicks` = k (2..6) is a pair: motions
+  are compared per tick (step / k), alpha = (k - 1 + clock alpha) / k (`Stats::pairSpans`). New exit-line fields:
+  `recaptures after a destruction`, camera `destroyed`, `catch-up pairs interpolated`, `jump verdicts of the chain
+  against the leaf rule`, `readable-page cache reset`.
+- Not covered (documented open points): slots 52/53 are not drawn by the port (P2; `InterpolatePoints` in
+  `interp_math.h` for particle arrays with stable indices), lights / `NiTextureEffect` (stage 3), `NiOutline`
+  silhouettes (stage 4), culling guard band (after M4b); UV/alpha/material/flipbook/visibility animations and screen
+  polygons/textures (HUD, menus, intro) stay at the tick rate by design.
+- Tests: `tests\interp_math_tests.cpp` (quaternion round trip and Shepperd branches, slerp, fast paths, matrix checks,
+  rules R2/R4 with the measured cases, Inverse/Compose vs `FUN_0014D880`/`FUN_0010DFC0`, camera, particles),
+  `tests\interp_history_tests.cpp` (60 fps pass-through, phase B, snaps, frame-driven keys, occurrences, cameras,
+  skin substitute, hash spread, growth, tint, developer source, config, hierarchy: arc vs chord, root equivalence,
+  re-parenting, node motion after a snapped tick; review: oscillation reversal S10, first sight S1, rigid assembly
+  S2, pointer reuse S6, camera reuse S11, step pairs, readable-page cache).
+
+### 4.26 Controls configuration: `[input]` keys and binding strings (M4, written first by the launcher agent)
+
+Shared contract between the input layer (`input\**`, which reads the keys) and the launcher's "Steuerung" tab
+(which edits them). Basis: `analysis\loader\m4_input.md` 8.6 and 9 (bindings target **Xbox controls**, not game
+actions: the game's action table is fixed). If the input agent's parser needs a different spelling, it changes this
+section and the launcher follows (changelog row); until then this is the format the launcher writes.
+
+- **Keys** (section `[input]`, schema `ui.tab` = `controls`): one key per device and Xbox control,
+  `pad_<control>` (Xbox controller / XInput) and `kbm_<control>` (keyboard and mouse), 24 controls:
+  `a b x y white black lt rt start back dpad_up dpad_down dpad_left dpad_right ls_click rs_click ls_up ls_down
+  ls_left ls_right rs_up rs_down rs_left rs_right` (stick directions are half axes; up = +Y as in XInput/Xbox).
+  Schema: type `string`, `ui.widget` = `binding` (new widget name), label `"<control> – <meaning>"` in de/en with an
+  en dash (`"A – Bestätigen / Angriff 1"`, `"A – Confirm / Attack 1"`; the launcher splits at the first " – "),
+  the same `ui.order` for `pad_x` and `kbm_x` (the launcher shows two tables in that order). **Input agent (host
+  schema):** `ui.order` is unique per tab (schema test), so the rows carry `pad_x` = 100 + 2i and `kbm_x` = 101 + 2i
+  (i = position in the control list above): the order within each device table is the same, `kbm_x` = `pad_x` + 1.
+- **Value** = binding list: tokens separated by `,`, blanks around tokens and around the `:` ignored
+  (`key : a` = `key:a`), case-insensitive, empty = not bound (the key is present with an empty value; a missing key
+  means the default), at most 4 different tokens per key (duplicates are ignored and not counted; M4 review); the
+  launcher writes lower case, `", "`-separated, without duplicates. `f<n>`, `num<n>` and `vk_<xx>` take digits only
+  (no sign, no blank); `tests\input_bindings_tests.cpp` and `launcher\tests\tst_bindings.cpp` share the edge cases. Two lists with the same tokens in another
+  order or case are the same binding.
+  `pad_*` keys take only `pad:` tokens, `kbm_*` keys only `key:` and `mouse:` tokens; anything else is a
+  configuration error (launcher: inline error, saving blocked; host: `core::ValidateConfigValue` calls the row's
+  `ConfigKeyDef::validate` = `inp::ValidatePadBindingValue` / `ValidateKbmBindingValue`, exit code 1 with
+  `invalid value for [input] kbm_a: 'pad:a' ('pad:a' is not a keyboard/mouse (key:, mouse:) token)`).
+  The host's parser (`input\bindings.h`) is the reference: `key:vk_<xx>` of a named key is the same token as the
+  name (`key:vk_41` = `key:a`, formatted as `key:a`).
+  - `pad:<name>`: `a b x y lb rb lt rt start back dpad_up dpad_down dpad_left dpad_right ls_click rs_click` and the
+    half axes `lx+ lx- ly+ ly- rx+ rx- ry+ ry-` (`ly+` = left stick up). LB/RB are the Xbox WHITE/BLACK buttons.
+  - `key:<name>` (Windows virtual-key codes, position names of the US layout): `a`..`z`, `0`..`9`, `f1`..`f24`,
+    `space enter escape backspace tab capslock lshift rshift lctrl rctrl lalt ralt lwin rwin menu up down left right
+    insert delete home end pageup pagedown pause scrolllock numlock printscreen`, `num0`..`num9`, `num_add num_sub
+    num_mul num_div num_dec`, the OEM keys `minus plus comma period semicolon slash grave lbracket backslash rbracket
+    apostrophe oem102` (VK_OEM_MINUS 0xBD, _PLUS 0xBB, _COMMA 0xBC, _PERIOD 0xBE, _1 0xBA, _2 0xBF, _3 0xC0, _4 0xDB,
+    _5 0xDC, _6 0xDD, _7 0xDE, _102 0xE2), and `vk_<2 hex digits>` for any other code 0x01..0xFE. `enter` includes
+    the numpad Enter; `lshift`..`ralt` are VK_LSHIFT 0xA0..VK_RMENU 0xA5.
+  - `mouse:<name>`: buttons `left right middle x1 x2`, wheel `wheel_up wheel_down` (one notch = pressed for 2
+    ticks), movement `move_up move_down move_left move_right` (accumulated until the tick's sample).
+- **Meaning** (input layer): bindings of one control are OR'ed (buttons) or the largest deflection wins (axes);
+  a digital source on an analog control = full value (trigger 255, half axis 32767); an analog source on a digital
+  control = pressed at half deflection or more; `mouse:move_*` on a stick direction goes through
+  `mouse_sensitivity` and the inverse game curve (m4_input.md 8.4), on a button it presses while the mouse moves.
+- **Other `[input]` keys**: `pad_deadzone` int 0..50 (percent of the physical stick range cut away before the game's
+  own 0.4 dead zone, default 0; input agent: radial - a stick inside the circle reads 0, outside it passes unchanged,
+  not rescaled), `mouse_sensitivity` float 0.1..10.0 step 0.1 (default 1.0), `rumble` bool
+  (default 1), `rumble_strength` int 0..100 percent (default 100), `pad_mode` choice `single` (all controllers +
+  keyboard/mouse on port 0, default) | `per_port` (one port per controller). Sliders use `ui.widget` = `slider`
+  (new widget name; int/float with min/max) and may carry the optional field `"unit"` (shown after the value, e.g.
+  `"%"`, `"×"`). `[debug] input_script` belongs to the input layer (path_file).
+  **Added by the input agent** (bool, tab `controls`, widget `check`): `mouse_capture` (default 1: a click into the
+  window captures the mouse - cursor hidden and confined, released when the window loses the focus; in borderless
+  fullscreen captured whenever the window gets the focus; mouse input counts only while captured), `menu_escape`
+  (default 1: in the game context `Frontend` the keyboard/mouse START acts as BACK, m4_input.md 9.2 "Esc
+  kontextabhängig"; Ingame it stays START = pause), `background_input` (default 0, advanced: controllers also work
+  without focus). Mouse scale: `mouse_sensitivity` 1.0 = 24 counts of movement within one logic tick give a full
+  stick deflection (`inp::kMouseCountsPerFullDeflection`).
+- **Defaults** (m4_input.md 9): pad = identity (`pad_a = pad:a`, `pad_white = pad:lb`, `pad_black = pad:rb`,
+  `pad_ls_up = pad:ly+`, ...). Keyboard/mouse: `ls_up/down/left/right = key:w / key:s / key:a / key:d`,
+  `rs_up/down/left/right = mouse:move_up / move_down / move_left / move_right`, `dpad_* = key:up/down/left/right`,
+  `a = key:enter, mouse:left`, `b = key:space`, `x = key:f, mouse:right`, `y = key:e`, `rt = key:lshift`,
+  `lt = key:q`, `white = key:1, mouse:wheel_down`, `black = key:2, mouse:wheel_up`, `rs_click = key:v,
+  mouse:middle`, `ls_click = key:c`, `start = key:escape`, `back = key:backspace`.
+- Launcher side (`launcher\src\core\bindings.*` parser/formatter with the same rules and the same key-name table as
+  `input\bindings.cpp`, `core\pad_reader.*` XInput loaded at run time (`xinput1_4.dll`, fallbacks `xinput1_3` /
+  `xinput9_1_0`) + `SimulatedPadReader`, `ui\controls_panel.*`, `ui\binding_capture.*`, `ui\pad_poller.*`): tab
+  "Steuerung" after "Grafik" with one binding table per device (rows grouped face buttons / shoulders / START+BACK /
+  d-pad / left stick / right stick, within a group by `ui.order`), "press a key/button" capture (Qt key events with
+  the native virtual-key code, left/right Shift/Ctrl/Alt from the scan code; mouse buttons, wheel and four movement
+  buttons; controller buttons, triggers and half axes from XInput polling, inputs held when the dialog opens count
+  only after a release), add (max. 4) / clear / per-key and per-device reset, conflict warnings (one physical input on
+  two controls of the same device; allowed, the host ORs them), invalid lists as errors (saving blocked), sliders for
+  `ui.widget` = `slider`, and a live controller test (4 slots, buttons, sticks, triggers, which Xbox controls the pad
+  bindings produce, 0.6 s rumble test at `rumble_strength`; connected slots polled every 16 ms, empty ones once per
+  second, only while the tab is visible).
+  **M4 review fixes:** left/right Ctrl/Alt in the capture come from the `WM_KEYDOWN`/`WM_SYSKEYDOWN` message itself
+  (lParam bit 24 via a native event filter; Qt's `nativeScanCode` lacked the extended bit), Print Screen is captured on
+  the key release; the controller capture says when no controller is connected (the countdown waits) and offers every
+  `pad:` token in a list; F12/Print Screen (screenshot) and Alt with Enter bound (fullscreen) warn on the row; A, START
+  and the left stick without a binding warn; resets of several rows ask first (`ui::ConfirmChange`); a replacing
+  capture names the list it replaces; sliders show and keep a configured value off the step grid until moved; the
+  "Für das Spiel" line of the controller test follows the host (`GameControlsForPad`: analog controls from 30/255,
+  digital from 0.5, sticks after `pad_deadzone` and outside 0.4); with `menu_escape` on, the keyboard START row reads
+  "Pause (in Menüs: Zurück)". Valid lists are written in canonical form (also via `--set`). A schema
+  without binding keys (game builds before M4) shows the tab with a note and the controller test only.
+
+### 4.27 Input interface and scripted input - `input\input_api.h`, `input\input_script.h` (M4, test-automation agent)
+
+**Shared interface `input\input_api.h`** (first writer: test-automation agent; header-only, so registering needs no
+link dependency; extensions additive with a changelog row - the input agent added `InputSource::HasMotors`,
+`InputRouter::PortEpoch`, `InputRouter::SimulateUnplug`):
+
+- `inp::PadState { buttons (kButton* = XINPUT wButtons bits), analog[8] (AnalogButton order A B X Y BLACK WHITE LT RT,
+  0..255), thumb[4] (LX LY RX RY, -32768..32767, +Y up) }`, `MergePad` (buttons OR, analog max, larger deflection per
+  axis), `RumbleState { left, right }` (0..65535), `kPortCount` 4, `kAnalogPressThreshold` 30.
+- `inp::InputSource` (`Name`, `Kind` Physical/Script/Synthetic, `DefaultPort` (0 = player 1), `Connected`,
+  `Sample(port, tick, out)` once per logic tick inside the game's `XInputGetState`, `SetRumble`); registry
+  `RegisterSource` / `SourceCount` / `SourceAt` (static registration, at most 16).
+- `inp::InputRouter` (`ConnectedPorts`, `SampleGamePort`, `SetGameRumble`, `Divert(port, InputConsumer*)` for the M4b
+  freecam: a diverted port stays connected and neutral for the game, held controls pass again only after a release),
+  `SetRouter` / `GetRouter`; `inp::InputConsumer::Consume(port, tick, state)`.
+
+**Scripted input `[debug] input_script = <file>`** (`input\input_script.*`; format reference
+`tools\input_scripts\README.md`, analysis `analysis\loader\m4_input.md` 10):
+
+- The script is the `InputSource` "input script" (`SourceKind::Script`, port 0 = "port 1" of the game), registered at
+  static initialisation and inactive without the key. Loaded and parsed by `inp::StartInput` (`script::PreloadScript`,
+  before any XPP or router lock is taken); a missing file or a syntax error ends the process with exit code 1
+  (`input script: <file>: line N: ...`). (Before the M4 review the script loaded lazily inside the first
+  `XGetDevices`, and an error ended the process under `XppDevices::mutex_`: 0xC0000409 instead of 1.)
+- Time base = the logic tick: one player step per tick. The tick heartbeat is `probe:Game::HotplugCheck`
+  (FUN_0009C140, called once per tick by CApp vf10, return 0xD25D8); `Sample` steps at most once per heartbeat and
+  the heartbeat itself steps the player while the script holds its port unplugged (the game then does not call
+  `XInputGetState` for the port). Without heartbeats every sample is a tick. Seconds are game seconds (ticks /
+  `[game] tick_rate`), `f` counts `CApp::Frame` calls. With the lockstep frame clock a scripted phase plays the same
+  tick for tick, but absolute ticks drift by a few (measured up to 18) across intro and loading (I/O and QPC time):
+  scripts synchronise on conditions, not on absolute times (`docs\loader_design.md` 8.11 E14).
+- Commands `press/hold/set/release/wait/at/expect/loop ... until/repeat/end/log/screenshot/unplug/replug/quit/fail`;
+  conditions `context <name>`, `log "<text>"` (log observer, `core::AddLogObserver`), `main_menu`, `dialog`/`no_dialog`,
+  `level_loaded`, `cutscene`, `paused`, `controllable`, `active_pad`, `rumble`, `true`/`false`, each negatable with
+  `not`. `quit` and the end after a failure take effect at the next tick heartbeat (outside the XPP entry points: the
+  input layer's exit reporters take the locks the `XInputGetState` call stack holds).
+- New exit code **7** `inp::script::kExitInputScriptFailed`: a timeout, a failed `expect` or `fail` logs
+  `input script: FAILED at line N: ...`, requests a screenshot "fail" and ends the process two frames later.
+- Log lines (read by `tools\m4_check.py`): `input script: loaded <file>: N instructions, ...`, `input script: started`,
+  `input script: line N: <command or event> (tick T, frame F)`, `input script: screenshot "<name>" requested
+  (frame F)` (then the renderer's `screenshot: <path> (WxH)`), `input script: rumble port 1 left L right R`,
+  exit reporter `input script summary: <state> at line N, T ticks sampled, P presses, ...`.
+- Observer probes (logged on INP/info even without a script): `probe:Game::MainMenuActivate` FUN_00020150
+  (`game: main menu active (menu 0x..., entry N)`), `probe:Game::LevelReadyTest` FUN_000C3E20 at its call 0x2AB2F
+  (`game: level loaded (level object 0x..., frame F)`), `probe:Game::PauseOpen` FUN_000A8220 (`game: pause opened
+  (pause object 0x..., called from 0x...)`; 0x0002ACDB = the active pad was removed), `probe:Game::HotplugCheck`
+  FUN_0009C140 (silent). Addresses and offsets: `core\guest.h` section "added in M4".
+- `inp::script::Parse`, `Player`, `Environment` are plain C++ for unit tests (`tests\input_script_tests.cpp`).
+
+**M4 check** `python tools\m4_check.py --exe build\<dir>\bin\futurama.exe --config run\m4-scripts\debug\futurama.ini
+[--runs N] [--fresh] [--no-rumble]` runs `tools\input_scripts\m4_newgame.txt` (Intro -> main menu -> "Neues Spiel" ->
+Level1-1, play, simulated unplug, START resumes) and `tools\input_scripts\m4_rumble.txt` (options menu vibration
+test) and checks M4-1..M4-8 (header of the script: contexts, level files, frames in the level, screenshots, tick
+sampling, active pad, unplug pause from 0x2ACD6, rumble with fade, keyboard/mouse + XInput backend state); rendering
+gaps in the level (non-drawn outcomes, generic no-op renderer slots, texture gaps) and undocumented VFS misses are
+reported as information. Verified 2026-10-12 with the Debug build: ALL PASS (about 40 s + 21 s).
+
+### 4.28 Input layer: router, XPP HLE, XInput and keyboard/mouse backends - `input\*.h` (M4, input agent)
+
+Basis: `analysis\loader\m4_input.md` 2 (HLE contract), 3, 8 (layers, port model, sampling, mouse curve), 9 (defaults).
+Files (input agent): `input\xpp_hle.*` (replaces `xpp_stubs.*`), `host_router.*`, `input_system.*`, `input_config.*`,
+`bindings.*`, `stick_curve.h`, `xinput_source.*`, `kbm_source.*`, `kbm_window.*`; tests `tests\input_bindings_tests.cpp`,
+`input_router_tests.cpp`, `input_backend_tests.cpp`.
+
+- **XPP HLE** (`input\xpp_hle.h`, hook names `XPP::<entry>` unchanged): `XInitDevices` starts the input layer
+  (`inp::StartInput`); `XGetDevices(Gamepad)` = `InputRouter::ConnectedPorts`, MU = 0; `XGetDeviceChanges` = differences
+  since the last call, both bits when `InputRouter::PortEpoch` changed while the port stayed connected (re-connection);
+  `XInputOpen` = a guest dummy object per port (`xdk::AllocGuestObject`, never NULL for ports 0..3);
+  `XInputGetState` = `SampleGamePort` (once per tick and open port) with a packet number that changes with the state,
+  0x48F + zeroed state without device, 0x57 for an invalid/closed handle; `XInputSetState` -> `SetGameRumble`,
+  `Header.dwStatus` set synchronously to the result (0 / 0x48F / 0x57, never 0x3E5), `hEvent` ignored (the game never
+  writes it); `XInputClose` stops the port's motors. Logic class `inp::XppDevices` (router getter injectable),
+  `inp::HotplugTracker`, `inp::GlobalXpp()`.
+- **Router** `inp::HostRouter` (installed with `SetRouter` at DLL load; `inp::GlobalRouter()`): sources from the registry
+  (or `UseSources` in tests), each on `DefaultPort()`. A port is connected while one of its sources is; keyboard/mouse
+  is always connected, so port 1 never reports a removal (no "connect the controller" pause without a controller).
+  Physical sources count only while the game window is in the foreground (`background_input`); after the focus comes
+  back and after a diversion ends, controls still held pass only after a release (buttons, analog >= 30, axes beyond
+  0.2). Rumble: `rumble`/`rumble_strength` scale, muted without focus, on diverted and unplugged ports, sent to the
+  most recently used source with motors (`InputSource::HasMotors`; before any use: all of the port), sources without
+  motors get the game's values unscaled; changes only. "Used" means a deliberate input - a button, an analog button
+  from 30/255 or a stick beyond 0.2 - not merely a non-zero state (resting stick noise of a second pad; M4 review). `SimulateUnplug(port, on)` (test runs: removal -> in-game
+  pause + ERRCTRLINGAME), `RefreshFocus`, `StopAllMotors`, `Stats(port)`.
+- **Port model** (`pad_mode`): `single` - all XInput controllers + keyboard/mouse + script on port 1 (merged);
+  `per_port` - XInput user n on port n+1, keyboard/mouse and the script on port 1.
+- **XInput** (`input\xinput_source.h`): `xinput1_4.dll` (fallback `xinput9_1_0.dll`) loaded at run time
+  (`inp::SystemXInput()`, `XInputApi` interface for test doubles); one `XInputPadSource` per user index; empty slots
+  probed at most once per second, connected but unsampled slots every 250 ms; pad_* bindings + radial dead zone;
+  analog triggers -> analog LT/RT 0..255; rumble re-sent after a reconnection, motors off at exit/crash.
+- **Keyboard/mouse** (`input\kbm_source.h`, `input\kbm_window.h`): Raw Input (keyboard 1/6, mouse 1/2, foreground
+  only, legacy messages kept) on the frame window's UI thread via a window subclass installed from the guest thread
+  (`SetWindowLongPtrW`) + a registered message; taps shorter than a tick last one tick, wheel notch = 2 ticks pressed
+  + 1 released (3 queued at most; wheel deltas are summed per direction, a notch is queued per 120 units, so
+  high-resolution wheels give one notch per detent - `KeyboardMouseSource::WheelDeltaEvent`), movement accumulated
+  until the tick; digital stick directions (W+D) are limited to the unit circle like a pad on its round gate
+  (0.707 per axis on a diagonal); focus loss (WM_ACTIVATE inactive,
+  WM_ACTIVATEAPP, WM_KILLFOCUS) releases everything and the capture; Enter while Alt is held is not passed on (Alt+Enter
+  = fullscreen). `KeyboardMouseSource::ReadRaw` = raw keys + mouse delta for later consumers (M4b freecam).
+  `inp::NormalizeRawKey` (left/right modifiers).
+- **Mouse look**: wished deflection -> raw stick value through the inverse of the game's curve (`input\stick_curve.h`
+  `GameStickOutput` / `GameStickInverse` / `ThumbFromUnit`; dead zone 0.4, 0.2 when the other axis is beyond 0.4,
+  gain 1.3; a consistent pair of dead zones is chosen, the curve is asymmetric for small diagonals).
+- **Log** (INP): `input: XPP HLE active - pad mode ..., XInput xinput1_4.dll (N of 4 controllers connected),
+  keyboard/mouse ..., rumble on 100 %, ...`, `input: keyboard/mouse attached to the game window (Raw Input, ...)`,
+  `input: port N connected|disconnected (connection #E)`, `input: XInput controller N connected|disconnected`,
+  `input: XGetDeviceChanges reports insertions 0x.., removals 0x..`, `input: first rumble request of the game on port N:
+  left L right R ...` (later on/off changes at debug), `input: port N diverted to <consumer>` / `back to the game`,
+  bindings per control at debug; exit reporter "input" (also stops the motors): `input summary: XInputGetState N (F
+  failed), XInputSetState N, opens, closes, insertions, removals; port N: T ticks (A with input, D diverted, H held
+  back), C connection(s), rumble R requests (Z non-zero, max L/R); controller N: ...; keyboard K / mouse M events
+  (...)`; crash reporter "input" stops the motors.
+- **Not tested with real hardware** (no controller at hand): XInput input, hotplug of real controllers and the feel of
+  rumble. The real `xinput1_4.dll` is checked down to "connected or not connected"; everything else runs against
+  `XInputApi` doubles and simulated sources. Keyboard: injected with `SendInput` into the running game (menus, new game,
+  walking, jumping, pause); mouse: unit tests only.
+
+### 4.29 Audio (M5): shared audio interface - `audio\audio_api.h` (written first by the DSOUND core agent)
+
+Basis: `analysis\loader\m5_audio.md` (6 mapping, 7 threading, 8 traps). `audio\audio_api.h` (namespace `snd`) is the
+shared interface of the M5 audio agents; extend it additively (Changelog row).
+
+| Part | Declared in `audio_api.h` | Implemented by |
+|---|---|---|
+| `Category` (0 effects, 1 speech, 2 music = game categories; 3 movie = untagged DSOUND objects), `CategoryName` | yes | DSOUND core (`audio_engine.cpp`) |
+| `SourceFormat`, `PcmFormat`, `Decoder` + `CreateDecoder` (PCM8/PCM16/Xbox ADPCM -> PCM16) | yes | decoder owner |
+| `MixbinGain` (1/64-dB register, clamp 63.98 dB), `MillibelToGain`, `MixBin` numbers | yes | DSOUND core (`audio_engine.cpp`) |
+| `Listener3D`, `Emitter3D`, `I3dl2Source`, `SpatialResult`, `Spatializer` + `CreateSpatializer` (3D level model 3.6, X3DAudio direction) | yes | 3D owner |
+| `I3dl2Listener` (DSI3DL2LISTENER) | yes | - |
+| `AudioEngine`, `SourceVoice`, `VoiceEvents`, `MixTap`/`TapPoint`, `EngineConfig`, `CreateAudioEngine`, `EngineConfigFromSettings`, `Engine()`, `SetEngineForTesting` | yes | DSOUND core (`audio_engine.*`) |
+
+Threading: DSOUND entries run on the guest thread; `VoiceEvents::OnBufferEnd` and `MixTap::OnMix` run on the mixer
+thread and only queue (design E10). DSOUND core files: `audio\dsound_*.*`, `audio\audio_engine.*`, tests
+`tests\audio_dsound_*.cpp`.
+
+**DSOUND core (M5 DSOUND core agent; files `audio\dsound_hle.*`, `audio\dsound_mix.*`, `audio\dsound_probe.cpp`,
+`audio\audio_engine.*`; tests `tests\audio_dsound_tests.cpp`).** `audio\dsound_stubs.*` are deleted; the 40 DSOUND
+entries keep their hook names (`DSOUND::<entry>`, generated table unchanged) and are HLE now (`audio\dsound_hle.cpp`):
+
+- **Objects**: guest handles (16 bytes, own pool of 4096 below 0x80000000; +0 = trap vtable for the device and buffers,
+  the XMediaObject vtable for streams). `IDirectSound` singleton with a reference count, never torn down. One engine
+  `SourceVoice` per buffer / stream (PCM16 after `CreateDecoder`; `MaxFrequencyRatio = max(4, codec::MaxFrequencyRatio)`).
+- **Buffers**: `SetBufferData` copies/decodes at once (the game may free its memory), stops a playing buffer and resets
+  the cursor; `(0,0)` = empty. `Play` resumes at the remembered cursor (loop = whole buffer, `smpl` ignored), `Stop`
+  remembers it; `GetStatus` = 1 / 5 (looping) while playing, **0 at once** after `Stop`, `SetBufferData` and the end
+  (end detected through `OnBufferEnd` of the current submission, no tick delay), always written.
+- **Streams**: `Process` copies + decodes the packet and writes `*pdwStatus = E_PENDING` (and `*pdwCompletedSize = 0`)
+  synchronously; a full queue returns `0x88780032` without touching the status. Finished packets are written **only in
+  `DirectSoundDoWork`** (guest thread): completed size, status 0, then the completion event (`krnl::LookupEvent`) or
+  the callback (`core::CallGuest(cb, {context, packetContext, status})`, after the DSOUND lock is released). `Pause`
+  0/1/2 (2 = wait for `SynchPlayback`, which starts all of them in one engine batch); `FlushEx`/`Flush` abort every
+  queued packet with `E_ABORT` at once and clear PLAYING; the last `Release` destroys the voice synchronously, writes
+  `E_ABORT` into the still queued packets inside the call and nothing afterwards. `Discontinuity` ->
+  `SourceVoice::Discontinuity`. Streams are created running (the game sends `Pause(0)` anyway).
+- **Start at the commit** (M5 phase 5, review finding 1): `Play`, `Pause(0)` and stream creation change the host state
+  at once (`GetStatus` 1/5, PLAYING) but only mark the object `startPending`; the engine voice starts in
+  `ApplyAllDirty` (`CommitDeferredSettings` 0xCBE95 or `DoWork`) in the same engine batch as the levels, pitch and
+  mixbins the game sets after the call (SoundVoice::vf11 calls Play 0xCC72E / Pause(0) 0xCC711 before SetVolume,
+  SetFrequency, SetMixBins, SetI3DL2Source). `Stop`/`Pause(1|2)`/`SetBufferData` before the commit cancel it;
+  `SynchPlayback` starts at once (XMV). `ObjectView::startPending` for tests.
+- **Levels**: 2D voices by `audio\dsound_mix.h` (`Compute2D`: lVolume - 600 mB headroom + mixbin volume per bin,
+  1/64-dB register, channel c serves bins `[c*n/ch, (c+1)*n/ch)`, Xbox bins -> host speakers), 3D voices by
+  `Spatializer::Compute` with the committed listener/emitter. Values are applied per tick in one engine batch at
+  `CommitDeferredSettings` / `DoWork` (changes only); a starting voice starts in that batch with the tick's levels
+  (3D: its pending values). Frequency: `codec::FrequencyRatio(Hz, rate, spatial::DopplerPitch)` (Xbox pitch quantization).
+- **Categories**: `probe:Game::SoundVoiceCreateDsObject` (0xCC150, thiscall, 6 stolen bytes `64 A1 00 00 00 00`) tags
+  the object created inside it (category +0x70, 3D, stream, id +0x6C, name `[SoundData+0x20]`); untagged = movie.
+  A second Play on a running SoundVoice is reported (`SoundEventKind::OrphanedObject`, counter); the old object plays on.
+- **Host API** (`audio\dsound_hle.h`): guest structs (`XDsBufferDesc`, `XDsStreamDesc`, `XMediaPacket`, `XDsMixBins`,
+  `XDsI3dl2Listener/Buffer`), status constants, the entries and `DsStream*` vtable methods (for tests),
+  `SetPendingVoiceTag`/`ClearPendingVoiceTag`, `NoteOrphanedObject`, `IsDsoundDevice/Buffer/Stream`,
+  `DsoundStreamQueuedPackets`, `InspectObject` (cursor, frames, applied ratio/matrix/send), `CommittedListener`,
+  `CommittedReverb`, `GetDsoundStatistics`, `LogDsoundSummary` (also in `xdk::LogCallSummary`),
+  `ResetDsoundForTesting`; `snd::SetSoundEventSink` (events of `audio_api.h`, guest thread).
+- **Engine** (`audio\audio_engine.*`): `EngineFacade` over a backend, proxies remember parameters and queued buffers so
+  that `Pump` (in `DoWork`) moves every voice to the software mixer when XAudio2 reports a critical error (device gone,
+  e.g. TV off), back when an endpoint appears, and XAudio2 -> XAudio2 when the `[audio] device` that was missing comes
+  back or (default device in use) Windows has a new default device (the playing buffer of every voice continues at
+  its play position - frames played minus the frames of the buffers that ended since the last attach/flush, measured
+  within +-0.08 ms on the streamed music - and the queued ones follow; DSOUND rebuilds the matrices if the layout
+  changed). **Device worker** (M5 phase 5, findings 6/7): the host thread "audio device worker" (E10: no guest code)
+  looks for endpoints, creates the new XAudio2 backend and destroys the replaced one; it registers an
+  `IMMNotificationClient` that only counts device changes. `Pump` hands requests over and takes results without
+  waiting: at once on a notification, every 3 s while no device is open, after failed opens of a present device 3, 6,
+  12 .. 30 s (one WARN per run). With `capture_wav` active a reopened device keeps the capture's channel count.
+  `SourceVoice::FramesPlayed` of the XAudio2 backend stays monotonic over `END_OF_STREAM` (Discontinuity) restarts
+  (measured: inside a pass's callbacks `GetState` reports the pass start, the restart is visible from
+  `OnVoiceProcessingPassEnd`; the base grows there by the value at `OnStreamEnd`, so the count is at most one pass,
+  480 output frames, short after a stream end, and a read never steps back); a proxy takes its position base after a
+  `Flush` at the next `Submit` (XAudio2 flushes asynchronously). XAudio2: mastering voice 48 kHz with `[audio] speakers`/device
+  channels, one submix per category, reverb submix (1 input, `reverb::ReverbEffectChannels`, `reverb::ToNative`,
+  `ReverbOutputMatrix`), pass-through tap XAPOs on every submix and the mastering voice (MixTap). **Master stage** after
+  the Master tap: peak limiter at -0.1 dBFS (`[audio] limiter`; FXMasteringLimiter is not used - it adds a loudness
+  makeup gain), a 120-Hz low-pass (4th-order Butterworth) on the LFE output channel before the Master tap (AC-3 carries
+  LFE only up to 120 Hz; 3D voices feed their full-band signal into bin 3) and `[audio] master_volume` (XAudio2 applies a mastering voice's own volume before its effects, so the
+  volume is applied in the tap XAPO). Software mixer (no device / `[audio] enabled = 0`): same graph, 16-tap
+  windowed-sinc resampler (70 dB SNR at 1 kHz), `reverb::SoftwareReverb`, 10 ms blocks in real time or
+  `RenderSoftware` (tests); while nobody listens (no tap and no output buffer: no device and no `capture_wav`) it only
+  advances play positions and buffer ends (same frames, same `OnBufferEnd` moments; finding 15). An endpoint with
+  more than 8 channels gets an 8-channel mastering voice (finding 12). `AudioEngine::TapFormat(point, channels, rate)`
+  (additive, default false) tells the capture the block format of every tap point. `SourceVoice::SetOutputMatrix` takes [src][dst] (`src * outputChannels + dst`); the XAudio2
+  backend transposes to XAudio2's `[dst * srcChannels + src]` (verified with a tap on a real device). Observer
+  `snd::SetEngineObserver` (capture session); test hooks `SimulateDeviceLossForTesting`, `RetryDeviceNowForTesting`
+  (asks the worker and waits for its answer), `SwitchToNewSoftwareBackendForTesting`, `EngineDescriptionForTesting`,
+  `CreateSoftwareEngine`, `ParseSpeakers`, `DefaultChannelMask`. `audio summary: ...` is logged by
+  `snd::LogDsoundSummary` inside the existing reporter "xdk" (no own exit reporter; `kMaxExitReporters` is nearly full).
+- **Keys**: `[audio] enabled` (bool 1), `device` (string, widget `audio_device`), `master_volume` (0..100 %, 100),
+  `limiter` (bool 1, advanced); `dummy_streams` stays accepted without effect (log line). `[audio] device` holds the
+  `IMMDevice::GetId` string the launcher stores ("{0.0.0.00000000}.{guid}"), passed to `CreateMasteringVoice` as is; a
+  device that is not available falls back to the default (one WARN per run). Developer key
+  `device_test = off | absent | loss` (`EngineConfig::deviceTest`; M5 integration): `absent` = no XAudio2 and no
+  device worker (as if Windows had no output device), `loss` = a simulated `XAUDIO2_E_DEVICE_INVALIDATED` 20 s after
+  every XAudio2 start, back at the next 3-s look (checks without switching the TV off).
+- **Logs** (SND/info): `audio: <backend description>, master volume N %` (backend description: `XAudio2 2.9, default
+  device '<name>' | device from [audio] device '<name>', N ch (mask 0x..) 48000 Hz, reverb on|off, limiter on|off` or
+  `software mixer (no output), ... N blocks positions only (no listener)`; INFO also without a device), `audio:
+  output device lost ... | available again - ... | changed - ...`, `DSOUND: HLE device ...`,
+  `DSOUND: effects image ...`, `DSOUND: I3DL2 listener ...`, `DSOUND: first buffer playing: "<name>" ...`, `DSOUND:
+  first stream packet ...`; exit: `audio summary: ...; voices N created, N live, peak N; T s mixed; glitches N; device
+  losses N; limiter active on N frames (max X dB)`, `DSOUND HLE: buffers ... plays ... orphaned ... streams ... packets
+  N submitted, N completed, N flushed, N rejected; N format errors, N objects without voice`.
+
+**Codec, 3D and reverb (M5 codec/3D/reverb agent; files `audio\codec_*.*`, `audio\spatial_*.*`, `audio\reverb_*.*`,
+tests `tests\audio_codec_*.cpp`, `tests\audio_spatial_*.cpp`).** Implements `CreateDecoder` and `CreateSpatializer`
+of `audio_api.h` and adds own headers for the DSOUND core and the engine:
+
+| Header | API (namespace) | User |
+|---|---|---|
+| `audio\codec_adpcm.h` | `snd::codec::DecodeXboxAdpcmBlock`, `DecodeXboxAdpcm(data, bytes, ch, out, outFrames, padPartialBlock)`, `XboxAdpcmFrames`, `ConvertPcm8`, `AdpcmExpandNibble`, IMA tables. Variant "header sample + 63 nibbles, `((2n+1)*step)>>3`" = ffmpeg `adpcm_ima_xbox` bit-exact (synthetic golden hashes; 13 game files via `FUT_AUDIO_CODEC_REFS`); whether the Xbox hardware rounds the same way is not established (the IMA shift-add form differs by at most 28 LSB on the game's files, below -61 dBFS) | decoder, tests |
+| `audio\codec_format.h` | `snd::codec::ParseWaveFormat(guestWfx, SourceFormat&, &error)` (ignores nAvgBytesPerSec / nBlockAlign / cbSize), `IsSupportedFormat`, `BlockBytes`, `FramesPerBlock`, `BytesToFrames`/`FramesToBytes` (buffer cursor, whole blocks); pitch model `XboxPitchFromFrequency` (= XAudioCalculatePitch 0x246ED1), `ClampXboxPitch` (-0x7FFF..0x1FFF, FUN_0024C5C7), `FrequencyFromXboxPitch`, **`FrequencyRatio(requestedHz, sourceRate, extraPitch)`** (SetFrequency -> `SourceVoice::SetFrequencyRatio`, 0 = source rate, doppler pitch added before the clamp), `MaxFrequencyRatio(rate)`, `PitchFromRatio` | DSOUND core |
+| `audio\spatial_model.h` | `snd::spatial::DistanceMillibel` (FUN_00249893 exact, mB truncated like cvttss2si), `GainToMillibel`, `DefaultRolloffMillibel`, `HwMixbinGain` (1/64-dB register, <= 63.98 dB), `ComputeLevels3D` (direct / reverb / LFE / distance mB), `BuildX3dDistanceCurve` (8-point `X3DAUDIO_DISTANCE_CURVE`), `MakeListenerBasis` (right = top x front), `ToListenerSpace(pos, listener, basis, PositionalMode)`, `DopplerPitch` (DS3D, Xbox pitch units; always 0 in this game), `PositionalMode` + `ParsePositionalMode` | Spatializer, DSOUND core (doppler) |
+| `audio\spatial_x3d.h` | `snd::spatial::SpatialSettings{positional, trim3dDb}`, `SpatialSettingsFromConfig()` (`[audio] positional`, `trim_3d`), `CreateSpatializer(settings)`, `DefaultSpeakerMask(channels)`. `snd::CreateSpatializer()` = settings from the configuration. `SpatialResult::matrix` index = **src * outputChannels + dst** (the `SourceVoice::SetOutputMatrix` order); LFE (game bin 3) only on outputs with `SPEAKER_LOW_FREQUENCY`; X3DAudio pans over **quad (FL FR + the rear pair: BL/BR, else SL/SR) or stereo** and the host maps the coefficients to the output channels - never over the front centre (the game's 3D mixbins have no centre bin; phase 5, finding 2) and only over standard masks (X3DAudio 2.9 returns channel 0 = 1 for every direction with non-standard masks such as 0x60B/0x603, which the first phase-5 fix produced on the TV's 5.1 side layout 0x60F); direction scaled to constant power but no channel above the front reference's 1 (0 dB, the Xbox register ceiling; stereo side = 1 on the near channel, finding 3); `reverbSend` = mono send gain. One instance per thread | DSOUND core |
+| `audio\reverb_i3dl2.h` | `snd::reverb::GuestI3dl2Listener` / `GuestI3dl2Buffer` (48/36 bytes), `ReadI3dl2Listener`, `ReadI3dl2Source` (unaligned guest copies), `GameEnvironmentPreset(0..4)` (Padded Cell .. Concert Hall = table 0x2D6818), `ClampI3dl2`, **`ToNative(listener, sevenDotOne)`** (WetDryMix 100, always `ValidNative`), `IsSilent`; XAudio2 layout: reverb submix 1 input channel, `ReverbEffectChannels(out)` (1 or 6: the XAudio2 reverb only does mono->mono / mono->5.1), `ReverbSampleRate(out)` (20000..48000), `ReverbOutputMatrix(effectCh, outCh, m, n)` (effect -> output, src*out+dst), `CreateReverbEffect` (XAudio2CreateReverb); DSP image `ParseEffectsImage(image, size, info, &error)` + `ImageHasReverb(info, loc)` for `DownloadEffectsImage` (dsstdfx.bin: 10 effects, descriptor at 0x6110, I3DL2 = effect 0) | engine (`SetReverb`), DSOUND core |
+| `audio\reverb_software.h` | `snd::reverb::SoftwareReverb`: the same reverb XAPO driven through IXAPO without an XAudio2 graph (`Initialize(rate, 1|6)`, `SetListener`, `Process(monoIn, out, frames)` in 10-ms blocks `BlockFrames()`, `Reset`) | engine's device-less software mixer |
+
+Config rows (schema, `Tab::Audio`): `speakers` (auto\|stereo\|5.1, hidden 2.0; read by the engine), `reverb` (bool 1; engine),
+`positional` (corrected\|xbox\|off; Spatializer), developer `trim_3d` (float dB -20..20, Advanced; Spatializer).
+
+### 4.30 Audio capture, analysis tools and the launcher's Audio tab (M5, tooling/launcher agent)
+
+Verification without ears (`analysis\loader\m5_audio.md` 6.8, 9): the final mix and the category submixes are copied
+unchanged into WAV files and analysed against the original sound files, which the tools decode independently.
+
+- **Keys** (`core\config_schema.cpp`, developer, Advanced tab): `[audio] capture_wav = <file>` (path, relative = INI
+  folder; empty = off), `capture_format = float | pcm16` (float = exact copy), `capture_stems = 0|1` (one file per
+  submix next to it: `<name>.music.wav`, `.speech.wav`, `.effects.wav`, `.movie.wav`, `.reverb.wav`), `event_log = 0|1`
+  (`<name>.events.tsv`: `sample` (mix frames captured at the event), `seconds`, `wall_s`, `tick`, `kind`, `object`,
+  `category`, `name`, `detail`). Schema additions for the other agents: `core::ConfigUiTab::Audio` (`"audio"`) and
+  `core::ConfigUiWidget::AudioDevice` (`"audio_device"`: a string holding a Windows endpoint ID, empty = default
+  device; meant for `[audio] device`; the launcher also shows a plain string `[audio] device` as a device list).
+- **API** (`snd::capture`, `audio\capture_session.h`; building blocks `capture_wav.h`, `capture_tap.h`):
+  `Session::Instance()`, `Start(settings, source)` / `StartFromConfig(source)` (writer thread; exit reporter
+  `"audio capture"` finalizes the files and logs the statistics), `DeclareStem(stem, channels, rate, mask)`,
+  `Push(stem, interleaved, frames, channels)` (real-time safe: SPSC ring of about 1 s per stem, a block that does not
+  fit is dropped and counted, `nullptr` = silence), `CreateTap(stem)` (in-place XAPO for an XAudio2 effect chain; it
+  declares its stem in `LockForProcess`, `XAPO_BUFFER_SILENT` is captured as zeros; XAudio2 applies a voice's volume
+  before its effect chain, so a tap includes the volume of its voice), `NoteSource(Source::XAudio2 |
+  SoftwareMix)`, `RecordEvent(Event)` (any host thread; `tick` ~0 = filled from `xapi::GetGameTickStats().steps`),
+  `Stop()`, `Statistics(stem)`, `MixFrames()`. `Stem` = Mix, Music, Speech, Effects, Movie, Reverb;
+  `StemForCategory(0/1/2/3)`. Plain helpers for tests: `WavFileWriter` (float32/pcm16/extensible, header rewritten
+  about once per second so a file stays readable after a watchdog or fatal exit), `LevelMeter` (rms, active rms over
+  100 ms blocks above -70 dBFS, peak, clipped |x| >= 1, gaps = digital silence >= 5 ms between sound), `FloatRing`.
+  Engine glue `audio\capture_engine.*`: a `snd::EngineObserver` registered at static initialisation; when the process
+  engine is created and `capture_wav` is set it starts `Session::Instance()` (source from `HasDevice()`), registers a
+  `SessionMixTap` (`AudioEngine::SetTap`; TapPoint Master -> mix, category points -> stems, Reverb -> reverb; every
+  stem is declared before from `AudioEngine::TapFormat`, so the mixer thread never allocates) and with
+  `event_log` a `SessionEventSink` (`snd::SetSoundEventSink`; detail column `buffer|stream [3d] [loop] voice= mB= hz=
+  pos= frame= level=` plus ` dist= min= max= curve=` for 3D objects: the last applied level in dB - 3D: lVolume +
+  DSOUND distance term, <= -100 = muted beyond MaxDistance; 2D: lVolume - 600 mB - and the listener distance, Min/Max
+  distance and rolloff points of the emitter; kind `level` = a playing 3D voice's applied level moved by >= 3 dB or
+  into/out of the muted range, `SoundEventKind::Level3D`); `OnBackendChanged` notes the source switch. `AttachCapture(session, settings, engine, tap, sink)`
+  for tests. The capture never touches guest memory (E10).
+- **Exit lines** (SND/info, parsed by `tools\m5_check.py`): `audio capture: <file> - <rate> Hz, <ch> ch, <format>,
+  source <xaudio2|software-mix>, <s> s (<frames> frames), <n> dropped, <n> mismatched, <n> truncated, files: <stems>,
+  <n> events`; per stem `audio levels <stem>: <ch> ch, <s> s, rms .. dBFS (ch ../..), active rms .. dBFS over .. % of
+  100 ms blocks, peak .. dBFS at .. s, clipped <n> (.. %), gaps >= 5 ms: <n> (longest .. ms at .. s; <list>), first
+  sound at .. s, non-finite <n>, dropped <n>` (or `no data`); `audio capture taps: ...` (only when a `CreateTap` XAPO
+  was used - the engine feeds the session through its own MixTap); `audio dsound calls: <entry>
+  <count>, ...` (every DSOUND entry with `xdk::CallCount` != 0).
+- **`tools\audio_compare.py`**: `--capture <wav> --config <ini> --ref <archive path> [--ref-file <wav>] [--timeline]
+  [--events <tsv> [--stems]] [--window a:b] [--json out]`; references are read from the ISO's `.img` archives in
+  memory (never written to the repository; `--cache-dir` only below `run\`) and decoded with PyAV/ffmpeg or the own
+  Xbox ADPCM decoder (`--decoder own`, bit-exact with ffmpeg on synthetic blocks and on game files). Reports per
+  occurrence: offset, NCC, pitch ratio, gain per channel, balance, residual SNR; `--timeline` follows a looping
+  stream chunk by chunk (loop gaps, dropouts; its level per chunk with the reference resampled at the measured speed
+  and aligned to a fraction of a sample, `aligned_gains` / `stretch_sinc`); capture overview (rms, peak, clipping,
+  gaps). `--selftest` uses synthetic signals only.
+- **`tools\m5_check.py`**: `--exe <futurama.exe> --config <ini with [paths] iso + userdata> [--runs frontend,level]
+  [--device-optional] [--fresh] [--keep-wav] [--analyse-only]`; runs `tools\input_scripts\m5_frontend.txt` (main
+  menu about 130 s, menu sounds, options) and the M4 level script with capture, stems and event list; criteria A1..A12
+  (header of the script; A9 = 3D panning with sound louder on each side, A10 = 2D stems only on front left/right
+  with a 5.1 output, A11 = 2D level -6 dB on the first start, music below 2 kHz +-0.1 dB (each 2-s chunk resampled
+  at the measured speed, sub-sample aligned), menu sounds +-0.3 dB, m5_audio.md 3.6; A12 = limiter statistics consistent with the
+  pre-limiter peak and `master_volume`) plus all M4 criteria on the level run (M4-7 rumble and M4-9 as extra runs). `--device-optional` accepts the
+  software mixer when Windows has no active output device (this machine: the TV is the only endpoint).
+- **Launcher** (`launcher\**`): tab "Audio" (`fl::UiTab::Audio`, between Grafik and Steuerung; section `[audio]`
+  falls back to it) with the schema's keys, an `audio_device` editor (WASAPI render endpoints, "Windows-Standardgerät
+  (<name>)" = empty value, unknown IDs marked "nicht angeschlossen"), and below them "Ausgabe prüfen": the device in
+  use (a configured device that is not connected shows the default device the game falls back to), warnings (no
+  active device - the game runs on silently and switches the sound on when one appears -, device not connected,
+  more speakers selected than the device has channels: Windows downmixes) and "Testton abspielen" (`fl::TonePlayer`: a generated
+  chime per speaker in channel order, then all, -12 dBFS times `[audio] master_volume`, through XAudio2 2.9 on the
+  selected device with `[audio] speakers`, falling back to the default device like the game (`ToneResult::fellBack`);
+  destroying the player stops a running tone at once; "Geräte neu suchen" is disabled while a tone plays; no game
+  data). `--audio-file=<json>` (development, screenshots) replaces the
+  device list. Core: `core\audio_output.*` (`EnumerateAudioDevices`, `ParseAudioDeviceList`, `MakeTestTone`,
+  `SpeakersFromValue`, `VolumeFromValue`, `TonePlayer::SetBackendForTesting`), UI: `ui\audio_panel.*`.
+- **Tests**: `tests\audio_capture_tests.cpp` (WAV headers and files, pcm16 conversion, level meter, ring, tap XAPO
+  registration/negotiation/process, session files/stems/events/overflow/settings, the capture attached to the software
+  engine, an XAudio2 submix-tap test that is skipped without an audio endpoint), `tests\schema_tests.cpp` (tab `audio`, widget `audio_device`); launcher
+  `tst_misc` (`audioTestTone`, `audioDeviceList`, `audioValueMapping`), `tst_schema::audioTab`, `tst_ui::audioTab`.
+
 ## 5. Cross-module contracts
 
 | Contract | Provider -> user |
@@ -1083,3 +1654,62 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-06 | M3c phase 4 (review fixes) | `core\host_main.h/.cpp`, `core\config_schema.cpp`, `core\config.cpp`, `core\cli_tools.cpp` | Exit code 6 `core::kExitAlreadyRunning`: named mutex `Local\FuturamaPC-userdata-<hash>` per user data folder before the log opens (finding 15). Schema: row `[render] linear_aa`; `[render] frame_rate` is a developer key (finding 18); `[game]` section "Spiellogik"; player texts (finding 16: Sie, "Zeitquelle der Spiellogik", "Alt+Eingabetaste", "Spielabbild (ISO)", "Verkaufsversion", "Fehlende D3D-Funktionen", "Zeitlimit", "Rückgabecode"); the unknown-key error names no source file; VRR hint reworded. |
 | 2026-10-06 | M3c phase 4 (review fixes) | `launcher\**`, `build_launcher.cmd`, `tools\package.py`, new `launcher\licenses\` | Section 4.23 "M3c review fixes" (findings 7-15, 17-23). |
 | 2026-10-06 | M3c phase 4 (review fixes) | new `docs\m3c_report.md`, `docs\loader_design.md` (new 8.8), `docs\ROADMAP.md`, `README.md`, `launcher\README.md`, this file | M3c report and documentation. |
+| 2026-10-11 | M3d (frame-clock/pacing agent) | own: `xapi\game_timing.h/.cpp` (`FrameClock`, `ClockQuantum`, `FrameAlpha`, `FrameInterp`, `CurrentFrameInterp`, `SubTickFramesActive`, `RenderingFrameWithoutStep`, M3d fields of `FrameClockStats`, exit line `game clock M3d: ...`), new `xapi\frame_fixes.h/.cpp` (F2 `probe:Death::Render`, F3 `probe:Session::OccluderFade`, F4 hook `Session::RandomFlicker`), `platform\pacer_policy.h/.cpp` (`FrameRateMode`, `ChooseFrameRate`, `CadencePattern`, `Path::Cadence`, `Plan::nominalHz/cadenceRatio`, `FramesPerTick`, `FrameAdvance`, `FrameAdvanceOf`, `LatencyBudget`, `JustInTimeStart`, `OnScreenTracker::PredictNextVisible/ExtendLastPresent`), `platform\frame_pacer.h/.cpp` (`PacingConfig::rateMode/justInTime`, `SwapChainInfo::frameUnchanged`, `PresentRequest::repeatPrevious`, `CurrentFrameAdvance`, `NoteFrameTicks`, M3d `PresentStatistics` fields, line `present: frame rate ...`, trace columns), `platform\window.h/.cpp` (`ViewLayout`: the view covers the monitor in borderless fullscreen; the fullscreen flag is set before the frame is resized), new `tests\frameclock_tests.cpp`, new `tests\pacer_m3d_tests.cpp`, `tests\platform_tests.cpp` (fullscreen view), `tests\pacer_tests.cpp` (monitor test tolerates a disconnected display) | Section 4.24: frame rates up to 120 Hz with the half-tick frame clock (alpha 1/2 / 1 at 120 fps, M3b bit for bit at 60 fps), plans per refresh, repeated pictures and per-frame fixes between ticks, just-in-time frame start. |
+| 2026-10-11 | M3d (frame-clock/pacing agent) | `core\config_schema.cpp` (shared, rows) | `[render] frame_rate` is a choice `60 \| 120 \| display` (de/en labels, hidden `50` and `0..1000`, dynamic default = `[game] tick_rate`, graphics tab, combo) instead of the M3c developer int key; new row `[render] low_latency` (bool, default on, advanced). |
+| 2026-10-11 | M3d (frame-clock/pacing agent) | `gfx\gfx_config.h/.cpp` (renderer agent's module, additive) | `gfx::ParseFrameRate`, `Settings::frameRateMode/lowLatency`; `PacingConfigOf` passes `rateMode`/`justInTime`. |
+| 2026-10-11 | M3d (frame-clock/pacing agent) | `gfx\nipc_gpu.cpp` (interpolation agent's file, one statement) | `GpuRenderer::DisplayFrame` sets `SwapChainInfo::frameUnchanged = no draw and no color clear in the frame` for the pacer's repeated picture (F1). |
+| 2026-10-11 | M3d (frame-clock/pacing agent) | `launcher\**` (new `src\core\frame_rate.h/.cpp`, `src\ui\settings_tab.cpp`, `src\ui\main_window.cpp` (comments), `src\core\l10n_table.cpp`, `CMakeLists.txt`, `testdata\sample_schema.json`, `tests\tst_misc.*`, `tests\tst_ui.cpp`) | Frame rate choice with a note what "120" / "display" give on the selected monitor (`fl::EstimateFrameRate`, `fl::FrameRateNote`); the window size is disabled with a note while borderless fullscreen is on (M3c review nit). |
+| 2026-10-11 | M3d (interpolation agent) | own: new `gfx\interp_frame.h/.cpp`, `gfx\interp_history.h/.cpp`, `gfx\interp_math.h`; `gfx\nipc_gpu.cpp` (History calls in `Create`, `PrepareFrame`, `SetCameraData`, `DrawGeometry`, `DisplayFrame`, `LogStatistics`); new `tests\interp_math_tests.cpp`, `tests\interp_history_tests.cpp` | Section 4.25: renderer-level interpolation (cameras, rigid draws of slots 48-51, hierarchical stage 1b, skinning through a substitute `NiSkinInstance`, snap rules, frame-driven detection, statistics, debug tint/trace); new probe `probe:NiAVObject::Destroy` (FUN_00102CE0, 7 bytes, registered in `gfx\interp_history.cpp`). `ni_extract` and `nipc_renderer.cpp` unchanged. |
+| 2026-10-11 | M3d (interpolation agent) | `core\config_schema.cpp` (shared, rows) | `[render] interpolation` (bool, default on, graphics tab, advanced), `[render] interpolation_debug` (choice `off \| tint \| trace`, `kInterpolationDebugChoices`, developer, advanced tab), `[render] interpolation_hierarchy` (bool, default on, developer, advanced tab); header comment of the `[render]` owners. |
+| 2026-10-11 | M3d phase 3 (integration + verification) | `gfx\rhi\rhi.h` (add-only `Device::RepeatPreviousPicture`), `gfx\rhi\d3d11\d3d11_device.cpp`, `d3d11_internal.h`, `gfx\nipc_gpu.cpp`, `platform\frame_pacer.h/.cpp`, `platform\pacer_policy.h/.cpp` (`OnScreenTracker::ExtendLastPresent` removed), `tests\rhi_d3d11_tests.cpp`, `tests\pacer_m3d_tests.cpp` | F1 repeated picture is presented: the device shows the buffer of the previous Present again and keeps the rotation (captures read it too), the pacer treats the frame like any other (sync interval, waitable, just-in-time start). Root cause found on the 120 Hz display: a frame without a Present left the waitable without a queued flip, the next frame started right after its GPU work - 146 fps in the intro, 77 % of the vblank frames on plan; after the fix 120 fps and 99.9 % on plan in the foreground frames. `d3d11 frames:` exit line counts "showing the previous picture again"; the draw summary of such a frame ends with ", repeated (previous present)". |
+| 2026-10-11 | M3d phase 3 (integration + verification) | `platform\pacer_policy.h/.cpp` (`DisplayLimitDetector::StartWarmup`, `kWarmupWaits` 12), `platform\frame_pacer.cpp`, `tests\pacer_tests.cpp` | The display-limited detector ignores the first 12 vblank waits after the pacer enters a vblank plan: in a composed window the first waits after the switch from the timer took 16-29 ms; at 120 fps (1.5 periods = 12.5 ms) that fired the detector at every start (1 s free running plus 30 frames hysteresis = 179 frames on the timer); at 60 fps a single 33 ms wait stayed below 25 ms. |
+| 2026-10-11 | M3d phase 3 (integration + verification) | `gfx\interp_history.cpp` | `interp_trace.csv` header: the per-reason columns are `reason_<name>` (the "interpolated" column appeared twice). |
+| 2026-10-11 | M3d phase 3 (integration + verification) | new `tools\m3d_check.py`, `tools\foreground_hold.py` (keeps the game windows of a check run in front: `AllowSetForegroundWindow(ASFW_ANY)` while its own window is in front); `launcher\testdata\sample_schema.json` (`[render] interpolation`), `launcher\tests\tst_ui.cpp` | M3d check (variants i120, d120, t120, t120off, t120x, c60, ll60off, c60off; criteria in the header). Launcher UI test: the frame-rate note without in-between frames when `[render] interpolation = off`. |
+| 2026-10-11 | M3d phase 3 (integration + verification) | `docs\loader_design.md` (new 8.9), this file (4.24 F1, changelog), `gfx\GFX_CONTRACT.md` (13), `docs\ROADMAP.md` | Verification documentation. |
+| 2026-10-11 | M3d phase 5 (review fixes) | `gfx\interp_math.h` (`SnapLimits::unknownStepRadii/unknownAngleDeg`, `MotionReference`, `MotionSnapRule`), `gfx\interp_history.h/.cpp`, `gfx\interp_frame.h` (`FrameInterp::pairTicks`, `kFrameInterpCatchUp`, `kMaxPairTicks`), `tests\interp_history_tests.cpp` | Findings 1, 3, 4, 6, 10 (section 4.25 "Review fixes"): jump rule against the larger of the last two motions and decided by the parent chain, pointer reuse within a generation, camera destroyed check, readable-page cache epoch, interpolation over catch-up/cap step pairs. |
+| 2026-10-11 | M3d phase 5 (review fixes) | `core\guest.h/.cpp` (shared, add-only `NoteMemoryReleased`, `MemoryReleaseEpoch`), `kernel\mm.cpp` (two calls) | Finding 6: release epoch of guest memory for caches of `IsReadable` results. |
+| 2026-10-11 | M3d phase 5 (review fixes) | `xapi\game_timing.h/.cpp` (`ClockQuantum::rephase`, `FrameClock` offset, `Stats::rephases`, `Sample::rephased`, `kFrameInterpCatchUp`, `FrameClockStats::frameStartSamples/rephases`, exit line), `platform\pacer_policy.h/.cpp` (`FramesPerTick` <= tick rate -> 1, `FrameAdvance::frameStartQpc/planSerial`, `LatencyBudget` backoff), `platform\frame_pacer.h/.cpp`, `tests\frameclock_tests.cpp`, `tests\pacer_m3d_tests.cpp` | Findings 8, 9, 10, 11 (section 4.24 "Review fixes"). |
+| 2026-10-11 | M3d phase 5 (review fixes) | `core\config_schema.cpp`, `launcher\src\core\frame_rate.cpp`, `launcher\testdata\sample_schema.json`, `launcher\tests\tst_misc.cpp`, `tst_ui.cpp` | Finding 12: `[render] frame_rate` labels "60" / "120 (interpoliert)" / "Monitor (max. 120)" (en "120 (interpolated)"); finding 8: the launcher note shows no in-between frames up to the logic rate (59.94 Hz). |
+| 2026-10-11 | M3d phase 5 (review fixes) | `tools\timing_compare.py` (steam cloud period by autocorrelation, finding 13), `tools\m3d_check.py` (new log formats), `analysis\loader\m3d_frameclock.md` (2.5, 2.7, 3.2 corrections), new `docs\m3d_report.md`, `docs\loader_design.md` (8.9), `docs\ROADMAP.md`, `README.md`, `gfx\GFX_CONTRACT.md` (13), this file | M3d report and documentation. |
+| 2026-10-11 | M3d phase 5 (final check) | `platform\frame_pacer.cpp`, `tools\foreground_hold.py`, `tools\m3d_check.py` | F1 keeps the previous picture also without presents (display off, minimized: the screenshot of an intro frame between ticks was black); `foreground_hold.py` holds a display/system power request (`SetThreadExecutionState`) for the measurement; `m3d_check` R2 skips a window's first frame whose partner lies before the reference run's window. |
+| 2026-10-11 | M4 launcher agent | `src\INTERFACES.md` (new 4.26) | Proposed contract of the `[input]` keys: `pad_<control>`/`kbm_<control>` binding strings (`pad:`/`key:`/`mouse:` tokens), `pad_deadzone`, `mouse_sensitivity`, `rumble`, `rumble_strength`, `pad_mode`, schema `ui.tab` = `controls`, `ui.widget` = `binding`/`slider`, defaults of m4_input.md 9. The input agent's parser is the reference once it exists. |
+| 2026-10-11 | M4 test-automation agent | new `input\input_api.h` (shared, first writer), this file (new 4.27) | Shared input interface: `PadState`, `MergePad`, `RumbleState`, `InputSource`, `InputConsumer`, `InputRouter`, header-only source registry and router slot (section 4.27). |
+| 2026-10-11 | M4 test-automation agent | own: new `input\input_script.h/.cpp`, new `tests\input_script_tests.cpp`, new `tools\m4_check.py`, new `tools\input_scripts\README.md` + `m4_newgame.txt` + `m4_rumble.txt` | `[debug] input_script`: script parser/player, `InputSource` "input script" on port 0, observer probes `probe:Game::MainMenuActivate` (0x20150, 7 bytes), `probe:Game::LevelReadyTest` (0xC3E20, 6 bytes), `probe:Game::PauseOpen` (0xA8220, 7 bytes), `probe:Game::HotplugCheck` (0x9C140, 8 bytes; tick heartbeat); new exit code 7 (section 1); M4 check (section 4.27). |
+| 2026-10-11 | M4 test-automation agent | `core\log.h/.cpp` (shared, add-only) | `core::AddLogObserver` / `RemoveLogObserver` / `kMaxLogObservers` (4): observers with the `LogTap` contract next to the single tap (the input script's `log` condition). |
+| 2026-10-11 | M4 test-automation agent | `core\guest.h` (shared, add-only) | Section "added in M4": `kGameMainMenuActivate`, `kMainMenu*Offset`, `kMenuCameraMovingOffset`, `kGameLevelReadyTest(+Return)`, `kGameLevelPtr`, `kLevelPlayerOffset`, `kPlayerInputEnabledOffset`, `kGameCutscenePtr`, `kCutsceneActiveOffset`, `kCAppSaveUiOffset`, `kSaveUiDialogOpenOffset`, `kGamePauseOpen`, `kPauseOpenOffset`, `kGameActiveControllerVar`, `kControllerPortOffset`, `kGameHotplugCheck(+TickReturn)` with evidence (m4_input.md, capstone prologues, raw branch scan). |
+| 2026-10-11 | M4 test-automation agent | `core\config_schema.cpp` (shared, row) | Row `[debug] input_script` (path_file, developer, advanced tab, `*.txt`, de/en). |
+| 2026-10-11 | M4 launcher agent | own `launcher\**`; `launcher\CMakeLists.txt` (shared, add-only: new sources `core\bindings`, `core\pad_reader`, `ui\binding_capture`, `ui\controls_panel`, `ui\pad_poller`, test `tests\tst_bindings`) | Launcher tab "Steuerung" (section 4.26, "Launcher side"): the launcher's schema parser knows `ui.tab` = `controls`, `ui.widget` = `binding` / `slider`, the key field `unit`, section `input` falls back to the controls tab; `IssueCode::BadBinding`; `SettingsTab::setExtraErrors` / `setEmptyNoteVisible`; screenshots `*_main_controls`, `*_tab_controls_full`, `*_tab_controls_kbm_full`, `*_controls_capture_kbm`, `*_controls_pad_test_simulated`; testdata `sample_schema.json` with the `[input]` section of the contract. |
+| 2026-10-12 | M4 input agent | own: new `input\xpp_hle.h/.cpp` (replaces the deleted `input\xpp_stubs.h/.cpp`), new `input\host_router.*`, `input_system.*`, `input_config.*`, `bindings.*`, `stick_curve.h`, `xinput_source.*`, `kbm_source.*`, `kbm_window.*`; new `tests\input_bindings_tests.cpp`, `input_router_tests.cpp`, `input_backend_tests.cpp`; this file (new 4.28) | Input layer (section 4.28): XPP HLE of the 7 entries, router (focus, diversion, release-first, rumble routing, simulated unplug), XInput 1.4 backend, keyboard/mouse via Raw Input, bindings of 4.26. |
+| 2026-10-12 | M4 input agent | `input\input_api.h` (shared, additive) | `InputSource::HasMotors()` (default false), `InputRouter::PortEpoch(port)` (default 0), `InputRouter::SimulateUnplug(port, unplugged)` (default no-op). |
+| 2026-10-12 | M4 input agent | `core\config_schema.h/.cpp` (shared, additive) | `ConfigUiTab::Controls` ("controls"), `ConfigUiWidget::Binding` / `Slider` ("binding" / "slider"), `ConfigKeyDef::unit` (JSON "unit") and `ConfigKeyDef::validate` (called for string/path keys after the type check); section `[input]` "Steuerung"/"Controls" with 56 rows: 48 bindings `pad_*`/`kbm_*` (validators from `input\bindings.h`, defaults m4_input.md 9), `pad_mode`, `rumble`, `rumble_strength` (slider, %), `pad_deadzone` (slider, %), `mouse_sensitivity` (slider, ×), `mouse_capture`, `menu_escape`, `background_input` (advanced). |
+| 2026-10-12 | M4 input agent | `core\cli_tools.cpp` (additive) | `--print-config-schema` writes the key field `"unit"` when set. |
+| 2026-10-12 | M4 input agent | `tests\schema_tests.cpp`, `tests\xdk_tests.cpp` (other agents' tests, minimal) | Schema test accepts widgets `binding` (string + validator, section input) / `slider` (ranged int/float), tab `controls`, checks `unit`; the XPP case of the XDK tests checks the HLE (port 1 connected, handle, synchronous status) instead of the stubs. |
+| 2026-10-12 | M4 input agent | this file (4.26) | Input agent's notes on the contract: `ui.order` pad 100 + 2i / kbm 101 + 2i (unique per tab), host-side validation (exit code 1), radial `pad_deadzone`, mouse scale, new keys `mouse_capture`, `menu_escape`, `background_input`. |
+| 2026-10-12 | M4 integration | `vfs\vfs_known_missing.cpp` (io, entries), `tests\m2_integration_tests.cpp` (one case) | Documented misses of level loading: `\Levels\*\backdrop.nif`, `backdrop_static.nif`, `camerapathtest.nif` (optional files, existence test in `FUN_000C5B40` states 5-7) and `\Sounds\Level1\Ambience-PlanetExp\Hum-loop2.wav` (named by `Level1-1.Ful`, not on the disc). `loader_design.md` 8.11 E12. |
+| 2026-10-12 | M4 integration | `audio\xdk_entries.h/.cpp`, `tests\xdk_tests.cpp` (comments, one log text) | The exit summary of the XPP entries reads `XDK XPP HLE: N calls ...` (DSOUND/XMV keep `... stubs: ...`); comments no longer point at the deleted `input\xpp_stubs.*`. Section 4.13: the XPP entries are HLE since M4 (4.28). |
+| 2026-10-12 | M4 review fixes | `input\input_script.*`, `input\input_system.cpp`, `input\xpp_hle.*`, `input\host_router.cpp`, `input\kbm_source.*`, `input\kbm_window.cpp`, `input\bindings.*` | Script loaded in `StartInput` (`inp::script::PreloadScript`), `XppDevices` queries the router before taking its mutex (a broken script exits with 1 instead of 0xC0000409); rumble target only on deliberate input; high-resolution wheel deltas summed (`WheelDeltaEvent`, `kWheelDelta`); keyboard stick diagonals on the unit circle; duplicates do not count towards the 4-token limit; header text on determinism (E14). Tests: router (noisy pads), backend (high-res wheel), bindings (edge cases, diagonals). Sections 4.26-4.28. |
+| 2026-10-12 | M4 review fixes | `core\config_schema.cpp` (labels only), launcher `core\bindings.*`, `ui\binding_capture.*`, `ui\controls_panel.*`, `ui\key_editors.cpp`, `ui\settings_tab.*`, `ui\app_style.*`, `ui\automation.cpp`, `core\l10n_table.cpp` | Section `[input]` titled "Eingabegeräte und Vibration"; `menu_escape` label "START-Taste der Tastatur geht in Menüs zurück". Launcher: token parser equal to the host (digits only, blanks around `:`), native extended bit for right Ctrl/Alt, Print on release, controller list in the capture, reserved-key and essential-control warnings, reset confirmation (`ConfirmChange`, test hook), exact slider values, `GameControlsForPad`, compact controller test, wording; screenshot of the pad capture and correctly sized capture dialogs. Section 4.26. |
+| 2026-10-12 | M5 DSOUND core agent | `audio\audio_api.h` (new shared file), this file (4.29) | Shared M5 audio interface (namespace `snd`): categories, formats, `Decoder`/`CreateDecoder`, DSOUND level helpers `MixbinGain`/`MillibelToGain`, 3D state + `Spatializer`/`CreateSpatializer`, `I3dl2Listener`, `AudioEngine`/`SourceVoice`/`VoiceEvents`/`MixTap`, `CreateAudioEngine`, `Engine()`. Other M5 agents extend it additively. |
+| 2026-10-12 | M5 codec/3D/reverb agent | own: new `audio\codec_adpcm.*`, `codec_format.*`, `codec_decoder.cpp`, `spatial_model.*`, `spatial_x3d.*`, `reverb_i3dl2.*`, `reverb_software.*`, `tests\audio_codec_tests.cpp`, `tests\audio_spatial_tests.cpp`, `tests\audio_spatial_reverb_tests.cpp`, `analysis\loader\scripts\m5_codec_refs.py`, `m5_codec_golden.py`; this file (4.29 paragraph "Codec, 3D and reverb") | `snd::CreateDecoder` (PCM8/PCM16/Xbox ADPCM, bit-exact with ffmpeg), `snd::CreateSpatializer` (DSOUND 3D level model + X3DAudio direction, positional modes), I3DL2 conversion/layout helpers, effects image parser, stand-alone reverb XAPO for the software mixer, DSOUND pitch model (section 4.29). |
+| 2026-10-12 | M5 codec/3D/reverb agent | `core\config_schema.cpp` (shared, rows + 2 choice lists + header comment) | `[audio] speakers` (auto\|stereo\|5.1, hidden 2.0), `reverb` (bool, 1), `positional` (corrected\|xbox\|off), all `Tab::Audio`; developer `trim_3d` (float dB, -20..20, Advanced 855). `speakers`/`reverb` are read by `audio\audio_engine.cpp` (DSOUND core), `positional`/`trim_3d` by `audio\spatial_x3d.cpp`. |
+| 2026-10-12 | M5 tooling/launcher agent | `core\config_schema.h/.cpp` (shared, additive), `tests\schema_tests.cpp` (accepts the new tab/widget) | `ConfigUiTab::Audio` ("audio"), `ConfigUiWidget::AudioDevice` ("audio_device"); rows `[audio] capture_wav` (path_file `*.wav`), `capture_format` (`float \| pcm16`, `kCaptureFormatChoices`), `capture_stems`, `event_log` (all developer, Advanced 810-840); header comment of the `[audio]` readers. |
+| 2026-10-12 | M5 tooling/launcher agent | own: new `audio\capture_wav.*`, `audio\capture_tap.*`, `audio\capture_session.*`, `audio\capture_engine.*` (EngineObserver), `tests\audio_capture_tests.cpp`, `tools\audio_compare.py`, `tools\m5_check.py`, `tools\input_scripts\m5_frontend.txt`; this file (new 4.30) | Audio capture session with WAV writer, level statistics, tap XAPO, event list and exit reporter `"audio capture"`; reference comparison and the M5 check (section 4.30). |
+| 2026-10-12 | M5 tooling/launcher agent | own `launcher\**`: new `core\audio_output.*`, `ui\audio_panel.*`; `core\config_schema.*` (tab `audio`, widget `audio_device`), `ui\key_editors.*` (`EditorContext::audio`, `AudioDeviceEditor`), `ui\app_context.*` (`AppContext::audio`, `StartupOptions::audioFile`, `LoadAudioDevices`), `ui\main_window.*`, `ui\automation.cpp`, `main.cpp` (`--audio-file`), `core\l10n_table.cpp`, `CMakeLists.txt` (sources, `ole32` + `xaudio2`), `testdata\sample_schema.json` (`[audio]` keys), tests | Launcher tab "Audio" with device list, device check and test tone (section 4.30); screenshots `*_main_audio`, `*_tab_audio_full`. |
+| 2026-10-12 | M5 codec/3D/reverb agent | `docs\loader_design.md` (shared, new section 8.12) | Deviations K1-K11 of the codec/3D/reverb part (ADPCM variant, pitch quantization, X3DAudio instead of HRTF/crosstalk, `positional` modes, LFE, reverb wiring/`trim_3d`, exact level truncation, presets come from the XBE table not from dsstdfx.bin, corrected `m5_i3dl2.out`/`m5_gain_model.out` values, doppler, no cone). Numbering may need a renumber if another M5 agent also adds an 8.12. |
+| 2026-10-12 | M5 DSOUND core agent | own: new `audio\dsound_hle.*`, `audio\dsound_mix.*`, `audio\dsound_probe.cpp`, `audio\audio_engine.*`, `tests\audio_dsound_tests.cpp`; deleted `audio\dsound_stubs.*` | DSOUND HLE on XAudio2 / the software mixer (section 4.29 "DSOUND core"). |
+| 2026-10-12 | M5 DSOUND core agent | `audio\audio_api.h` (shared, additive) | `SoundEvent`/`SoundEventKind`/`SoundEventSink` + `SetSoundEventSink`, `EngineObserver` + `SetEngineObserver` (used by `capture_engine.cpp`), `AudioEngine::OutputFramesRendered`, `Stats::limiterMaxReductionDb`/`limitedFrames`; `SubmitDesc::context`/`OnBufferEnd` are 32-bit. |
+| 2026-10-12 | M5 DSOUND core agent | `core\guest.h` (shared, additive) | `kSoundVoiceCreateDsObject` 0xCC150 and the SoundVoice/SoundData offsets read by `probe:Game::SoundVoiceCreateDsObject`. |
+| 2026-10-12 | M5 DSOUND core agent | `core\config_schema.cpp` (shared, rows + header comment) | `[audio] enabled`, `device` (widget `audio_device`), `master_volume` (slider %), `limiter` (Audio tab); `dummy_streams` relabelled "obsolete" (still accepted, read only for a log line). |
+| 2026-10-12 | M5 DSOUND core agent | `audio\xdk_entries.h/.cpp` (comments, summary), `tests\xdk_tests.cpp` (other agent's test, minimal) | Exit summary `XDK DSOUND HLE: ...` + `snd::LogDsoundSummary` instead of the stub stream statistics; the DSOUND stub cases of `xdk_tests.cpp` replaced by one HLE smoke case (device singleton, NULL handles, GetStatus written) on a software engine. |
+| 2026-10-12 | M5 DSOUND core agent | `docs\loader_design.md` (shared, new section 8.13) | Deviations D1-D12 of the DSOUND core and the engine (guest writes only on the guest thread, own peak limiter after the Master tap instead of FXMasteringLimiter, software mixer with the same reverb and device switching both ways, a starting 3D voice takes its pending values, ...). |
+| 2026-10-12 | M5 integration | `audio\audio_api.h` (additive), `audio\dsound_hle.cpp`, `audio\capture_engine.cpp` | `SoundEventKind::Level3D`, `SoundEvent::levelDb`/`distance`/`minDistance`/`maxDistance`/`rolloffPoints` (diagnostics); event list detail ` level= dist= min= max= curve=` and kind `level` (section 4.30). |
+| 2026-10-12 | M5 integration | `audio\audio_api.h` (additive), `audio\audio_engine.*`, `core\config_schema.cpp` (row + choice list), `tests\audio_dsound_tests.cpp` | `EngineConfig::DeviceTest` + `[audio] device_test = off\|absent\|loss` (developer, Advanced 845); a backend switch continues the playing buffer at its position (`ProxyVoice` bookkeeping) instead of restarting it; the software mixer starts a buffer after `Flush` at the read position (was one frame late); test hook `SwitchToNewSoftwareBackendForTesting`, new test case. Section 4.29. |
+| 2026-10-12 | M5 integration | `docs\loader_design.md` (new section 8.14) | Integration results and deviations I1-I9 (German). |
+| 2026-10-12 | M5 integration | `audio\audio_engine.cpp`, `tests\audio_dsound_tests.cpp` | LFE low-pass 120 Hz in the master stage (both backends, before the Master tap); limiter statistics summed over every backend of a run; "no output device" / "device lost" logged at INFO like "display off" (the m2/m3 checks require logs without WARN). New test case for the LFE filter. Section 4.29. |
+| 2026-10-12 | M5 phase 5 (review fixes) | `audio\dsound_hle.*`, `tests\audio_dsound_tests.cpp` | Finding 1: `Play` / `Pause(0)` / stream creation start the engine voice at the tick's commit (`ApplyAllDirty`) with the levels set after the call; `ObjectView::startPending`; the DSOUND tests commit after `Play` like the game; new test case. Section 4.29. |
+| 2026-10-12 | M5 phase 5 (review fixes) | `audio\audio_api.h` (additive), `audio\audio_engine.*`, `audio\capture_*`, `tests\audio_dsound_tests.cpp` | Findings 6/7/8/9/12/13/14/15/17: device worker thread + `IMMNotificationClient` (no device work on the guest thread, backoff, default-device and configured-device return), device name in the log, 8-channel mastering voice for wider endpoints, monotonic `FramesPlayed` over Discontinuity, flush rebase at the next Submit, `AudioEngine::TapFormat` (capture rings allocated up front), "audio capture taps" only when used, software mixer positions-only mode without a listener, summary only under the facade lock; `EngineDescriptionForTesting`; 5 new test cases (2 skip without an endpoint). Section 4.29/4.30. |
+| 2026-10-12 | M5 phase 5 (review fixes) | `audio\spatial_x3d.*`, `tests\audio_spatial_tests.cpp` | Findings 2/3: X3DAudio pans 3D voices without the front centre; the direction scale keeps every channel at or below the front reference (no +3 dB to the side). Section 4.29. |
+| 2026-10-12 | M5 phase 5 (review fixes) | `tools\audio_compare.py`, `tools\m5_check.py` | Finding 5: timeline levels with the chunk resampled at the measured speed and sub-sample alignment (`stretch_sinc`, `aligned_gains`, selftest case); A11 tolerance music +-0.1 dB, menu +-0.25 dB; finding 16: new criterion A12 (limiter statistics vs. pre-limiter peak and `master_volume`). Section 4.30. |
+| 2026-10-12 | M5 phase 5 (review fixes) | `launcher\src\core\audio_output.*`, `launcher\src\ui\audio_panel.cpp`, `launcher\src\core\l10n_table.cpp`, `launcher\tests\tst_ui.cpp`, `core\config_schema.cpp` (help text) | Findings 10/11: test tone stops when the player is destroyed, "Geräte neu suchen" disabled while it plays, test tone falls back to the default device like the game; texts: no device = silent until a device appears, not connected = default device shown and named, downmix note; `[audio] device` help mentions following the default and switching back. Section 4.30. |
+| 2026-10-12 | M5 phase 5 (final check) | `audio\spatial_x3d.cpp`, `audio\audio_engine.cpp`, `tests\audio_spatial_tests.cpp`, `tests\audio_dsound_tests.cpp`, `tools\m5_check.py` | The finding-2 fix panned every 3D voice to front left on the 5.1 side layout 0x60F (X3DAudio with the non-standard mask 0x60B): X3DAudio now pans over quad/stereo and the host maps to the output (test covers 0x3F and 0x60F); XAudio2 `FramesPlayed` after `Discontinuity` takes the stream-end value at the pass end (was 0 in the test, now at most one pass short); A9 requires sound louder on each side (a one-sided panning passed before). Sections 4.29, 4.30. |
+| 2026-10-12 | M5 phase 5 | `docs\loader_design.md` (new section 8.15), `docs\m5_report.md` (new) | Review findings R1-R17 (accepted/rejected) and the M5 report (German). |

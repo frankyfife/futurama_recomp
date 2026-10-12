@@ -275,10 +275,16 @@ private:
 // the tick and 1 in the frame between (a tick's input shows half its effect in its own frame). Alignment happens
 // in the second frame, after the guest's 6 dt cap and after a change of the regime (frames per tick, nominal period
 // or ticks(dt)); a regime change is reported as a clock reset.
+// Review finding 11: in the sub-tick regimes (N != 1) the input `real` is the pacer's frame start instead of the
+// guest's timer sample (which follows the streaming pumps), and a pacing plan change (`rephase`: free <-> vblank moves
+// the frame starts to another grid) is absorbed once: the clock adds an offset so that this frame advances by exactly
+// one quantum instead of holding or catching up on the jump (at most one tick; larger jumps are real stalls). N = 1
+// keeps the M3b clock bit for bit (no offset).
 struct ClockQuantum {
     std::uint32_t framesPerTick = 1;  // N >= 1: quanta of ticks(dt) / N; 0 = `ticks`
     double ticks = 0.0;               // N == 0: QPC ticks of this frame's display time (fractions accumulate)
     double nominalTicks = 0.0;        // N == 0: QPC ticks of the regime's nominal period (margin and regime identity)
+    bool rephase = false;             // N != 1: the pacing plan changed before this frame (see above)
 };
 
 class FrameClock {
@@ -293,11 +299,13 @@ public:
         std::int64_t maxPhase = 0;
         std::uint64_t resets = 0;     // regime changes after the first sample
         std::uint64_t aligns = 0;     // phase B corrections
+        std::uint64_t rephases = 0;   // plan changes absorbed (ClockQuantum::rephase)
     };
     struct Sample {
         std::int64_t value = 0;   // the virtual time V handed to the guest
         bool reset = false;       // first sample or a regime change
         bool aligned = false;     // the remainder was moved to phase B in this sample
+        bool rephased = false;    // a plan change's phase jump was absorbed in this sample
         std::int64_t quanta = 0;  // quanta added: 0 hold, 1 normal, >= 2 catch-up
     };
     // Accumulator sample of Game::Frame. `real` = the guest's timer value (minus the pacer's deliberate start delay),
@@ -321,6 +329,7 @@ private:
     void Consume(std::int64_t step) noexcept;
     bool started_ = false;
     std::int64_t virtual_ = 0;
+    std::int64_t offset_ = 0;    // subtracted from `real` (rephase; always 0 with N = 1)
     // Regime.
     std::uint32_t regimeN_ = 1;
     std::int64_t regimeStep_ = 0;
@@ -347,15 +356,19 @@ float FrameAlpha(std::int64_t rest, std::int64_t step, std::uint32_t framesPerTi
 // (draws from Update: intro screens, the eight cleared frames of a context switch) and outside Game::Frame (the movie
 // before it) the values say "as is" (alpha 1, kFrameInterpInsideStep). The flags have the bit values of the renderer's
 // contract (gfx/interp_frame.h); the stage registers CurrentFrameInterp there.
-inline constexpr std::uint32_t kFrameInterpSnapAll = 1u << 0;     // context switch, catch-up, 6 dt cap, clock reset
+// A catch-up (more steps than the regime allows) and the guest's 6 dt cap are no snap-all since the M3d review (finding
+// 10): the renderer interpolates over the pair of the last k = pairTicks ticks, interp(S[G-k], S[G], (k - 1 + alpha) /
+// k), so the displayed time G - 1 + alpha neither stands still nor goes back after the correction.
+inline constexpr std::uint32_t kFrameInterpSnapAll = 1u << 0;     // context switch, clock reset
 inline constexpr std::uint32_t kFrameInterpInsideStep = 1u << 1;  // drawn from Update or outside Game::Frame
 inline constexpr std::uint32_t kFrameInterpClockReset = 1u << 2;  // first frame or a regime change of the clock
+inline constexpr std::uint32_t kFrameInterpCatchUp = 1u << 3;     // catch-up or 6 dt cap (diagnostics, see above)
 
 struct FrameInterp {
     std::uint64_t tick = 0;            // completed fixed steps (probe:Game::FixedStep) = generation G
     std::uint32_t stepsThisFrame = 0;  // fixed steps of the current CApp::Frame
     std::uint32_t pairTicks = 1;       // ticks between the two newest rendered states (steps of the last tick frame)
-    float alpha = 1.0f;                // weight of S[G]: display = interp(S[G-1], S[G], alpha)
+    float alpha = 1.0f;                // weight of S[G]: display = interp(S[G-1], S[G], alpha) (k ticks: see above)
     std::uint32_t flags = 0;
     bool enabled = false;              // the clock produces frames between ticks (frame rate above the tick rate)
     std::uint64_t frame = 0;           // render samples so far (changes once per rendered frame)
@@ -379,7 +392,10 @@ struct FrameClockStats {
     std::uint64_t renderedFrames = 0;               // render samples at 0xA2FBB
     std::uint64_t subTickFrames = 0;                // ... in the sub-tick mode
     std::uint64_t alphaHalf = 0, alphaOne = 0, alphaOther = 0;  // alpha of the sub-tick frames
-    std::uint64_t snapSwitch = 0, snapCatchUp = 0, snapCap = 0, snapReset = 0;  // kFrameInterpSnapAll reasons
+    // Clock events of the sub-tick frames: snap-all (context switch, reset) and pair interpolation (catch-up, cap).
+    std::uint64_t snapSwitch = 0, snapCatchUp = 0, snapCap = 0, snapReset = 0;
+    std::uint64_t frameStartSamples = 0;            // accumulator samples fed with the pacer's frame start (finding 11)
+    std::uint64_t rephases = 0;                     // plan changes whose start phase jump the clock absorbed
     std::uint64_t startDelays = 0;                  // samples corrected by the pacer's just-in-time delay
 };
 FrameClockStats GetFrameClockStats() noexcept;

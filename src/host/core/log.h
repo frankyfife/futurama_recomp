@@ -75,6 +75,14 @@ const char* LogThreadName() noexcept;
 // fast, noexcept and must not log. nullptr removes the tap. One tap per process.
 using LogTap = void (*)(Channel channel, Level level, const char* line, std::size_t size) noexcept;
 void SetLogTap(LogTap tap) noexcept;
+// (added by the M4 test-automation agent) Additional observers with the same contract as the tap (called for
+// every line that passes the level check, before it is written, outside the log lock; fast, noexcept, must not
+// log), independent of the single tap above - e.g. the input script's `wait log "<text>"` condition
+// (input/input_script.h). At most kMaxLogObservers; adding the same function twice keeps one entry. False if the
+// table is full. RemoveLogObserver is for tests (a removed observer may still run once on another thread).
+inline constexpr int kMaxLogObservers = 4;
+bool AddLogObserver(LogTap observer) noexcept;
+void RemoveLogObserver(LogTap observer) noexcept;
 
 const char* ChannelName(Channel channel) noexcept;  // "CORE", "KRNL", ...
 const char* LevelName(Level level) noexcept;        // "error", ...

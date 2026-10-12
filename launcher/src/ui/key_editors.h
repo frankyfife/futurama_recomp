@@ -1,8 +1,10 @@
 // One editor widget per schema key, chosen by ui.widget: combo, check, spin, dspin, text, file, dir,
-// resolution (monitor modes + "Automatic (native)" + free input), monitor (outputs of query-gpu / QScreen).
+// resolution (monitor modes + "Automatic (native)" + free input), monitor (outputs of query-gpu / QScreen),
+// audio_device (M5: the active Windows render endpoints, "Windows default device" = empty value).
 // Editors speak INI text: setValue() shows a value without emitting, a user change emits edited().
 #pragma once
 
+#include "core/audio_output.h"
 #include "core/config_schema.h"
 #include "core/gpu_info.h"
 
@@ -24,6 +26,8 @@ struct EditorContext {
     std::function<QString(const KeyDef&)> placeholder;   // shown in empty path fields
     // Effective value of a key with a dynamic default while it is not set (empty = unknown: the schema default).
     std::function<QString(const KeyDef&)> dynamicDefault;
+    // M5: output devices for the audio_device editor (nullptr = none known).
+    const AudioDeviceList* audio = nullptr;
 };
 
 class KeyEditor : public QWidget {

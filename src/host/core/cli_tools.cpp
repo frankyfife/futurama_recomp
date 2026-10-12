@@ -216,6 +216,9 @@ void WriteKey(JsonWriter& w, const ConfigKeyDef& k, const ConfigLocation& locati
     } else if (section == "render" && name == "screenshot_dir" && !location.defaultUserdata.empty()) {
         w.Key("placeholder").String(Utf8(location.defaultUserdata / L"screenshots"));
     }
+    if (k.unit != nullptr) {
+        w.Key("unit").String(k.unit);  // M4 (input agent): slider unit, src/INTERFACES.md 4.26
+    }
     w.Key("ui");
     w.BeginObject(true);
     w.Key("tab").String(ConfigUiTabName(k.tab));

@@ -332,7 +332,9 @@ TEST_CASE("platform: main window with a D3D11 flip-model swap chain (WARP)") {
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     platform::MainWindowClientSize(&w, &h);
     CHECK(w * 3 == h * 4);
-    // Alt+Enter toggles the borderless fullscreen window and back; the view keeps 4:3.
+    // Alt+Enter toggles the borderless fullscreen window and back. M3d: in fullscreen the view covers the whole
+    // monitor (the present pass draws the 4:3 picture with bars; independent flip / VRR need a full-monitor swap
+    // chain), in the window it keeps 4:3 again.
     const HWND frame = platform::MainFrameWindow();
     const LPARAM altEnter = 1 | (static_cast<LPARAM>(KF_ALTDOWN) << 16);
     SendMessageW(frame, WM_SYSKEYDOWN, VK_RETURN, altEnter);
@@ -340,10 +342,20 @@ TEST_CASE("platform: main window with a D3D11 flip-model swap chain (WARP)") {
     CHECK((GetWindowLongPtrW(frame, GWL_STYLE) & WS_CAPTION) == 0);
     platform::MainWindowClientSize(&w, &h);
     CHECK(w > 0);
-    CHECK(static_cast<int>(w * 3) - static_cast<int>(h * 4) <= 4);
-    CHECK(static_cast<int>(h * 4) - static_cast<int>(w * 3) <= 4);
+    RECT frameClient{};
+    {
+        // In the window's DPI context (per-monitor aware): physical pixels like MainWindowClientSize.
+        const DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(frame));
+        GetClientRect(frame, &frameClient);
+        SetThreadDpiAwarenessContext(previous);
+    }
+    CHECK(w == static_cast<std::uint32_t>(frameClient.right - frameClient.left));
+    CHECK(h == static_cast<std::uint32_t>(frameClient.bottom - frameClient.top));
     SendMessageW(frame, WM_SYSKEYDOWN, VK_RETURN, altEnter);
     CHECK((GetWindowLongPtrW(frame, GWL_STYLE) & WS_CAPTION) == WS_CAPTION);
+    platform::MainWindowClientSize(&w, &h);
+    CHECK(static_cast<int>(w * 3) - static_cast<int>(h * 4) <= 4);
+    CHECK(static_cast<int>(h * 4) - static_cast<int>(w * 3) <= 4);
     CHECK_FALSE(IsWindowVisible(frame));  // toggling does not show the hidden window
     {
         gfx::rhi::DeviceDesc desc;

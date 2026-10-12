@@ -39,9 +39,12 @@ set(LAUNCHER_DEFINITIONS UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN QT_NO_CAS
 
 # --- core (no widgets) ---------------------------------------------------------------------------
 add_library(launcher_core STATIC
+    src/core/audio_output.cpp src/core/audio_output.h
+    src/core/bindings.cpp src/core/bindings.h
     src/core/cli_cache.cpp src/core/cli_cache.h
     src/core/config_schema.cpp src/core/config_schema.h
     src/core/exit_codes.cpp src/core/exit_codes.h
+    src/core/frame_rate.cpp src/core/frame_rate.h
     src/core/game_cli.cpp src/core/game_cli.h
     src/core/game_paths.cpp src/core/game_paths.h
     src/core/game_session.cpp src/core/game_session.h
@@ -50,6 +53,7 @@ add_library(launcher_core STATIC
     src/core/iso_check.cpp src/core/iso_check.h
     src/core/l10n.cpp src/core/l10n.h src/core/l10n_table.cpp
     src/core/log_tail.cpp src/core/log_tail.h
+    src/core/pad_reader.cpp src/core/pad_reader.h
     src/core/presets.cpp src/core/presets.h
     src/core/settings_model.cpp src/core/settings_model.h
     src/core/validation.cpp src/core/validation.h
@@ -58,15 +62,21 @@ target_include_directories(launcher_core PUBLIC src)
 target_compile_options(launcher_core PUBLIC ${LAUNCHER_COMPILE_OPTIONS})
 target_compile_definitions(launcher_core PUBLIC ${LAUNCHER_DEFINITIONS})
 target_link_libraries(launcher_core PUBLIC Qt6::Core)
+# M5: audio output devices (WASAPI) and the test tone (XAudio2 2.9, part of Windows 10+).
+target_link_libraries(launcher_core PUBLIC ole32 xaudio2)
 
 # --- widgets ---------------------------------------------------------------------------------------
 add_library(launcher_ui STATIC
     src/ui/app_context.cpp src/ui/app_context.h
     src/ui/app_style.cpp src/ui/app_style.h
+    src/ui/audio_panel.cpp src/ui/audio_panel.h
     src/ui/automation.cpp src/ui/automation.h
+    src/ui/binding_capture.cpp src/ui/binding_capture.h
+    src/ui/controls_panel.cpp src/ui/controls_panel.h
     src/ui/iso_status.cpp src/ui/iso_status.h
     src/ui/key_editors.cpp src/ui/key_editors.h
     src/ui/main_window.cpp src/ui/main_window.h
+    src/ui/pad_poller.cpp src/ui/pad_poller.h
     src/ui/screen_info.cpp src/ui/screen_info.h
     src/ui/settings_tab.cpp src/ui/settings_tab.h
     src/ui/status_panel.cpp src/ui/status_panel.h
@@ -114,6 +124,7 @@ qt_add_executable(launcher_tests
     tests/tst_validation.cpp tests/tst_validation.h
     tests/tst_paths.cpp tests/tst_paths.h
     tests/tst_misc.cpp tests/tst_misc.h
+    tests/tst_bindings.cpp tests/tst_bindings.h
 )
 target_link_libraries(launcher_tests PRIVATE launcher_core Qt6::Test)
 target_compile_definitions(launcher_tests PRIVATE

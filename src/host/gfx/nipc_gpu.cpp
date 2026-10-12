@@ -267,6 +267,7 @@ struct GpuRenderer::Impl {
     std::uint32_t frameClears = 0;
     bool frameColorCleared = false;
     std::uint64_t framesWithoutDraw = 0, framesWithoutColorClear = 0, framesUnchanged = 0;
+    std::uint64_t repeatedPictures = 0;  // M3d F1: frames that presented the previous picture again
     // Origin of the picture in each of the device's persistent back buffers (rotated by Present): the last
     // frame that drew into it or cleared its color. A frame without either shows the picture of that frame
     // (two presents ago) - "draw summary" names it.
@@ -343,7 +344,8 @@ struct GpuRenderer::Impl {
     void Count(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome, bool haveItem) noexcept;
     void Submit(ni::DrawKind kind, ni::GuestPtr object, ni::ExtractStatus status) noexcept;
     void TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome, bool haveItem) noexcept;
-    void LogFrameSummary(std::uint32_t frame, const Picture& shown) noexcept;
+    // `repeated` (M3d F1): the frame presents the previous picture again.
+    void LogFrameSummary(std::uint32_t frame, const Picture& shown, bool repeated) noexcept;
     void PrepareFrame(std::uint32_t frame) noexcept;
     bool Resize(const RenderSizes& want, const char* reason) noexcept;  // M3c
     void FollowView() noexcept;                                          // M3c: resolution auto
@@ -579,7 +581,7 @@ void GpuRenderer::Impl::Submit(ni::DrawKind kind, ni::GuestPtr object, ni::Extra
     Count(kind, object, OutcomeOf(result), true);
 }
 
-void GpuRenderer::Impl::LogFrameSummary(std::uint32_t frame, const Picture& shown) noexcept {
+void GpuRenderer::Impl::LogFrameSummary(std::uint32_t frame, const Picture& shown, bool repeated) noexcept {
     char line[768];
     std::size_t used = 0;
     line[0] = 0;
@@ -619,10 +621,10 @@ void GpuRenderer::Impl::LogFrameSummary(std::uint32_t frame, const Picture& show
         }
         used += static_cast<std::size_t>(w);
     }
-    char picture[96] = "";
+    char picture[128] = "";
     if (shown.frame != frame) {
-        std::snprintf(picture, sizeof(picture), "; shows the picture of frame %u (%u draw calls, %u drawn)",
-                      shown.frame, shown.draws, shown.drawn);
+        std::snprintf(picture, sizeof(picture), "; shows the picture of frame %u (%u draw calls, %u drawn)%s",
+                      shown.frame, shown.draws, shown.drawn, repeated ? ", repeated (previous present)" : "");
     }
     FUT_LOGI(Gfx, "draw summary frame %u: %u draw calls, %u drawn, %u not drawn, %u clears%s%s%s", frame,
              issued, drawn, issued - drawn, frameClears, used != 0 ? "; " : "", line, picture);
@@ -636,6 +638,9 @@ void GpuRenderer::Impl::PrepareFrame(std::uint32_t frame) noexcept {
     frameClears = 0;
     frameColorCleared = false;
     std::memset(frameCounts, 0, sizeof(frameCounts));
+    if (history != nullptr) {
+        history->BeginFrame(frame, traceFrame);  // M3d: per-draw interpolation trace of the trace_frames frames
+    }
 }
 
 // ---- GpuRenderer
@@ -1056,8 +1061,23 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
     if (issued != 0 || d.frameColorCleared) {
         picture = Impl::Picture{frame, issued, drawn};
     }
+    // M3b display-coupled pacing: the pacer chooses sync interval, tearing and whether the swap chain gets this
+    // frame (platform/frame_pacer.h); OnFrameDisplayed then waits (platform::EndFrame).
+    const platform::PacingConfig pacing = PacingConfigOf(s);
+    platform::SwapChainInfo chain;
+    chain.frameLatencyWaitable = d.device->FrameLatencyWaitable();
+    chain.tearingSupported = d.device->Info().tearingSupported;
+    // M3d F1 (frame-clock/pacing agent, m3d_frameclock.md 1.3): a frame that drew nothing and cleared no color holds
+    // the picture of two presents ago; above the tick rate the pacer keeps the previous picture instead. The device
+    // presents the buffer of the previous Present once more (one Present per frame keeps the vblank plans' waitable
+    // rhythm) and keeps the rotation; the summary and a screenshot of the frame show that picture.
+    chain.frameUnchanged = issued == 0 && !d.frameColorCleared;
+    const platform::PresentRequest request = platform::PlanPresent(pacing, chain);
+    const bool repeat = request.repeatPrevious && d.device->RepeatPreviousPicture();
+    d.repeatedPictures += repeat ? 1u : 0u;
     if (d.summaryFrame) {
-        d.LogFrameSummary(frame, picture);
+        d.LogFrameSummary(frame, repeat ? d.pictures[(d.backBuffer + Impl::kBackBuffers - 1) % Impl::kBackBuffers]
+                                        : picture, repeat);
     }
     const bool hotkey = (platform::ConsumeHotkeys() & platform::kHotkeyScreenshot) != 0;
     if (hotkey || Listed(s.screenshotFrames, frame)) {
@@ -1068,13 +1088,6 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
                                  d.quality.screenshots == ScreenshotSize::Internal ? platform::ScreenshotSource::Internal
                                                                                    : platform::ScreenshotSource::Output);
     }
-    // M3b display-coupled pacing: the pacer chooses sync interval, tearing and whether the swap chain gets this
-    // frame (platform/frame_pacer.h); OnFrameDisplayed then waits (platform::EndFrame).
-    const platform::PacingConfig pacing = PacingConfigOf(s);
-    platform::SwapChainInfo chain;
-    chain.frameLatencyWaitable = d.device->FrameLatencyWaitable();
-    chain.tearingSupported = d.device->Info().tearingSupported;
-    const platform::PresentRequest request = platform::PlanPresent(pacing, chain);
     rhi::PresentDesc present;
     present.syncInterval = request.syncInterval;
     present.allowTearing = request.allowTearing;
@@ -1114,7 +1127,9 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
         }
         break;
     }
-    d.backBuffer = (d.backBuffer + 1) % Impl::kBackBuffers;  // the device moved on (rhi Device::Present)
+    if (!repeat) {
+        d.backBuffer = (d.backBuffer + 1) % Impl::kBackBuffers;  // the device moved on (rhi Device::Present)
+    }
     platform::NotePresentedFrame();  // first call: shows the window, registers the "present" reporter
     if (d.history != nullptr) {
         d.history->EndFrame(frame, d.traceFrame);  // M3d: before the arena reset (interpolated transforms live there)
@@ -1197,12 +1212,12 @@ void GpuRenderer::LogStatistics() noexcept {
     FUT_LOGI(
         Gfx,
         "d3d11 frames: %llu presents (%llu occluded; %llu without a draw, %llu without a color clear, %llu "
-        "with neither = the back buffer of two presents ago), %llu screenshots, %llu scenes, %llu cameras, "
-        "%llu clears (%llu on texture targets skipped, %llu empty rectangles); textures %llu created, %llu "
-        "destroyed, %llu failed; arena peak %zu bytes",
+        "with neither = the back buffer of two presents ago, %llu of them showing the previous picture again (M3d "
+        "F1)), %llu screenshots, %llu scenes, %llu cameras, %llu clears (%llu on texture targets skipped, %llu empty "
+        "rectangles); textures %llu created, %llu destroyed, %llu failed; arena peak %zu bytes",
         static_cast<unsigned long long>(d.presents), static_cast<unsigned long long>(d.occluded),
         static_cast<unsigned long long>(d.framesWithoutDraw), static_cast<unsigned long long>(d.framesWithoutColorClear),
-        static_cast<unsigned long long>(d.framesUnchanged),
+        static_cast<unsigned long long>(d.framesUnchanged), static_cast<unsigned long long>(d.repeatedPictures),
         static_cast<unsigned long long>(d.screenshots), static_cast<unsigned long long>(d.scenes),
         static_cast<unsigned long long>(d.cameras), static_cast<unsigned long long>(d.clears),
         static_cast<unsigned long long>(d.clearsSkipped), static_cast<unsigned long long>(d.emptyClearRects),

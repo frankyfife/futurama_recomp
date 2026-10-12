@@ -763,3 +763,71 @@ half-pixel grid of 4.5 itself). Classic is untouched (the flag is only set when 
   Debug and RelWithDebInfo ALL PASS, debug layer 0 messages; X1 0.73 / 0.18 / 0.60 / 0.98, X2 ratio 0.44-0.46.
   Classic `m3_check` (xemu 0.00 / 0.00 / 0.29-0.30 / 0.01) ALL PASS in all three builds.
 - 16384x12288 with 8x: `E_OUTOFMEMORY` -> one step down to 4x, the game runs visibly (`run\m3c_final\cases`).
+
+## 13. M3d: interpolation between logic ticks (interpolation agent)
+
+Design: `analysis/loader/m3d_interpolation.md`; API: `gfx/interp_history.h` (`src/INTERFACES.md` 4.25); frame clock
+values: `gfx/interp_frame.h` (provided by `xapi/game_timing`, `src/INTERFACES.md` 4.24).
+
+- Contract with the frame clock: display = interp(S[G-1], S[G], alpha), alpha = weight of the newest tick state.
+  At 120 fps alpha is 1/2 in the frame that ran the tick and exactly 1 in the frame between (+1/2 tick of displayed
+  time per frame, 8.3 ms added latency). alpha >= 1 - 1e-3, `enabled = false` (60 fps), `[render] interpolation =
+  off` and draws inside the step loop (`kFrameInterpInsideStep`) pass the guest pointers through: bit-identical to M3c.
+- Integration (minimal, `gfx/nipc_gpu.cpp`): slot 47 hands the camera object (location - 0xA0) and the input to
+  `History::Camera` before `ni::ExtractCamera` (interpolated values in host buffers; near/far/port of the current
+  tick); slots 48-51 (scene, not texture targets) get `History::Geometry` before `ni::Extract*`: the world transform
+  and the skin instance may point into the `ExtractArena` (guest-visible, below 0x80000000, valid until the arena
+  reset in `DisplayFrame`, which calls `History::EndFrame` first). `ni_extract` is unchanged: world matrix, world
+  scale, NORMALIZENORMALS and the skinning call of `FUN_0014F710` follow the replaced pointers.
+- Interpolated: cameras (location lerp, slerp of the rows dir/up/right, frustum tangents lerp; cut rule), rigid
+  draws (translation lerp, quaternion slerp, scale lerp; along the parent chain with `[render]
+  interpolation_hierarchy`), skinned draws (relative bone poses through a substitute `NiSkinInstance`). Snaps: first
+  sight, generation gap, signature change, destruction (`probe:NiAVObject::Destroy`), rules R2/R4, scale ratio
+  outside [1/2, 2], mirror, orthonormality, frame-driven keys, the clock's snap-all.
+- Not interpolated (tick rate by design): screen polygons/textures (slots 54/55: HUD, menus, intro, movie quad,
+  `NiOutline` silhouettes), UV/alpha/material/flipbook/visibility animations, LOD/switch changes (a new object =
+  first sight), lights and texture effects (stage 3), culling (the game culls with the tick camera).
+- Measured (frontend, 120 fps, RelWithDebInfo; `run\m3d_interp`): about 38 % of the draws of a tick frame
+  interpolated, the rest static; loop wraps snapped (about 100 translation and 6 rotation snaps per 26 s); 0 changes
+  within a generation (no frame-driven object in the frontend); skin self-test 4/4 with difference 0; zero-step
+  frames bit-identical (guest pointers); history cost about 0.05 ms (world only) / 0.11 ms (hierarchy) per recorded
+  frame at about 350 draws (average over tick and zero-step frames; the review measured per tick frame median 0.196 ms
+  / p99 0.371 ms with the hierarchy against 0.063 / 0.125 ms without, about 0.55 us per draw - the analysis estimate
+  of 0.05 ms + < 0.1 ms at 2000 draws was too low: about 1 ms per tick frame is to be expected there, 12 % of the
+  8.33 ms budget; a cost check with about 2000 draws belongs to M8). Two-tick midpoint test against the real middle state (fly-in after the context switch):
+  world interpolation p99 13.6 px, max 108.6 px at 640x480; hierarchy p99 0.09 px, max 17.5 px.
+- Repeated picture (F1 of the frame clock, `platform/frame_pacer.h`; verify phase): a frame between two ticks that
+  drew nothing and cleared no color is presented with the picture of the previous Present - `rhi::Device::
+  RepeatPreviousPicture()` (add-only, default false) before the screenshot and `Present`: the present pass and
+  `CaptureBackBuffer` / `CaptureOutput` read the persistent back buffer of the previous Present, and that Present keeps
+  the rotation (the current back buffer stays current, `GpuRenderer` keeps its `backBuffer` index). One Present per
+  frame keeps the frame-latency waitable's rhythm on the vblank plans; the draw summary of the frame reads "shows the
+  picture of frame M (K draw calls, D drawn), repeated (previous present)", the `d3d11 frames:` line counts them. Unit
+  test `rhi d3d11: a repeated picture presents the previous buffer again and keeps the rotation (M3d F1)`.
+- Verification (`tools/m3d_check.py`, run `run\m3d_verify`): 21 739 interpolated draws of the fly-in against the
+  lerp (world) and an independent Python reference of the parent chain (21 419 hierarchy draws, max relative
+  difference 8.7e-7), all between their neighbours, alpha-1 frames bit-exact S[G]; two-tick midpoint test p99 0.08 px;
+  screenshot triplets: ratio d(F0,F1) / (d(F0,F1) + d(F1,F2)) median 0.65 with interpolation, 1.00 without (content
+  at the tick rate - lightning, the oscilloscope wave, the fade - pulls it above 1/2); every frame without a step has
+  its picture in the run without interpolation (141 of 147 bit-identical, the rest within 71 pixels of real-time
+  content); 60 fps with interpolation on/off and the destroy probe removed: bit-identical scenes.
+- Review fixes (M3d phase 5, `docs/m3d_report.md`, `src/INTERFACES.md` 4.25):
+  - Jump rule (finding 1): the growth test compares with the larger of the last two known per-tick motions (an
+    oscillation's reversal point has one small step); with an unknown previous motion (first sight in G-1) only
+    steps above 16 radii or angles above 90 degrees snap; with the hierarchy the parent chain decides for a drawn
+    object whose parent has history - only a node whose own local transform jumps snaps (with its descendants,
+    together), a small part of an assembly that starts moving is no jump. Exit line: "N jump verdicts of the chain
+    against the leaf rule".
+  - Step pairs (finding 10): a frame whose tick advanced by exactly `FrameInterp::pairTicks` = k (catch-up of 2-3
+    steps, the guest's 6 dt cap; at most 6) interpolates `interp(S[G-k], S[G], (k - 1 + alpha) / k)` with the rules
+    per tick; the displayed time never stands still or goes back after a correction ("catch-up pairs interpolated").
+  - Destructions (findings 3, 4): a recapture of an address destroyed since the earlier capture is another object
+    (no frame-driven hold); cameras check the destroyed registry ("destroyed" in the camera line).
+  - F1 without presents (phase 5): with the display off or the window minimized the repeated picture is kept as well
+    (`RepeatPreviousPicture` with `skipSwapChain`), so captures of a frame between ticks show the previous picture.
+  - Readable-page cache (finding 6): dropped when `guest::MemoryReleaseEpoch()` changed (`kernel/mm.cpp` release or
+    decommit).
+  - Not changed, documented: the camera is interpolated in world space only, while objects follow the parent chain -
+    geometry rigidly attached to a rotating camera node moves in view space by up to 0.1 px (3 deg/tick) .. 10 px
+    (20 deg/tick, 5 units boom) at 640 px (finding 5, measure with M4b/M8 cutscenes); mirrored rotations
+    (det <= 0) always snap - the disc has none (finding 7).

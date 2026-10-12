@@ -35,6 +35,7 @@ enum class IssueCode {
     NotADirectory,
     NotRepresentable,  // line break, or quotes the INI cannot carry
     QuotedPath,        // review M3c finding 10: a path wrapped in quotes (the host would keep them)
+    BadBinding,        // M4: a binding list of [input] that the input layer rejects (core/bindings.h)
 };
 
 struct ValidationResult {
@@ -70,7 +71,7 @@ QString CleanPathInput(const QString& text);
 ValidationResult ValidateValue(const KeyDef& key, const QString& value, const QString& baseDir);
 
 // True if both INI texts mean the same value for `key` ("1" == "on", "0x10" == "16", "1.0" == "1",
-// "AUTO" == "auto", paths case-insensitive after cleaning).
+// "AUTO" == "auto", paths case-insensitive after cleaning, binding lists as sets of tokens).
 bool ValuesEquivalent(const KeyDef& key, const QString& a, const QString& b);
 
 // Bool text in the style of `existing` (1/0, true/false, yes/no, on/off); "1"/"0" if there is none.

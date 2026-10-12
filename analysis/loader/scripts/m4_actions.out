@@ -1,0 +1,85 @@
+# FUN_0005df10 lookups: site, owner, action, active binding (cfg1), consumer
+0003328a FUN_00032fb0     action=31   A         -> ValueFree@0003329c
+0004519f FUN_000445a0     action=31   A         -> ValueFree@000451af
+000579fc FUN_00057940     action=1    stick0    -> (cmp 0xff / next lookup)
+00057a09 FUN_00057940     action=1    stick0    -> StickY@00057a18
+00057a27 FUN_00057940     action=10   DPad-U    -> ValueFree@00057a36
+00057a43 FUN_00057940     action=11   DPad-D    -> ValueFree@00057a52
+00057a65 FUN_00057940     action=10   DPad-U    -> ValueFree@00057a74
+00057a81 FUN_00057940     action=11   DPad-D    -> ValueFree@00057a90
+00057add FUN_00057940     action=2    stick0    -> (cmp 0xff / next lookup)
+00057aea FUN_00057940     action=2    stick0    -> StickX@00057af9
+00057b08 FUN_00057940     action=13   DPad-R    -> ValueFree@00057b17
+00057b24 FUN_00057940     action=12   DPad-L    -> ValueFree@00057b33
+00057b46 FUN_00057940     action=13   DPad-R    -> ValueFree@00057b55
+00057b62 FUN_00057940     action=12   DPad-L    -> ValueFree@00057b71
+00057bbe FUN_00057940     action=3    -         -> (cmp 0xff / next lookup)
+00057bcb FUN_00057940     action=3    -         -> StickX@00057bda
+00057be3 FUN_00057940     action=15   RT        -> ValueFree@00057bf2
+00057bff FUN_00057940     action=14   LT        -> ValueFree@00057c0e
+00057c21 FUN_00057940     action=4    stick1    -> (cmp 0xff / next lookup)
+00057c2e FUN_00057940     action=4    stick1    -> StickY@00057c3d
+00057c55 FUN_00057940     action=16   -         -> ValueFree@00057c64
+00057c71 FUN_00057940     action=17   -         -> ValueFree@00057c80
+00057ca2 FUN_00057940     action=6    stick0    -> (cmp 0xff / next lookup)
+00057caf FUN_00057940     action=6    stick0    -> StickY@00057cbe
+00057d1c FUN_00057940     action=5    stick1    -> (cmp 0xff / next lookup)
+00057d29 FUN_00057940     action=5    stick1    -> StickX@00057d38
+00057d41 FUN_00057940     action=19   -         -> ValueFree@00057d50
+00057d5d FUN_00057940     action=18   -         -> ValueFree@00057d6c
+00057d7f FUN_00057940     action=7    stick0    -> (cmp 0xff / next lookup)
+00057d8c FUN_00057940     action=7    stick0    -> StickX@00057d9b
+00057dea FUN_00057940     action=8    stick1    -> (cmp 0xff / next lookup)
+00057df7 FUN_00057940     action=8    stick1    -> StickX@00057e06
+00057e15 FUN_00057940     action=8    stick1    -> StickY@00057e24
+00057e33 FUN_00057940     action=23   DPad-R    -> ValueFree@00057e42
+00057e4f FUN_00057940     action=22   DPad-L    -> ValueFree@00057e5e
+00057e77 FUN_00057940     action=30   START     -> HeldFree@00057e86
+00057e95 FUN_00057940     action=28   BLACK     -> HeldFree@00057ea4
+00057eb5 FUN_00057940     action=27   WHITE     -> HeldFree@00057ec4
+00057ed5 FUN_00057940     action=26   LT        -> HeldFree@00057ee4
+00057ef5 FUN_00057940     action=24   B         -> HeldFree@00057f04
+00057f1a FUN_00057940     action=8    stick1    -> (cmp 0xff / next lookup)
+00057f2c FUN_00057940     action=20   RS-Klick  -> (cmp 0xff / next lookup)
+00057f39 FUN_00057940     action=16   -         -> (cmp 0xff / next lookup)
+00057f46 FUN_00057940     action=20   RS-Klick  -> (cmp 0xff / next lookup)
+00057f51 FUN_00057940     action=ecx  -         -> HeldFree@00057f60
+00057f7e FUN_00057940     action=31   A         -> ValueFree@00057f8d
+00057f9b FUN_00057940     action=edi  -         -> ValueFree@00057faa
+00058a20 FUN_000589e0     action=15   RT        -> HeldFree@00058a2f
+00058a3c FUN_000589e0     action=15   RT        -> PressedFree@00058a4b
+00058a58 FUN_000589e0     action=14   LT        -> PressedFree@00058a67
+000621e3 FUN_00061a70     action=15   RT        -> ValueFree@000621f5
+00062207 FUN_00061a70     action=14   LT        -> ValueFree@00062219
+000b749c FUN_000b7460     action=ecx  -         -> SetLock@000b74ad
+
+# per action
+action 1    stick0    FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickY
+action 2    stick0    FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickX
+action 3    -         FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickX
+action 4    stick1    FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickY
+action 5    stick1    FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickX
+action 6    stick0    FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickY
+action 7    stick0    FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickX
+action 8    stick1    FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:StickX, FUN_00057940:StickY
+action 10   DPad-U    FUN_00057940:ValueFree
+action 11   DPad-D    FUN_00057940:ValueFree
+action 12   DPad-L    FUN_00057940:ValueFree
+action 13   DPad-R    FUN_00057940:ValueFree
+action 14   LT        FUN_00057940:ValueFree, FUN_000589e0:PressedFree, FUN_00061a70:ValueFree
+action 15   RT        FUN_00057940:ValueFree, FUN_000589e0:HeldFree, FUN_000589e0:PressedFree, FUN_00061a70:ValueFree
+action 16   -         FUN_00057940:(cmp 0xff / next lookup), FUN_00057940:ValueFree
+action 17   -         FUN_00057940:ValueFree
+action 18   -         FUN_00057940:ValueFree
+action 19   -         FUN_00057940:ValueFree
+action 20   RS-Klick  FUN_00057940:(cmp 0xff / next lookup)
+action 22   DPad-L    FUN_00057940:ValueFree
+action 23   DPad-R    FUN_00057940:ValueFree
+action 24   B         FUN_00057940:HeldFree
+action 26   LT        FUN_00057940:HeldFree
+action 27   WHITE     FUN_00057940:HeldFree
+action 28   BLACK     FUN_00057940:HeldFree
+action 30   START     FUN_00057940:HeldFree
+action 31   A         FUN_00032fb0:ValueFree, FUN_000445a0:ValueFree, FUN_00057940:ValueFree
+action ecx  -         FUN_00057940:HeldFree, FUN_000b7460:SetLock
+action edi  -         FUN_00057940:ValueFree

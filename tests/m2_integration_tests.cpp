@@ -123,3 +123,15 @@ TEST_CASE("vfs: documented misses on partition1 are limited to save directories 
     CHECK(vfs::detail::DocumentedMissReason(p1, R"(\TDATA\46490002\0123456789AB)") == nullptr);
     CHECK(vfs::detail::DocumentedMissReason(vfs::kCdRom0, R"(\FutPAL05.img)") != nullptr);
 }
+
+// M4 integration: the optional per-level files FUN_000C5B40 probes and the missing sound of the Level1-1 script.
+TEST_CASE("vfs: documented misses of level loading (Level1-1)") {
+    const char* cd = vfs::kCdRom0;
+    CHECK(vfs::detail::DocumentedMissReason(cd, R"(\Levels\Level1-1\backdrop.nif)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(cd, R"(\Levels\Level1-1\backdrop_static.nif)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(cd, R"(\levels\level2-2\CAMERAPATHTEST.nif)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(cd, R"(\Sounds\Level1\Ambience-PlanetExp\Hum-loop2.wav)") != nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(cd, R"(\Levels\Level1-1\Level1-1.nif)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(cd, R"(\Levels\Level1-1\defs.nif)") == nullptr);
+    CHECK(vfs::detail::DocumentedMissReason(cd, R"(\Sounds\Level1\Ambience-PlanetExp\Hum-loop.wav)") == nullptr);
+}

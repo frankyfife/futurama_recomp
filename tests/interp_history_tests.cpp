@@ -6,12 +6,14 @@
 #include "doctest.h"
 
 #include "core/config.h"
+#include "core/guest.h"
 #include "gfx/guest_memory.h"
 #include "gfx/interp_history.h"
 
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <vector>
 
 namespace {
@@ -641,12 +643,442 @@ TEST_CASE("interp history: [render] interpolation and interpolation_debug") {
     core::Config cfg;
     cfg.userdata = "C:\\fut-userdata";
     Settings s = SettingsFromConfig(cfg);
-    CHECK(s.enabled);  // schema default "on"
+    CHECK(s.enabled);    // schema default "on"
+    CHECK(s.hierarchy);  // schema default "on" (stage 1b)
     CHECK(s.debug == DebugMode::Off);
     CHECK(s.tracePath.filename() == "interp_trace.csv");
     cfg.values["render.interpolation"] = "off";
     cfg.values["render.interpolation_debug"] = "tint";
+    cfg.values["render.interpolation_hierarchy"] = "off";
     s = SettingsFromConfig(cfg);
     CHECK_FALSE(s.enabled);
+    CHECK_FALSE(s.hierarchy);
     CHECK(s.debug == DebugMode::Tint);
+}
+
+namespace {
+
+// A scene-graph node: vtable, parent +0x14, world bound radius +0x2C, world transform +0x70.
+GuestPtr MakeNode(GuestHeap& heap, GuestPtr parent, float radius = 1.0f) {
+    const GuestPtr node = heap.Alloc(0x100);
+    *P<GuestPtr>(node) = 0x002A6000;  // a NiNode-like vtable
+    *P<GuestPtr>(node + 0x14) = parent;
+    *P<float>(node + 0x2C) = radius;
+    *P<ni::NiTransform>(node + 0x70) = IdentityTransform();
+    return node;
+}
+
+ni::NiTransform& WorldOf(GuestPtr object) {
+    return *P<ni::NiTransform>(object + 0x70);
+}
+
+// Arm: a pivot node turning about z (its world rotation) with a shape hanging at (2, 0, 0) in the pivot's space.
+struct Arm {
+    GuestPtr root = 0;
+    GuestPtr pivot = 0;
+    Shape shape;
+    void Pose(float degrees) {
+        WorldOf(pivot) = Rotation(0, 0, 1, degrees * kPi / 180.0f, 0.0f, 0.0f, 0.0f);
+        const ni::NiTransform local = Rotation(0, 0, 1, 0.0f, 2.0f, 0.0f, 0.0f);
+        shape.World() = Compose(WorldOf(pivot), local);
+    }
+};
+
+Arm MakeArm(GuestHeap& heap) {
+    Arm a;
+    a.root = MakeNode(heap, 0, 10.0f);
+    a.pivot = MakeNode(heap, a.root, 3.0f);
+    a.shape = MakeShape(heap, 1.0f);  // radius 1: steps up to 2 units per tick from rest interpolate (R2)
+    *P<GuestPtr>(a.shape.object + 0x14) = a.pivot;
+    return a;
+}
+
+// 120 Hz phase B: tick frame with alpha 1/2, then the zero-step frame.
+GeometryResult TickPair(Driver& d, const Shape& s, std::uint64_t tick) {
+    const GeometryResult r = d.Frame(s, tick, 0.5f);
+    d.Frame(s, tick, 1.0f);
+    return r;
+}
+
+}  // namespace
+
+TEST_CASE("interp history: hierarchy - a part on a turning node follows the arc, world interpolation the chord") {
+    GuestHeap heap;
+    Arm arm = MakeArm(heap);
+    Settings hierarchy;  // default: hierarchy on
+    Settings world;
+    world.hierarchy = false;
+    for (const bool along : {true, false}) {
+        CAPTURE(along);
+        Driver d(along ? hierarchy : world);
+        arm.Pose(0.0f);
+        TickPair(d, arm.shape, 1);
+        arm.Pose(15.0f);
+        TickPair(d, arm.shape, 2);
+        arm.Pose(55.0f);  // 40 degrees in one tick (after 15: no snap, R4 needs > 45 degrees)
+        const GeometryResult r = TickPair(d, arm.shape, 3);
+        REQUIRE(r.reason == SnapReason::None);
+        const ni::NiTransform shown = Shown(r);
+        const float radius = std::sqrt(shown.translate[0] * shown.translate[0] + shown.translate[1] * shown.translate[1]);
+        // Same direction as the true pose at 35 degrees (the pivot's world rotation at the middle).
+        const ni::NiTransform truth = Compose(Rotation(0, 0, 1, 35.0f * kPi / 180.0f),
+                                              Rotation(0, 0, 1, 0.0f, 2.0f, 0.0f, 0.0f));
+        CHECK(shown.translate[0] * truth.translate[1] - shown.translate[1] * truth.translate[0] ==
+              doctest::Approx(0.0f).epsilon(1e-5));
+        CHECK(shown.translate[0] * truth.translate[0] + shown.translate[1] * truth.translate[1] > 0.0f);
+        if (along) {
+            CHECK(radius == doctest::Approx(2.0f).epsilon(1e-5));  // on the arc
+            CHECK(d.history.GetStats().totals.hierarchical == 2);
+        } else {
+            CHECK(radius == doctest::Approx(2.0f * std::cos(20.0f * kPi / 180.0f)).epsilon(1e-5));  // on the chord
+            CHECK(d.history.GetStats().totals.hierarchical == 0);
+        }
+        // The rotation of the part is the same either way (slerp of the world rotation).
+        CHECK(AngleDeg(shown.rotate, Rotation(0, 0, 1, 35.0f * kPi / 180.0f).rotate) < 1e-2f);
+    }
+}
+
+TEST_CASE("interp history: hierarchy - without parent motion the result equals world interpolation") {
+    GuestHeap heap;
+    Shape a = MakeShape(heap);  // no parent: the drawn object is the topmost node
+    Arm arm = MakeArm(heap);    // static pivot, the shape moves in the pivot's space
+    arm.Pose(0.0f);
+    Settings world;
+    world.hierarchy = false;
+    Driver dh, dw(world);
+    for (std::uint64_t tick = 1; tick <= 4; ++tick) {
+        a.World() = Rotation(1, 1, 0, 0.1f * static_cast<float>(tick), 0.3f * static_cast<float>(tick), 0.0f, 1.0f);
+        arm.shape.World() = Compose(WorldOf(arm.pivot), Rotation(0, 1, 0, 0.2f * static_cast<float>(tick),
+                                                                   static_cast<float>(tick) * 0.05f, 0.0f, 0.0f));
+        for (const float alpha : {0.5f, 1.0f}) {
+            dh.Begin(tick, alpha);
+            dw.Begin(tick, alpha);
+            const GeometryResult h0 = dh.Draw(a), w0 = dw.Draw(a);
+            const GeometryResult h1 = dh.Draw(arm.shape), w1 = dw.Draw(arm.shape);
+            if (tick >= 2 && alpha < 1.0f) {
+                REQUIRE(h0.reason == SnapReason::None);
+                REQUIRE(h1.reason == SnapReason::None);
+                CHECK(BitwiseEqual(Shown(h0), Shown(w0)));  // root: the same blend of the same transforms
+                const ni::NiTransform hs = Shown(h1), ws = Shown(w1);
+                for (int c = 0; c < 3; ++c) {
+                    CHECK(hs.translate[c] == doctest::Approx(ws.translate[c]).epsilon(1e-5));
+                }
+                CHECK(AngleDeg(hs.rotate, ws.rotate) < 1e-2f);
+            }
+            dh.End();
+            dw.End();
+        }
+    }
+}
+
+TEST_CASE("interp history: hierarchy - new or re-parented nodes have no history") {
+    GuestHeap heap;
+    Arm arm = MakeArm(heap);
+    Driver d;
+    arm.Pose(0.0f);
+    TickPair(d, arm.shape, 1);
+    arm.Pose(10.0f);
+    TickPair(d, arm.shape, 2);
+    // The shape moves to another (static) parent: its node has no history for the chain -> world interpolation.
+    const GuestPtr other = MakeNode(heap, arm.root);
+    *P<GuestPtr>(arm.shape.object + 0x14) = other;
+    arm.Pose(20.0f);
+    const std::uint64_t before = d.history.GetStats().totals.hierarchyFallbacks;
+    GeometryResult r = TickPair(d, arm.shape, 3);
+    CHECK(r.reason == SnapReason::None);
+    CHECK(d.history.GetStats().totals.hierarchyFallbacks == before + 1);
+    const ni::NiTransform shown = Shown(r);
+    const float radius = std::sqrt(shown.translate[0] * shown.translate[0] + shown.translate[1] * shown.translate[1]);
+    CHECK(radius == doctest::Approx(2.0f * std::cos(5.0f * kPi / 180.0f)).epsilon(1e-5));  // world: the chord
+    // From the next tick on the new chain has history again.
+    arm.Pose(30.0f);
+    WorldOf(other) = WorldOf(arm.pivot);
+    r = TickPair(d, arm.shape, 4);
+    CHECK(r.reason == SnapReason::None);
+    CHECK(d.history.GetStats().totals.hierarchical >= 2);
+}
+
+TEST_CASE("interp history: hierarchy - node motion is known for the growth rule after a snapped tick") {
+    // Measured in the frontend fly-in: a letter node turns 23.3 deg per tick, then 155.6 (the draw snaps: R4), then
+    // 72 deg per tick. 72 deg must interpolate (72 < 4 x 155.6), also for the node rule of the chain.
+    GuestHeap heap;
+    Arm arm = MakeArm(heap);
+    *P<float>(arm.shape.object + 0x2C) = 1.0f;  // radius 1: a start from rest with 0.8 units per tick interpolates
+    Driver d;
+    float a = 0.0f;
+    std::uint64_t tick = 1;
+    arm.Pose(a);
+    TickPair(d, arm.shape, tick++);
+    for (int i = 0; i < 4; ++i) {
+        a += 23.3f;
+        arm.Pose(a);
+        CHECK(TickPair(d, arm.shape, tick++).reason == SnapReason::None);
+    }
+    a += 155.6f;
+    arm.Pose(a);
+    CHECK(IsSnap(TickPair(d, arm.shape, tick++).reason));  // R2 and R4
+    const std::uint64_t nodeSnaps = d.history.GetStats().totals.nodeSnaps;
+    for (int i = 0; i < 2; ++i) {
+        a += 72.0f;
+        arm.Pose(a);
+        const GeometryResult r = TickPair(d, arm.shape, tick++);
+        CHECK(r.reason == SnapReason::None);
+        // On the arc at the middle of the 72 degree turn (hierarchy), not on its chord.
+        const ni::NiTransform shown = Shown(r);
+        const ni::NiTransform truth = Compose(Rotation(0, 0, 1, (a - 36.0f) * kPi / 180.0f),
+                                              Rotation(0, 0, 1, 0.0f, 2.0f, 0.0f, 0.0f));
+        CHECK(shown.translate[0] == doctest::Approx(truth.translate[0]).epsilon(1e-4));
+        CHECK(shown.translate[1] == doctest::Approx(truth.translate[1]).epsilon(1e-4));
+    }
+    CHECK(d.history.GetStats().totals.nodeSnaps == nodeSnaps);
+}
+
+// ---- M3d review findings 1, 3, 4, 6, 10 ----------------------------------------------------------------------------
+
+TEST_CASE("interp history: the reversal point of a fast small oscillation is no jump (review finding 1, S10)") {
+    // Frontend object 0x03341160 (run review_m3d_interp\trace120): r 0.0385, 0.12-0.15 units per tick; at its turning
+    // point one tick moves 0.002 units. The tick after it must interpolate (it snapped as "translation" and held:
+    // displayed steps 0 / full tick / 0). Both with the parent chain (decides) and in world space (leaf rule).
+    const float ys[] = {-0.573514f, -0.4356814f, -0.3024931f, -0.1755233f, -0.05622045f,
+                        -0.05820518f, -0.1767823f, -0.2982394f, -0.4220499f, -0.5476451f};
+    for (const bool hierarchy : {true, false}) {
+        CAPTURE(hierarchy);
+        GuestHeap heap;
+        const GuestPtr node = MakeNode(heap, 0, 0.0385f);
+        Shape s = MakeShape(heap, 0.0385f);
+        *P<GuestPtr>(s.object + 0x14) = node;
+        Settings settings;
+        settings.hierarchy = hierarchy;
+        Driver d(settings);
+        for (std::size_t i = 0; i < std::size(ys); ++i) {
+            CAPTURE(i);
+            WorldOf(node).translate[1] = ys[i];
+            s.World().translate[1] = ys[i];
+            const GeometryResult r = TickPair(d, s, 100 + i);
+            if (i >= 1) {
+                REQUIRE(r.reason == SnapReason::None);
+                CHECK(Shown(r).translate[1] == doctest::Approx(0.5f * (ys[i - 1] + ys[i])).epsilon(1e-5));
+            }
+        }
+        CHECK(d.history.GetStats().totals.reasons[static_cast<std::size_t>(SnapReason::Translation)] == 0);
+    }
+}
+
+TEST_CASE("interp history: a fast object seen for the first time interpolates in its second tick (finding 1, S1)") {
+    GuestHeap heap;
+    Shape s = MakeShape(heap, 0.0385f);
+    Driver d;
+    for (std::uint64_t tick = 1; tick <= 4; ++tick) {
+        CAPTURE(tick);
+        s.World().translate[0] = 0.13f * static_cast<float>(tick);  // 3.4 radii per tick, constant speed
+        const GeometryResult r = TickPair(d, s, tick);
+        if (tick == 1) {
+            CHECK(r.reason == SnapReason::FirstSight);
+        } else {
+            CHECK(r.reason == SnapReason::None);
+            CHECK(Shown(r).translate[0] == doctest::Approx(0.13f * (static_cast<float>(tick) - 0.5f)));
+        }
+    }
+    // A jump right after the first sight (unknown previous motion) above 16 radii still snaps.
+    Shape t = MakeShape(heap, 0.1f);
+    TickPair(d, t, 5);
+    t.World().translate[0] = 1.7f;  // 17 radii
+    CHECK(TickPair(d, t, 6).reason == SnapReason::Translation);
+    MotionReference unknown;
+    CHECK(MotionSnapRule(1.5f, 0.0f, 0.1f, unknown) == SnapReason::None);
+    CHECK(MotionSnapRule(1.7f, 0.0f, 0.1f, unknown) == SnapReason::Translation);
+    CHECK(MotionSnapRule(0.0f, 95.0f, 0.1f, unknown) == SnapReason::Rotation);
+}
+
+TEST_CASE("interp history: a rigid assembly starting from rest stays together (finding 1, S2)") {
+    // A body (r 1) and a hand (r 0.03) on one node that starts moving with 0.1 units per tick: in world space the hand
+    // jumps 3.3 radii from rest (R2), but its local transform does not move - the chain decides and both interpolate.
+    GuestHeap heap;
+    const GuestPtr root = MakeNode(heap, 0, 10.0f);
+    const GuestPtr node = MakeNode(heap, root, 2.0f);
+    Shape body = MakeShape(heap, 1.0f);
+    Shape hand = MakeShape(heap, 0.03f);
+    *P<GuestPtr>(body.object + 0x14) = node;
+    *P<GuestPtr>(hand.object + 0x14) = node;
+    const ni::NiTransform handLocal = Rotation(0, 0, 1, 0.0f, 0.5f, 0.0f, 0.0f);
+    Driver d;
+    float x = 0.0f;
+    for (std::uint64_t tick = 1; tick <= 5; ++tick) {
+        CAPTURE(tick);
+        if (tick >= 3) {
+            x += 0.1f;
+        }
+        WorldOf(node) = Rotation(0, 0, 1, 0.0f, x, 0.0f, 0.0f);
+        body.World() = WorldOf(node);
+        hand.World() = Compose(WorldOf(node), handLocal);
+        d.Begin(tick, 0.5f);
+        const GeometryResult rb = d.Draw(body);
+        const GeometryResult rh = d.Draw(hand);
+        d.End();
+        d.Begin(tick, 1.0f);
+        d.Draw(body);
+        d.Draw(hand);
+        d.End();
+        if (tick >= 3) {
+            CHECK(rb.reason == SnapReason::None);
+            CHECK(rh.reason == SnapReason::None);
+            CHECK(Shown(rh).translate[0] - Shown(rb).translate[0] == doctest::Approx(0.5f).epsilon(1e-5));
+            CHECK(Shown(rb).translate[0] == doctest::Approx(x - 0.05f).epsilon(1e-5));
+        }
+    }
+    CHECK(d.history.GetStats().totals.chainDecisions >= 1);
+    // A jump of the node itself (20 units: 10 radii) still snaps the whole assembly, together.
+    x += 20.0f;
+    WorldOf(node) = Rotation(0, 0, 1, 0.0f, x, 0.0f, 0.0f);
+    body.World() = WorldOf(node);
+    hand.World() = Compose(WorldOf(node), handLocal);
+    d.Begin(6, 0.5f);
+    const GeometryResult rb = d.Draw(body);
+    const GeometryResult rh = d.Draw(hand);
+    d.End();
+    CHECK(rb.reason == SnapReason::Translation);
+    CHECK(rh.reason == SnapReason::Translation);
+    CHECK(Shown(rb).translate[0] == doctest::Approx(x));
+    CHECK(Shown(rh).translate[0] - Shown(rb).translate[0] == doctest::Approx(0.5f).epsilon(1e-5));
+}
+
+TEST_CASE("interp history: pointer reuse inside the zero-step frame is a new object, not frame-driven (finding 3)") {
+    GuestHeap heap;
+    Shape s = MakeShape(heap, 1.0f);
+    Driver d;
+    std::uint64_t tick = 1;
+    for (; tick <= 3; ++tick) {
+        s.World().translate[0] = 0.05f * static_cast<float>(tick);
+        TickPair(d, s, tick);
+    }
+    // Tick 4: in its zero-step frame the object is destroyed and a new one with the same signature (shared data and
+    // property state) is placed at the same address elsewhere.
+    s.World().translate[0] = 0.2f;
+    d.Frame(s, tick, 0.5f);
+    History::OnObjectDestroyed(s.object);
+    s.World().translate[0] = 3.0f;
+    d.Frame(s, tick, 1.0f);
+    CHECK(d.history.GetStats().totals.recaptureDestroyed == 1);
+    CHECK(d.history.GetStats().totals.frameDrivenChanges == 0);
+    int interpolated = 0, other = 0;
+    for (++tick; tick <= 64; ++tick) {
+        s.World().translate[0] += 0.05f;
+        const GeometryResult r = TickPair(d, s, tick);
+        (r.reason == SnapReason::None ? interpolated : other) += 1;
+    }
+    CHECK(interpolated == 60);  // from the first tick after the reuse on (no second "destroyed" snap either)
+    CHECK(other == 0);
+    // Destroyed and re-created before the draw of a tick frame: one "destroyed" snap, then history again.
+    History::OnObjectDestroyed(s.object);
+    s.World().translate[0] += 2.0f;
+    CHECK(TickPair(d, s, tick++).reason == SnapReason::Destroyed);
+    s.World().translate[0] += 0.05f;
+    CHECK(TickPair(d, s, tick++).reason == SnapReason::None);
+}
+
+TEST_CASE("interp history: a camera rebuilt at the same address has no history (finding 4, S11)") {
+    GuestHeap heap;
+    const GuestPtr cam = heap.Alloc(0x260);
+    auto* loc = P<float>(cam + ni::kNiCameraWorldLocation);
+    P<float>(cam + ni::kNiCameraWorldDirection)[0] = 1.0f;
+    P<float>(cam + ni::kNiCameraWorldUp)[1] = 1.0f;
+    P<float>(cam + ni::kNiCameraWorldRight)[2] = 1.0f;
+    *P<ni::NiFrustum>(cam + ni::kNiCameraFrustum) = ni::NiFrustum{-0.7714f, 0.7714f, 0.5786f, -0.5786f, 0.1f, 1000.0f};
+    *P<ni::NiRectF>(cam + ni::kNiCameraPort) = ni::NiRectF{0.0f, 1.0f, 1.0f, 0.0f};
+    ni::CameraInput in;
+    in.location = loc;
+    in.direction = P<float>(cam + ni::kNiCameraWorldDirection);
+    in.up = P<float>(cam + ni::kNiCameraWorldUp);
+    in.right = P<float>(cam + ni::kNiCameraWorldRight);
+    in.frustum = P<ni::NiFrustum>(cam + ni::kNiCameraFrustum);
+    in.port = P<ni::NiRectF>(cam + ni::kNiCameraPort);
+    Driver d;
+    for (std::uint64_t tick = 1; tick <= 3; ++tick) {
+        loc[0] = 0.2f * static_cast<float>(tick);
+        for (const float alpha : {0.5f, 1.0f}) {
+            d.Begin(tick, alpha);
+            d.history.Camera(cam, in);
+            d.End();
+        }
+    }
+    History::OnObjectDestroyed(cam);  // the shot camera is deleted, a new one is built at the same address
+    loc[0] = 0.8f;
+    loc[2] = 0.45f;  // 0.47 units away: below the cut threshold
+    d.Begin(4, 0.5f);
+    ni::CameraInput out = d.history.Camera(cam, in);
+    CHECK(out.location == loc);  // the new shot as is, no blend with the old one
+    d.End();
+    d.Begin(4, 1.0f);
+    d.history.Camera(cam, in);
+    d.End();
+    // The new camera moves on: interpolated from its next tick (the destruction in its first frame is not its own).
+    loc[0] = 1.0f;
+    d.Begin(5, 0.5f);
+    out = d.history.Camera(cam, in);
+    CHECK(out.location != loc);
+    CHECK(out.location[0] == doctest::Approx(0.9f));
+    d.End();
+    const Stats& st = d.history.GetStats();
+    CHECK(st.totals.cameraReasons[static_cast<std::size_t>(SnapReason::Destroyed)] == 1);
+}
+
+TEST_CASE("interp history: a catch-up or the 6 dt cap interpolates over the step pair (finding 10)") {
+    // The displayed time G - 1 + alpha: 120 Hz phase B, then a frame with 2 steps (alpha 1/2: G - 1/2 = interp(S[G-2],
+    // S[G], 3/4)), then the cap (6 steps, alpha 0, then the alignment frame with alpha 1/2 and no step).
+    GuestHeap heap;
+    Shape s = MakeShape(heap, 1.0f);
+    Driver d;
+    const auto position = [](std::uint64_t tick) { return 0.01f * static_cast<float>(tick); };  // 0.01 units per tick
+    const auto frame = [&](std::uint64_t tick, float alpha, std::uint32_t pairTicks) {
+        s.World().translate[0] = position(tick);
+        d.Begin(tick, alpha);
+        g_frame.pairTicks = pairTicks;
+        const GeometryResult r = d.Draw(s);
+        d.End();
+        return r;
+    };
+    for (std::uint64_t tick = 1; tick <= 4; ++tick) {
+        frame(tick, 0.5f, 1);
+        frame(tick, 1.0f, 1);
+    }
+    // Catch-up: ticks 5 and 6 in one frame.
+    GeometryResult r = frame(6, 0.5f, 2);
+    CHECK(r.reason == SnapReason::None);
+    CHECK(Shown(r).translate[0] == doctest::Approx(0.01f * 5.5f));  // G - 1/2, not S[G] then S[G] again
+    r = frame(6, 1.0f, 2);
+    CHECK(Shown(r).translate[0] == doctest::Approx(position(6)));
+    r = frame(7, 0.5f, 1);
+    CHECK(Shown(r).translate[0] == doctest::Approx(0.01f * 6.5f));
+    frame(7, 1.0f, 1);
+    // The cap: 6 steps with alpha 0 (displayed time G - 1), the alignment frame with alpha 1/2, then the pattern.
+    r = frame(13, 0.0f, 6);
+    CHECK(r.reason == SnapReason::None);
+    CHECK(Shown(r).translate[0] == doctest::Approx(0.01f * 12.0f));
+    r = frame(13, 0.5f, 6);
+    CHECK(Shown(r).translate[0] == doctest::Approx(0.01f * 12.5f));
+    r = frame(13, 1.0f, 6);
+    CHECK(Shown(r).translate[0] == doctest::Approx(position(13)));
+    r = frame(14, 0.5f, 1);
+    CHECK(Shown(r).translate[0] == doctest::Approx(0.01f * 13.5f));
+    // More than kMaxPairTicks, or a jump that is not the pair of the frame: a generation gap (snap).
+    CHECK(frame(16, 0.5f, 1).reason == SnapReason::GenerationGap);
+    CHECK(frame(24, 0.5f, 8).reason == SnapReason::GenerationGap);
+    const Stats& st = d.history.GetStats();
+    CHECK(st.pairSpans == 2);
+}
+
+TEST_CASE("interp history: the readable-page cache of the hierarchy is dropped when guest memory is released (6)") {
+    GuestHeap heap;
+    Arm arm = MakeArm(heap);
+    Driver d;
+    arm.Pose(0.0f);
+    TickPair(d, arm.shape, 1);
+    arm.Pose(5.0f);
+    TickPair(d, arm.shape, 2);
+    const std::uint64_t before = d.history.GetStats().readableCacheResets;
+    guest::NoteMemoryReleased();
+    arm.Pose(10.0f);
+    CHECK(TickPair(d, arm.shape, 3).reason == SnapReason::None);
+    CHECK(d.history.GetStats().readableCacheResets == before + 1);
+    CHECK(d.history.GetStats().totals.hierarchical >= 2);
 }

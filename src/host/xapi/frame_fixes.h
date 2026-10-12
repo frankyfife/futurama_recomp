@@ -40,5 +40,7 @@ struct FrameFixStats {
 };
 FrameFixStats GetFrameFixStats() noexcept;
 void LogFrameFixSummary() noexcept;  // "frame fixes: ..." (GAME/info)
+// Registers LogFrameFixSummary as the exit reporter "frame fixes" (once; the stage ApplyGameTiming).
+void RegisterFrameFixReporter() noexcept;
 
 }  // namespace xapi

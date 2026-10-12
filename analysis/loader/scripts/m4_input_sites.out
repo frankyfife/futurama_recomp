@@ -1,0 +1,367 @@
+# Call sites per accessor (raw E8 scan)
+0009b0d0 MenuRepeat::Fire(ch)                              10 sites
+0009b0e0 MenuRepeat::StickNeg(i,x)                          1 sites
+0009b0f0 MenuRepeat::StickPos(i,x)                          1 sites
+0009b100 MenuRepeat::StickNeg(i,y)                          1 sites
+0009b110 MenuRepeat::StickPos(i,y)                          1 sites
+0009b2f0 MenuRepeat::Init(period)                           1 sites
+0009b340 MenuRepeat::Update()                               1 sites
+0009b550 Held(ch)            value>=thr                     2 sites
+0009b580 Pressed(ch)         value>=thr && prev<thr         1 sites
+0009b5c0 Released(ch)        value<thr && prev>=thr         1 sites
+0009b600 StickX(i)           deadzone curve                12 sites
+0009b630 StickY(i)           deadzone curve                 9 sites
+0009b690 ActivePad()         [0x2e6fa4] or pad 0           47 sites
+0009b6b0 SetRumble(l,r,force)                              16 sites
+0009b790 IsDisconnected()                                   4 sites
+0009b8d0 HeldFree(ch)        Held && !consumed && !locked  25 sites
+0009b910 Consume(ch)         slot+0xc = 1 (until value<thr)   7 sites
+0009b930 SetLock(ch,n)       slot+0xd = n (counter)         2 sites
+0009b960 DecLocks(n)         all locks -= n                 5 sites
+0009b990 PressedFree(ch)     Pressed && !consumed && !locked  21 sites
+0009b9d0 ValueFree(ch)       value if !consumed && !locked else 0  22 sites
+0009ba10 NoPadConnected()                                   1 sites
+0009ba40 SetVibrationOption(on, delay)                     13 sites
+0009bac0 IsIdle()                                           3 sites
+0009bde0 AllIdle()                                          3 sites
+0009be10 Pads::UpdateAll()                                 11 sites
+0009c140 Pads::Hotplug()                                    2 sites
+0009c2a0 Pads::Init()                                       1 sites
+
+# Per caller (owner = Ghidra function, nofunc = code outside Ghidra functions)
+== FUN_00015110
+   00015152 -> StickX(i)                    ch=0      [push 0 | mov ecx, edi | mov dword ptr [esp + 0x34], edx | mov dword ptr [esp + 0x38], eax]
+   0001516c -> StickX(i)                    ch=1      [call 0x9b630 | fstp dword ptr [esp + 0x10] | push 1 | mov ecx, edi]
+   0001515f -> StickY(i)                    ch=0      [call 0x9b600 | fstp dword ptr [esp + 0x14] | push 0 | mov ecx, edi]
+   00015179 -> StickY(i)                    ch=1      [call 0x9b600 | fstp dword ptr [esp + 0x1c] | push 1 | mov ecx, edi]
+   0001511e -> ActivePad()                            [push ebx | push esi | push edi | mov esi, ecx]
+== nofunc_0001fe30
+   0001fe9f -> Pads::UpdateAll()                      [mov eax, dword ptr [ecx + 0xf4] | cmp byte ptr [eax], bl | je 0x1fe9f | mov byte ptr [eax], bl]
+== nofunc_000205b0
+   00020718 -> HeldFree(ch)                 ch=7      [cmp edi, ebp | je 0x2072e | push 7 | mov ecx, edi]
+   00020729 -> Consume(ch)                  ch=10     [je 0x20727 | push 7 | jmp 0x20729 | push 0xa]
+== nofunc_000218f0
+   00021984 -> ActivePad()                            [push ebx | push ebx | mov dword ptr [esp + 0xac], 0xffffffff | mov dword ptr [esi + 0x1c8], eax]
+   0002198b -> SetRumble(l,r,force)                   [mov dword ptr [esp + 0xac], 0xffffffff | mov dword ptr [esi + 0x1c8], eax | call 0x9b690 | mov ecx, eax]
+   00021992 -> SetVibrationOption(on,                 [mov ecx, eax | call 0x9b6b0 | push ebx | push ebx]
+   00021997 -> Pads::UpdateAll()                      [call 0x9b6b0 | push ebx | push ebx | call 0x9ba40]
+== FUN_00021b60
+   00021bbe -> NoPadConnected()                       [fnstsw ax | test ah, 0x41 | jne 0x21bbe | mov dword ptr [0x2e6fa4], 0]
+== nofunc_00022b30
+   00022e0c -> AllIdle()                              [mov eax, dword ptr [0x2d6748] | mov edx, dword ptr [ecx] | push eax | call dword ptr [edx + 4]]
+== nofunc_00028960
+   00028aac -> ActivePad()                            [push esi | push esi | mov dword ptr [ebp + 0x1090], esi | mov dword ptr [ebp + 0x1094], esi]
+   00028adb -> ActivePad()                            [push 0 | push ecx | mov edx, ecx | push edx]
+   00028ab3 -> SetRumble(l,r,force)                   [mov dword ptr [ebp + 0x1090], esi | mov dword ptr [ebp + 0x1094], esi | call 0x9b690 | mov ecx, eax]
+   00028ae2 -> SetRumble(l,r,force)                   [mov edx, ecx | push edx | call 0x9b690 | mov ecx, eax]
+   00028aba -> SetVibrationOption(on,                 [mov ecx, eax | call 0x9b6b0 | push esi | push esi]
+   00028ac2 -> Pads::UpdateAll()                      [push esi | push esi | call 0x9ba40 | add esp, 8]
+   00028ae7 -> Pads::UpdateAll()                      [push edx | call 0x9b690 | mov ecx, eax | call 0x9b6b0]
+== nofunc_000290f0
+   000297c8 -> ActivePad()                            [push eax | push eax | mov dword ptr [ebp + 0x1094], eax | mov dword ptr [ebp + 0x1090], eax]
+   000297cf -> SetRumble(l,r,force)                   [mov dword ptr [ebp + 0x1094], eax | mov dword ptr [ebp + 0x1090], eax | call 0x9b690 | mov ecx, eax]
+   00029426 -> SetVibrationOption(on,                 [mov ecx, dword ptr [edx + 0xa8] | call 0xa1820 | push 0 | push 0]
+   0002978e -> SetVibrationOption(on,                 [cmp dword ptr [eax + 0xe0], 1 | push esi | jne 0x297f2 | push 1]
+   000297ac -> SetVibrationOption(on,                 [push 1 | call 0xa1820 | push esi | push 1]
+== FUN_00029fa0
+   0002a031 -> StickX(i)                    ch=0      [test al, al | jne 0x29ff2 | push 0 | mov ecx, esi]
+   0002a049 -> StickX(i)                    ch=0      [test al, al | jne 0x29ff2 | push 0 | mov ecx, esi]
+   00029fdc -> StickY(i)                    ch=0      [test al, al | jne 0x29ff2 | push 0 | mov ecx, esi]
+   0002a00a -> StickY(i)                    ch=0      [test al, al | jne 0x29ff2 | push 0 | mov ecx, esi]
+   00029fa1 -> ActivePad()                            [nop  | nop  | nop  | push esi]
+   00029faa -> IsDisconnected()                       [push esi | call 0x9b690 | mov esi, eax | mov ecx, esi]
+   00029fcf -> HeldFree(ch)                 ch=2      [ja 0x2a0aa | jmp dword ptr [eax*4 + 0x2a0b0] | push 2 | mov ecx, esi]
+   00029ffd -> HeldFree(ch)                 ch=3      [pop esi | ret  | push 3 | mov ecx, esi]
+   0002a024 -> HeldFree(ch)                 ch=0      [pop esi | ret  | push 0 | mov ecx, esi]
+   0002a03c -> HeldFree(ch)                 ch=1      [call 0x9b600 | jmp 0x2a00f | push 1 | mov ecx, esi]
+   0002a07d -> HeldFree(ch)                 ch=4      [pop esi | ret  | push 4 | mov ecx, esi]
+   0002a054 -> PressedFree(ch)              ch=10     [call 0x9b600 | jmp 0x29fe1 | push 0xa | mov ecx, esi]
+   0002a05f -> PressedFree(ch)              ch=7      [pop esi | ret  | push 7 | mov ecx, esi]
+   0002a06c -> PressedFree(ch)              ch=10     [test al, al | jne 0x2a075 | push 0xa | mov ecx, esi]
+   0002a088 -> PressedFree(ch)              ch=5      [pop esi | ret  | push 5 | mov ecx, esi]
+   0002a099 -> PressedFree(ch)              ch=11     [test al, al | jne 0x29ff2 | push 0xb | mov ecx, esi]
+== FUN_0002a0d0
+   0002a0e1 -> MenuRepeat::Fire(ch)         ch=2      [jne 0x2a102 | mov esi, dword ptr [esp + 0xc] | push 2 | mov ecx, esi]
+   0002a10f -> MenuRepeat::Fire(ch)         ch=3      [jne 0x2a126 | mov esi, dword ptr [esp + 0xc] | push 3 | mov ecx, esi]
+   0002a133 -> MenuRepeat::Fire(ch)         ch=0      [jne 0x2a147 | mov esi, dword ptr [esp + 0xc] | push 0 | mov ecx, esi]
+   0002a154 -> MenuRepeat::Fire(ch)         ch=1      [jne 0x2a168 | mov esi, dword ptr [esp + 0xc] | push 1 | mov ecx, esi]
+   0002a175 -> MenuRepeat::Fire(ch)         ch=7      [jne 0x2a18f | mov esi, dword ptr [esp + 0xc] | push 7 | mov ecx, esi]
+   0002a182 -> MenuRepeat::Fire(ch)         ch=10     [test al, al | jne 0x2a18b | push 0xa | mov ecx, esi]
+   0002a19b -> MenuRepeat::Fire(ch)         ch=eax    [jne 0x2a1bd | mov esi, dword ptr [esp + 0xc] | push eax | mov ecx, esi]
+   0002a1ac -> MenuRepeat::Fire(ch)         ch=11     [test al, al | jne 0x2a0fb | push 0xb | mov ecx, esi]
+   0002a1c8 -> MenuRepeat::Fire(ch)         ch=10     [cmp eax, 6 | jne 0x2a1cf | mov ecx, dword ptr [esp + 0xc] | push 0xa]
+   0002a1da -> MenuRepeat::Fire(ch)         ch=4      [cmp eax, 7 | jne 0x2a1e1 | mov ecx, dword ptr [esp + 0xc] | push 4]
+   0002a140 -> MenuRepeat::StickNeg(i,x)    ch=0      [test al, al | jne 0x2a0fb | push 0 | mov ecx, esi]
+   0002a161 -> MenuRepeat::StickPos(i,x)    ch=0      [test al, al | jne 0x2a0fb | push 0 | mov ecx, esi]
+   0002a11c -> MenuRepeat::StickNeg(i,y)    ch=0      [test al, al | jne 0x2a0fb | push 0 | mov ecx, esi]
+   0002a0ee -> MenuRepeat::StickPos(i,y)    ch=0      [test al, al | jne 0x2a0fb | push 0 | mov ecx, esi]
+== FUN_0002a320
+   0002a385 -> IsDisconnected()                       [je 0x2a3a9 | mov ecx, dword ptr [0x2e6fa4] | test ecx, ecx | je 0x2a3a9]
+== nofunc_0002aab0
+   0002aad3 -> ActivePad()                            [test cl, cl | je 0x2aaef | push 0xff | mov dword ptr [0x2dabc8], 0]
+   0002ab75 -> ActivePad()                            [test al, al | je 0x2ac45 | push 0xff | mov dword ptr [0x2dabc8], 0]
+   0002ab83 -> ActivePad()                            [call 0x9b690 | mov ecx, eax | call 0x9b960 | push 0xa]
+   0002abab -> ActivePad()                            [mov al, byte ptr [0x2dad89] | test al, al | je 0x2ac32 | push 0xa]
+   0002abbd -> ActivePad()                            [call 0x9b990 | test al, al | jne 0x2abcd | push 7]
+   0002abf2 -> ActivePad()                            [mov ecx, eax | call 0xd5700 | push 0xa | mov byte ptr [0x2dad89], 0]
+   0002ac04 -> ActivePad()                            [call 0x9b8d0 | test al, al | je 0x2ac10 | push 0xa]
+   0002ac12 -> ActivePad()                            [call 0x9b690 | mov ecx, eax | call 0x9b910 | push 7]
+   0002ac24 -> ActivePad()                            [call 0x9b8d0 | test al, al | je 0x2ac3e | push 7]
+   0002acdd -> ActivePad()                            [mov ecx, dword ptr [edi + 0x14] | mov dword ptr [0x2dabc8], 0 | call 0xa8220 | push 0xa]
+   0002ad01 -> ActivePad()                            [mov al, byte ptr [0x2dad88] | test al, al | je 0x2ad23 | push 0xa]
+   0002ad9e -> ActivePad()                            [test al, al | mov dword ptr [0x2dabc8], 0 | je 0x2add2 | push 0xff]
+   0002acbf -> IsDisconnected()                       [jne 0x2ad8b | mov ecx, dword ptr [0x2e6fa4] | test ecx, ecx | je 0x2acdb]
+   0002ab8a -> HeldFree(ch)                 ch=10     [call 0x9b960 | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002abf9 -> HeldFree(ch)                 ch=10     [push 0xa | mov byte ptr [0x2dad89], 0 | call 0x9b690 | mov ecx, eax]
+   0002ac19 -> HeldFree(ch)                 ch=7      [call 0x9b910 | push 7 | call 0x9b690 | mov ecx, eax]
+   0002ace4 -> HeldFree(ch)                 ch=10     [call 0xa8220 | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002ad08 -> HeldFree(ch)                 ch=10     [je 0x2ad23 | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002ac0b -> Consume(ch)                  ch=10     [je 0x2ac10 | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002ac2b -> Consume(ch)                  ch=7      [je 0x2ac3e | push 7 | call 0x9b690 | mov ecx, eax]
+   0002aada -> DecLocks(n)                            [push 0xff | mov dword ptr [0x2dabc8], 0 | call 0x9b690 | mov ecx, eax]
+   0002ab7c -> DecLocks(n)                            [push 0xff | mov dword ptr [0x2dabc8], 0 | call 0x9b690 | mov ecx, eax]
+   0002ada5 -> DecLocks(n)                            [je 0x2add2 | push 0xff | call 0x9b690 | mov ecx, eax]
+   0002abb2 -> PressedFree(ch)              ch=10     [add byte ptr [eax], al | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002abc4 -> PressedFree(ch)              ch=7      [jne 0x2abcd | push 7 | call 0x9b690 | mov ecx, eax]
+   0002ad23 -> AllIdle()                              [je 0x2ad23 | mov ecx, dword ptr [edi + 0x14] | mov dword ptr [0x2dabc8], 0 | call 0xa8220]
+== nofunc_0002b5f0
+   0002b9b2 -> ActivePad()                            [call 0xa3090 | mov ecx, eax | call 0x21a80 | push 0xa]
+   0002b9c8 -> ActivePad()                            [je 0x2b9c6 | push 0xa | jmp 0x2b9da | push 7]
+   0002b9da -> ActivePad()                            [call 0x9b990 | test al, al | je 0x2b9f3 | push 7]
+   0002b9e1 -> Consume(ch)                  ch=7      [je 0x2b9f3 | push 7 | call 0x9b690 | mov ecx, eax]
+   0002b9b9 -> PressedFree(ch)              ch=10     [call 0x21a80 | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002b9cf -> PressedFree(ch)              ch=7      [jmp 0x2b9da | push 7 | call 0x9b690 | mov ecx, eax]
+== FUN_0002bb50
+   0002bb92 -> ActivePad()                            [xor al, al | pop esi | ret  | push 0xa]
+   0002bba4 -> ActivePad()                            [call 0x9b990 | test al, al | jne 0x2bbb4 | push 7]
+   0002bb99 -> PressedFree(ch)              ch=10     [ret  | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002bbab -> PressedFree(ch)              ch=7      [jne 0x2bbb4 | push 7 | call 0x9b690 | mov ecx, eax]
+== nofunc_0002c1c0
+   0002c2d2 -> ActivePad()                            [push eax | call 0xc9910 | add esp, 8 | push 0xa]
+   0002c2e4 -> ActivePad()                            [call 0x9b990 | test al, al | jne 0x2c2f4 | push 7]
+   0002c2d9 -> PressedFree(ch)              ch=10     [add esp, 8 | push 0xa | call 0x9b690 | mov ecx, eax]
+   0002c2eb -> PressedFree(ch)              ch=7      [jne 0x2c2f4 | push 7 | call 0x9b690 | mov ecx, eax]
+== FUN_0002c460
+   0002c4c0 -> Held(ch)                               [mov dword ptr [esp + 0x3c], eax | mov dword ptr [esp + 0x44], 0 | mov dword ptr [esp + 0x40], 9 | mov dword ptr [esp + 0x34], 0xa]
+== FUN_0002c890
+   0002c8aa -> Held(ch)                     ch=8      [test al, al | je 0x2c909 | push 8 | mov ecx, ebp]
+   0002c8bd -> Pressed(ch)                  ch=eax    [test eax, eax | jl 0x2c8e6 | push eax | mov ecx, ebp]
+   0002c8eb -> Released(ch)                 ch=edi    [ret  | xor edi, edi | push edi | mov ecx, ebp]
+== FUN_00032e50
+   00032e88 -> SetRumble(l,r,force)                   [je 0x32e8d | push 0 | push 0 | push 0]
+== FUN_00032ed0
+   00032fa4 -> SetRumble(l,r,force)                   [mov ecx, dword ptr [eax + 0x7b8] | push 0 | push 0 | push 0]
+== FUN_00032fb0
+   000334bb -> SetRumble(l,r,force)                   [fstp st(0) | push eax | mov eax, dword ptr [ebx + 0xc] | mov ecx, dword ptr [eax + 0x7b8]]
+   0003329c -> ValueFree(ch)                ch=ecx    [mov edx, dword ptr [ebx + 0xc] | movzx ecx, al | push ecx | mov ecx, dword ptr [edx + 0x7b8]]
+== FUN_00037010
+   00037071 -> ActivePad()                            [test al, al | jne 0x3706f | mov byte ptr [0x2dd5f4], 0 | push 0xa]
+   0003707f -> ActivePad()                            [call 0x9b690 | mov ecx, eax | call 0x9b910 | push 7]
+   00037078 -> Consume(ch)                  ch=10     [mov byte ptr [0x2dd5f4], 0 | push 0xa | call 0x9b690 | mov ecx, eax]
+   00037086 -> Consume(ch)                  ch=7      [call 0x9b910 | push 7 | call 0x9b690 | mov ecx, eax]
+== FUN_00043470
+   000434a8 -> SetRumble(l,r,force)                   [mov ecx, dword ptr [ecx + 0x7b8] | push 0 | push 0 | push 0]
+== FUN_000445a0
+   000451a8 -> ActivePad()                            [lea ecx, [esp + 0x15c] | call 0x5df10 | movzx ecx, al | push ecx]
+   000451af -> ValueFree(ch)                ch=ecx    [movzx ecx, al | push ecx | call 0x9b690 | mov ecx, eax]
+== FUN_00057940
+   00057af9 -> StickX(i)                    ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057bda -> StickX(i)                    ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057d38 -> StickX(i)                    ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057d9b -> StickX(i)                    ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057e06 -> StickX(i)                    ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057a18 -> StickY(i)                    ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057c3d -> StickY(i)                    ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057cbe -> StickY(i)                    ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057e24 -> StickY(i)                    ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057951 -> ActivePad()                            [push ebx | push esi | push edi | mov ebx, ecx]
+   00057e86 -> HeldFree(ch)                 ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057ea4 -> HeldFree(ch)                 ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057ec4 -> HeldFree(ch)                 ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057ee4 -> HeldFree(ch)                 ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057f04 -> HeldFree(ch)                 ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057f60 -> HeldFree(ch)                 ch=edx    [call 0x5df10 | movzx edx, al | push edx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057a36 -> ValueFree(ch)                ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057a52 -> ValueFree(ch)                ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057a74 -> ValueFree(ch)                ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057a90 -> ValueFree(ch)                ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057b17 -> ValueFree(ch)                ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057b33 -> ValueFree(ch)                ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057b55 -> ValueFree(ch)                ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057b71 -> ValueFree(ch)                ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057bf2 -> ValueFree(ch)                ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057c0e -> ValueFree(ch)                ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057c64 -> ValueFree(ch)                ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057c80 -> ValueFree(ch)                ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057d50 -> ValueFree(ch)                ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057d6c -> ValueFree(ch)                ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057e42 -> ValueFree(ch)                ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00057e5e -> ValueFree(ch)                ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00057f8d -> ValueFree(ch)                ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+   00057faa -> ValueFree(ch)                ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+== FUN_000589e0
+   00058a2f -> HeldFree(ch)                 ch=ecx    [call 0x5df10 | movzx ecx, al | push ecx | mov ecx, dword ptr [ebx + 0x7b8]]
+   00058a4b -> PressedFree(ch)              ch=edx    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx edx, al | push edx]
+   00058a67 -> PressedFree(ch)              ch=eax    [call 0x5df10 | mov ecx, dword ptr [ebx + 0x7b8] | movzx eax, al | push eax]
+== FUN_0005a700
+   0005a72f -> AllIdle()                              [push esi | push edi | mov esi, ecx | je 0x5a742]
+== FUN_0005d660
+   0005d85a -> ActivePad()                            [call 0x35440 | mov ecx, dword ptr [eax + 4] | mov dword ptr [esi + 0xb80], ecx | mov dword ptr [esi + 0x7b8], ebx]
+== FUN_0005e040
+   0005e0ac -> HeldFree(ch)                 ch=ecx    [mov ecx, dword ptr [esp + 0x10] | movzx ecx, byte ptr [ecx + ebp] | push ecx | mov ecx, dword ptr [esp + 0x1c]]
+== FUN_0005efe0
+   0005eff7 -> SetRumble(l,r,force)                   [mov ecx, dword ptr [esp + 0xc] | push 0 | push 0 | push 0]
+   0005f0f6 -> SetRumble(l,r,force)                   [push 0 | push eax | push ecx | mov ecx, dword ptr [esp + 0x18]]
+== FUN_00061a70
+   000621f5 -> ValueFree(ch)                ch=edx    [movzx edx, al | mov eax, dword ptr [ebx + 8] | mov ecx, dword ptr [eax + 0x7b8] | push edx]
+   00062219 -> ValueFree(ch)                ch=ecx    [mov edx, dword ptr [ebx + 8] | movzx ecx, al | push ecx | mov ecx, dword ptr [edx + 0x7b8]]
+== FUN_0008ab70
+   0008acfa -> HeldFree(ch)                 ch=9      [mov dword ptr [esp + 0x40], ebx | call dword ptr [eax + 0x1c] | mov ecx, dword ptr [esi + 0x7b8] | push 9]
+== FUN_0009b210
+   0009b223 -> HeldFree(ch)                 ch=esi    [xor esi, esi | mov edi, edi | push esi | mov ecx, ebp]
+== FUN_0009b270
+   0009b283 -> StickX(i)                    ch=edi    [xor edi, edi | lea esi, [ebp + 0x45] | push edi | mov ecx, ebx]
+   0009b28f -> StickY(i)                    ch=edi    [call 0x9b600 | fstp dword ptr [esp + 0x18] | push edi | mov ecx, ebx]
+== FUN_0009b340
+   0009b350 -> IsDisconnected()                       [push edi | mov edi, ecx | je 0x9b36c | mov ecx, esi]
+== FUN_0009bde0
+   0009bdec -> IsIdle()                               [mov esi, 0x2e6f84 | mov ecx, dword ptr [esi] | test ecx, ecx | je 0x9bdf5]
+== FUN_0009be10
+   0009be9c -> IsIdle()                               [mov edx, dword ptr [esi] | mov ecx, esi | call dword ptr [edx] | mov ecx, esi]
+   0009bee9 -> IsIdle()                               [mov esi, 0x2e6f84 | mov ecx, dword ptr [esi] | test ecx, ecx | je 0x9bef2]
+== FUN_000a2c20
+   000a2ed4 -> Pads::UpdateAll()                      [mov edx, dword ptr [ecx] | call dword ptr [edx + 4] | test al, al | je 0xa2f27]
+== FUN_000a5940
+   000a5c8c -> StickX(i)                    ch=0      [push 0 | mov bl, al | call 0x9b690 | mov ecx, eax]
+   000a5cc6 -> StickX(i)                    ch=0      [push 0 | mov bl, al | call 0x9b690 | mov ecx, eax]
+   000a5b89 -> ActivePad()                            [add esp, 8 | push ebp | push ebp | push ebp]
+   000a5c51 -> ActivePad()                            [pop esi | add esp, 8 | ret  | push 0xa]
+   000a5c61 -> ActivePad()                            [mov ecx, eax | call 0x9b990 | push 7 | mov bl, al]
+   000a5c75 -> ActivePad()                            [call 0x9b990 | or bl, al | push 0 | mov byte ptr [esp + 0x16], bl]
+   000a5c85 -> ActivePad()                            [mov ecx, eax | call 0x9b8d0 | push 0 | mov bl, al]
+   000a5caf -> ActivePad()                            [xor eax, eax | or bl, al | push 1 | mov byte ptr [esp + 0x17], bl]
+   000a5cbf -> ActivePad()                            [mov ecx, eax | call 0x9b8d0 | push 0 | mov bl, al]
+   000a5b90 -> SetRumble(l,r,force)                   [push ebp | push ebp | call 0x9b690 | mov ecx, eax]
+   000a5c7c -> HeldFree(ch)                 ch=0      [push 0 | mov byte ptr [esp + 0x16], bl | call 0x9b690 | mov ecx, eax]
+   000a5cb6 -> HeldFree(ch)                 ch=1      [push 1 | mov byte ptr [esp + 0x17], bl | call 0x9b690 | mov ecx, eax]
+   000a5c58 -> PressedFree(ch)              ch=10     [ret  | push 0xa | call 0x9b690 | mov ecx, eax]
+   000a5c68 -> PressedFree(ch)              ch=7      [push 7 | mov bl, al | call 0x9b690 | mov ecx, eax]
+   000a5b7e -> SetVibrationOption(on,                 [cmp byte ptr [esi], 0 | je 0xa5c4f | push ebp | push 1]
+== FUN_000a62b0
+   000a6311 -> SetVibrationOption(on,                 [call dword ptr [edx + 0x40] | call 0xcaf40 | push ebx | push ebx]
+== nofunc_000a70c0
+   000a70f2 -> Pads::UpdateAll()                      [mov byte ptr [ecx + 5], al | mov byte ptr [ecx + 6], al | mov dword ptr [ecx + 0x14], 0xa | call 0xa6f00]
+== FUN_000a74e0
+   000a7849 -> HeldFree(ch)                 ch=7      [cmp ebp, ebx | je 0xa785f | push 7 | mov ecx, ebp]
+   000a785a -> Consume(ch)                  ch=10     [je 0xa7858 | push 7 | jmp 0xa785a | push 0xa]
+== FUN_000a8190
+   000a81d9 -> ActivePad()                            [add esp, 8 | push 0 | push eax | push ecx]
+   000a81e0 -> SetRumble(l,r,force)                   [push eax | push ecx | call 0x9b690 | mov ecx, eax]
+   000a81c7 -> SetVibrationOption(on,                 [inc dword ptr [eax + eax*8 + 0x4e8b3775] | adc al, 0xe8 | sub eax, 0x6afff7d5 | add byte ptr [edx + 1], ch]
+== FUN_000a8220
+   000a8252 -> ActivePad()                            [mov byte ptr [esi + 0x25], bl | mov byte ptr [esi + 0x3c], 1 | mov byte ptr [esi + 0x3d], bl | mov dword ptr [esi + 0x28], ebx]
+   000a8260 -> SetVibrationOption(on,                 [mov ecx, eax | call 0x9b760 | push ebx | push ebx]
+   000a8268 -> Pads::UpdateAll()                      [push ebx | push ebx | call 0x9ba40 | add esp, 8]
+== FUN_000b0490
+   000b04b2 -> SetRumble(l,r,force)                   [je 0xb04b7 | push 1 | push 0 | push 0]
+== FUN_000b7460
+   000b74b9 -> HeldFree(ch)                 ch=esi    [push esi | call 0x9b930 | mov ecx, dword ptr [ebx + 0x7b8] | push esi]
+   000b74ad -> SetLock(ch,n)                ch=esi    [mov ecx, dword ptr [ebx + 0x7b8] | movzx esi, al | push 0 | push esi]
+   000b74d0 -> SetLock(ch,n)                ch=esi    [sbb eax, eax | neg eax | mov dword ptr [ebp + 4], eax | mov ecx, dword ptr [ebx + 0x7b8]]
+== FUN_000c22b0
+   000c22e6 -> SetRumble(l,r,force)                   [je 0xc22eb | push 1 | push 0 | push 0]
+== FUN_000c5340
+   000c5922 -> SetVibrationOption(on,                 [push 1 | call 0xe0190 | push 0 | push 1]
+== FUN_000c8360
+   000c839c -> ActivePad()                            [push ebx | push ebx | push ebx | mov dword ptr [esp + 0x2c], 0x11]
+   000c83bc -> ActivePad()                            [call 0x9ba40 | add esp, 8 | call 0x9be10 | push 0xff]
+   000c89c7 -> ActivePad()                            [call dword ptr [edx + 0x20] | push ebx | push ebx | push ebx]
+   000c83a3 -> SetRumble(l,r,force)                   [push ebx | mov dword ptr [esp + 0x2c], 0x11 | call 0x9b690 | mov ecx, eax]
+   000c89ce -> SetRumble(l,r,force)                   [push ebx | push ebx | call 0x9b690 | mov ecx, eax]
+   000c83c3 -> DecLocks(n)                            [call 0x9be10 | push 0xff | call 0x9b690 | mov ecx, eax]
+   000c83aa -> SetVibrationOption(on,                 [mov ecx, eax | call 0x9b6b0 | push ebx | push ebx]
+   000c83b2 -> Pads::UpdateAll()                      [push ebx | push ebx | call 0x9ba40 | add esp, 8]
+   000c89d3 -> Pads::UpdateAll()                      [push ebx | call 0x9b690 | mov ecx, eax | call 0x9b6b0]
+== FUN_000c8ba0
+   000c8dbc -> ActivePad()                            [test ecx, ecx | je 0xc8dba | call 0xdadc0 | push 1]
+   000c8dc3 -> DecLocks(n)                            [call 0xdadc0 | push 1 | call 0x9b690 | mov ecx, eax]
+== FUN_000d25d0
+   000d25d8 -> Pads::UpdateAll()                      [nop  | push esi | mov esi, ecx | call 0x9c140]
+   000d25d3 -> Pads::Hotplug()                        [nop  | nop  | push esi | mov esi, ecx]
+== FUN_000d26a0
+   000d270a -> Pads::Init()                           [cmp edi, ebx | mov dword ptr [esi + 0x104], edi | je 0xd270a | inc dword ptr [edi + 4]]
+== FUN_000d34d0
+   000d350a -> SetVibrationOption(on,                 [mov dword ptr [esi + 0x38], ebx | pop ebp | push ebx | push ebx]
+== FUN_000d5700
+   000d5757 -> SetVibrationOption(on,                 [push 0x3f800000 | push 1 | mov dword ptr [esi + 0x11c], ebx | mov dword ptr [esi + 0x120], 0x3dcccd38]
+== nofunc_000d6120
+   000d61c9 -> ActivePad()                            [mov ecx, esi | call 0xd3e80 | push 0xa | mov bl, al]
+   000d61db -> ActivePad()                            [call 0x9b990 | test al, al | jne 0xd61eb | push 7]
+   000d61d0 -> PressedFree(ch)              ch=10     [push 0xa | mov bl, al | call 0x9b690 | mov ecx, eax]
+   000d61e2 -> PressedFree(ch)              ch=7      [jne 0xd61eb | push 7 | call 0x9b690 | mov ecx, eax]
+== FUN_000e4aa0
+   000e4ab9 -> MenuRepeat::Init(period)               [mov esi, ecx | call 0x167080 | lea ecx, [esi + 0x1c] | push eax]
+== FUN_000e52f0
+   000e5306 -> MenuRepeat::Update()                   [call 0xe4970 | mov ecx, dword ptr [esi + 4] | call 0xe1660 | lea ecx, [esi + 0x1c]]
+== FUN_000eec80
+   000eeccf -> ActivePad()                            [ret 4 | fstp st(0) | push ebx | push 0xa]
+   000eecdf -> ActivePad()                            [mov ecx, eax | call 0x9b990 | push 7 | mov bl, al]
+   000eecd6 -> PressedFree(ch)              ch=10     [push ebx | push 0xa | call 0x9b690 | mov ecx, eax]
+   000eece6 -> PressedFree(ch)              ch=7      [push 7 | mov bl, al | call 0x9b690 | mov ecx, eax]
+== nofunc_000f2fd0
+   000f3009 -> Pads::UpdateAll()                      [push ecx | mov ecx, eax | call dword ptr [edx + 0x6c] | call 0x9c140]
+   000f3004 -> Pads::Hotplug()                        [mov edx, dword ptr [eax] | push ecx | mov ecx, eax | call dword ptr [edx + 0x6c]]
+
+# Per accessor and channel
+MenuRepeat::Fire(ch)   ch=0      0002a133(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=1      0002a154(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=10     0002a182(FUN_0002a0d0) 0002a1c8(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=11     0002a1ac(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=2      0002a0e1(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=3      0002a10f(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=4      0002a1da(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=7      0002a175(FUN_0002a0d0)
+MenuRepeat::Fire(ch)   ch=eax    0002a19b(FUN_0002a0d0)
+MenuRepeat::StickNeg(i,x) ch=0      0002a140(FUN_0002a0d0)
+MenuRepeat::StickPos(i,x) ch=0      0002a161(FUN_0002a0d0)
+MenuRepeat::StickNeg(i,y) ch=0      0002a11c(FUN_0002a0d0)
+MenuRepeat::StickPos(i,y) ch=0      0002a0ee(FUN_0002a0d0)
+Held(ch)               ch=8      0002c8aa(FUN_0002c890)
+Held(ch)               ch=None   0002c4c0(FUN_0002c460)
+Pressed(ch)            ch=eax    0002c8bd(FUN_0002c890)
+Released(ch)           ch=edi    0002c8eb(FUN_0002c890)
+StickX(i)              ch=0      00015152(FUN_00015110) 0002a031(FUN_00029fa0) 0002a049(FUN_00029fa0) 000a5c8c(FUN_000a5940) 000a5cc6(FUN_000a5940)
+StickX(i)              ch=1      0001516c(FUN_00015110)
+StickX(i)              ch=eax    00057bda(FUN_00057940)
+StickX(i)              ch=ecx    00057af9(FUN_00057940) 00057d38(FUN_00057940) 00057d9b(FUN_00057940)
+StickX(i)              ch=edi    0009b283(FUN_0009b270)
+StickX(i)              ch=edx    00057e06(FUN_00057940)
+StickY(i)              ch=0      0001515f(FUN_00015110) 00029fdc(FUN_00029fa0) 0002a00a(FUN_00029fa0)
+StickY(i)              ch=1      00015179(FUN_00015110)
+StickY(i)              ch=eax    00057c3d(FUN_00057940) 00057cbe(FUN_00057940) 00057e24(FUN_00057940)
+StickY(i)              ch=edi    0009b28f(FUN_0009b270)
+StickY(i)              ch=edx    00057a18(FUN_00057940)
+HeldFree(ch)           ch=0      0002a024(FUN_00029fa0) 000a5c7c(FUN_000a5940)
+HeldFree(ch)           ch=1      0002a03c(FUN_00029fa0) 000a5cb6(FUN_000a5940)
+HeldFree(ch)           ch=10     0002ab8a(nofunc_0002aab0) 0002abf9(nofunc_0002aab0) 0002ace4(nofunc_0002aab0) 0002ad08(nofunc_0002aab0)
+HeldFree(ch)           ch=2      00029fcf(FUN_00029fa0)
+HeldFree(ch)           ch=3      00029ffd(FUN_00029fa0)
+HeldFree(ch)           ch=4      0002a07d(FUN_00029fa0)
+HeldFree(ch)           ch=7      00020718(nofunc_000205b0) 0002ac19(nofunc_0002aab0) 000a7849(FUN_000a74e0)
+HeldFree(ch)           ch=9      0008acfa(FUN_0008ab70)
+HeldFree(ch)           ch=eax    00057e86(FUN_00057940) 00057ec4(FUN_00057940)
+HeldFree(ch)           ch=ecx    00057ea4(FUN_00057940) 00057f04(FUN_00057940) 00058a2f(FUN_000589e0) 0005e0ac(FUN_0005e040)
+HeldFree(ch)           ch=edx    00057ee4(FUN_00057940) 00057f60(FUN_00057940)
+HeldFree(ch)           ch=esi    0009b223(FUN_0009b210) 000b74b9(FUN_000b7460)
+Consume(ch)            ch=10     00020729(nofunc_000205b0) 0002ac0b(nofunc_0002aab0) 00037078(FUN_00037010) 000a785a(FUN_000a74e0)
+Consume(ch)            ch=7      0002ac2b(nofunc_0002aab0) 0002b9e1(nofunc_0002b5f0) 00037086(FUN_00037010)
+SetLock(ch,n)          ch=esi    000b74ad(FUN_000b7460) 000b74d0(FUN_000b7460)
+PressedFree(ch)        ch=10     0002a054(FUN_00029fa0) 0002a06c(FUN_00029fa0) 0002abb2(nofunc_0002aab0) 0002b9b9(nofunc_0002b5f0) 0002bb99(FUN_0002bb50) 0002c2d9(nofunc_0002c1c0) 000a5c58(FUN_000a5940) 000d61d0(nofunc_000d6120) 000eecd6(FUN_000eec80)
+PressedFree(ch)        ch=11     0002a099(FUN_00029fa0)
+PressedFree(ch)        ch=5      0002a088(FUN_00029fa0)
+PressedFree(ch)        ch=7      0002a05f(FUN_00029fa0) 0002abc4(nofunc_0002aab0) 0002b9cf(nofunc_0002b5f0) 0002bbab(FUN_0002bb50) 0002c2eb(nofunc_0002c1c0) 000a5c68(FUN_000a5940) 000d61e2(nofunc_000d6120) 000eece6(FUN_000eec80)
+PressedFree(ch)        ch=eax    00058a67(FUN_000589e0)
+PressedFree(ch)        ch=edx    00058a4b(FUN_000589e0)
+ValueFree(ch)          ch=eax    00057a36(FUN_00057940) 00057a90(FUN_00057940) 00057b33(FUN_00057940) 00057d6c(FUN_00057940) 00057f8d(FUN_00057940)
+ValueFree(ch)          ch=ecx    0003329c(FUN_00032fb0) 000451af(FUN_000445a0) 00057a52(FUN_00057940) 00057b55(FUN_00057940) 00057bf2(FUN_00057940) 00057c64(FUN_00057940) 00057e42(FUN_00057940) 00057faa(FUN_00057940) 00062219(FUN_00061a70)
+ValueFree(ch)          ch=edx    00057a74(FUN_00057940) 00057b17(FUN_00057940) 00057b71(FUN_00057940) 00057c0e(FUN_00057940) 00057c80(FUN_00057940) 00057d50(FUN_00057940) 00057e5e(FUN_00057940) 000621f5(FUN_00061a70)

@@ -964,11 +964,11 @@ ID3D11ShaderResourceView* D3D11Device::PrepareOutput(ID3D11ShaderResourceView** 
     if (srgb != nullptr) {
         *srgb = nullptr;
     }
-    ID3D11ShaderResourceView* picture = ResolvedPicture(targets_, currentBackBuffer_);
+    const std::uint32_t buffer = PictureBuffer();  // M3d F1: the previous Present's buffer for a repeated picture
+    ID3D11ShaderResourceView* picture = ResolvedPicture(targets_, buffer);
     if (picture == nullptr || targets_.output == nullptr) {
         if (srgb != nullptr && picture != nullptr && linearResolve_) {
-            *srgb = targets_.samples > 1 ? targets_.resolveSrgbSrv.Get()
-                                         : targets_.backBufferSrgbSrvs[currentBackBuffer_].Get();
+            *srgb = targets_.samples > 1 ? targets_.resolveSrgbSrv.Get() : targets_.backBufferSrgbSrvs[buffer].Get();
         }
         return picture;
     }
@@ -977,9 +977,8 @@ ID3D11ShaderResourceView* D3D11Device::PrepareOutput(ID3D11ShaderResourceView** 
     v.Height = static_cast<float>(targets_.outputHeight);
     v.MaxDepth = 1.0f;
     if (linearResolve_) {
-        ID3D11ShaderResourceView* linear = targets_.samples > 1
-                                               ? targets_.resolveSrgbSrv.Get()
-                                               : targets_.backBufferSrgbSrvs[currentBackBuffer_].Get();
+        ID3D11ShaderResourceView* linear = targets_.samples > 1 ? targets_.resolveSrgbSrv.Get()
+                                                                : targets_.backBufferSrgbSrvs[buffer].Get();
         DrawBlit(linear, targets_.width, targets_.height, targets_.outputSrgbRtv.Get(), v, BlitFilter::Resample);
         if (srgb != nullptr) {
             *srgb = targets_.outputSrgbSrv.Get();
@@ -1718,8 +1717,13 @@ PresentResult D3D11Device::Present(const PresentDesc& desc) noexcept {
         }
         UpdatePresentTiming(!desc.skipSwapChain && SUCCEEDED(hr), hr);
     }
-    // The next persistent back buffer: it still holds the picture of backBufferCount_ presents ago.
-    currentBackBuffer_ = (currentBackBuffer_ + 1) % backBufferCount_;
+    // The next persistent back buffer: it still holds the picture of backBufferCount_ presents ago. M3d F1: a
+    // repeated picture keeps the rotation (the current back buffer stays current).
+    if (repeatPicture_) {
+        repeatPicture_ = false;
+    } else {
+        currentBackBuffer_ = (currentBackBuffer_ + 1) % backBufferCount_;
+    }
     context_.OnPresent();
     CollectGpuFrames(false);  // the next frame's timer starts at its first clear or draw (NoteGpuWork)
     PumpDebugMessages();
@@ -1906,15 +1910,24 @@ bool D3D11Device::CopyToImage(ID3D11Texture2D* source, std::uint32_t level, Form
 }
 
 bool D3D11Device::CaptureBackBuffer(Image& out) noexcept {
-    ID3D11Texture2D* current = targets_.backBuffers[currentBackBuffer_].Get();
+    const std::uint32_t buffer = PictureBuffer();  // M3d F1: the repeated picture
+    ID3D11Texture2D* current = targets_.backBuffers[buffer].Get();
     if (current == nullptr) {
         return FailText("CaptureBackBuffer: no back buffer");
     }
     if (targets_.samples > 1) {  // M3c: the resolved picture (a copy needs a single-sampled source)
-        ResolvedPicture(targets_, currentBackBuffer_);
+        ResolvedPicture(targets_, buffer);
         current = targets_.resolve.Get();
     }
     return CopyToImage(current, 0, info_.backBufferFormat, targets_.width, targets_.height, &captureStaging_, out);
+}
+
+bool D3D11Device::RepeatPreviousPicture() noexcept {
+    if (backBufferCount_ < 2 || targets_.backBuffers[0] == nullptr) {
+        return false;  // one buffer: the current one is the previous picture as well
+    }
+    repeatPicture_ = true;
+    return true;
 }
 
 bool D3D11Device::CaptureOutput(Image& out) noexcept {

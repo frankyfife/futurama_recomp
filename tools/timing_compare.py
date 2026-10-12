@@ -18,8 +18,9 @@ Measurement sources (all time stamps are the log's "[seconds]" since process sta
   - frontend fade: mean luminance of the frames after the frontend entry; the fade ends at the first frame within
     3 % of the plateau (median of the contiguous screenshots from 1.05 s after the first frontend frame on)
   - steam cloud: mean luminance of the region (515,105)-(600,160) (M3 review finding 7) in the longest equally
-    spaced screenshot series from 3 s after the frontend entry; it steps through five levels, the period is the
-    distance between occurrences of the same level transition (exact to one frame with consecutive frames)
+    spaced screenshot series from 3 s after the frontend entry; it steps through five levels, the period is the lag
+    of the autocorrelation maximum over the log time (M3d review finding 13; the level transitions of a 120 fps
+    series sampled every second frame gave 1.103 s instead of 1.0 s)
 
 Usage:
     python tools/timing_compare.py --run run/m3b/dur50 --run run/m3b/dur60 [--xemu run/xemu_ref]
@@ -163,27 +164,65 @@ class Run:
         best = max(best, series, key=len)
         if len(best) < 20:
             return None
-        # The cloud steps through five brightness levels (22.2, 24.8, 39.1, 35.8, 28.5 at 50 Hz, finding 7). A
-        # transition between two levels is located at the first sample of the new level (exact for a series of
-        # consecutive frames, else within the sampling step); the period of each transition type is the distance
-        # of its first and last occurrence divided by the cycles in between, averaged over the types.
-        lum = [(f, round(ImageStat.Stat(Image.open(self.shots[f][1]).convert("L").crop(STEAM_BOX)).mean[0]))
-               for f in best]
-        occurrences: dict = {}
-        for (pf, pv), (f, v) in zip(lum, lum[1:]):
-            if abs(v - pv) >= 2:
-                occurrences.setdefault((pv, v), []).append(f)
-        frame_periods, time_periods, cycles = [], [], 0
-        for hits in occurrences.values():
-            if len(hits) >= 2:
-                n = len(hits) - 1
-                frame_periods.append((hits[-1] - hits[0]) / n)
-                time_periods.append((self.t(hits[-1]) - self.t(hits[0])) / n)
-                cycles = max(cycles, n)
-        if not frame_periods:
+        # The cloud steps through five brightness levels (22.2, 24.8, 39.1, 35.8, 28.5 at 50 Hz, finding 7). The
+        # period is the lag of the autocorrelation maximum of the luminance over the log time (M3d review finding 13:
+        # level transitions sampled every second frame at 120 fps, with the interpolated in-between levels, gave
+        # 1.103 s instead of 1.0 s - a measuring artefact). Resampled on a uniform time grid by linear interpolation;
+        # the first lag whose correlation reaches 90 % of the best one between 0.3 s and half the series (refined by a
+        # parabola through its neighbours) is the period, so a multiple of the period is not picked.
+        samples = [(self.t(f), ImageStat.Stat(Image.open(self.shots[f][1]).convert("L").crop(STEAM_BOX)).mean[0])
+                   for f in best]
+        period = autocorrelation_period(samples, 0.3, 3.0)
+        if period is None:
             return None
-        return cycles, statistics.mean(frame_periods), statistics.mean(time_periods), best[1] - best[0], \
-            len(frame_periods)
+        seconds, correlation = period
+        span = samples[-1][0] - samples[0][0]
+        return int(span / seconds), seconds * self.rate, seconds, best[1] - best[0], correlation
+
+
+def autocorrelation_period(samples: list, min_lag: float, max_lag: float):
+    """(period in seconds, normalised correlation) of a series [(time, value)] or None."""
+    if len(samples) < 20:
+        return None
+    t0, t1 = samples[0][0], samples[-1][0]
+    span = t1 - t0
+    max_lag = min(max_lag, span / 2.0)
+    if span <= 0.0 or max_lag <= min_lag:
+        return None
+    intervals = sorted(b[0] - a[0] for a, b in zip(samples, samples[1:]) if b[0] > a[0])
+    step = max(0.002, (intervals[len(intervals) // 2] if intervals else 0.01) / 2.0)
+    grid = []
+    j = 0
+    t = t0
+    while t <= t1:
+        while j + 1 < len(samples) - 1 and samples[j + 1][0] <= t:
+            j += 1
+        (ta, va), (tb, vb) = samples[j], samples[j + 1]
+        grid.append(va if tb <= ta else va + (vb - va) * (t - ta) / (tb - ta))
+        t += step
+    mean = statistics.fmean(grid)
+    x = [v - mean for v in grid]
+    energy = sum(v * v for v in x)
+    if energy <= 0.0:
+        return None
+    lo, hi = int(min_lag / step), int(max_lag / step)
+    corr = {}
+    for lag in range(max(1, lo - 1), hi + 2):
+        n = len(x) - lag
+        if n <= 0:
+            break
+        corr[lag] = sum(x[i] * x[i + lag] for i in range(n)) / energy * len(x) / n
+    peaks = [lag for lag in range(lo, hi + 1)
+             if lag in corr and lag - 1 in corr and lag + 1 in corr and corr[lag] >= corr[lag - 1]
+             and corr[lag] >= corr[lag + 1]]
+    if not peaks:
+        return None
+    best = max(corr[p] for p in peaks)
+    lag = next(p for p in peaks if corr[p] >= 0.9 * best)
+    a, b, c = corr[lag - 1], corr[lag], corr[lag + 1]
+    denom = a - 2.0 * b + c
+    shift = 0.5 * (a - c) / denom if denom != 0.0 else 0.0
+    return (lag + max(-0.5, min(0.5, shift))) * step, b
 
 
 def fmt(v, unit="s", digits=3):
@@ -258,9 +297,10 @@ def measure(run: Run) -> list:
                      "reload frame-bound + 60 s"))
     st = run.steam()
     if st:
-        cycles, pf, pt, step, types = st
+        cycles, pf, pt, step, correlation = st
         rows.append(("8.11 steam cloud period (frontend)", pt, pf,
-                     f"{types} level transitions over {cycles} cycles, sampled every {step} frame(s)"))
+                     f"autocorrelation over {cycles} cycles (correlation {correlation:.2f}), sampled every {step} "
+                     f"frame(s)"))
     movies_opened = sorted({m.group(1) for m in re.finditer(r'NtCreateFile\s+"\\\?\?\\D:\\Video\\([^"]+\.xmv)"',
                                                             run.trace)})
     rows.append(("8.12 movie names", None, None, ", ".join(movies_opened)))

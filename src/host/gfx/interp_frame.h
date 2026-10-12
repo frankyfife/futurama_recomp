@@ -5,16 +5,23 @@
 // Contract (binding for every source):
 //   - `tick` = completed fixed logic steps (probe:Game::FixedStep) when the guest draws = generation G of the
 //     state S[G] the guest data shows. It never decreases while a source is registered; a jump by more than 1
-//     between two frames is a catch-up (the history snaps over the gap).
+//     between two frames is a catch-up: interpolated over the pair when the jump equals `pairTicks`, else the
+//     history snaps over the gap.
 //   - `alpha` = weight of S[G]: the renderer shows interp(S[G-1], S[G], alpha); alpha = 1 means "the guest data
 //     as is" (bit-identical to the original renderer). alpha = clamp(1 - (L - rest) / dt, 0, 1) with L = the
 //     largest remainder the clock produces. With the half-tick clock at 120 Hz ("phase B") alpha is 1/2 in the
 //     frames that ran a tick and exactly 1 in the frames between: the displayed time G - 1 + alpha rises by 1/2
 //     per frame. (The naive reading alpha = rest / dt with "1/2 in the zero-step frame, 1 in the tick frame"
 //     would step backwards every second frame - never deliver that.) Values >= 1 - 1e-3 are treated as 1.
-//   - `flags`: kFrameInterpSnapAll (context switch, catch-up of >= 2 steps, 6 dt cap, first frame) -> every key
+//   - `pairTicks` = k, the ticks between the two newest rendered states (the steps of the last frame that ran any).
+//     A frame whose tick advanced by exactly k <= kMaxPairTicks (a catch-up of 2-3 steps, the guest's 6 dt cap)
+//     interpolates over the pair: interp(S[G-k], S[G], (k - 1 + alpha) / k), so the displayed time G - 1 + alpha
+//     never stands still or goes back after a correction (M3d review finding 10; m3d_frameclock.md 2.5).
+//   - `flags`: kFrameInterpSnapAll (context switch, first frame or a regime change of the clock) -> every key
 //     shows S[G]; kFrameInterpInsideStep (the guest draws from Update inside the step loop: loading and clear
-//     frames, intro screens) -> pass-through, nothing recorded; kFrameInterpClockReset like SnapAll.
+//     frames, intro screens) -> pass-through, nothing recorded; kFrameInterpClockReset like SnapAll;
+//     kFrameInterpCatchUp (diagnostics) = the frame ran more steps than its regime allows or the guest capped the
+//     elapsed time at 6 dt - interpolated over the pair as above.
 //   - `enabled` = the clock produces intermediate frames (frame rate above the tick rate). The renderer ANDs it
 //     with [render] interpolation; with enabled = false every draw passes through unchanged (60 fps: zero change).
 //   - Constant between two DisplayFrame calls of the guest main loop except for the InsideStep phase; the
@@ -34,10 +41,14 @@ namespace gfx::interp {
 inline constexpr std::uint32_t kFrameInterpSnapAll = 1u << 0;
 inline constexpr std::uint32_t kFrameInterpInsideStep = 1u << 1;
 inline constexpr std::uint32_t kFrameInterpClockReset = 1u << 2;
+inline constexpr std::uint32_t kFrameInterpCatchUp = 1u << 3;
+// Largest tick span of the newest state pair that is interpolated (the guest's elapsed-time cap is 6 dt).
+inline constexpr std::uint32_t kMaxPairTicks = 6;
 
 struct FrameInterp {
     std::uint64_t tick = 0;            // completed fixed steps when the guest draws (generation G)
     std::uint32_t stepsThisFrame = 0;  // fixed steps of the current CApp::Frame (diagnostics)
+    std::uint32_t pairTicks = 1;       // ticks between the two newest rendered states (see the contract)
     float alpha = 1.0f;                // weight of S[G] (see the contract above)
     std::uint32_t flags = 0;           // kFrameInterp*
     bool enabled = false;              // the clock produces intermediate frames

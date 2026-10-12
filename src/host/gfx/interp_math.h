@@ -117,6 +117,10 @@ struct SnapLimits {
     float frustumRatio = 1.25f;       // camera: a frustum tangent changes by more than this factor (zoom cut)
     float particleGrowth = 4.0f;      // particles: a particle moves more than 4x its previous step (+ minStep)
     std::uint32_t frameDrivenHoldFrames = 120;
+    // M3d review finding 1: without a known previous motion (the key or node was first seen in the tick before) the
+    // growth test has no reference; only a step above unknownStepRadii * r or an angle above unknownAngleDeg snaps.
+    float unknownStepRadii = 16.0f;
+    float unknownAngleDeg = 90.0f;
 };
 
 // ---- vectors and quaternions --------------------------------------------------------------------------------
@@ -423,6 +427,32 @@ inline SnapReason MotionSnap(float step, float angleDeg, float radius, float pre
         return SnapReason::Translation;
     }
     if (angleDeg > limits.angleDeg && angleDeg > limits.angleGrowth * previousAngleDeg + limits.angleEpsilonDeg) {
+        return SnapReason::Rotation;
+    }
+    return SnapReason::None;
+}
+
+// Reference motion of the growth test (M3d review finding 1): the larger of the last two known per-tick motions - the
+// reversal point of an oscillation has exactly one small step, which alone would make the next normal step look like a
+// jump. `known` = false: the motion of the tick before is unknown (first sight in that tick).
+struct MotionReference {
+    bool known = false;
+    float step = 0.0f;
+    float angleDeg = 0.0f;
+};
+
+// MotionSnap with a reference that may be unknown: then only steps above unknownStepRadii * r or angles above
+// unknownAngleDeg snap (a teleport right after the first sight), not every fast object in its second tick.
+inline SnapReason MotionSnapRule(float step, float angleDeg, float radius, const MotionReference& reference,
+                                 const SnapLimits& limits = {}) noexcept {
+    if (reference.known) {
+        return MotionSnap(step, angleDeg, radius, reference.step, reference.angleDeg, limits);
+    }
+    const float r = std::max(radius, limits.minRadius);
+    if (step > limits.unknownStepRadii * r) {
+        return SnapReason::Translation;
+    }
+    if (angleDeg > limits.unknownAngleDeg) {
         return SnapReason::Rotation;
     }
     return SnapReason::None;

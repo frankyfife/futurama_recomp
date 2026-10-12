@@ -2,6 +2,7 @@
 #include "core/guest.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 
 namespace guest {
@@ -79,6 +80,18 @@ bool IsReadable(GuestAddr addr, std::uint32_t size) noexcept {
         cur = static_cast<GuestAddr>(regionEnd);
     }
     return true;
+}
+
+namespace {
+std::atomic<std::uint32_t> g_releaseEpoch{0};
+}  // namespace
+
+void NoteMemoryReleased() noexcept {
+    g_releaseEpoch.fetch_add(1, std::memory_order_release);
+}
+
+std::uint32_t MemoryReleaseEpoch() noexcept {
+    return g_releaseEpoch.load(std::memory_order_acquire);
 }
 
 bool WriteBytes(GuestAddr addr, const void* data, std::uint32_t size) noexcept {

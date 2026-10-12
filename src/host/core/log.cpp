@@ -41,6 +41,7 @@ LARGE_INTEGER g_qpcFreq{};
 thread_local char t_threadName[24] = {};
 char g_lastError[512] = {};  // body of the most recent error-level line (guarded by g_lock)
 std::atomic<LogTap> g_tap{nullptr};  // (io, M2) SetLogTap
+std::atomic<LogTap> g_observers[kMaxLogObservers] = {};  // (M4) AddLogObserver
 
 void EnsureClock() noexcept {
     if (g_qpcFreq.QuadPart == 0) {
@@ -161,6 +162,11 @@ void FormatAndEmit(Channel channel, Level level, const char* fmt, va_list args) 
     line[size] = 0;
     if (const LogTap tap = g_tap.load(std::memory_order_acquire)) {
         tap(channel, level, line, size);
+    }
+    for (std::atomic<LogTap>& slot : g_observers) {
+        if (const LogTap observer = slot.load(std::memory_order_acquire)) {
+            observer(channel, level, line, size);
+        }
     }
     AcquireSRWLockExclusive(&g_lock);
     EmitLocked(line, size);
@@ -300,6 +306,31 @@ const char* LogThreadName() noexcept {
 
 void SetLogTap(LogTap tap) noexcept {
     g_tap.store(tap, std::memory_order_release);
+}
+
+bool AddLogObserver(LogTap observer) noexcept {
+    if (observer == nullptr) {
+        return false;
+    }
+    for (std::atomic<LogTap>& slot : g_observers) {
+        if (slot.load(std::memory_order_acquire) == observer) {
+            return true;
+        }
+    }
+    for (std::atomic<LogTap>& slot : g_observers) {
+        LogTap expected = nullptr;
+        if (slot.compare_exchange_strong(expected, observer, std::memory_order_acq_rel)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void RemoveLogObserver(LogTap observer) noexcept {
+    for (std::atomic<LogTap>& slot : g_observers) {
+        LogTap expected = observer;
+        slot.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+    }
 }
 
 const char* ChannelName(Channel channel) noexcept {

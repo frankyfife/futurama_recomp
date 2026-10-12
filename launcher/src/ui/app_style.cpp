@@ -1,7 +1,11 @@
 #include "ui/app_style.h"
 
+#include "core/l10n.h"
+
 #include <QApplication>
 #include <QGuiApplication>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QOperatingSystemVersion>
 #include <QPalette>
 #include <QStyle>
@@ -155,6 +159,27 @@ void ScaleFont(QWidget* widget, qreal factor, bool bold) {
     }
     f.setBold(bold);
     widget->setFont(f);
+}
+
+namespace {
+ConfirmHook g_confirmHook = nullptr;
+}  // namespace
+
+void SetConfirmHook(ConfirmHook hook) {
+    g_confirmHook = hook;
+}
+
+bool ConfirmChange(QWidget* parent, const QString& text, const QString& acceptText) {
+    if (g_confirmHook != nullptr) {
+        return g_confirmHook(text);
+    }
+    QMessageBox box(QMessageBox::Question, T("confirm.title"), text, QMessageBox::NoButton, parent);
+    QPushButton* accept = box.addButton(acceptText, QMessageBox::AcceptRole);
+    QPushButton* cancel = box.addButton(T("common.cancel"), QMessageBox::RejectRole);
+    box.setDefaultButton(cancel);
+    box.setEscapeButton(cancel);
+    box.exec();
+    return box.clickedButton() == accept;
 }
 
 }  // namespace fl::ui

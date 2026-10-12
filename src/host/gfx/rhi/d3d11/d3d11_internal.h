@@ -289,6 +289,7 @@ public:
     PresentTiming LastPresentTiming() const noexcept override { return lastTiming_; }    // M3b pacing
     bool CaptureBackBuffer(Image& out) noexcept override;
     bool CaptureOutput(Image& out) noexcept override;  // M3c
+    bool RepeatPreviousPicture() noexcept override;     // M3d F1
     std::uint32_t SupportedSampleCount(Format color, Format depth, std::uint32_t requested) const noexcept override;
     bool ResizeBackBuffers(std::uint32_t width, std::uint32_t height, std::uint32_t sampleCount,
                            std::uint32_t outputWidth, std::uint32_t outputHeight) noexcept override;  // M3c
@@ -401,6 +402,12 @@ private:
     Targets targets_;
     std::uint32_t backBufferCount_ = 1;
     std::uint32_t currentBackBuffer_ = 0;
+    // M3d F1 (RepeatPreviousPicture): the next Present shows the buffer of the previous Present and keeps the
+    // rotation; PictureBuffer() is the buffer the present pass and the captures read.
+    bool repeatPicture_ = false;
+    std::uint32_t PictureBuffer() const noexcept {
+        return repeatPicture_ ? (currentBackBuffer_ + backBufferCount_ - 1) % backBufferCount_ : currentBackBuffer_;
+    }
     // Present pass (M3c: also the downsample and resize passes, created for windowless devices too).
     PresentScaling scaling_ = PresentScaling::Linear;
     ComPtr<ID3D11VertexShader> presentVs_;

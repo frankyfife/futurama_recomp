@@ -173,9 +173,17 @@ struct FrameAdvance {
     bool variable = false;            // Cadence: `seconds` changes from frame to frame within one regime
     std::int64_t startDelayTicks = 0; // QPC ticks the pacer deliberately delayed this frame's start (just-in-time
                                       // start): the clock compares real time minus this with its virtual time
+    // M3d review finding 11: QPC at which the pacer released this frame (after its vblank / timer wait and the
+    // just-in-time delay; 0 = unknown). In the sub-tick regimes the clock compares this instead of the guest's timer
+    // sample, which follows the streaming pumps of the frame (5-9 ms on the loading screen).
+    std::int64_t frameStartQpc = 0;
+    std::uint32_t planSerial = 0;     // changes with every plan change (free <-> vblank: the start phase jumps)
 };
 inline constexpr double kFrameLockTolerance = 1.0e-4;  // 100 ppm (m3d_frameclock.md 3.3)
-// Frames per tick N when `nominalHz` is within kFrameLockTolerance of N x `tickHz` (N >= 1), else 0.
+// Frames per tick N when `nominalHz` is within kFrameLockTolerance of N x `tickHz` (N >= 1), else 0. A rate up to the
+// tick rate (+ kIntegerTolerance) is N = 1 (M3d review finding 8): 50, 59.94, 59.95 and 60.02 Hz run the M3b clock (one
+// tick per frame with its occasional double step or hold) without interpolation, exactly like frame_rate = 60 - the
+// display time quanta below the tick rate would give 2-step frames that the renderer can only snap.
 std::uint32_t FramesPerTick(double nominalHz, double tickHz) noexcept;
 // The advance for a frame of plan `plan`: `refreshHz` the display (0 = unknown: the plan period), `lastRefreshes`
 // = refreshes the frame just presented stays on screen (Cadence; 0 = the plan's k).
@@ -189,22 +197,33 @@ FrameAdvance FrameAdvanceOf(const Plan& plan, double tickHz, double refreshHz, s
 // (OnScreenTracker::PredictNextVisible) and starts the frame `budget` before it: input and game state are sampled
 // about 12 ms later, the picture reaches the same vblank. Budget = max(kMinSeconds, 99th percentile of the frame work
 // over the last kWindow frames + kMarginSeconds) (the GPU time of the "Maximum" preset, p99 2.8 ms, is inside the
-// margin), doubled after every frame that reached the screen late (up to 4x), halved again after kRelaxSeconds
-// without one. JustInTimeStart returns 0 (start at once) when the start would not lie between now and
-// now + maxWait.
+// margin), doubled after every frame that reached the screen late (up to 4x), halved again after a relax interval
+// without one. Backoff (M3d review finding 9): the budget measures only the CPU work, so a frame that needs more lead
+// (GPU time above the margin, DWM composition) is late again right after every relax step; a miss within one relax
+// interval after a relax step doubles the interval (kRelaxSeconds .. kMaxRelaxSeconds), and after kMaxRelaxFailures such
+// failed relax steps the factor holds until the next plan change (NotePlanChange). The GPU time itself is not added:
+// its span (first draw to the end of the present) overlaps the CPU work, a sum would double count it, and the misses
+// already measure what the screen needs. JustInTimeStart returns 0 (start at once) when the start would not lie
+// between now and now + maxWait.
 class LatencyBudget {
 public:
     static constexpr double kMinSeconds = 0.004;
     static constexpr double kMarginSeconds = 0.0035;
     static constexpr std::uint32_t kWindow = 240;  // frames (2 s at 120 fps, 4 s at 60 fps)
     static constexpr double kRelaxSeconds = 2.0;
+    static constexpr double kMaxRelaxSeconds = 32.0;
+    static constexpr std::uint32_t kMaxRelaxFailures = 2;
     static constexpr std::uint32_t kMaxFactor = 4;
     void AddWork(double seconds) noexcept;
     // A frame that started just in time stayed in the queue past its vblank (`nowSeconds`: any monotonic clock).
     void NoteMiss(double nowSeconds) noexcept;
     double Seconds(double nowSeconds) noexcept;  // the budget B (also relaxes the miss factor)
+    // A new pacing plan: the relax interval and the hold start over (the work window and the factor stay).
+    void NotePlanChange() noexcept;
     std::uint32_t Factor() const noexcept { return factor_; }
     std::uint64_t Misses() const noexcept { return misses_; }
+    std::uint32_t RelaxFailures() const noexcept { return relaxFailures_; }
+    bool Held() const noexcept { return held_; }
     void Reset() noexcept;
 
 private:
@@ -215,6 +234,11 @@ private:
     std::uint32_t factor_ = 1;
     double lastMiss_ = 0.0;
     std::uint64_t misses_ = 0;
+    double relaxInterval_ = kRelaxSeconds;
+    double relaxedAt_ = 0.0;
+    bool probing_ = false;  // a relax step happened and no miss has followed yet
+    bool held_ = false;
+    std::uint32_t relaxFailures_ = 0;
 };
 // Start time of the next frame (QPC): visible - budget when that is later than `now` and earlier than
 // now + maxWait; 0 = start at once.
@@ -343,10 +367,17 @@ public:
     // Hold time for the detection that just fired (seconds); `nowSeconds` is any monotonic clock.
     double FireHoldSeconds(double nowSeconds) noexcept;
     void ResetWindow() noexcept { history_ = 0; count_ = 0; }
+    // M3d (verify phase): the first `waits` vblank waits after the pacer enters a vblank plan are not judged. In a
+    // composed window the first frames after the switch from the timer wait up to 3.5 periods while DWM takes the
+    // window's presents into its cycle; at 120 fps (1.5 periods = 12.5 ms) that fired the detector at every start
+    // (1 s free running + 30 frames hysteresis), at 60 fps (25 ms) a single wait of 33 ms stayed below it.
+    static constexpr std::uint32_t kWarmupWaits = 12;
+    void StartWarmup(std::uint32_t waits = kWarmupWaits) noexcept { ResetWindow(); warmup_ = waits; }
 
 private:
     std::uint8_t history_ = 0;  // bit i = frame i ago was slow
     std::uint32_t count_ = 0;   // frames seen (up to 8)
+    std::uint32_t warmup_ = 0;  // waits still to ignore (StartWarmup)
     double hold_ = 0.0;
     double lastFire_ = -1.0e9;
 };
@@ -452,9 +483,6 @@ public:
     // present no longer in the ring, more than kMaxPredictChain presents in flight) or there is no sample.
     static constexpr std::uint32_t kMaxPredictChain = 8;
     bool PredictNextVisible(double refreshSeconds, std::int64_t* qpc) const noexcept;
-    // M3d (repeated picture): the newest present stays `refreshes` longer than planned (a frame after it was not
-    // presented because it would have shown nothing new).
-    void ExtendLastPresent(std::uint32_t refreshes) noexcept;
 
     struct Result {
         std::uint64_t presents = 0;      // NotePresent calls

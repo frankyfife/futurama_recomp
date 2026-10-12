@@ -127,6 +127,7 @@ bool FreeTracked(const void* p, SIZE_T* sizeOut) noexcept {
     ReleaseSRWLockExclusive(&g_allocLock);
     if (found) {
         VirtualFree(a.allocationBase, 0, MEM_RELEASE);
+        guest::NoteMemoryReleased();  // M3d review finding 6: readable-page caches
         if (sizeOut) {
             *sizeOut = a.size;
         }
@@ -195,6 +196,9 @@ NTSTATUS __stdcall NtFreeVirtualMemory(void** BaseAddress, SIZE_T* RegionSize, U
     const void* base = *BaseAddress;
     const SIZE_T size = *RegionSize;
     const NTSTATUS status = ::NtFreeVirtualMemory(GetCurrentProcess(), BaseAddress, RegionSize, FreeType);
+    if (NT_SUCCESS(status)) {
+        guest::NoteMemoryReleased();  // release or decommit (M3d review finding 6: readable-page caches)
+    }
     if (!NT_SUCCESS(status) || core::LogEnabled(core::Channel::Krnl, core::Level::Trace)) {
         core::LogWrite(core::Channel::Krnl, NT_SUCCESS(status) ? core::Level::Trace : core::Level::Warn,
                        "NtFreeVirtualMemory(base %p, size 0x%lX, type 0x%lX) -> 0x%08lX %s", base,

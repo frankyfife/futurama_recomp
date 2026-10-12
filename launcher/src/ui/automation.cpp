@@ -2,7 +2,11 @@
 
 #include "core/game_session.h"
 #include "core/l10n.h"
+#include "core/pad_reader.h"
+#include "ui/binding_capture.h"
+#include "ui/controls_panel.h"
 #include "ui/main_window.h"
+#include "ui/pad_poller.h"
 #include "ui/settings_tab.h"
 #include "ui/wizard.h"
 
@@ -16,6 +20,8 @@
 #include <QProcess>
 #include <QSaveFile>
 #include <QTabWidget>
+
+#include <memory>
 
 namespace fl::ui {
 namespace {
@@ -74,6 +80,10 @@ const char* TabFileName(UiTab tab) {
         return "game";
     case UiTab::Graphics:
         return "graphics";
+    case UiTab::Controls:
+        return "controls";
+    case UiTab::Audio:
+        return "audio";
     case UiTab::Paths:
         return "paths";
     case UiTab::Advanced:
@@ -137,6 +147,45 @@ int RunScreenshots(AppContext& ctx, const StartupOptions& options, const QString
                     return kLauncherScreenshotFailed;
                 }
             }
+            // M4: the keyboard/mouse table of the controls tab (the first grab shows the controller table).
+            if (BindingsPanel* bindings = window.bindingsPanel(); bindings != nullptr && bindings->hasBindings()) {
+                window.selectTab(UiTab::Controls);
+                bindings->selectDevice(BindDevice::KeyboardMouse);
+                auto* page = qobject_cast<SettingsTab*>(window.tabWidget()->currentWidget());
+                if (page != nullptr &&
+                    !SaveGrab(page->contentWidget(), dir, prefix + QStringLiteral("tab_controls_kbm_full"), &written,
+                              error)) {
+                    return kLauncherScreenshotFailed;
+                }
+                // The capture dialog ("press a key") for the keyboard/mouse binding of A.
+                if (const KeyDef* kbmA = ctx.model.schema().find(QStringLiteral("input.kbm_a"))) {
+                    if (BindingCaptureDialog* capture = bindings->openCapture(*kbmA, false)) {
+                        // Lay the dialog out at its real size first (offscreen it kept the size of its first
+                        // layout pass and clipped the mouse buttons at 225 %; review M4 finding 17).
+                        Settle();
+                        capture->adjustSize();
+                        capture->resize(capture->sizeHint().expandedTo(capture->minimumSizeHint()));
+                        if (!SaveGrab(capture, dir, prefix + QStringLiteral("controls_capture_kbm"), &written, error)) {
+                            return kLauncherScreenshotFailed;
+                        }
+                        capture->reject();
+                    }
+                }
+                // The controller capture dialog (with the machine's controllers - usually none: the dialog says
+                // so and offers the list).
+                if (const KeyDef* padA = ctx.model.schema().find(QStringLiteral("input.pad_a"))) {
+                    if (BindingCaptureDialog* capture = bindings->openCapture(*padA, false)) {
+                        Settle();
+                        capture->adjustSize();
+                        capture->resize(capture->sizeHint().expandedTo(capture->minimumSizeHint()));
+                        if (!SaveGrab(capture, dir, prefix + QStringLiteral("controls_capture_pad"), &written, error)) {
+                            return kLauncherScreenshotFailed;
+                        }
+                        capture->reject();
+                    }
+                }
+                bindings->selectDevice(BindDevice::Pad);
+            }
             window.selectTab(UiTab::Game);
             window.showRunResult(SampleResult(ctx, 3));
             if (!SaveGrab(&window, dir, prefix + QStringLiteral("status_fatal"), &written, error)) {
@@ -155,6 +204,32 @@ int RunScreenshots(AppContext& ctx, const StartupOptions& options, const QString
             }
             window.resize(unit * 64, unit * 50);
             window.hide();
+        }
+        {
+            // M4: the controller test with a simulated controller (the machine may have none; the panel says
+            // "simuliert"): A and RT pressed, left stick up-right, right stick left.
+            auto reader = std::make_unique<SimulatedPadReader>();
+            PadState demo;
+            demo.connected = true;
+            demo.buttons = 0x1000;
+            demo.rightTrigger = 220;
+            demo.lx = 16000;
+            demo.ly = 26000;
+            demo.rx = -30000;
+            reader->setState(0, demo);
+            PadPoller poller(std::move(reader));
+            PadTestPanel panel(ctx.model, &poller);
+            panel.setAttribute(Qt::WA_DontShowOnScreen, true);
+            panel.resize(panel.sizeHint().expandedTo(QSize(panel.fontMetrics().height() * 60, 0)));
+            panel.show();
+            poller.pollNow();
+            // The connected slot appears only after the first poll: lay the panel out again (its height grows).
+            Settle();
+            panel.resize(panel.sizeHint().expandedTo(QSize(panel.fontMetrics().height() * 60, 0)));
+            if (!SaveGrab(&panel, dir, prefix + QStringLiteral("controls_pad_test_simulated"), &written, error)) {
+                return kLauncherScreenshotFailed;
+            }
+            panel.hide();
         }
         {
             FirstRunWizard wizard(ctx);

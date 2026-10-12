@@ -12,4 +12,5 @@ private slots:
     void rejectsBrokenDocuments();
     void gpuInfo();
     void isoResult();
+    void audioTab();
 };

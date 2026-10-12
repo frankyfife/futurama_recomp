@@ -1,9 +1,14 @@
 #include "ui/main_window.h"
 
 #include "core/l10n.h"
+#include "core/bindings.h"
+#include "core/pad_reader.h"
 #include "core/presets.h"
 #include "core/validation.h"
 #include "ui/app_style.h"
+#include "ui/audio_panel.h"
+#include "ui/controls_panel.h"
+#include "ui/pad_poller.h"
 #include "ui/iso_status.h"
 #include "ui/screen_info.h"
 #include "ui/settings_tab.h"
@@ -109,6 +114,10 @@ QString TabTitle(UiTab tab) {
         return T("tab.game");
     case UiTab::Graphics:
         return T("tab.graphics");
+    case UiTab::Controls:
+        return T("tab.controls");
+    case UiTab::Audio:
+        return T("tab.audio");
     case UiTab::Paths:
         return T("tab.paths");
     case UiTab::Advanced:
@@ -123,6 +132,7 @@ MainWindow::MainWindow(AppContext& ctx, StartupOptions options, QWidget* parent)
     : QMainWindow(parent), ctx_(ctx), options_(std::move(options)) {
     setWindowIcon(AppIcon());
     editorContext_.gpu = &ctx_.gpu;
+    editorContext_.audio = &ctx_.audio;
     editorContext_.schema = &ctx_.model.schema();
     editorContext_.iniDir = [this] { return ctx_.model.iniDir(); };
     editorContext_.currentValue = [this](const KeyDef& key) { return ctx_.model.value(key); };
@@ -146,6 +156,7 @@ MainWindow::MainWindow(AppContext& ctx, StartupOptions options, QWidget* parent)
         return QString();
     };
     connect(&session_, &GameSession::finished, this, &MainWindow::onGameFinished, Qt::QueuedConnection);
+    padPoller_ = new PadPoller(CreatePadReader(), this);
     buildUi();
     const int unit = fontMetrics().height();
     resize(unit * 64, unit * 50);
@@ -201,12 +212,27 @@ void MainWindow::buildUi() {
     tabs_->setDocumentMode(true);
     settingsTabs_.clear();
     for (UiTab tab : kAllTabs) {
+        // The binding keys of the controls tab have their own tables (ui/controls_panel.h).
         auto* page = new SettingsTab(
-            tab, ctx_.model, editorContext_, [this](const KeyDef& key) { return keyVisible(key); }, tabs_);
-        if (tab == UiTab::Game) {
+            tab, ctx_.model, editorContext_,
+            [this](const KeyDef& key) { return keyVisible(key) && !IsBindingKey(key); }, tabs_);
+        if (tab == UiTab::Controls) {
+            buildControlsExtras(page);
+        } else if (tab == UiTab::Game) {
             page->addTopWidget(buildGameExtras());
         } else if (tab == UiTab::Graphics) {
             page->addTopWidget(buildGraphicsExtras());
+        } else if (tab == UiTab::Audio) {
+            // M5: device line, warnings and the test tone below the schema's [audio] keys.
+            audioPanel_ = new AudioPanel(ctx_, page);
+            page->addBottomWidget(audioPanel_);
+            page->setEmptyNoteVisible(false);
+            connect(audioPanel_, &AudioPanel::refreshDevicesRequested, this, [this] {
+                if (!ctx_.audio.simulated) {
+                    ctx_.audio = EnumerateAudioDevices();
+                }
+                QTimer::singleShot(0, this, &MainWindow::rebuildUi);
+            });
         } else if (tab == UiTab::Paths) {
             page->addBottomWidget(buildPathsExtras());
         } else if (tab == UiTab::Advanced) {
@@ -255,6 +281,9 @@ void MainWindow::rebuildUi() {
     delete old;
     statusPanel_ = nullptr;
     tabs_ = nullptr;
+    bindingsPanel_ = nullptr;
+    padTest_ = nullptr;
+    audioPanel_ = nullptr;
     presetCombo_ = nullptr;
     frameRateCombo_ = nullptr;
     isoBox_ = nullptr;
@@ -403,7 +432,8 @@ QWidget* MainWindow::buildGraphicsExtras() {
         grid->addWidget(ColoredLabel(T("graphics.gpu_fallback").arg(ctx_.gpuNote), Severity::Warning, box),
                         r++, 0, 1, 2);
     }
-    // Frame rate: 60 only until M3d (interpolated 120 Hz), unless the schema already offers a key for it.
+    // Frame rate: game builds before M3d have no player key for it (a developer key at most) - show the logic rate
+    // read-only. Since M3d the schema's [render] frame_rate (60 | 120 | display) is a regular graphics key.
     bool schemaHasFrameRate = false;
     for (const KeyDef* key : ctx_.model.schema().keysForTab(UiTab::Graphics)) {
         schemaHasFrameRate = schemaHasFrameRate || key->name == QLatin1String("frame_rate");
@@ -535,6 +565,29 @@ QWidget* MainWindow::buildAdvancedExtras() {
     return container;
 }
 
+void MainWindow::buildControlsExtras(SettingsTab* page) {
+    bindingsPanel_ = new BindingsPanel(ctx_.model, padPoller_, [this](const KeyDef& key) { return keyVisible(key); },
+                                       page);
+    if (bindingsPanel_->hasBindings()) {
+        page->addTopWidget(bindingsPanel_);
+        page->setEmptyNoteVisible(false);
+        connect(bindingsPanel_, &BindingsPanel::edited, this, [this] { onValueEdited(); });
+        // "Auf Standard zuruecksetzen" of the tab also resets the bindings (before the window refreshes).
+        connect(page, &SettingsTab::tabReset, bindingsPanel_, &BindingsPanel::resetAll);
+        page->setExtraErrors([this] { return bindingsPanel_ != nullptr ? bindingsPanel_->errorCount() : 0; },
+                             [this] { return bindingsPanel_ != nullptr && bindingsPanel_->focusFirstError(); });
+        page->setExtraResetCount([this] { return bindingsPanel_ != nullptr ? bindingsPanel_->changedRowCount() : 0; });
+    } else {
+        // Game builds before M4: no [input] keys yet - the controller test still works.
+        auto* note = new QLabel(T("controls.no_bindings"), page);
+        note->setWordWrap(true);
+        page->addTopWidget(note);
+        page->setEmptyNoteVisible(false);
+    }
+    padTest_ = new PadTestPanel(ctx_.model, padPoller_, page);
+    page->addBottomWidget(padTest_);
+}
+
 void MainWindow::selectTab(UiTab tab) {
     for (qsizetype i = 0; i < settingsTabs_.size(); ++i) {
         if (settingsTabs_[i]->tab() == tab) {
@@ -547,8 +600,17 @@ void MainWindow::onValueEdited() {
     for (SettingsTab* t : settingsTabs_) {
         t->refreshFromModel();
     }
+    if (bindingsPanel_ != nullptr) {
+        bindingsPanel_->refreshFromModel();
+    }
+    if (padTest_ != nullptr) {
+        padTest_->refreshFromModel();
+    }
     if (isoBox_ != nullptr) {
         isoBox_->refresh();
+    }
+    if (audioPanel_ != nullptr) {
+        audioPanel_->refresh();
     }
     updatePresetCombo();
     updateFooter();
@@ -556,8 +618,8 @@ void MainWindow::onValueEdited() {
 
 void MainWindow::updatePresetCombo() {
     if (frameRateCombo_ != nullptr) {
-        // Until M3d the displayed frame rate is the game logic rate ([render] frame_rate follows [game]
-        // tick_rate unless it is set; the advanced tab can still set it for tests).
+        // Game builds before M3d: the displayed frame rate is the game logic rate ([render] frame_rate follows
+        // [game] tick_rate unless it is set; the advanced tab can still set it for tests).
         const ConfigSchema& schema = ctx_.model.schema();
         const KeyDef* frameRate = schema.find(QStringLiteral("render"), QStringLiteral("frame_rate"));
         const KeyDef* tickRate = schema.find(QStringLiteral("game"), QStringLiteral("tick_rate"));

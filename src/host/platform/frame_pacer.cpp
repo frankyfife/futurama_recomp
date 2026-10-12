@@ -155,7 +155,6 @@ struct PacerState {
     std::uint32_t frameSync = 0;  // refreshes the frame of this DisplayFrame stays on screen (vblank plans; 0 = none)
     bool frameTicksKnown = false;
     std::uint32_t frameTicks = 0;
-    bool repeatThisFrame = false;
     pacing::FrameAdvance advance;  // for the frame that starts after EndFrame
     pacing::LatencyBudget latency;
     LONGLONG jitDelay = 0;         // QPC ticks the current frame's start was delayed (just in time)
@@ -166,6 +165,8 @@ struct PacerState {
     std::uint64_t repeated = 0, tickless = 0, vblankFrames = 0, jitFrames = 0, jitMisses = 0;
     double jitDelaySumMs = 0.0;
     double lastBudgetMs = 0.0;
+    std::uint32_t latencyRelaxFailures = 0;  // failed relax steps of the budget before the current plan
+    std::uint32_t planSerial = 0;            // FrameAdvance::planSerial (every accepted plan change)
 };
 
 std::mutex g_paceMutex;  // guards g_state
@@ -350,8 +351,16 @@ void ApplyPlanLocked(PacerState& s, const Plan& p) noexcept {
     if (p.path == Path::Cadence && (old.path != Path::Cadence || std::fabs(old.cadenceRatio - p.cadenceRatio) > 1.0e-9)) {
         s.cadencePattern.Reset(p.cadenceRatio);
     }
-    s.limiter.ResetWindow();
+    if (pacing::IsVblankPath(p.path) && !pacing::IsVblankPath(old.path)) {
+        s.limiter.StartWarmup();  // M3d: the first waits after the switch are a transient (pacer_policy.h)
+    } else {
+        s.limiter.ResetWindow();
+    }
     s.cadence.Reset();
+    // M3d review finding 9: a new plan may need another lead - the budget's relax backoff starts over.
+    s.latencyRelaxFailures += s.latency.RelaxFailures();
+    s.latency.NotePlanChange();
+    ++s.planSerial;  // review finding 11: the frame clock absorbs the start phase jump of the new plan
     s.plan = p;
     char text[160];
     DescribePlan(p, s.display.valid ? s.display.hz : 0.0, text, sizeof(text));
@@ -430,24 +439,14 @@ void CountFrameLocked(PacerState& s) noexcept {
     s.limited += e.displayLimited ? 1 : 0;
 }
 
-// Display time of the frame of this DisplayFrame on a vblank plan (its refreshes x the refresh period).
-double FrameDisplaySecondsLocked(const PacerState& s) noexcept {
-    if (s.frameSync != 0 && s.display.valid && s.display.hz > 0.0) {
-        return static_cast<double>(s.frameSync) / s.display.hz;
-    }
-    return s.plan.periodSeconds;
-}
-
 WaitAction PrepareWaitLocked(PacerState& s, LONGLONG now) noexcept {
     WaitAction a;
     const Plan& p = s.plan;
-    if (pacing::IsVblankPath(p.path) && s.repeatThisFrame && s.lastFrameStart != 0) {
-        // M3d F1: the frame was not presented, so the waitable object releases nothing for it; the next frame
-        // starts one display time after this one (same phase to its vblank as this frame had to its own).
-        a.kind = WaitAction::Timer;
-        a.until = s.lastFrameStart + static_cast<LONGLONG>(FrameDisplaySecondsLocked(s) * QpcFrequency());
-        s.vblankNotBefore = 0;
-    } else if (pacing::IsVblankPath(p.path)) {
+    if (pacing::IsVblankPath(p.path)) {
+        // M3d F1: a repeated picture is presented as well (the device shows the previous buffer again), so it waits
+        // like every other frame. Not presenting it broke the vblank plans: the waitable object of the next
+        // Present was released as soon as its GPU work was done (no queued flip ahead of it), so the frame after
+        // started at once - 146 fps instead of 120 in the intro, 77 % of the frames on plan (verify phase).
         // Without a waitable object Present(k) itself blocked (flip queue); a slot that is already held (the
         // last Present was skipped) needs no wait either.
         if (s.waitable != nullptr && !s.slotHeld && p.presentToSwapChain) {
@@ -561,11 +560,6 @@ bool IsJustInTimePresentLocked(const PacerState& s, std::uint32_t id) noexcept {
 // next frame (QPC) `budget` before the vblank at which its present becomes visible; 0 = start at once. Sets the
 // delay the frame clock subtracts (FrameAdvance::startDelayTicks).
 LONGLONG JustInTimeLocked(PacerState& s, const WaitAction& a, DWORD result, LONGLONG end) noexcept {
-    if (s.repeatThisFrame) {
-        // The next frame starts on the grid of this one: the same delay as this frame (no new prediction).
-        s.jitThisFrame = s.jitDelay != 0;
-        return 0;
-    }
     s.jitThisFrame = false;
     s.jitDelay = 0;
     if (a.kind != WaitAction::Vblank) {
@@ -705,14 +699,18 @@ PresentRequest PlanPresent(const PacingConfig& config, const SwapChainInfo& swap
     // M3d F1 (m3d_frameclock.md 1.3/4.2): above the tick rate, a frame without a fixed step that drew nothing and
     // cleared no color would show the back buffer of two presents ago (intro legal screen / tech notice: drawn in
     // Update, so every second frame at 120 fps). Keep the previous picture instead (not at 60 fps: bit-identical).
-    const bool repeat = swapChain.frameUnchanged && p.presentToSwapChain && s.frameTicksKnown && s.frameTicks == 0 &&
-                        s.advance.known && s.advance.framesPerTick != 1 && s.swapChainPresents != 0;
+    // The frame is presented normally (one Present per frame keeps the waitable's rhythm); the device shows the
+    // buffer of the previous Present again (rhi::Device::RepeatPreviousPicture).
+    // Also without presents (display off, minimized; M3d phase 5): the back buffers rotate there too, and a
+    // screenshot or the first picture after presentation resumes would show the buffer of two frames ago (black in the
+    // intro) instead of the previous picture.
+    const bool repeat = swapChain.frameUnchanged && s.frameTicksKnown && s.frameTicks == 0 && s.advance.known &&
+                        s.advance.framesPerTick != 1 && (s.swapChainPresents != 0 || !p.presentToSwapChain);
     if (repeat) {
-        r.skipSwapChain = true;
         r.repeatPrevious = true;
-        s.repeatThisFrame = true;
         ++s.repeated;
-    } else if (!p.presentToSwapChain) {
+    }
+    if (!p.presentToSwapChain) {
         r.skipSwapChain = true;
         ++s.skippedHidden;
     } else if (s.waitable != nullptr) {
@@ -772,8 +770,6 @@ void NoteSwapChainPresent(const PresentFeedback& fb) noexcept {
         if (s.plan.path == Path::Cadence && s.frameSync != 0) {
             ++s.cadenceFrames[std::min<std::uint32_t>(s.frameSync, 3) - 1];
         }
-    } else if (s.repeatThisFrame && s.frameSync != 0) {
-        s.onScreen.ExtendLastPresent(s.frameSync);  // the previous picture stays this frame's refreshes longer
     }
     if (fb.statsValid) {
         const double interval = s.onScreen.NoteStatistics(fb.statPresentCount, fb.statSyncRefreshCount, fb.statSyncQpc);
@@ -874,8 +870,9 @@ void EndFrame(const PacingConfig& config) noexcept {
     s.advance = pacing::FrameAdvanceOf(s.plan, static_cast<double>(s.tickHz), s.display.valid ? s.display.hz : 0.0,
                                        s.frameSync);
     s.advance.startDelayTicks = s.jitDelay;
+    s.advance.frameStartQpc = begin;
+    s.advance.planSerial = s.planSerial;
     s.frameTicksKnown = false;
-    s.repeatThisFrame = false;
     s.frameSync = 0;
 }
 
@@ -1045,6 +1042,8 @@ PresentStatistics GetPresentStatistics() noexcept {
     r.justInTimeDelayMs = s.jitFrames != 0 ? s.jitDelaySumMs / static_cast<double>(s.jitFrames) : 0.0;
     r.latencyBudgetMs = s.lastBudgetMs;
     r.justInTimeMisses = s.jitMisses;
+    r.latencyRelaxFailures = s.latencyRelaxFailures + s.latency.RelaxFailures();
+    r.latencyHeld = s.latency.Held();
     return r;
 }
 
@@ -1147,12 +1146,13 @@ void LogPresentStatistics() noexcept {
     }
     FUT_LOGI(Gfx, "present: frame rate %s (plan %.3f Hz, %s); cadence frames 1:%llu 2:%llu 3+:%llu; repeated pictures "
              "%llu (of %llu frames without a fixed step); just-in-time start %s: %llu of %llu vblank frames (average "
-             "delay %.1f ms, budget %.1f ms, %llu late)",
+             "delay %.1f ms, budget %.1f ms, %llu late; %u failed relax steps%s)",
              pacing::FrameRateModeName(s.rateMode), s.targetHz, perTick, static_cast<ull>(s.cadenceFrames[0]),
              static_cast<ull>(s.cadenceFrames[1]), static_cast<ull>(s.cadenceFrames[2]),
              static_cast<ull>(s.repeatedFrames), static_cast<ull>(s.ticklessFrames), s.justInTime ? "on" : "off",
              static_cast<ull>(s.justInTimeFrames), static_cast<ull>(s.vblankFrames), s.justInTimeDelayMs,
-             s.latencyBudgetMs, static_cast<ull>(s.justInTimeMisses));
+             s.latencyBudgetMs, static_cast<ull>(s.justInTimeMisses), s.latencyRelaxFailures,
+             s.latencyHeld ? ", budget held" : "");
     FlushTrace();
 }
 

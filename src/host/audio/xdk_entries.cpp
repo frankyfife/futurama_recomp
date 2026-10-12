@@ -1,7 +1,7 @@
 // XDK entry table, stub registry, call tracing, guest dummy objects and self-tests (see xdk_entries.h).
 #include "audio/xdk_entries.h"
 
-#include "audio/dsound_stubs.h"
+#include "audio/dsound_hle.h"
 
 #include "core/config.h"
 #include "core/crash.h"
@@ -276,8 +276,11 @@ void LogCallSummary(core::Level level) noexcept {
         }
         const core::Channel ch = LibraryChannel(lib);
         if (core::LogEnabled(ch, level)) {
-            core::LogWrite(ch, level, "XDK %s stubs: %llu calls to %u of %u entries from %u call sites",
-                           LibraryName(lib), static_cast<unsigned long long>(calls), used, entries, sites);
+            // XPP is HLE since M4 (input/xpp_hle.cpp), DSOUND since M5 (audio/dsound_hle.cpp); XMV stays a
+            // stub until M6.
+            core::LogWrite(ch, level, "XDK %s %s: %llu calls to %u of %u entries from %u call sites",
+                           LibraryName(lib), lib == Library::Xmv ? "stubs" : "HLE",
+                           static_cast<unsigned long long>(calls), used, entries, sites);
         }
         for (const EntryInfo& e : kEntries) {
             if (e.library == lib && CallCount(e.entry) != 0 && core::LogEnabled(ch, core::Level::Debug)) {
@@ -286,15 +289,7 @@ void LogCallSummary(core::Level level) noexcept {
             }
         }
     }
-    const snd::StubStreamStatistics st = snd::GetStubStreamStatistics();
-    if (st.created != 0 && core::LogEnabled(core::Channel::Snd, level)) {
-        core::LogWrite(
-            core::Channel::Snd, level,
-            "XDK DSOUND stub streams: %u created (%u live), packets %u submitted, %u completed, %u "
-            "flushed, %u rejected",
-            st.created, st.live, st.packetsSubmitted, st.packetsCompleted, st.packetsFlushed,
-            st.packetsRejected);
-    }
+    snd::LogDsoundSummary(level);  // M5: DSOUND HLE objects and packets
 }
 
 void* AllocGuestObject(std::uint32_t size) noexcept {

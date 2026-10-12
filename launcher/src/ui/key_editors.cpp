@@ -15,6 +15,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLocale>
+#include <QSlider>
 #include <QSpinBox>
 #include <QToolButton>
 #include <QUrl>
@@ -22,6 +24,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <optional>
 
 namespace fl::ui {
 namespace {
@@ -216,6 +219,122 @@ public:
 
 private:
     QDoubleSpinBox* spin_ = nullptr;
+};
+
+// --- slider (M4: dead zone, mouse sensitivity, rumble strength) ---------------------------------------------
+// int/float keys with min/max: a slider in steps of the schema's step (default 1 / 0.1) and the value with the
+// schema's optional "unit" ("%"). A configured value off the step grid or outside the range keeps its exact text:
+// the label shows that value (the game uses it; outside the range with "(ungültig)", validation reports it), the
+// slider stands at the nearest position, and value() returns the text unchanged until the user moves the slider
+// (review M4 finding 9). Only a move writes a value on the grid.
+class SliderEditor final : public KeyEditor {
+public:
+    SliderEditor(const KeyDef& key, const EditorContext& context, QWidget* parent)
+        : KeyEditor(key, context, parent) {
+        isFloat_ = key.type == KeyType::Float;
+        min_ = key.min.value_or(0.0);
+        step_ = key.step.value_or(isFloat_ ? 0.1 : 1.0);
+        if (step_ <= 0.0) {
+            step_ = isFloat_ ? 0.1 : 1.0;
+        }
+        max_ = std::max(min_, key.max.value_or(min_ + 100.0 * step_));
+        auto* layout = MakeRowLayout(this);
+        slider_ = new QSlider(Qt::Horizontal, this);
+        slider_->setRange(0, static_cast<int>(std::llround((max_ - min_) / step_)));
+        slider_->setSingleStep(1);
+        slider_->setPageStep(std::max(1, slider_->maximum() / 10));
+        slider_->setMinimumWidth(fontMetrics().height() * 14);
+        label_ = new QLabel(this);
+        label_->setObjectName(QStringLiteral("sliderValue"));
+        label_->setMinimumWidth(label_->fontMetrics().horizontalAdvance(QStringLiteral("00,00 ") + key.unit + QStringLiteral("0")));
+        layout->addWidget(slider_, 1);
+        layout->addWidget(label_);
+        layout->addStretch(1);
+        connect(slider_, &QSlider::valueChanged, this, [this](int) {
+            if (!updating_) {
+                exact_.reset();  // the user moved the slider: from now on the grid value counts
+            }
+            updateLabel();
+            emitEdited();
+        });
+    }
+    void setValue(const QString& value) override {
+        updating_ = true;
+        const std::optional<double> parsed =
+            isFloat_ ? ParseFloatText(value)
+                     : (ParseIntText(value) ? std::optional<double>(static_cast<double>(*ParseIntText(value)))
+                                            : std::nullopt);
+        const double v = parsed.value_or(min_);
+        const int position =
+            static_cast<int>(std::clamp<long long>(std::llround((v - min_) / step_), 0, slider_->maximum()));
+        slider_->setValue(position);
+        // Keep the text unless it is exactly the slider's grid value.
+        exact_.reset();
+        if (!parsed || std::fabs(GridValue(position) - v) > 1e-9) {
+            exact_ = value.trimmed();
+            exactValue_ = parsed;
+        }
+        updateLabel();
+        updating_ = false;
+    }
+    QString value() const override {
+        if (exact_) {
+            return *exact_;
+        }
+        const double v = GridValue(slider_->value());
+        if (isFloat_) {
+            return FormatFloat(std::round(v * 1e6) / 1e6);
+        }
+        return QString::number(std::llround(v));
+    }
+    QWidget* focusTarget() override { return slider_; }
+
+private:
+    double GridValue(int position) const { return min_ + position * step_; }
+
+    QString Format(double v, int decimals) const {
+        QString text = QLocale().toString(v, 'f', decimals);
+        if (!key_.unit.isEmpty()) {
+            text += (key_.unit == QLatin1String("%") ? QStringLiteral("\u00A0") : QString()) + key_.unit;
+        }
+        return text;
+    }
+
+    void updateLabel() {
+        int decimals = 0;
+        if (isFloat_) {
+            decimals = step_ < 0.0999 ? 2 : 1;
+        }
+        if (!exact_) {
+            label_->setText(Format(GridValue(slider_->value()), decimals));
+            return;
+        }
+        if (!exactValue_) {
+            label_->setText(*exact_ + T("editor.invalid_suffix"));
+            return;
+        }
+        // The configured value with the decimals it needs (1.25 -> "1,25"), up to 3.
+        const double v = *exactValue_;
+        if (isFloat_) {
+            while (decimals < 3 && std::fabs(v * std::pow(10.0, decimals) - std::round(v * std::pow(10.0, decimals))) > 1e-6) {
+                ++decimals;
+            }
+        }
+        QString text = Format(v, decimals);
+        if (v < min_ - 1e-9 || v > max_ + 1e-9) {
+            text += T("editor.invalid_suffix");
+        }
+        label_->setText(text);
+    }
+
+    QSlider* slider_ = nullptr;
+    QLabel* label_ = nullptr;
+    bool isFloat_ = false;
+    double min_ = 0.0;
+    double max_ = 100.0;
+    double step_ = 1.0;
+    std::optional<QString> exact_;      // configured text kept until the slider is moved
+    std::optional<double> exactValue_;  // its number (nullopt: not a number)
 };
 
 // --- free text -----------------------------------------------------------------------------------
@@ -556,6 +675,55 @@ private:
     int regularCount_ = 0;
 };
 
+// --- audio output device (M5) ----------------------------------------------------------------------
+class AudioDeviceEditor final : public KeyEditor {
+public:
+    AudioDeviceEditor(const KeyDef& key, const EditorContext& context, QWidget* parent)
+        : KeyEditor(key, context, parent) {
+        combo_ = new QComboBox(this);
+        combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+        MakeRowLayout(this)->addWidget(combo_, 0, Qt::AlignLeft);
+        const AudioDeviceList empty;
+        const AudioDeviceList& list = context_.audio != nullptr ? *context_.audio : empty;
+        const AudioDevice* def = list.defaultDevice();
+        combo_->addItem(def != nullptr ? T("audio.device_default_named").arg(def->name) : T("audio.device_default"),
+                        QString());
+        for (const AudioDevice& d : list.devices) {
+            combo_->addItem(AudioDeviceText(d), d.id);
+            combo_->setItemData(combo_->count() - 1, d.id, Qt::ToolTipRole);
+        }
+        regularCount_ = combo_->count();
+        connect(combo_, &QComboBox::activated, this, [this](int) { emitEdited(); });
+    }
+
+    void setValue(const QString& value) override {
+        updating_ = true;
+        while (combo_->count() > regularCount_) {
+            combo_->removeItem(combo_->count() - 1);
+        }
+        int index = value.trimmed().isEmpty() ? 0 : -1;
+        for (int i = 1; index < 0 && i < regularCount_; ++i) {
+            if (combo_->itemData(i).toString().compare(value.trimmed(), Qt::CaseInsensitive) == 0) {
+                index = i;
+            }
+        }
+        if (index < 0) {
+            combo_->addItem(value.trimmed() + QStringLiteral(" (") + T("audio.not_connected") + QLatin1Char(')'),
+                            value.trimmed());
+            index = combo_->count() - 1;
+        }
+        combo_->setCurrentIndex(index);
+        updating_ = false;
+    }
+
+    QString value() const override { return combo_->currentData().toString(); }
+    QWidget* focusTarget() override { return combo_; }
+
+private:
+    QComboBox* combo_ = nullptr;
+    int regularCount_ = 0;
+};
+
 }  // namespace
 
 KeyEditor::KeyEditor(const KeyDef& key, const EditorContext& context, QWidget* parent)
@@ -632,6 +800,11 @@ KeyEditor* CreateKeyEditor(const KeyDef& key, const EditorContext& context, QWid
         return new ResolutionEditor(key, context, parent);
     case UiWidget::Monitor:
         return new MonitorEditor(key, context, parent);
+    case UiWidget::Slider:
+        return new SliderEditor(key, context, parent);
+    case UiWidget::AudioDevice:
+        return new AudioDeviceEditor(key, context, parent);
+    case UiWidget::Binding:  // shown by the controls tab's binding tables (ui/controls_panel.h); text as fallback
     case UiWidget::Text:
         break;
     }

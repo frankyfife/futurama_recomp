@@ -4,17 +4,24 @@
 //   [paths]    core/config.cpp (iso, xbe, userdata), vfs/vfs_init.cpp (disc_dir)
 //   [debug]    core/config.cpp, core/crash.cpp (minidump, mmio_trap), platform/platform.cpp (timeout),
 //              core/host_main.cpp (exit_hang_test), core/boot.cpp (stop_at, crash_test), gfx/gfx_config.cpp (frames)
+//              input/input_script.cpp (input_script, M4)
 //   [kernel]   kernel/kernel_settings.cpp (min_guest_stack 0x10000..0x4000000), kernel/mm_kernel_stack.cpp
 //              (fiber_stack, clamped), kernel/kernel_api.cpp (strict)
 //   [log]      core/log.cpp ParseLevel (error|warn|info|debug|trace, "warning" = warn)
 //   [settings] kernel/kernel_settings.cpp kLanguages + KernelSettings defaults
 //   [saves]    kernel/kernel_settings.cpp (key_mode, signature_key, xbox_cert_key)
 //   [render]   gfx/gfx_config.cpp (M2/M3/M3b keys); M3c keys resolution, render_scale, msaa, alpha_to_coverage,
-//              anisotropy (shared contract item 5, read by the renderer); M3d interpolation, interpolation_debug
-//              (gfx/interp_history.cpp SettingsFromConfig)
-//   [audio]    audio/dsound_stubs.cpp
+//              anisotropy (shared contract item 5, read by the renderer); M3d interpolation, interpolation_debug,
+//              interpolation_hierarchy (gfx/interp_history.cpp SettingsFromConfig)
+//   [audio]    M5 enabled, device, master_volume, limiter (audio/audio_engine.cpp, DSOUND core agent; dummy_streams
+//              is obsolete since M5); M5 capture keys capture_wav, capture_format, capture_stems, event_log
+//              (audio/capture_session.cpp, tooling agent); M5 speakers, reverb (audio/audio_engine.cpp) and
+//              positional, trim_3d (audio/spatial_x3d.cpp, codec/3D/reverb agent)
 //   [game]     xapi/game_timing.cpp (tick_rate, frame_clock)
+//   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26)
 #include "core/config_schema.h"
+
+#include "input/bindings.h"  // M4: validators of the [input] binding lists
 
 #include <algorithm>
 #include <charconv>
@@ -35,6 +42,7 @@ using W = ConfigUiWidget;
 constexpr ConfigSectionDef kSections[] = {
     {"game", {"Spiellogik", "Game logic"}},
     {"render", {"Grafik", "Graphics"}},
+    {"input", {"Eingabegeräte und Vibration", "Input devices and rumble"}},
     {"paths", {"Pfade", "Paths"}},
     {"settings", {"Xbox-Systemeinstellungen", "Xbox system settings"}},
     {"saves", {"Spielstände", "Save games"}},
@@ -105,6 +113,30 @@ constexpr ConfigChoice kScreenshotSizeChoices[] = {
     {"output", {"Wie angezeigt", "As shown"}},
     {"internal", {"Intern (Supersampling-Größe)", "Internal (supersampling size)"}},
 };
+// M5 (tooling agent): [audio] capture_format (audio/capture_session.cpp).
+constexpr ConfigChoice kCaptureFormatChoices[] = {
+    {"float", {"32-Bit-Gleitkomma (exakt)", "32-bit floating point (exact)"}},
+    {"pcm16", {"16-Bit-PCM", "16-bit PCM"}},
+};
+// M5 (codec/3D/reverb agent): [audio] speakers (audio/audio_engine.cpp ParseSpeakers: auto|stereo|2.0|5.1) and
+// [audio] positional (audio/spatial_model.h ParsePositionalMode).
+constexpr ConfigChoice kSpeakerChoices[] = {
+    {"auto", {"Automatisch (wie das Ausgabegerät)", "Automatic (like the output device)"}},
+    {"stereo", {"Stereo", "Stereo"}},
+    {"5.1", {"5.1-Surround", "5.1 surround"}},
+    {"2.0", {"Stereo", "Stereo"}, true},
+};
+// M5 (integration): [audio] device_test (audio/audio_engine.cpp EngineConfigFromSettings).
+constexpr ConfigChoice kDeviceTestChoices[] = {
+    {"off", {"Aus", "Off"}},
+    {"absent", {"Kein Ausgabegerät", "No output device"}},
+    {"loss", {"Gerät alle 20 s verlieren", "Lose the device every 20 s"}},
+};
+constexpr ConfigChoice kPositionalChoices[] = {
+    {"corrected", {"Richtig herum (empfohlen)", "Correct orientation (recommended)"}},
+    {"xbox", {"Wie auf der Xbox (vorne und hinten vertauscht)", "As on the Xbox (front and back swapped)"}},
+    {"off", {"Aus (alle Geräusche von vorne)", "Off (every sound from the front)"}},
+};
 constexpr ConfigChoice kMsaaChoices[] = {
     {"off", {"Aus", "Off"}},
     {"2", {"2×", "2×"}},
@@ -142,9 +174,10 @@ constexpr ConfigChoice kFrameClockChoices[] = {
 // the refresh (platform/pacer_policy.h FrameRateMode). 50 (the PAL logic rate, which an unset frame_rate follows) and
 // the numbers 0..1000 stay accepted as developer values (0 = unthrottled).
 constexpr ConfigChoice kFrameRateChoices[] = {
-    {"60", {"60 fps", "60 fps"}},
-    {"120", {"120 fps (interpoliert)", "120 fps (interpolated)"}},
-    {"display", {"Bildschirm (max. 120)", "Display (max. 120)"}},
+    // The labels the user asked for (ROADMAP M3d; M3d review finding 12).
+    {"60", {"60", "60"}},
+    {"120", {"120 (interpoliert)", "120 (interpolated)"}},
+    {"display", {"Monitor (max. 120)", "Monitor (max. 120)"}},
     {"50", {"50 fps (PAL-Logik-Takt)", "50 fps (PAL logic rate)"}, true},
     {"0..1000", {"Feste Bildrate (Entwicklerwert)", "Fixed frame rate (developer value)"}, true},
 };
@@ -154,6 +187,23 @@ constexpr ConfigChoice kInterpolationDebugChoices[] = {
     {"tint", {"Nicht interpolierte Objekte einfärben", "Tint objects that are not interpolated"}},
     {"trace", {"Zähler je Bild in eine CSV-Datei", "Per-frame counters to a CSV file"}},
 };
+
+// M4 (input agent): [input] pad_mode, input/input_config.h PadMode.
+constexpr ConfigChoice kPadModeChoices[] = {
+    {"single", {"Ein Spieler: alle Controller an Anschluss 1", "One player: all controllers on port 1"}},
+    {"per_port", {"Ein Anschluss je Controller", "One port per controller"}},
+};
+// Shared help texts of the [input] binding rows (src/INTERFACES.md 4.26).
+constexpr ConfigText kPadBindingHelp = {
+    "Tasten, Trigger oder Stickrichtungen des Xbox-Controllers, die diese Xbox-Taste auslösen, durch Komma getrennt "
+    "(z. B. pad:a, pad:rt). Leer = nicht belegt.",
+    "Buttons, triggers or stick directions of the Xbox controller that trigger this Xbox control, separated by commas "
+    "(e.g. pad:a, pad:rt). Empty = not bound."};
+constexpr ConfigText kKbmBindingHelp = {
+    "Tasten und Mauseingaben, die diese Xbox-Taste auslösen, durch Komma getrennt (z. B. key:enter, mouse:left). Leer "
+    "= nicht belegt.",
+    "Keys and mouse inputs that trigger this Xbox control, separated by commas (e.g. key:enter, mouse:left). Empty = "
+    "not bound."};
 
 #ifdef NDEBUG
 constexpr const char* kDebugBuildDefault = "0";
@@ -293,15 +343,16 @@ constexpr ConfigKeyDef kKeys[] = {
     {.section = "render", .name = "frame_rate", .type = T::Choice, .defaultValue = "60", .choices = kFrameRateChoices,
      .label = {"Bildrate", "Frame rate"},
      .help = {"Wie viele Bilder pro Sekunde das Spiel zeigt. Die Spiellogik bleibt beim Logik-Takt (Reiter "
-              "„Spiel“). „120 fps“ und „Bildschirm“ zeigen auf Bildschirmen mit mehr als 60 Hz bis zu 120 Bilder pro "
-              "Sekunde und berechnen die Bilder zwischen zwei Logikschritten. „Bildschirm“ nimmt die höchste "
-              "gleichmäßige Rate (120 bei 120 oder 240 Hz, 72 bei 144 Hz ohne VRR), „120 fps“ bleibt dort bei 120 mit "
-              "unterschiedlich langen Bildern. An einem 60-Hz-Bildschirm zeigen alle drei 60 Bilder pro Sekunde.",
+              "„Spiel“). „120“ und „Monitor“ zeigen auf Bildschirmen mit mehr als 60 Hz bis zu 120 Bilder pro "
+              "Sekunde und berechnen die Bilder zwischen zwei Logikschritten. „Monitor“ nimmt die höchste "
+              "gleichmäßige Rate (120 bei 120 oder 240 Hz, 72 bei 144 Hz ohne VRR), „120“ bleibt dort bei 120 mit "
+              "unterschiedlich langen Bildern. An einem Bildschirm mit 60 Hz oder weniger (auch 59,94 Hz) zeigen alle "
+              "drei ein Bild pro Bildwechsel ohne Zwischenbilder.",
               "How many frames per second the game shows. The game logic keeps its logic rate (tab \"Game\"). "
-              "\"120 fps\" and \"Display\" show up to 120 frames per second on displays above 60 Hz and compute the "
-              "frames between two logic steps. \"Display\" takes the highest even rate (120 at 120 or 240 Hz, 72 at "
-              "144 Hz without VRR), \"120 fps\" stays at 120 there with frames of different length. On a 60 Hz "
-              "display all three show 60 frames per second."},
+              "\"120\" and \"Monitor\" show up to 120 frames per second on displays above 60 Hz and compute the "
+              "frames between two logic steps. \"Monitor\" takes the highest even rate (120 at 120 or 240 Hz, 72 at "
+              "144 Hz without VRR), \"120\" stays at 120 there with frames of different length. On a display with "
+              "60 Hz or less (59.94 Hz too) all three show one frame per refresh without in-between frames."},
      .tab = Tab::Graphics, .order = 110, .widget = W::Combo, .flags = kDyn},
     // M3d (frame-clock/pacing agent): just-in-time frame start, platform/frame_pacer.h (M3c review finding 6).
     {.section = "render", .name = "low_latency", .type = T::Bool, .defaultValue = "on",
@@ -394,11 +445,275 @@ constexpr ConfigKeyDef kKeys[] = {
      .choices = kInterpolationDebugChoices, .label = {"Zwischenbilder prüfen", "Inspect in-between frames"},
      .help = {"Für Entwickler: „Einfärben“ zeigt Objekte, die nicht interpoliert werden (rot: Sprung oder neues "
               "Objekt, gelb: neu sichtbar, cyan: bildgetrieben, magenta: Kontextwechsel). „CSV“ schreibt je Bild eine "
-              "Zeile mit den Zählern nach logs\\interp_trace.csv in den Benutzerdaten.",
+              "Zeile mit den Zählern nach logs\\interp_trace.csv in den Benutzerdaten, für die Bilder aus "
+              "„trace_frames“ zusätzlich je Objekt eine Zeile nach logs\\interp_draws.csv.",
               "For developers: tint shows objects that are not interpolated (red: jump or new object, yellow: newly "
               "visible, cyan: frame-driven, magenta: context switch). CSV writes one line of counters per frame to "
-              "logs\\interp_trace.csv in the user data."},
+              "logs\\interp_trace.csv in the user data and, for the frames of trace_frames, one line per object to "
+              "logs\\interp_draws.csv."},
      .tab = Tab::Advanced, .order = 548, .widget = W::Combo, .flags = kDev},
+    // M3d (interpolation agent): stage 1b of analysis/loader/m3d_interpolation.md 3.5 (gfx/interp_history.h).
+    {.section = "render", .name = "interpolation_hierarchy", .type = T::Bool, .defaultValue = "on",
+     .label = {"Zwischenbilder entlang der Szenenhierarchie", "In-between frames along the scene hierarchy"},
+     .help = {"Für Entwickler: Teile, die an bewegten Knoten hängen, folgen im Zwischenbild ihrer Kreisbahn (jede "
+              "Ebene der Hierarchie wird für sich interpoliert). Aus: nur die Weltlage jedes Objekts wird "
+              "interpoliert, Bögen werden dann zu Sehnen verkürzt.",
+              "For developers: parts that hang on moving nodes follow their circular path in the in-between frame "
+              "(every level of the hierarchy is interpolated on its own). Off: only the world placement of every "
+              "object is interpolated, arcs are then shortened to chords."},
+     .tab = Tab::Advanced, .order = 549, .widget = W::Check, .flags = kDev},
+
+    // [input] (M4 input agent, input/input_config.h; src/INTERFACES.md 4.26 = the contract with the launcher's
+    // "Steuerung" tab). Bindings target Xbox controls (the game's action table is fixed, m4_input.md 5.1/8.6).
+    {.section = "input", .name = "pad_mode", .type = T::Choice, .defaultValue = "single", .choices = kPadModeChoices,
+     .label = {"Controller-Anschlüsse", "Controller ports"},
+     .help = {"„Ein Spieler“ legt alle Controller, Tastatur und Maus auf Anschluss 1; das Spiel hört im Level nur auf "
+              "einen Controller. „Ein Anschluss je Controller“ gibt jedem Controller einen eigenen Anschluss.",
+              "\"One player\" puts every controller, keyboard and mouse on port 1; in a level the game listens to one "
+              "controller only. \"One port per controller\" gives every controller its own port."},
+     .tab = Tab::Controls, .order = 10, .widget = W::Combo},
+    {.section = "input", .name = "rumble", .type = T::Bool, .defaultValue = "1", .label = {"Vibration", "Rumble"},
+     .help = {"Lässt den Controller vibrieren, wenn das Spiel es verlangt. Die Option „Vibration“ im Spiel muss "
+              "ebenfalls an sein.",
+              "Makes the controller vibrate when the game asks for it. The game's own \"Vibration\" option must be on "
+              "as well."},
+     .tab = Tab::Controls, .order = 20, .widget = W::Check},
+    {.section = "input", .name = "rumble_strength", .type = T::Int, .defaultValue = "100", .ranged = true, .min = 0,
+     .max = 100, .step = 5, .label = {"Stärke der Vibration", "Rumble strength"},
+     .help = {"Stärke der Vibration in Prozent der Werte des Spiels.",
+              "Rumble strength in percent of the game's values."},
+     .tab = Tab::Controls, .order = 30, .widget = W::Slider, .unit = "%"},
+    {.section = "input", .name = "pad_deadzone", .type = T::Int, .defaultValue = "0", .ranged = true, .min = 0,
+     .max = 50, .step = 1, .label = {"Tote Zone der Sticks", "Stick dead zone"},
+     .help = {"Kleine Stickausschläge bis zu diesem Anteil werden ignoriert, etwa bei einem Stick, der von selbst "
+              "leicht ausschlägt. Das Spiel hat zusätzlich eine eigene, große tote Zone.",
+              "Small stick deflections up to this share are ignored, e.g. for a stick that drifts slightly on its own. "
+              "The game also has a large dead zone of its own."},
+     .tab = Tab::Controls, .order = 40, .widget = W::Slider, .unit = "%"},
+    {.section = "input", .name = "mouse_sensitivity", .type = T::Float, .defaultValue = "1.0", .ranged = true,
+     .min = 0.1, .max = 10.0, .step = 0.1, .label = {"Mausempfindlichkeit", "Mouse sensitivity"},
+     .help = {"Wie stark die Maus die Kamera dreht. Die Maus wirkt wie der rechte Stick, die größte "
+              "Drehgeschwindigkeit legt das Spiel fest.",
+              "How strongly the mouse turns the camera. The mouse acts like the right stick; the game sets the "
+              "highest turning speed."},
+     .tab = Tab::Controls, .order = 50, .widget = W::Slider, .unit = "×"},
+    {.section = "input", .name = "mouse_capture", .type = T::Bool, .defaultValue = "1",
+     .label = {"Maus im Fenster fangen", "Capture the mouse"},
+     .help = {"Ein Klick ins Spielfenster fängt die Maus: Der Mauszeiger verschwindet und bleibt im Fenster, bis das "
+              "Fenster den Fokus verliert (z. B. Alt+Tab). Im Vollbild geschieht das automatisch. Aus: Die Maus wirkt, "
+              "solange das Fenster aktiv ist.",
+              "A click into the game window captures the mouse: the cursor disappears and stays inside the window "
+              "until the window loses the focus (e.g. Alt+Tab). In fullscreen this happens automatically. Off: the "
+              "mouse works while the window is active."},
+     .tab = Tab::Controls, .order = 60, .widget = W::Check},
+    {.section = "input", .name = "menu_escape", .type = T::Bool, .defaultValue = "1",
+     .label = {"START-Taste der Tastatur geht in Menüs zurück", "Keyboard START key goes back in menus"},
+     .help = {"Im Hauptmenü und seinen Untermenüs wirken die Tasten, die unter „Tastatur und Maus“ auf START gelegt sind "
+              "(Standard: Esc), wie BACK und gehen zurück, statt zu bestätigen. Im Spiel bleiben sie die Pausetaste. "
+              "Controller sind nicht betroffen.",
+              "In the main menu and its submenus the keys bound to START under \"Keyboard and mouse\" (default: Esc) "
+              "act as BACK and go back instead of confirming. In the game they stay the pause key. Controllers are "
+              "not affected."},
+     .tab = Tab::Controls, .order = 70, .widget = W::Check},
+    {.section = "input", .name = "background_input", .type = T::Bool, .defaultValue = "0",
+     .label = {"Controller auch im Hintergrund", "Controllers in the background"},
+     .help = {"Controller wirken auch, wenn das Spielfenster nicht im Vordergrund ist. Tastatur und Maus wirken nur im "
+              "Vordergrund.",
+              "Controllers also work while the game window is not in the foreground. Keyboard and mouse only work in "
+              "the foreground."},
+     .tab = Tab::Controls, .order = 80, .widget = W::Check, .flags = kAdv},
+    {.section = "input", .name = "pad_a", .type = T::String, .defaultValue = "pad:a",
+     .label = {"A – Bestätigen / Angriff 1", "A – Confirm / Attack 1"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 100, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_b", .type = T::String, .defaultValue = "pad:b",
+     .label = {"B – Zurück / Springen", "B – Back / Jump"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 102, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_x", .type = T::String, .defaultValue = "pad:x",
+     .label = {"X – Angriff 2", "X – Attack 2"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 104, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_y", .type = T::String, .defaultValue = "pad:y",
+     .label = {"Y – Benutzen", "Y – Use"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 106, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_white", .type = T::String, .defaultValue = "pad:lb",
+     .label = {"Weiß – Waffe zurück (Fry)", "White – Previous weapon (Fry)"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 108, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_black", .type = T::String, .defaultValue = "pad:rb",
+     .label = {"Schwarz – Waffe vor (Fry)", "Black – Next weapon (Fry)"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 110, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_lt", .type = T::String, .defaultValue = "pad:lt",
+     .label = {"Linker Trigger – Kamera / Zielwechsel", "Left trigger – Camera / switch target"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 112, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_rt", .type = T::String, .defaultValue = "pad:rt",
+     .label = {"Rechter Trigger – Ziel erfassen (halten)", "Right trigger – Lock on target (hold)"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 114, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_start", .type = T::String, .defaultValue = "pad:start",
+     .label = {"START – Pause / Bestätigen", "START – Pause / Confirm"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 116, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_back", .type = T::String, .defaultValue = "pad:back",
+     .label = {"BACK – Zurück in Menüs", "BACK – Back in menus"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 118, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_dpad_up", .type = T::String, .defaultValue = "pad:dpad_up",
+     .label = {"Steuerkreuz hoch – Menüauswahl / Laufen", "D-pad up – Menu selection / Walk"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 120, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_dpad_down", .type = T::String, .defaultValue = "pad:dpad_down",
+     .label = {"Steuerkreuz runter – Menüauswahl / Laufen", "D-pad down – Menu selection / Walk"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 122, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_dpad_left", .type = T::String, .defaultValue = "pad:dpad_left",
+     .label = {"Steuerkreuz links – Menüauswahl / Laufen", "D-pad left – Menu selection / Walk"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 124, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_dpad_right", .type = T::String, .defaultValue = "pad:dpad_right",
+     .label = {"Steuerkreuz rechts – Menüauswahl / Laufen", "D-pad right – Menu selection / Walk"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 126, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_ls_click", .type = T::String, .defaultValue = "pad:ls_click",
+     .label = {"Linker Stick drücken – ohne Funktion", "Left stick click – No function"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 128, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_rs_click", .type = T::String, .defaultValue = "pad:rs_click",
+     .label = {"Rechter Stick drücken – Ego-Ansicht", "Right stick click – First-person view"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 130, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_ls_up", .type = T::String, .defaultValue = "pad:ly+",
+     .label = {"Linker Stick hoch – Vorwärts laufen / Menü", "Left stick up – Walk forward / Menu"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 132, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_ls_down", .type = T::String, .defaultValue = "pad:ly-",
+     .label = {"Linker Stick runter – Rückwärts laufen / Menü", "Left stick down – Walk backward / Menu"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 134, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_ls_left", .type = T::String, .defaultValue = "pad:lx-",
+     .label = {"Linker Stick links – Nach links / Menü", "Left stick left – Move left / Menu"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 136, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_ls_right", .type = T::String, .defaultValue = "pad:lx+",
+     .label = {"Linker Stick rechts – Nach rechts / Menü", "Left stick right – Move right / Menu"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 138, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_rs_up", .type = T::String, .defaultValue = "pad:ry+",
+     .label = {"Rechter Stick hoch – Kamera nach oben", "Right stick up – Camera up"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 140, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_rs_down", .type = T::String, .defaultValue = "pad:ry-",
+     .label = {"Rechter Stick runter – Kamera nach unten", "Right stick down – Camera down"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 142, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_rs_left", .type = T::String, .defaultValue = "pad:rx-",
+     .label = {"Rechter Stick links – Kamera nach links", "Right stick left – Camera left"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 144, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "pad_rs_right", .type = T::String, .defaultValue = "pad:rx+",
+     .label = {"Rechter Stick rechts – Kamera nach rechts", "Right stick right – Camera right"},
+     .help = kPadBindingHelp, .tab = Tab::Controls, .order = 146, .widget = W::Binding,
+     .validate = &inp::ValidatePadBindingValue},
+    {.section = "input", .name = "kbm_a", .type = T::String, .defaultValue = "key:enter, mouse:left",
+     .label = {"A – Bestätigen / Angriff 1", "A – Confirm / Attack 1"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 101, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_b", .type = T::String, .defaultValue = "key:space",
+     .label = {"B – Zurück / Springen", "B – Back / Jump"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 103, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_x", .type = T::String, .defaultValue = "key:f, mouse:right",
+     .label = {"X – Angriff 2", "X – Attack 2"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 105, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_y", .type = T::String, .defaultValue = "key:e",
+     .label = {"Y – Benutzen", "Y – Use"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 107, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_white", .type = T::String, .defaultValue = "key:1, mouse:wheel_down",
+     .label = {"Weiß – Waffe zurück (Fry)", "White – Previous weapon (Fry)"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 109, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_black", .type = T::String, .defaultValue = "key:2, mouse:wheel_up",
+     .label = {"Schwarz – Waffe vor (Fry)", "Black – Next weapon (Fry)"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 111, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_lt", .type = T::String, .defaultValue = "key:q",
+     .label = {"Linker Trigger – Kamera / Zielwechsel", "Left trigger – Camera / switch target"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 113, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_rt", .type = T::String, .defaultValue = "key:lshift",
+     .label = {"Rechter Trigger – Ziel erfassen (halten)", "Right trigger – Lock on target (hold)"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 115, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_start", .type = T::String, .defaultValue = "key:escape",
+     .label = {"START – Pause / Bestätigen", "START – Pause / Confirm"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 117, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_back", .type = T::String, .defaultValue = "key:backspace",
+     .label = {"BACK – Zurück in Menüs", "BACK – Back in menus"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 119, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_dpad_up", .type = T::String, .defaultValue = "key:up",
+     .label = {"Steuerkreuz hoch – Menüauswahl / Laufen", "D-pad up – Menu selection / Walk"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 121, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_dpad_down", .type = T::String, .defaultValue = "key:down",
+     .label = {"Steuerkreuz runter – Menüauswahl / Laufen", "D-pad down – Menu selection / Walk"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 123, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_dpad_left", .type = T::String, .defaultValue = "key:left",
+     .label = {"Steuerkreuz links – Menüauswahl / Laufen", "D-pad left – Menu selection / Walk"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 125, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_dpad_right", .type = T::String, .defaultValue = "key:right",
+     .label = {"Steuerkreuz rechts – Menüauswahl / Laufen", "D-pad right – Menu selection / Walk"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 127, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_ls_click", .type = T::String, .defaultValue = "key:c",
+     .label = {"Linker Stick drücken – ohne Funktion", "Left stick click – No function"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 129, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_rs_click", .type = T::String, .defaultValue = "key:v, mouse:middle",
+     .label = {"Rechter Stick drücken – Ego-Ansicht", "Right stick click – First-person view"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 131, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_ls_up", .type = T::String, .defaultValue = "key:w",
+     .label = {"Linker Stick hoch – Vorwärts laufen / Menü", "Left stick up – Walk forward / Menu"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 133, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_ls_down", .type = T::String, .defaultValue = "key:s",
+     .label = {"Linker Stick runter – Rückwärts laufen / Menü", "Left stick down – Walk backward / Menu"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 135, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_ls_left", .type = T::String, .defaultValue = "key:a",
+     .label = {"Linker Stick links – Nach links / Menü", "Left stick left – Move left / Menu"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 137, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_ls_right", .type = T::String, .defaultValue = "key:d",
+     .label = {"Linker Stick rechts – Nach rechts / Menü", "Left stick right – Move right / Menu"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 139, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_rs_up", .type = T::String, .defaultValue = "mouse:move_up",
+     .label = {"Rechter Stick hoch – Kamera nach oben", "Right stick up – Camera up"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 141, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_rs_down", .type = T::String, .defaultValue = "mouse:move_down",
+     .label = {"Rechter Stick runter – Kamera nach unten", "Right stick down – Camera down"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 143, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_rs_left", .type = T::String, .defaultValue = "mouse:move_left",
+     .label = {"Rechter Stick links – Kamera nach links", "Right stick left – Camera left"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 145, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
+    {.section = "input", .name = "kbm_rs_right", .type = T::String, .defaultValue = "mouse:move_right",
+     .label = {"Rechter Stick rechts – Kamera nach rechts", "Right stick right – Camera right"},
+     .help = kKbmBindingHelp, .tab = Tab::Controls, .order = 147, .widget = W::Binding,
+     .validate = &inp::ValidateKbmBindingValue},
 
     // [paths]
     {.section = "paths", .name = "iso", .type = T::PathFile, .label = {"Spielabbild (ISO)", "Game image (ISO)"},
@@ -479,12 +794,122 @@ constexpr ConfigKeyDef kKeys[] = {
               "For developers: 32 hex digits of your own console; needed for \"Key of a real Xbox\"."},
      .tab = Tab::Advanced, .order = 720, .widget = W::Text, .flags = kDev},
 
-    // [audio] (M2, audio/dsound_stubs.h)
+    // [audio] engine (M5 DSOUND core agent, audio/audio_engine.cpp EngineConfigFromSettings; src/INTERFACES.md 4.29)
+    {.section = "audio", .name = "enabled", .type = T::Bool, .defaultValue = "1",
+     .label = {"Tonausgabe", "Sound output"},
+     .help = {"Aus = das Spiel läuft ohne Ton (die Tonmischung läuft trotzdem, Musik und Geräusche verhalten sich "
+              "gleich). Ohne Ausgabegerät (z. B. Fernseher aus) läuft das Spiel ebenfalls stumm weiter und schaltet "
+              "den Ton ein, sobald ein Gerät da ist.",
+              "Off = the game runs without sound (the sound mix still runs, music and sounds behave the same). "
+              "Without an output device (e.g. the TV is off) the game also continues silently and switches the "
+              "sound on as soon as a device is available."},
+     .tab = Tab::Audio, .order = 10, .widget = W::Check},
+    {.section = "audio", .name = "device", .type = T::String,
+     .label = {"Ausgabegerät", "Output device"},
+     .help = {"Windows-Gerät für den Ton. Leer = das Standardgerät von Windows (wechselt Windows das "
+              "Standardgerät, wechselt das Spiel mit). Ist das gewählte Gerät nicht verfügbar, nimmt das Spiel das "
+              "Standardgerät und wechselt zurück, sobald das gewählte Gerät wieder da ist.",
+              "Windows device for the sound. Empty = the Windows default device (when Windows changes the default "
+              "device, the game follows). If the chosen device is not available, the game uses the default device "
+              "and switches back as soon as the chosen device is there again."},
+     .tab = Tab::Audio, .order = 20, .widget = W::AudioDevice},
+    {.section = "audio", .name = "master_volume", .type = T::Int, .defaultValue = "100", .ranged = true, .min = 0,
+     .max = 100, .step = 5, .label = {"Gesamtlautstärke", "Master volume"},
+     .help = {"Lautstärke des ganzen Spiels. Musik, Geräusche und Sprache stellt man wie auf der Xbox im "
+              "Optionsmenü des Spiels ein.",
+              "Volume of the whole game. Music, sounds and speech are set in the game's options menu, as on the "
+              "Xbox."},
+     .tab = Tab::Audio, .order = 30, .widget = W::Slider, .unit = "%"},
+    {.section = "audio", .name = "limiter", .type = T::Bool, .defaultValue = "1",
+     .label = {"Übersteuerungsschutz", "Clipping protection"},
+     .help = {"Begrenzt Spitzen der Gesamtmischung, wenn viele laute Geräusche zusammenkommen (das Material des "
+              "Spiels ist sehr laut abgemischt). Aus = keine Begrenzung, kann knacken.",
+              "Limits peaks of the final mix when many loud sounds come together (the game's material is mastered "
+              "very loud). Off = no limiting, may crackle."},
+     .tab = Tab::Audio, .order = 60, .widget = W::Check, .flags = kAdv},
+
+    // [audio] (M2, audio/dsound_stubs.h; without effect since M5 - kept so that older INI files stay valid)
     {.section = "audio", .name = "dummy_streams", .type = T::Bool, .defaultValue = "0",
-     .label = {"Stumme Audio-Streams", "Silent audio streams"},
-     .help = {"Für Entwickler: gibt dem Spiel stumme Ersatz-Streams statt gar keiner (bis die Tonausgabe kommt).",
-              "For developers: gives the game silent stand-in streams instead of none (until sound output exists)."},
+     .label = {"Stumme Audio-Streams (veraltet)", "Silent audio streams (obsolete)"},
+     .help = {"Für Entwickler: ohne Wirkung seit der Tonausgabe (M5); wird nur noch akzeptiert.",
+              "For developers: without effect since sound output exists (M5); only still accepted."},
      .tab = Tab::Advanced, .order = 800, .widget = W::Check, .flags = kDev},
+    // [audio] capture (M5 tooling agent, audio/capture_session.h; src/INTERFACES.md 4.29)
+    {.section = "audio", .name = "capture_wav", .type = T::PathFile,
+     .label = {"Tonmitschnitt (WAV-Datei)", "Audio capture (WAV file)"},
+     .help = {"Für Entwickler und automatische Tests: schreibt die fertige Tonmischung zusätzlich unverändert in "
+              "diese WAV-Datei (Abtastrate und Kanäle der Ausgabe) und protokolliert beim Beenden die Pegel je "
+              "Kategorie. Ein relativer Pfad gilt ab dem Ordner der INI-Datei. Leer = aus.",
+              "For developers and automated tests: also writes the final sound mix unchanged into this WAV file "
+              "(sample rate and channels of the output) and logs the levels per category at exit. A relative path "
+              "starts at the folder of the INI file. Empty = off."},
+     .tab = Tab::Advanced, .order = 810, .widget = W::File, .flags = kDev, .fileFilter = "*.wav"},
+    {.section = "audio", .name = "capture_format", .type = T::Choice, .defaultValue = "float",
+     .choices = kCaptureFormatChoices, .label = {"Format des Tonmitschnitts", "Audio capture format"},
+     .help = {"Für Entwickler: Sampleformat der Mitschnitt-Dateien. Gleitkomma ist eine exakte Kopie der Mischung, "
+              "16 Bit ist halb so groß und begrenzt Spitzen über 0 dBFS.",
+              "For developers: sample format of the capture files. Floating point is an exact copy of the mix, "
+              "16 bit is half the size and clips peaks above 0 dBFS."},
+     .tab = Tab::Advanced, .order = 820, .widget = W::Combo, .flags = kDev},
+    {.section = "audio", .name = "capture_stems", .type = T::Bool, .defaultValue = "0",
+     .label = {"Teilmischungen mitschneiden", "Capture the submixes"},
+     .help = {"Für Entwickler: schreibt neben dem Tonmitschnitt je Teilmischung (Musik, Sprache, Effekte, Film, "
+              "Hall) eine eigene WAV-Datei, z. B. mitschnitt.music.wav. Nur mit Tonmitschnitt wirksam.",
+              "For developers: next to the audio capture, writes one WAV file per submix (music, speech, effects, "
+              "movie, reverb), e.g. capture.music.wav. Only effective with an audio capture."},
+     .tab = Tab::Advanced, .order = 830, .widget = W::Check, .flags = kDev},
+    {.section = "audio", .name = "event_log", .type = T::Bool, .defaultValue = "0",
+     .label = {"Ton-Ereignisliste", "Sound event list"},
+     .help = {"Für Entwickler: schreibt neben dem Tonmitschnitt eine Ereignisliste (.events.tsv) mit Zeitpunkt in "
+              "Samples, Logiktick, Tonobjekt, Name und Kategorie jedes DSOUND-Ereignisses. Nur mit Tonmitschnitt "
+              "wirksam.",
+              "For developers: next to the audio capture, writes an event list (.events.tsv) with the time in "
+              "samples, logic tick, sound object, name and category of every DSOUND event. Only effective with an "
+              "audio capture."},
+     .tab = Tab::Advanced, .order = 840, .widget = W::Check, .flags = kDev},
+    // [audio] device test (M5 integration, audio/audio_engine.cpp)
+    {.section = "audio", .name = "device_test", .type = T::Choice, .defaultValue = "off",
+     .choices = kDeviceTestChoices, .label = {"Test ohne Ausgabegerät", "Test without output device"},
+     .help = {"Für Entwickler und automatische Tests: „Kein Ausgabegerät“ verhält sich, als hätte Windows kein "
+              "aktives Ausgabegerät (das Spiel mischt stumm weiter); „Gerät alle 20 s verlieren“ meldet 20 s nach "
+              "jedem Gerätestart einen Geräteverlust, das Spiel wechselt auf die stumme Mischung und nach etwa 3 s "
+              "zurück.",
+              "For developers and automated tests: \"No output device\" behaves as if Windows had no active output "
+              "device (the game keeps mixing silently); \"Lose the device every 20 s\" reports a device loss 20 s "
+              "after every device start, the game switches to the silent mix and back after about 3 s."},
+     .tab = Tab::Advanced, .order = 845, .widget = W::Combo, .flags = kDev},
+    // [audio] output layout, reverb, 3D (M5 codec/3D/reverb agent; read by audio/audio_engine.cpp (speakers, reverb)
+    // and audio/spatial_x3d.cpp (positional, trim_3d); src/INTERFACES.md 4.29)
+    {.section = "audio", .name = "speakers", .type = T::Choice, .defaultValue = "auto", .choices = kSpeakerChoices,
+     .label = {"Lautsprecher", "Speakers"},
+     .help = {"Kanäle der Tonausgabe. „Automatisch“ übernimmt die Lautsprecher-Einstellung von Windows für das "
+              "Ausgabegerät. Bei 5.1 kommen Geräusche hinter der Spielfigur aus den hinteren Lautsprechern.",
+              "Channels of the sound output. \"Automatic\" follows the Windows speaker setup of the output device. "
+              "With 5.1, sounds behind the character come from the rear speakers."},
+     .tab = Tab::Audio, .order = 25, .widget = W::Combo},
+    {.section = "audio", .name = "reverb", .type = T::Bool, .defaultValue = "1",
+     .label = {"Raumhall", "Room reverb"},
+     .help = {"Der dezente Raumhall des Spiels auf Geräuschen im Raum (wie auf der Xbox). Aus = trockener Klang.",
+              "The game's subtle room reverb on sounds in the scene (as on the Xbox). Off = dry sound."},
+     .tab = Tab::Audio, .order = 55, .widget = W::Check},
+    {.section = "audio", .name = "positional", .type = T::Choice, .defaultValue = "corrected",
+     .choices = kPositionalChoices, .label = {"Räumlicher Klang", "Positional sound"},
+     .help = {"Richtung von Geräuschen im Raum. Das Spiel übergibt der Xbox die Blickrichtung verkehrt herum, "
+              "deshalb klingen dort Geräusche vor der Kamera wie von hinten (links und rechts stimmen). „Richtig "
+              "herum“ korrigiert das, „Wie auf der Xbox“ behält es bei, „Aus“ spielt alle Geräusche von vorne "
+              "(Lautstärke nach Entfernung bleibt).",
+              "Direction of sounds in the scene. The game hands the Xbox the view direction reversed, so there "
+              "sounds in front of the camera seem to come from behind (left and right are right). \"Correct "
+              "orientation\" fixes that, \"As on the Xbox\" keeps it, \"Off\" plays every sound from the front "
+              "(the volume by distance stays)."},
+     .tab = Tab::Audio, .order = 65, .widget = W::Combo},
+    {.section = "audio", .name = "trim_3d", .type = T::Float, .defaultValue = "0", .ranged = true, .min = -20.0,
+     .max = 20.0, .step = 0.5, .label = {"Pegel räumlicher Geräusche (dB)", "Level of positional sounds (dB)"},
+     .help = {"Für Entwickler: hebt oder senkt alle räumlichen Geräusche (und ihren Hall) gegenüber Musik, Sprache "
+              "und Menüklängen, zum Abgleich mit der Xbox. 0 = Pegel wie von DSOUND berechnet.",
+              "For developers: raises or lowers all positional sounds (and their reverb) against music, speech and "
+              "menu sounds, to match the Xbox. 0 = levels as computed by DSOUND."},
+     .tab = Tab::Advanced, .order = 855, .widget = W::DSpin, .flags = kDev, .unit = "dB"},
 
     // [log] (core/log.h)
     {.section = "log", .name = "level", .type = T::Choice, .defaultValue = "info", .choices = kLogLevelChoices,
@@ -564,6 +989,14 @@ constexpr ConfigKeyDef kKeys[] = {
      .help = {"Für Entwickler: blockiert das Beenden, damit das Zeitlimit geprüft werden kann.",
               "For developers: blocks the exit so that the watchdog can be tested."},
      .tab = Tab::Advanced, .order = 340, .widget = W::Check, .flags = kDev},
+    // [debug] input_script (M4 test automation, input/input_script.h)
+    {.section = "debug", .name = "input_script", .type = T::PathFile,
+     .label = {"Eingabeskript", "Input script"},
+     .help = {"Für Entwickler und automatische Tests: spielt die Tasten aus dieser Textdatei als Controller an "
+              "Anschluss 1 ab (Format: tools/input_scripts/README.md). Leer = aus.",
+              "For developers and automated tests: plays the buttons from this text file as a controller on port 1 "
+              "(format: tools/input_scripts/README.md). Empty = off."},
+     .tab = Tab::Advanced, .order = 350, .widget = W::File, .flags = kDev, .fileFilter = "*.txt"},
 
     // [kernel]
     {.section = "kernel", .name = "strict", .type = T::Bool, .defaultValue = "0",
@@ -786,6 +1219,13 @@ bool ValidateConfigValue(const ConfigKeyDef& key, std::string_view value, std::s
     case ConfigKeyType::String:
     case ConfigKeyType::PathFile:
     case ConfigKeyType::PathDir:
+        if (key.validate != nullptr) {  // M4: e.g. the [input] binding lists
+            std::string detail;
+            if (!key.validate(value, detail)) {
+                error = "invalid value for " + where + ": '" + shown + "' (" + detail + ")";
+                return false;
+            }
+        }
         return true;
     }
     return true;
@@ -823,6 +1263,10 @@ const char* ConfigUiTabName(ConfigUiTab tab) noexcept {
         return "paths";
     case ConfigUiTab::Advanced:
         return "advanced";
+    case ConfigUiTab::Controls:
+        return "controls";
+    case ConfigUiTab::Audio:
+        return "audio";
     }
     return "advanced";
 }
@@ -847,6 +1291,12 @@ const char* ConfigUiWidgetName(ConfigUiWidget widget) noexcept {
         return "resolution";
     case ConfigUiWidget::Monitor:
         return "monitor";
+    case ConfigUiWidget::Binding:
+        return "binding";
+    case ConfigUiWidget::Slider:
+        return "slider";
+    case ConfigUiWidget::AudioDevice:
+        return "audio_device";
     }
     return "text";
 }

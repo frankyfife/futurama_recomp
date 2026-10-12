@@ -3,6 +3,7 @@
 // capabilities (futurama.exe CLI, cached per build) and the player INI.
 #pragma once
 
+#include "core/audio_output.h"
 #include "core/game_paths.h"
 #include "core/gpu_info.h"
 #include "core/settings_model.h"
@@ -20,6 +21,7 @@ struct StartupOptions {
     QString config;        // --config
     QString schemaFile;    // --schema-file (development: a hand-written schema instead of the exe)
     QString gpuFile;       // --gpu-file
+    QString audioFile;     // --audio-file (M5, development: simulated output devices)
     bool refresh = false;  // --refresh: ignore the CLI cache
 };
 
@@ -30,6 +32,7 @@ struct AppContext {
     GpuInfo gpu;
     bool gpuFromScreens = false;  // query-gpu unavailable, outputs from QScreen
     QString gpuNote;              // why (localized), empty if query-gpu worked
+    AudioDeviceList audio;        // M5: output devices of the Audio tab
     QString schemaSource;         // "exe", "cache" or "file"
     QStringList schemaWarnings;
     std::unique_ptr<QSettings> settings;  // launcher.ini (UI language, game directory)
@@ -53,5 +56,7 @@ bool LoadSchema(AppContext& ctx, const StartupOptions& options, QString* error);
 // GPU info from --gpu-file, the cache or `futurama.exe --query-gpu`; falls back to QScreen.
 void LoadGpu(AppContext& ctx, const StartupOptions& options);
 bool LoadIni(AppContext& ctx, QString* error);
+// M5: output devices from --audio-file or WASAPI (the launcher's own process; no futurama.exe call).
+void LoadAudioDevices(AppContext& ctx, const StartupOptions& options);
 
 }  // namespace fl::ui

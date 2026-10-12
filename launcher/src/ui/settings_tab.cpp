@@ -1,5 +1,6 @@
 #include "ui/settings_tab.h"
 
+#include "core/frame_rate.h"
 #include "core/l10n.h"
 #include "core/validation.h"
 #include "ui/app_style.h"
@@ -34,16 +35,44 @@ QString InapplicableNote(const KeyDef& key, const SettingsModel& model) {
             return T("tab.needs_aa");
         }
     }
+    // M4: the rumble strength only matters while rumble is on.
+    if (key.fullName() == QLatin1String("input.rumble_strength")) {
+        const KeyDef* rumble = model.schema().find(QStringLiteral("input"), QStringLiteral("rumble"));
+        if (rumble != nullptr && !ParseBoolText(model.value(*rumble)).value_or(true)) {
+            return T("tab.needs_rumble");
+        }
+    }
+    // M3c review nit (M3d): the window size has no effect while the game starts in borderless fullscreen.
+    if (key.fullName() == QLatin1String("render.window_scale")) {
+        const KeyDef* fullscreen = model.schema().find(QStringLiteral("render"), QStringLiteral("fullscreen"));
+        if (fullscreen != nullptr && ParseBoolText(model.value(*fullscreen)).value_or(false)) {
+            return T("tab.window_only");
+        }
+    }
     return QString();
 }
 
 // A hint below a key that applies but has a catch (review M3c finding 1: fractional render scales are filtered).
-QString InfoNote(const KeyDef& key, const SettingsModel& model) {
+// M3d: what [render] frame_rate = 120 | display gives on the selected monitor (core/frame_rate.h).
+QString InfoNote(const KeyDef& key, const SettingsModel& model, const EditorContext& context) {
     if (key.fullName() == QLatin1String("render.render_scale")) {
         const double s = ParseFloatText(model.value(key)).value_or(1.0);
         if (s > 1.0 + 1e-6 && std::fabs(s - 2.0) > 1e-6) {
             return T("tab.fractional_scale");
         }
+    }
+    if (key.fullName() == QLatin1String("render.frame_rate") && model.isExplicit(key)) {
+        const GpuOutput* output = SelectedOutput(context);
+        const double refresh = output != nullptr ? output->refreshHz() : 0.0;
+        const KeyDef* tick = model.schema().find(QStringLiteral("game"), QStringLiteral("tick_rate"));
+        const int tickRate = tick != nullptr ? static_cast<int>(ParseIntText(model.value(*tick)).value_or(60)) : 60;
+        const bool tearing = context.gpu != nullptr && context.gpu->tearing;
+        FrameRateEstimate estimate = EstimateFrameRate(model.value(key), refresh, tearing, tickRate);
+        const KeyDef* interpolation = model.schema().find(QStringLiteral("render"), QStringLiteral("interpolation"));
+        if (interpolation != nullptr && !ParseBoolText(model.value(*interpolation)).value_or(true)) {
+            estimate.interpolated = false;  // [render] interpolation = off: every logic picture is shown repeatedly
+        }
+        return FrameRateNote(estimate, refresh);
     }
     return QString();
 }
@@ -166,6 +195,7 @@ SettingsTab::SettingsTab(UiTab tab, SettingsModel& model, const EditorContext& c
         auto* none = new QLabel(T("tab.no_keys"), content);
         none->setWordWrap(true);
         layout->addWidget(none);
+        emptyNote_ = none;
     }
     bottomLayout_ = new QVBoxLayout();
     bottomLayout_->setContentsMargins(0, 0, 0, 0);
@@ -184,6 +214,14 @@ SettingsTab::SettingsTab(UiTab tab, SettingsModel& model, const EditorContext& c
     footer->addWidget(resetAll);
     outer->addLayout(footer);
     connect(resetAll, &QPushButton::clicked, this, [this] {
+        // Several settings at once: ask first (review M4 finding 14).
+        int changed = extraResetCount_ ? extraResetCount_() : 0;
+        for (const Row& row : rows_) {
+            changed += !KeptOnTabReset(*row.key) && !model_.isAtDefault(*row.key) ? 1 : 0;
+        }
+        if (changed > 1 && !ConfirmChange(this, T("tab.reset_all.confirm").arg(changed), T("bind.reset.confirm_button"))) {
+            return;
+        }
         for (Row& row : rows_) {
             if (!KeptOnTabReset(*row.key)) {
                 model_.resetToDefault(*row.key);
@@ -223,7 +261,7 @@ void SettingsTab::updateRow(Row& row) {
         result = ValidationResult{Severity::Warning, IssueCode::FileMissing, T("tab.iso_missing")};
     }
     const QString inapplicable = InapplicableNote(key, model_);
-    const QString note = inapplicable.isEmpty() ? InfoNote(key, model_) : inapplicable;
+    const QString note = inapplicable.isEmpty() ? InfoNote(key, model_, context_) : inapplicable;
     row.editor->setEnabled(inapplicable.isEmpty());
     if (result.severity == Severity::Ok && !note.isEmpty()) {
         row.message->setText(note);
@@ -268,8 +306,23 @@ void SettingsTab::refreshFromModel() {
     }
 }
 
+void SettingsTab::setExtraErrors(std::function<int()> count, std::function<bool()> focus) {
+    extraErrorCount_ = std::move(count);
+    extraFocus_ = std::move(focus);
+}
+
+void SettingsTab::setExtraResetCount(std::function<int()> count) {
+    extraResetCount_ = std::move(count);
+}
+
+void SettingsTab::setEmptyNoteVisible(bool visible) {
+    if (emptyNote_ != nullptr) {
+        emptyNote_->setVisible(visible);
+    }
+}
+
 int SettingsTab::errorCount() const {
-    int n = 0;
+    int n = extraErrorCount_ ? extraErrorCount_() : 0;
     for (const Row& row : rows_) {
         n += model_.validate(*row.key).isError() ? 1 : 0;
     }
@@ -283,7 +336,7 @@ bool SettingsTab::focusFirstError() {
             return true;
         }
     }
-    return false;
+    return extraFocus_ ? extraFocus_() : false;
 }
 
 void SettingsTab::addTopWidget(QWidget* widget) {

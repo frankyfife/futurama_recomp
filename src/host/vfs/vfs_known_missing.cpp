@@ -47,6 +47,19 @@ constexpr KnownMiss kKnownMisses[] = {
     {kCdRom0, "\\Export\\Chars\\LipsyncMeshes\\*",
      "development path, not on the disc (FUN_000D3F40, files.md 1.2)"},
     {kCdRom0, "\\NiTCache.dat", "inactive NiXBox texture cache (DAT_0030EDD4 is never set, files.md 1.2)"},
+    // Level loading (M4 integration, first level runs). FUN_000C5B40 states 5/6/7 (0xC6D4x, 0xC6DAx, 0xC6E1x)
+    // open each optional per-level file, test its existence (stream vtable +4) and skip it when missing; only
+    // some levels ship them (backdrop_static.nif in 1-4..1-7, backdrop.nif in 2-x/3-x; camerapathtest.nif in
+    // none). Disc lists: orig/retail_eu/FutPAL00_files.txt.
+    {kCdRom0, "\\Levels\\*\\backdrop.nif",
+     "optional per-level backdrop, existence test in FUN_000C5B40 state 7 (string 0x2A3574)"},
+    {kCdRom0, "\\Levels\\*\\backdrop_static.nif",
+     "optional per-level static backdrop, existence test in FUN_000C5B40 state 6 (string 0x2A358C)"},
+    {kCdRom0, "\\Levels\\*\\camerapathtest.nif",
+     "development camera path, existence test in FUN_000C5B40 state 5 (string 0x2A35AC); on no level"},
+    {kCdRom0, "\\Sounds\\Level1\\Ambience-PlanetExp\\Hum-loop2.wav",
+     "named by the level script scripts\\Level1-1.Ful (next to Hum-loop.wav), but only hum-loop.wav is in "
+     "FutPAL03.img"},
     // --- partition1 (T:, U:) ---
     // Only the save directories (12 hex digits = 48-bit hash of the save name, FUN_000F6544) and the five
     // files a save contains (files.md 4.1/4.2). Anything else under U: (e.g. TitleMeta.xbx) must exist

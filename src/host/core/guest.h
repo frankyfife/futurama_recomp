@@ -378,6 +378,70 @@ inline constexpr GuestAddr kGameTimerInverseFrequencyVar = 0x002EB450;
 inline constexpr GuestAddr kGameFrameClockSampleReturn = 0x000A2C6F;
 inline constexpr GuestAddr kGameFrameRenderInitSampleReturn = 0x000A2FA6;
 inline constexpr GuestAddr kGameFrameRenderSampleReturn = 0x000A2FBB;
+// --- added in M4 (test automation: conditions of the input script, input/input_script.cpp; see Changelog) ----
+// Evidence: analysis/loader/m4_input.md 4.2-4.4 and 7 (scripts/m4_flow.out); prologues and branch targets checked
+// with capstone + a raw E8/E9/EB/7x/0F8x scan of all code sections (no branch into the stolen bytes).
+// Main menu activation FUN_00020150 = vtable 0x2940D4 [8] (thiscall ecx = menu, no stack args, plain ret; no
+// direct caller): sets menu+4 = 1 (menu visible, inputs accepted, 0x20597) and shows HINTS_001. menu+8 = selected
+// entry (0 = "Neues Spiel"), menu+0x48 = new-game countdown. Prologue 56 8B F1 C6 46 04 01 = push esi;
+// mov esi,ecx; mov byte [esi+4],1 (7 bytes).
+inline constexpr GuestAddr kGameMainMenuActivate = 0x00020150;
+inline constexpr std::uint32_t kMainMenuVisibleOffset = 0x04;    // u8
+inline constexpr std::uint32_t kMainMenuSelectionOffset = 0x08;  // i32
+// Main menu update vtable [1] 0x20580: input only while menu+0x48 (countdown) <= 0, menu+4 set and the delay
+// menu+0x14 is 0 (else decremented, 0x2059E); a confirm is ignored while the camera move [[menu+0x34]+0x6C] runs
+// (0x206F0..0x206F8). The probe runs before the switch to the Frontend context (activation during the load).
+inline constexpr std::uint32_t kMainMenuDelayOffset = 0x14;      // i32 ticks
+inline constexpr std::uint32_t kMainMenuCameraOffset = 0x34;     // camera object*
+inline constexpr std::uint32_t kMenuCameraMovingOffset = 0x6C;   // u8
+inline constexpr std::uint32_t kMainMenuCountdownOffset = 0x48;  // i32 (new game countdown)
+// Level-ready test FUN_000C3E20 (thiscall ecx = level object [kGameLevelPtr], no stack args, al = TRUE when the
+// level finished loading). Only caller: the Ingame session update 0x2AB2F (return address 0x2AB34), which runs
+// only the loader FUN_000C8BA0 while it is FALSE. Prologue 57 8B F9 8B 47 58 = push edi; mov edi,ecx;
+// mov eax,[edi+0x58] (6 bytes).
+inline constexpr GuestAddr kGameLevelReadyTest = 0x000C3E20;
+inline constexpr GuestAddr kGameLevelReadyTestReturn = 0x0002AB34;
+// Level object (session update 0x2AB29 / 0x2AB38) and its player pointer (+0x94); the player reads the pad only
+// while byte player+0x630 != 0 (FUN_00057940, m4_input.md 5.1 / 7 step 8).
+inline constexpr GuestAddr kGameLevelPtr = 0x002DABC4;
+inline constexpr std::uint32_t kLevelPlayerOffset = 0x94;
+inline constexpr std::uint32_t kPlayerInputEnabledOffset = 0x630;  // u8
+// Cutscene manager singleton (FUN_000D4DC0 creates it in DAT_002EB7C8); FUN_000D3110 = "cutscene active" returns
+// the byte at +0x34 (session update 0x2AB59 / 0x2AC4C).
+inline constexpr GuestAddr kGameCutscenePtr = 0x002EB7C8;
+inline constexpr std::uint32_t kCutsceneActiveOffset = 0x34;  // u8
+// Save dialog open: byte [[[kGameAppPtr] + 0xF4] + 0xA] != 0 (main menu 0x206CC..0x206DD, session 0x2AC9E).
+inline constexpr std::uint32_t kCAppSaveUiOffset = 0xF4;
+inline constexpr std::uint32_t kSaveUiDialogOpenOffset = 0x0A;  // u8
+// Pause open FUN_000A8220 (thiscall ecx = pause object = session+0x14, no stack args, plain ret). Callers: the
+// session update 0x2ACD6 (active pad removed), 0x2AD1E (START), 0x2AD58 (idle auto-pause). Sets pause+0x24 = 1
+// (pause open; the session tests it at 0x2AC90). Prologue 53 56 8B F1 8B 4E 14 = push ebx; push esi; mov esi,ecx;
+// mov ecx,[esi+0x14] (7 bytes).
+inline constexpr GuestAddr kGamePauseOpen = 0x000A8220;
+inline constexpr std::uint32_t kPauseOpenOffset = 0x24;  // u8
+// Active controller object (0 = none; FUN_0009B690 falls back to port 0) and its port (+0x14C).
+inline constexpr GuestAddr kGameActiveControllerVar = 0x002E6FA4;
+inline constexpr std::uint32_t kControllerPortOffset = 0x14C;
+// Controller hotplug check FUN_0009C140 (cdecl, no args, plain ret 0x9C214): XGetDeviceChanges + close/open per
+// port (m4_input.md 2). Callers: CApp vf10 0xD25D3 once per logic tick (return 0xD25D8) and the disc error loop
+// 0xF3004. Prologue 83 EC 08 55 8D 44 24 04 = sub esp,8; push ebp; lea eax,[esp+4] (8 bytes, esp-relative only).
+inline constexpr GuestAddr kGameHotplugCheck = 0x0009C140;
+inline constexpr GuestAddr kGameHotplugCheckTickReturn = 0x000D25D8;
+
+// --- added in M5 (DSOUND core agent: category tags of DSOUND objects, audio/dsound_probe.cpp; see Changelog) ----
+// SoundVoice::CreateDsObject FUN_000CC150 (thiscall ecx = SoundVoice, no stack args, plain ret 0xCC352/0xCC383):
+// creates the voice's DSOUND stream (0xCC1C3) or buffer (0xCC296). Prologue 64 A1 00 00 00 00 = mov eax,fs:[0]
+// (6 bytes, fs:[0] is never fs-patched; m5_audio.md 6.1). SoundVoice fields read by the probe (m5_audio.md 3.1):
+inline constexpr GuestAddr kSoundVoiceCreateDsObject = 0x000CC150;
+inline constexpr std::uint32_t kSoundVoiceDataOffset = 0x18;      // SoundData*
+inline constexpr std::uint32_t kSoundVoice3DOffset = 0x1E;        // u8, 3D voice
+inline constexpr std::uint32_t kSoundVoiceIdOffset = 0x6C;        // voice id (return value of the sound API)
+inline constexpr std::uint32_t kSoundVoiceCategoryOffset = 0x70;  // 0 effects, 1 speech, 2 music
+inline constexpr std::uint32_t kSoundVoiceStreamObjOffset = 0x74;  // IDirectSoundStream*
+inline constexpr std::uint32_t kSoundVoiceBufferObjOffset = 0xA4;  // IDirectSoundBuffer*
+inline constexpr std::uint32_t kSoundDataNameOffset = 0x20;       // char* (requested path)
+inline constexpr std::uint32_t kSoundDataMonoOffset = 0x25;       // u8, mono (3D capable)
+inline constexpr std::uint32_t kSoundDataStreamOffset = 0x27;     // u8, streamed
 
 // ---------------------------------------------------------------------------------------------
 // Memory helpers
@@ -411,6 +475,10 @@ inline constexpr bool InXbeImage(GuestAddr addr, std::uint32_t size = 1) noexcep
 
 // True if [addr, addr+size) is committed and readable (VirtualQuery; for logging/diagnostics).
 bool IsReadable(GuestAddr addr, std::uint32_t size) noexcept;
+// Release epoch of guest memory (M3d review finding 6): kernel/mm.cpp calls NoteMemoryReleased whenever it releases or
+// decommits guest memory; a cache of IsReadable results (gfx/interp_history.cpp) drops its state when the epoch moved.
+void NoteMemoryReleased() noexcept;
+std::uint32_t MemoryReleaseEpoch() noexcept;
 // Copies bytes into guest code/data (temporarily making the pages writable if needed) and flushes
 // the instruction cache. Returns false if the range is not committed.
 bool WriteBytes(GuestAddr addr, const void* data, std::uint32_t size) noexcept;

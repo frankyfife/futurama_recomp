@@ -154,6 +154,9 @@ void SetFullscreen(HWND frame, bool fullscreen) noexcept {
         return;
     }
     const DWORD visible = IsWindowVisible(frame) ? WS_VISIBLE : 0u;
+    // M3d: the WM_SIZE of SetWindowPos already lays the view out for the new mode (ViewLayout: the whole monitor in
+    // fullscreen), so the swap chain is not resized to an intermediate 4:3 view first.
+    g_fullscreen = fullscreen;
     if (fullscreen) {
         GetWindowRect(frame, &g_windowedRect);
         const RECT m = MonitorRect(frame, false);
@@ -165,7 +168,6 @@ void SetFullscreen(HWND frame, bool fullscreen) noexcept {
         SetWindowPos(frame, nullptr, g_windowedRect.left, g_windowedRect.top, g_windowedRect.right - g_windowedRect.left,
                      g_windowedRect.bottom - g_windowedRect.top, SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOOWNERZORDER);
     }
-    g_fullscreen = fullscreen;
     LayoutView(frame);
     RaiseDisplayEpoch();  // independent flip (VRR, tearing) depends on the window mode (M3b pacing)
 }

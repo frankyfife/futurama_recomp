@@ -1,0 +1,63 @@
+# m4_newgame.txt - Intro -> Frontend -> "Neues Spiel" -> Level1-1, a few seconds of play, simulated unplug.
+# Used by tools\m4_check.py ([debug] input_script). Format: README.md in this folder.
+# Flow and conditions: analysis\loader\m4_input.md 7 and 10. Port 1 (the script's logical port 0).
+
+# 1-2: the intro runs without input (about 15 s at 60 Hz); the main menu takes input after the camera move.
+wait context Frontend timeout 60s
+wait main_menu timeout 60s
+wait 30t
+
+# 3: "Neues Spiel" is pre-selected (entry 0); A confirms. A press during a camera move or an input delay is
+# ignored by the menu, so press again until the game switches. Never press A on a save dialog: MEMCARD_047
+# would launch the dashboard (m4_input.md 4.3).
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+
+# 5-6: the Ingame context loads Level1-1.
+wait level_loaded timeout 180s
+
+# 7: movies end at once with the XMV stub (until M6); cutscenes can be skipped after 2.5 s.
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+log "M4: Level1-1 spielbar"
+screenshot level1-1_start
+
+# 8: play: walk forward, turn the camera, jump, both attacks, walk back.
+hold LY=1.0 120t
+expect active_pad                         # the script's port is the game's active controller
+screenshot level1-1_walk
+hold RX=1.0 60t
+press B 3t
+wait 60t
+screenshot level1-1_jump
+press A 3t
+wait 30t
+press X 3t
+wait 60t
+hold LX=-1.0 LY=-1.0 90t
+hold RX=-1.0 RY=0.5 45t
+wait 120t
+expect controllable
+expect active_pad
+screenshot level1-1_play
+
+# Simulated unplug of port 1: the game must pause ("connect the controller to port 1", ERRCTRLINGAME).
+unplug
+wait paused timeout 5s
+wait 30t
+screenshot level1-1_unplugged
+replug
+wait 30t
+# The message asks for START after reconnecting; START closes the pause.
+press START 3t
+wait not paused timeout 5s
+wait 60t
+expect controllable
+screenshot level1-1_resumed
+log "M4: unplug test done"
+quit 0

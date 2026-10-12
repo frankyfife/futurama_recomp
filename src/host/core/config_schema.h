@@ -34,8 +34,18 @@
 namespace core {
 
 enum class ConfigKeyType : std::uint8_t { Bool, Int, Float, Choice, String, PathFile, PathDir, Resolution };
-enum class ConfigUiTab : std::uint8_t { Game, Graphics, Paths, Advanced };
-enum class ConfigUiWidget : std::uint8_t { Combo, Check, Spin, DSpin, Text, File, Dir, Resolution, Monitor };
+enum class ConfigUiTab : std::uint8_t { Game, Graphics, Paths, Advanced,
+                                        Controls /* M4 input agent: "controls" ([input], the launcher's Steuerung tab) */,
+                                        Audio /* M5 tooling agent: "audio" (player keys of [audio], the launcher's Audio tab) */ };
+enum class ConfigUiWidget : std::uint8_t {
+    Combo, Check, Spin, DSpin, Text, File, Dir, Resolution, Monitor,
+    // M4 (input agent, src/INTERFACES.md 4.26): "binding" = a string key holding a binding list (input/bindings.h),
+    // "slider" = an int/float key with min/max shown as a slider (optional ConfigKeyDef::unit).
+    Binding, Slider,
+    // M5 (tooling/launcher agent, src/INTERFACES.md 4.29): "audio_device" = a string key holding a Windows audio
+    // endpoint ID (IMMDevice::GetId; empty = the Windows default device), shown as a list of the output devices.
+    AudioDevice
+};
 
 // Player-facing text in German and English (UTF-8).
 struct ConfigText {
@@ -73,6 +83,11 @@ struct ConfigKeyDef {
     ConfigUiWidget widget = ConfigUiWidget::Text;
     std::uint32_t flags = 0;        // ConfigKeyFlag
     const char* fileFilter = nullptr;  // path_file: file dialog patterns ("*.iso *.xiso *.bin"), JSON ui.filter
+    // M4 (input agent, additive): unit shown after a slider value ("%", "×"), JSON "unit"; nullptr = none.
+    const char* unit = nullptr;
+    // M4 (input agent, additive): extra check of the value after the type check (e.g. the binding lists of [input],
+    // input/bindings.h ValidatePadBindingValue); false + `error` (without the key name) = configuration error.
+    bool (*validate)(std::string_view value, std::string& error) noexcept = nullptr;
 
     bool Has(ConfigKeyFlag flag) const noexcept { return (flags & flag) != 0; }
 };

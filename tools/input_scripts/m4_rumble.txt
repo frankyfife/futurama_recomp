@@ -1,0 +1,26 @@
+# m4_rumble.txt - main menu -> "Optionen" -> Vibration off and on again: the game plays its test rumble
+# (1.0/1.0, fading to 0 in 1 s; analysis\loader\m4_input.md 6, 0x297CF / 0x28A59). Used by tools\m4_check.py
+# (criterion M4-7). The options are not saved ("Uebernehmen" is never pressed). Format: README.md.
+
+wait context Frontend timeout 60s
+wait main_menu timeout 60s
+wait 30t
+expect no_dialog
+press DOWN 1t                             # entry 1 "Optionen"
+wait 20t
+press A 3t
+wait 120t
+repeat 3                                  # SFX, Musik, Dialog -> Vibration
+  press DOWN 1t
+  wait 30t
+end
+screenshot options_vibration
+press RIGHT 1t                            # Vibration "Aus"
+wait 30t
+expect not rumble
+press LEFT 1t                             # Vibration "Ein" -> test rumble
+wait rumble timeout 2s
+screenshot options_vibration_on
+wait not rumble timeout 3s                # the test rumble fades out within about 1 s
+log "M4: rumble test done"
+quit 0

@@ -1,5 +1,6 @@
 #include "core/validation.h"
 
+#include "core/bindings.h"
 #include "core/ini_document.h"
 
 #include <QDir>
@@ -145,6 +146,13 @@ ValidationResult ValidateValue(const KeyDef& key, const QString& value, const QS
         return Make(Severity::Error, IssueCode::NotRepresentable, T("val.not_representable"));
     }
     const QString v = value.trimmed();
+    if (const auto binding = ParseBindingKey(key)) {
+        const BindingParse parse = ParseBindingList(v, binding->device);
+        if (!parse.ok()) {
+            return Make(Severity::Error, IssueCode::BadBinding, BindingProblemText(parse, binding->device));
+        }
+        return {};
+    }
     switch (key.type) {
     case KeyType::Choice:
         if (!MatchesChoice(key, v)) {
@@ -248,6 +256,9 @@ ValidationResult ValidateValue(const KeyDef& key, const QString& value, const QS
 bool ValuesEquivalent(const KeyDef& key, const QString& a, const QString& b) {
     const QString x = a.trimmed();
     const QString y = b.trimmed();
+    if (const auto binding = ParseBindingKey(key)) {
+        return BindingListsEquivalent(x, y, binding->device);
+    }
     switch (key.type) {
     case KeyType::Bool: {
         const auto p = ParseBoolText(x);

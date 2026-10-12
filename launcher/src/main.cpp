@@ -10,6 +10,7 @@
 //   --refresh                 ignore the cached schema/GPU results
 //   --schema-file=<json>      development: use this schema instead of futurama.exe --print-config-schema
 //   --gpu-file=<json>         development: use this GPU description instead of futurama.exe --query-gpu
+//   --audio-file=<json>       development: simulated output devices for the Audio tab (M5; default: WASAPI)
 //   --set section.key=value   change a value (repeatable; validated against the schema)
 //   --save                    save the INI and exit (unless --launch/--screenshots follow)
 //   --screenshots=<dir>       render all tabs and wizard pages to PNG and exit (see ui/automation.h)
@@ -157,6 +158,8 @@ int main(int argc, char* argv[]) {
         QStringLiteral("schema-file"), QStringLiteral("Schema JSON (development)."), QStringLiteral("json"));
     const QCommandLineOption gpuOption(QStringLiteral("gpu-file"), QStringLiteral("GPU JSON (development)."),
                                        QStringLiteral("json"));
+    const QCommandLineOption audioOption(QStringLiteral("audio-file"),
+                                         QStringLiteral("Audio device JSON (development)."), QStringLiteral("json"));
     const QCommandLineOption setOption(QStringLiteral("set"),
                                        QStringLiteral("section.key=value (repeatable)."),
                                        QStringLiteral("assignment"));
@@ -177,7 +180,7 @@ int main(int argc, char* argv[]) {
                                           QStringLiteral("json"));
     for (const QCommandLineOption* o :
          {&configOption, &gameDirOption, &langOption, &wizardOption, &refreshOption, &schemaOption,
-          &gpuOption, &setOption, &saveOption, &shotsOption, &scaleOption, &schemeOption, &launchOption,
+          &gpuOption, &audioOption, &setOption, &saveOption, &shotsOption, &scaleOption, &schemeOption, &launchOption,
           &waitOption, &resultOption}) {
         parser.addOption(*o);
     }
@@ -193,6 +196,7 @@ int main(int argc, char* argv[]) {
     options.config = parser.value(configOption);
     options.schemaFile = parser.value(schemaOption);
     options.gpuFile = parser.value(gpuOption);
+    options.audioFile = parser.value(audioOption);
     options.refresh = parser.isSet(refreshOption);
 
     AppContext ctx;
@@ -277,6 +281,9 @@ int main(int argc, char* argv[]) {
     const bool schemaOk = LoadSchema(ctx, options, &error);
     if (schemaOk) {
         LoadGpu(ctx, options);
+        if (!parser.isSet(launchOption) && !parser.isSet(saveOption)) {
+            LoadAudioDevices(ctx, options);  // M5: Audio tab (window and screenshots)
+        }
     }
     QApplication::restoreOverrideCursor();
     if (!schemaOk) {

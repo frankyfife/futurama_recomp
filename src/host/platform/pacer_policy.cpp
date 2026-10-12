@@ -398,6 +398,9 @@ std::uint32_t FramesPerTick(double nominalHz, double tickHz) noexcept {
     if (!(nominalHz > 0.0) || !(tickHz > 0.0)) {
         return 0;
     }
+    if (nominalHz <= tickHz * (1.0 + kIntegerTolerance)) {
+        return 1;  // at or below the tick rate: the M3b clock (review finding 8)
+    }
     const double n = std::floor(nominalHz / tickHz + 0.5);
     if (n < 1.0 || n > 16.0) {
         return 0;
@@ -459,16 +462,32 @@ void LatencyBudget::AddWork(double seconds) noexcept {
 
 void LatencyBudget::NoteMiss(double nowSeconds) noexcept {
     ++misses_;
+    if (probing_ && nowSeconds - relaxedAt_ <= relaxInterval_) {
+        // The last relax step was too much (review finding 9): wait longer before the next one, hold after repeats.
+        ++relaxFailures_;
+        relaxInterval_ = std::min(relaxInterval_ * 2.0, kMaxRelaxSeconds);
+        held_ = held_ || relaxFailures_ >= kMaxRelaxFailures;
+    }
+    probing_ = false;
     factor_ = factor_ * 2 <= kMaxFactor ? factor_ * 2 : kMaxFactor;
     lastMiss_ = nowSeconds;
 }
 
 double LatencyBudget::Seconds(double nowSeconds) noexcept {
-    if (factor_ > 1 && nowSeconds - lastMiss_ > kRelaxSeconds) {
+    if (factor_ > 1 && !held_ && nowSeconds - lastMiss_ > relaxInterval_) {
         factor_ /= 2;
         lastMiss_ = nowSeconds;
+        relaxedAt_ = nowSeconds;
+        probing_ = true;
     }
     return std::max(kMinSeconds, p99_ + kMarginSeconds) * static_cast<double>(factor_);
+}
+
+void LatencyBudget::NotePlanChange() noexcept {
+    relaxInterval_ = kRelaxSeconds;
+    probing_ = false;
+    held_ = false;
+    relaxFailures_ = 0;
 }
 
 void LatencyBudget::Reset() noexcept {
@@ -623,6 +642,10 @@ int CadenceGuard::AddDuration(std::uint32_t refreshes, std::uint32_t expected, d
 // ---- display-limited detector -------------------------------------------------------------------------------
 
 bool DisplayLimitDetector::AddWait(double waitSeconds, double periodSeconds, bool timedOut) noexcept {
+    if (warmup_ > 0) {
+        --warmup_;  // M3d: the transient after entering a vblank plan (header comment of StartWarmup)
+        return false;
+    }
     const bool slow = timedOut || waitSeconds > 1.5 * periodSeconds;
     history_ = static_cast<std::uint8_t>((history_ << 1) | (slow ? 1u : 0u));
     count_ = count_ < 8 ? count_ + 1 : 8;
@@ -862,13 +885,6 @@ bool OnScreenTracker::PredictNextVisible(double refreshSeconds, std::int64_t* qp
     }
     *qpc = lastQpc_ + static_cast<std::int64_t>(std::llround(static_cast<double>(refreshes) * refreshSeconds * qpf_));
     return true;
-}
-
-void OnScreenTracker::ExtendLastPresent(std::uint32_t refreshes) noexcept {
-    Entry& newest = ring_[(next_ + kRing - 1) % kRing];
-    if (newest.used && newest.planned != 0) {
-        newest.planned += refreshes;
-    }
 }
 
 void OnScreenTracker::Reset() noexcept {

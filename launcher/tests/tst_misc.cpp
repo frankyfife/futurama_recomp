@@ -1,8 +1,11 @@
 #include "tst_misc.h"
 
+#include "core/audio_output.h"
+
 #include "core/cli_cache.h"
 #include "core/config_schema.h"
 #include "core/exit_codes.h"
+#include "core/frame_rate.h"
 #include "core/game_paths.h"
 #include "core/game_session.h"
 #include "core/gpu_info.h"
@@ -436,4 +439,189 @@ void MiscTest::gameSessionConfigError() {
     QVERIFY(
         !missing.start(QDir(dir).filePath(QStringLiteral("nope.exe")), QStringLiteral("x.ini"), QString()));
     QCOMPARE(missing.result().describe().category, ExitCategory::NotStarted);
+}
+
+// M3d: the launcher's preview of [render] frame_rate = 120 | display (src/host/platform/pacer_policy.h ChooseFrameRate).
+void MiscTest::frameRateEstimate() {
+    struct Row {
+        const char* value;
+        double refresh;
+        bool tearing;
+        double fps;
+        bool interpolated;
+        bool needsVrr;
+        double fallback;
+        bool uneven;
+    };
+    const Row rows[] = {
+        {"120", 120.0, true, 120.0, true, false, 0.0, false},
+        {"display", 120.0, false, 120.0, true, false, 0.0, false},
+        {"120", 60.0, true, 60.0, false, false, 0.0, false},     // 60 Hz display: no in-between frames
+        {"display", 59.94, true, 59.94, false, false, 0.0, false},  // M3d review finding 8: the M3b clock
+        {"120", 50.0, false, 50.0, false, false, 0.0, false},
+        {"120", 240.0, false, 120.0, true, false, 0.0, false},   // every second refresh
+        {"120", 144.0, true, 120.0, true, true, 120.0, true},    // VRR timer, else the cadence
+        {"display", 144.0, true, 120.0, true, true, 72.0, false},
+        {"display", 144.0, false, 72.0, true, false, 72.0, false},
+        {"120", 165.0, false, 120.0, true, false, 120.0, true},
+        {"display", 165.0, false, 82.5, true, false, 82.5, false},
+        {"120", 100.0, false, 100.0, true, false, 0.0, false},
+    };
+    for (const Row& r : rows) {
+        const FrameRateEstimate e = EstimateFrameRate(QString::fromLatin1(r.value), r.refresh, r.tearing, 60);
+        const QByteArray what = QByteArray(r.value) + " @ " + QByteArray::number(r.refresh);
+        QVERIFY2(e.known, what.constData());
+        QVERIFY2(qAbs(e.fps - r.fps) < 1e-9, what.constData());
+        QVERIFY2(e.interpolated == r.interpolated, what.constData());
+        QVERIFY2(e.needsVrr == r.needsVrr, what.constData());
+        if (r.fallback > 0.0) {
+            QVERIFY2(qAbs(e.fallbackFps - r.fallback) < 1e-9, what.constData());
+            QVERIFY2(e.fallbackUneven == r.uneven, what.constData());
+        }
+    }
+    // PAL logic (50 Hz tick) on a 100 Hz display: interpolated.
+    QVERIFY(EstimateFrameRate(QStringLiteral("120"), 100.0, false, 50).interpolated);
+    QVERIFY(!EstimateFrameRate(QStringLiteral("display"), 50.0, false, 50).interpolated);
+    // Fixed rates and unknown refreshes give no note.
+    QVERIFY(!EstimateFrameRate(QStringLiteral("60"), 120.0, true, 60).known);
+    QVERIFY(!EstimateFrameRate(QStringLiteral("120"), 0.0, true, 60).known);
+    QVERIFY(FrameRateNote(EstimateFrameRate(QStringLiteral("60"), 120.0, true, 60), 120.0).isEmpty());
+    // Texts.
+    QCOMPARE(FormatFps(120.0), QStringLiteral("120"));
+    QCOMPARE(FormatFps(82.5), QStringLiteral("82,5"));
+    QCOMPARE(FormatFps(59.94), QStringLiteral("59,94"));
+    QCOMPARE(FrameRateNote(EstimateFrameRate(QStringLiteral("120"), 120.0, true, 60), 120.0),
+             QStringLiteral("Auf diesem Bildschirm (120 Hz): 120 Bilder pro Sekunde mit Zwischenbildern."));
+    QCOMPARE(FrameRateNote(EstimateFrameRate(QStringLiteral("display"), 60.0, true, 60), 60.0),
+             QStringLiteral("Auf diesem Bildschirm (60 Hz): 60 Bilder pro Sekunde."));
+    QCOMPARE(FrameRateNote(EstimateFrameRate(QStringLiteral("display"), 144.0, true, 60), 144.0),
+             QStringLiteral("Auf diesem Bildschirm (144 Hz): mit VRR 120 Bilder pro Sekunde mit Zwischenbildern, "
+                            "ohne VRR 72 Bilder pro Sekunde."));
+    SetLanguage(Language::English);
+    QCOMPARE(FormatFps(82.5), QStringLiteral("82.5"));
+    QCOMPARE(FrameRateNote(EstimateFrameRate(QStringLiteral("120"), 165.0, false, 60), 165.0),
+             QStringLiteral("On this display (165 Hz): 120 frames per second on average, shown for different lengths "
+                            "of time."));
+    SetLanguage(Language::German);
+}
+
+// M5: the generated test tone of the Audio tab (no game data): one chime per speaker in channel order, then all
+// main speakers; -12 dBFS peak times the volume, fades without clicks, LFE only in its own low chime.
+void MiscTest::audioTestTone() {
+    const TestTone stereo = MakeTestTone(2, 48000, 1.0);
+    QCOMPARE(stereo.channels, 2);
+    QCOMPARE(stereo.segments.size(), 3);
+    QCOMPARE(stereo.segments[0].channel, 0);
+    QCOMPARE(stereo.segments[1].channel, 1);
+    QCOMPARE(stereo.segments[2].channel, -1);
+    QVERIFY(stereo.seconds() > 1.5 && stereo.seconds() < 2.5);
+    QCOMPARE(stereo.samples.size() % 2, std::size_t{0});
+    const double limit = std::pow(10.0, kTestTonePeakDb / 20.0) + 1e-6;
+    float peak = 0.0f;
+    for (float v : stereo.samples) {
+        peak = std::max(peak, std::fabs(v));
+    }
+    QVERIFY(peak <= limit);
+    QVERIFY(peak > 0.9 * limit);
+    // only the left channel sounds during the first chime; the chime starts at zero (fade in)
+    const auto at = [&](double seconds, int channel) {
+        return stereo.samples[static_cast<std::size_t>(seconds * 48000) * 2 + static_cast<std::size_t>(channel)];
+    };
+    double leftEnergy = 0.0, rightEnergy = 0.0;
+    const ToneSegment& first = stereo.segments[0];
+    for (double t = first.startSeconds; t < first.startSeconds + first.seconds; t += 1.0 / 48000) {
+        leftEnergy += at(t, 0) * at(t, 0);
+        rightEnergy += at(t, 1) * at(t, 1);
+    }
+    QVERIFY(leftEnergy > 100.0 * (rightEnergy + 1e-9));
+    QVERIFY(std::fabs(at(first.startSeconds, 0)) < 0.01);
+    QCOMPARE(at(0.0, 0), 0.0f);
+
+    const TestTone quiet = MakeTestTone(2, 44100, 0.25);
+    float qpeak = 0.0f;
+    for (float v : quiet.samples) {
+        qpeak = std::max(qpeak, std::fabs(v));
+    }
+    QVERIFY(qpeak <= 0.25 * limit);
+
+    const TestTone surround = MakeTestTone(6, 48000, 1.0);
+    QCOMPARE(surround.segments.size(), 7);
+    QVERIFY(IsLfeChannel(6, 3));
+    QVERIFY(!IsLfeChannel(2, 3));
+    QCOMPARE(surround.segments[3].frequency, 80.0);
+    // the final chord leaves the LFE out
+    const ToneSegment& all = surround.segments.last();
+    const auto mid = static_cast<std::size_t>((all.startSeconds + all.seconds / 2) * 48000);
+    double lfe = 0.0, front = 0.0;
+    for (std::size_t i = mid; i < mid + 480; ++i) {
+        lfe += std::fabs(surround.samples[i * 6 + 3]);
+        front += std::fabs(surround.samples[i * 6 + 0]);
+    }
+    QCOMPARE(lfe, 0.0);
+    QVERIFY(front > 0.0);
+    SetLanguage(Language::German);
+    QCOMPARE(SpeakerName(6, 3), QStringLiteral("Subwoofer"));
+    QCOMPARE(SpeakerName(2, 0), QStringLiteral("links"));
+    QCOMPARE(SpeakerName(6, -1), QStringLiteral("alle zusammen"));
+    QCOMPARE(SpeakerName(3, 2), QStringLiteral("Kanal 3"));
+    QCOMPARE(MakeTestTone(1, 48000, 1.0).segments.size(), 1);
+}
+
+void MiscTest::audioDeviceList() {
+    const QByteArray json = R"json({"devices":[
+        {"id":"{0.0.0.00000000}.{aaa}","name":"Lautsprecher (Realtek)","channels":2,"rate":48000},
+        {"id":"{0.0.0.00000000}.{bbb}","name":"LG TV","default":true,"channels":6,"rate":48000},
+        {"name":"no id"}]})json";
+    AudioDeviceList list;
+    QString error;
+    QVERIFY(ParseAudioDeviceList(json, &list, &error));
+    QVERIFY(list.simulated);
+    QCOMPARE(list.devices.size(), 2);
+    QCOMPARE(list.devices[0].name, QStringLiteral("LG TV"));  // default first
+    QCOMPARE(list.defaultDevice()->id, QStringLiteral("{0.0.0.00000000}.{bbb}"));
+    QCOMPARE(list.resolve(QString())->name, QStringLiteral("LG TV"));
+    QCOMPARE(list.resolve(QStringLiteral("{0.0.0.00000000}.{AAA}"))->name, QStringLiteral("Lautsprecher (Realtek)"));
+    QVERIFY(list.resolve(QStringLiteral("{gone}")) == nullptr);
+    SetLanguage(Language::German);
+    QCOMPARE(AudioDeviceText(list.devices[0]), QStringLiteral("LG TV (6 Kanäle, 48 kHz)"));
+    SetLanguage(Language::English);
+    QCOMPARE(AudioDeviceText(list.devices[1]), QStringLiteral("Lautsprecher (Realtek) (2 channels, 48 kHz)"));
+    SetLanguage(Language::German);
+    AudioDevice bare;
+    bare.name = QStringLiteral("X");
+    QCOMPARE(AudioDeviceText(bare), QStringLiteral("X"));
+    QVERIFY(!ParseAudioDeviceList("[1,2]", &list, &error));
+    QVERIFY(!error.isEmpty());
+    // The real enumeration never fails hard (no device = empty list, e.g. the TV is off).
+    const AudioDeviceList real = EnumerateAudioDevices();
+    QVERIFY2(real.enumerated, qPrintable(real.error));
+    for (const AudioDevice& d : real.devices) {
+        QVERIFY(!d.id.isEmpty());
+    }
+    QVERIFY(real.devices.isEmpty() || real.defaultDevice() == nullptr || real.devices.first().isDefault);
+    // The XAudio2 path of the test tone on the real default device, silently (volume 0); skipped without a device.
+    if (real.defaultDevice() != nullptr) {
+        ToneRequest request;
+        request.volume = 0.0;
+        const ToneResult r = TonePlayer::PlayWithXAudio2(request);
+        QVERIFY2(r.ok, qPrintable(r.error));
+        QVERIFY(r.channels >= 1);
+        QVERIFY(r.sampleRate >= 8000);
+        QCOMPARE(r.speakers.size(), r.channels > 1 ? r.channels + 1 : 1);
+    }
+}
+
+void MiscTest::audioValueMapping() {
+    QCOMPARE(SpeakersFromValue(QStringLiteral("auto")), 0);
+    QCOMPARE(SpeakersFromValue(QStringLiteral("Stereo")), 2);
+    QCOMPARE(SpeakersFromValue(QStringLiteral("5.1")), 6);
+    QCOMPARE(SpeakersFromValue(QStringLiteral("6")), 6);
+    QCOMPARE(SpeakersFromValue(QStringLiteral("7.1")), 8);
+    QCOMPARE(SpeakersFromValue(QString()), 0);
+    QCOMPARE(VolumeFromValue(QStringLiteral("100")), 1.0);
+    QCOMPARE(VolumeFromValue(QStringLiteral("50")), 0.5);
+    QCOMPARE(VolumeFromValue(QStringLiteral("0.25")), 0.25);
+    QCOMPARE(VolumeFromValue(QStringLiteral("0")), 0.0);
+    QCOMPARE(VolumeFromValue(QStringLiteral("250")), 1.0);
+    QCOMPARE(VolumeFromValue(QStringLiteral("abc")), 1.0);
 }

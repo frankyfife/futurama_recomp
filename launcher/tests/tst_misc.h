@@ -20,4 +20,8 @@ private slots:
     void cliCache();
     void gameSessionRun();
     void gameSessionConfigError();
+    void frameRateEstimate();
+    void audioTestTone();
+    void audioDeviceList();
+    void audioValueMapping();
 };

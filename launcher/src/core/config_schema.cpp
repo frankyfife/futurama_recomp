@@ -29,13 +29,16 @@ constexpr NamePair kTabNames[] = {
     {"graphics", static_cast<int>(UiTab::Graphics)},
     {"paths", static_cast<int>(UiTab::Paths)},
     {"advanced", static_cast<int>(UiTab::Advanced)},
+    {"controls", static_cast<int>(UiTab::Controls)},
+    {"audio", static_cast<int>(UiTab::Audio)},
 };
 constexpr NamePair kWidgetNames[] = {
     {"combo", static_cast<int>(UiWidget::Combo)},     {"check", static_cast<int>(UiWidget::Check)},
     {"spin", static_cast<int>(UiWidget::Spin)},       {"dspin", static_cast<int>(UiWidget::DSpin)},
     {"text", static_cast<int>(UiWidget::Text)},       {"file", static_cast<int>(UiWidget::File)},
     {"dir", static_cast<int>(UiWidget::Dir)},         {"resolution", static_cast<int>(UiWidget::Resolution)},
-    {"monitor", static_cast<int>(UiWidget::Monitor)},
+    {"monitor", static_cast<int>(UiWidget::Monitor)}, {"binding", static_cast<int>(UiWidget::Binding)},
+    {"slider", static_cast<int>(UiWidget::Slider)},  {"audio_device", static_cast<int>(UiWidget::AudioDevice)},
 };
 
 template <typename Enum, std::size_t N>
@@ -96,6 +99,12 @@ UiTab FallbackTab(const QString& section) {
     if (section == QLatin1String("settings") || section == QLatin1String("game")) {
         return UiTab::Game;
     }
+    if (section == QLatin1String("input")) {
+        return UiTab::Controls;
+    }
+    if (section == QLatin1String("audio")) {
+        return UiTab::Audio;
+    }
     return UiTab::Advanced;
 }
 
@@ -117,6 +126,12 @@ bool WidgetFitsType(UiWidget widget, KeyType type) {
         return type == KeyType::Choice || type == KeyType::Bool;
     case UiWidget::Monitor:
         return type == KeyType::String || type == KeyType::Choice || type == KeyType::Int;
+    case UiWidget::Binding:
+        return type == KeyType::String;
+    case UiWidget::Slider:
+        return type == KeyType::Int || type == KeyType::Float;
+    case UiWidget::AudioDevice:
+        return type == KeyType::String;
     case UiWidget::Text:
         return true;
     }
@@ -405,6 +420,7 @@ bool ParseSchema(const QByteArray& json, ConfigSchema* out, QString* error, QStr
             key.placeholder = ko.value(QLatin1String("placeholder")).toString();
             const QJsonObject ui = ko.value(QLatin1String("ui")).toObject();
             key.fileFilter = ui.value(QLatin1String("filter")).toString().trimmed();
+            key.unit = ko.value(QLatin1String("unit")).toString().trimmed();
             const QString tabName = ui.value(QLatin1String("tab")).toString();
             if (const auto tab = ParseUiTab(tabName)) {
                 key.tab = *tab;
@@ -430,6 +446,11 @@ bool ParseSchema(const QByteArray& json, ConfigSchema* out, QString* error, QStr
                 }
             } else if (!widgetName.isEmpty()) {
                 warn(QStringLiteral("key %1: unknown ui.widget \"%2\"").arg(key.fullName(), widgetName));
+            }
+            // M5: the output device is an endpoint ID; a schema without the audio_device widget still gets the list.
+            if (key.section == QLatin1String("audio") && key.name == QLatin1String("device") &&
+                key.type == KeyType::String && key.widget == UiWidget::Text) {
+                key.widget = UiWidget::AudioDevice;
             }
             key.schemaIndex = index++;
             section.keys.append(key);

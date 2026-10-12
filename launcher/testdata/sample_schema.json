@@ -719,27 +719,91 @@
         },
         {
           "name": "frame_rate",
-          "type": "int",
-          "default": 60,
-          "min": 0,
-          "max": 240,
+          "type": "choice",
+          "default": "60",
+          "choices": [
+            {
+              "value": "60",
+              "label": {
+                "de": "60",
+                "en": "60"
+              }
+            },
+            {
+              "value": "120",
+              "label": {
+                "de": "120 (interpoliert)",
+                "en": "120 (interpolated)"
+              }
+            },
+            {
+              "value": "display",
+              "label": {
+                "de": "Monitor (max. 120)",
+                "en": "Monitor (max. 120)"
+              }
+            }
+          ],
+          "hidden_choices": [
+            "50",
+            "0..1000"
+          ],
           "label": {
-            "de": "Bildrate (fps, 0 = unbegrenzt)",
-            "en": "Frame rate (fps, 0 = unlimited)"
+            "de": "Bildrate",
+            "en": "Frame rate"
           },
           "help": {
-            "de": "Standard: Logik-Takt. Bis 120 Hz mit Interpolation folgt in M3d.",
-            "en": "Default: the logic rate. Up to 120 Hz with interpolation follows in M3d."
+            "de": "Wie viele Bilder pro Sekunde das Spiel zeigt (M3d: bis 120 mit Zwischenbildern).",
+            "en": "How many frames per second the game shows (M3d: up to 120 with in-between frames)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 110,
+            "widget": "combo"
+          },
+          "dynamic_default": true
+        },
+        {
+          "name": "low_latency",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Geringe Verzögerung",
+            "en": "Low latency"
+          },
+          "help": {
+            "de": "Beginnt jedes Bild erst kurz bevor der Bildschirm es zeigen kann.",
+            "en": "Starts every frame only shortly before the display can show it."
           },
           "advanced": true,
           "restart_required": true,
           "ui": {
-            "tab": "advanced",
-            "order": 200,
-            "widget": "spin"
+            "tab": "graphics",
+            "order": 105,
+            "widget": "check"
+          }
+        },
+        {
+          "name": "interpolation",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Zwischenbilder berechnen",
+            "en": "Compute in-between frames"
           },
-          "dynamic_default": true,
-          "range_enforced": false
+          "help": {
+            "de": "Bei mehr als 60 Bildern pro Sekunde werden Kamera, Figuren und Objekte zwischen zwei Schritten der Spiellogik interpoliert.",
+            "en": "With more than 60 frames per second, the camera, characters and objects are interpolated between two game logic steps."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "graphics",
+            "order": 112,
+            "widget": "check"
+          }
         },
         {
           "name": "screenshot_dir",
@@ -1017,6 +1081,1103 @@
             "filter": "*.csv"
           },
           "developer": true
+        }
+      ]
+    },
+    {
+      "name": "input",
+      "label": {
+        "de": "Eingabe",
+        "en": "Input"
+      },
+      "keys": [
+        {
+          "name": "pad_a",
+          "type": "string",
+          "default": "pad:a",
+          "label": {
+            "de": "A – Bestätigen / Angriff 1 / Überspringen",
+            "en": "A – Confirm / attack 1 / skip"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „A“ auslösen. Im Spiel: Bestätigen / Angriff 1 / Überspringen.",
+            "en": "Which inputs (controller) press the Xbox control \"A\". In the game: Confirm / attack 1 / skip."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 10,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_b",
+          "type": "string",
+          "default": "pad:b",
+          "label": {
+            "de": "B – Zurück / Springen",
+            "en": "B – Back / jump"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „B“ auslösen. Im Spiel: Zurück / Springen.",
+            "en": "Which inputs (controller) press the Xbox control \"B\". In the game: Back / jump."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 20,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_x",
+          "type": "string",
+          "default": "pad:x",
+          "label": {
+            "de": "X – Angriff 2 (halten: aufladen)",
+            "en": "X – Attack 2 (hold: charge)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „X“ auslösen. Im Spiel: Angriff 2 (halten: aufladen).",
+            "en": "Which inputs (controller) press the Xbox control \"X\". In the game: Attack 2 (hold: charge)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 30,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_y",
+          "type": "string",
+          "default": "pad:y",
+          "label": {
+            "de": "Y – Benutzen",
+            "en": "Y – Use"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Y“ auslösen. Im Spiel: Benutzen.",
+            "en": "Which inputs (controller) press the Xbox control \"Y\". In the game: Use."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 40,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_white",
+          "type": "string",
+          "default": "pad:lb",
+          "label": {
+            "de": "Weiß – Waffe zurück (Fry)",
+            "en": "White – Previous weapon (Fry)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Weiß“ auslösen. Im Spiel: Waffe zurück (Fry).",
+            "en": "Which inputs (controller) press the Xbox control \"White\". In the game: Previous weapon (Fry)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 50,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_black",
+          "type": "string",
+          "default": "pad:rb",
+          "label": {
+            "de": "Schwarz – Waffe vor (Fry)",
+            "en": "Black – Next weapon (Fry)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Schwarz“ auslösen. Im Spiel: Waffe vor (Fry).",
+            "en": "Which inputs (controller) press the Xbox control \"Black\". In the game: Next weapon (Fry)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 60,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_lt",
+          "type": "string",
+          "default": "pad:lt",
+          "label": {
+            "de": "Linker Trigger – Kamera / Zielwechsel (vermutet)",
+            "en": "Left trigger – Camera / switch target (assumed)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Linker Trigger“ auslösen. Im Spiel: Kamera / Zielwechsel (vermutet).",
+            "en": "Which inputs (controller) press the Xbox control \"Left trigger\". In the game: Camera / switch target (assumed)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 70,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_rt",
+          "type": "string",
+          "default": "pad:rt",
+          "label": {
+            "de": "Rechter Trigger – Ziel erfassen (halten)",
+            "en": "Right trigger – Lock on target (hold)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Rechter Trigger“ auslösen. Im Spiel: Ziel erfassen (halten).",
+            "en": "Which inputs (controller) press the Xbox control \"Right trigger\". In the game: Lock on target (hold)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 80,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_start",
+          "type": "string",
+          "default": "pad:start",
+          "label": {
+            "de": "START – Pause / Bestätigen",
+            "en": "START – Pause / confirm"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „START“ auslösen. Im Spiel: Pause / Bestätigen.",
+            "en": "Which inputs (controller) press the Xbox control \"START\". In the game: Pause / confirm."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 90,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_back",
+          "type": "string",
+          "default": "pad:back",
+          "label": {
+            "de": "BACK – Zurück in Menüs",
+            "en": "BACK – Back in menus"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „BACK“ auslösen. Im Spiel: Zurück in Menüs.",
+            "en": "Which inputs (controller) press the Xbox control \"BACK\". In the game: Back in menus."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 100,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_dpad_up",
+          "type": "string",
+          "default": "pad:dpad_up",
+          "label": {
+            "de": "Steuerkreuz ↑ – Menüauswahl / Laufen",
+            "en": "D-pad ↑ – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Steuerkreuz ↑“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (controller) press the Xbox control \"D-pad ↑\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 110,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_dpad_down",
+          "type": "string",
+          "default": "pad:dpad_down",
+          "label": {
+            "de": "Steuerkreuz ↓ – Menüauswahl / Laufen",
+            "en": "D-pad ↓ – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Steuerkreuz ↓“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (controller) press the Xbox control \"D-pad ↓\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 120,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_dpad_left",
+          "type": "string",
+          "default": "pad:dpad_left",
+          "label": {
+            "de": "Steuerkreuz ← – Menüauswahl / Laufen",
+            "en": "D-pad ← – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Steuerkreuz ←“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (controller) press the Xbox control \"D-pad ←\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 130,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_dpad_right",
+          "type": "string",
+          "default": "pad:dpad_right",
+          "label": {
+            "de": "Steuerkreuz → – Menüauswahl / Laufen",
+            "en": "D-pad → – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Steuerkreuz →“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (controller) press the Xbox control \"D-pad →\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 140,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_ls_up",
+          "type": "string",
+          "default": "pad:ly+",
+          "label": {
+            "de": "Linker Stick ↑ – Laufen / Menüauswahl",
+            "en": "Left stick ↑ – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Linker Stick ↑“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (controller) press the Xbox control \"Left stick ↑\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 150,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_ls_down",
+          "type": "string",
+          "default": "pad:ly-",
+          "label": {
+            "de": "Linker Stick ↓ – Laufen / Menüauswahl",
+            "en": "Left stick ↓ – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Linker Stick ↓“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (controller) press the Xbox control \"Left stick ↓\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 160,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_ls_left",
+          "type": "string",
+          "default": "pad:lx-",
+          "label": {
+            "de": "Linker Stick ← – Laufen / Menüauswahl",
+            "en": "Left stick ← – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Linker Stick ←“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (controller) press the Xbox control \"Left stick ←\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 170,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_ls_right",
+          "type": "string",
+          "default": "pad:lx+",
+          "label": {
+            "de": "Linker Stick → – Laufen / Menüauswahl",
+            "en": "Left stick → – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Linker Stick →“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (controller) press the Xbox control \"Left stick →\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 180,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_ls_click",
+          "type": "string",
+          "default": "pad:ls_click",
+          "label": {
+            "de": "Linker Stick drücken – ohne Funktion",
+            "en": "Left stick click – no function"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Linker Stick drücken“ auslösen. Im Spiel: ohne Funktion.",
+            "en": "Which inputs (controller) press the Xbox control \"Left stick click\". In the game: no function."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 190,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_rs_up",
+          "type": "string",
+          "default": "pad:ry+",
+          "label": {
+            "de": "Rechter Stick ↑ – Kamera",
+            "en": "Right stick ↑ – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Rechter Stick ↑“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (controller) press the Xbox control \"Right stick ↑\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 200,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_rs_down",
+          "type": "string",
+          "default": "pad:ry-",
+          "label": {
+            "de": "Rechter Stick ↓ – Kamera",
+            "en": "Right stick ↓ – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Rechter Stick ↓“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (controller) press the Xbox control \"Right stick ↓\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 210,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_rs_left",
+          "type": "string",
+          "default": "pad:rx-",
+          "label": {
+            "de": "Rechter Stick ← – Kamera",
+            "en": "Right stick ← – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Rechter Stick ←“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (controller) press the Xbox control \"Right stick ←\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 220,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_rs_right",
+          "type": "string",
+          "default": "pad:rx+",
+          "label": {
+            "de": "Rechter Stick → – Kamera",
+            "en": "Right stick → – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Rechter Stick →“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (controller) press the Xbox control \"Right stick →\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 230,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_rs_click",
+          "type": "string",
+          "default": "pad:rs_click",
+          "label": {
+            "de": "Rechter Stick drücken – Ego-Ansicht",
+            "en": "Right stick click – First-person view"
+          },
+          "help": {
+            "de": "Welche Eingaben (Controller) die Xbox-Taste „Rechter Stick drücken“ auslösen. Im Spiel: Ego-Ansicht.",
+            "en": "Which inputs (controller) press the Xbox control \"Right stick click\". In the game: First-person view."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 240,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_a",
+          "type": "string",
+          "default": "key:enter, mouse:left",
+          "label": {
+            "de": "A – Bestätigen / Angriff 1 / Überspringen",
+            "en": "A – Confirm / attack 1 / skip"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „A“ auslösen. Im Spiel: Bestätigen / Angriff 1 / Überspringen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"A\". In the game: Confirm / attack 1 / skip."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 10,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_b",
+          "type": "string",
+          "default": "key:space",
+          "label": {
+            "de": "B – Zurück / Springen",
+            "en": "B – Back / jump"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „B“ auslösen. Im Spiel: Zurück / Springen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"B\". In the game: Back / jump."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 20,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_x",
+          "type": "string",
+          "default": "key:f, mouse:right",
+          "label": {
+            "de": "X – Angriff 2 (halten: aufladen)",
+            "en": "X – Attack 2 (hold: charge)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „X“ auslösen. Im Spiel: Angriff 2 (halten: aufladen).",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"X\". In the game: Attack 2 (hold: charge)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 30,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_y",
+          "type": "string",
+          "default": "key:e",
+          "label": {
+            "de": "Y – Benutzen",
+            "en": "Y – Use"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Y“ auslösen. Im Spiel: Benutzen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Y\". In the game: Use."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 40,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_white",
+          "type": "string",
+          "default": "key:1, mouse:wheel_down",
+          "label": {
+            "de": "Weiß – Waffe zurück (Fry)",
+            "en": "White – Previous weapon (Fry)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Weiß“ auslösen. Im Spiel: Waffe zurück (Fry).",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"White\". In the game: Previous weapon (Fry)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 50,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_black",
+          "type": "string",
+          "default": "key:2, mouse:wheel_up",
+          "label": {
+            "de": "Schwarz – Waffe vor (Fry)",
+            "en": "Black – Next weapon (Fry)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Schwarz“ auslösen. Im Spiel: Waffe vor (Fry).",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Black\". In the game: Next weapon (Fry)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 60,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_lt",
+          "type": "string",
+          "default": "key:q",
+          "label": {
+            "de": "Linker Trigger – Kamera / Zielwechsel (vermutet)",
+            "en": "Left trigger – Camera / switch target (assumed)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Linker Trigger“ auslösen. Im Spiel: Kamera / Zielwechsel (vermutet).",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Left trigger\". In the game: Camera / switch target (assumed)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 70,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_rt",
+          "type": "string",
+          "default": "key:lshift",
+          "label": {
+            "de": "Rechter Trigger – Ziel erfassen (halten)",
+            "en": "Right trigger – Lock on target (hold)"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Rechter Trigger“ auslösen. Im Spiel: Ziel erfassen (halten).",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Right trigger\". In the game: Lock on target (hold)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 80,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_start",
+          "type": "string",
+          "default": "key:escape",
+          "label": {
+            "de": "START – Pause / Bestätigen",
+            "en": "START – Pause / confirm"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „START“ auslösen. Im Spiel: Pause / Bestätigen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"START\". In the game: Pause / confirm."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 90,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_back",
+          "type": "string",
+          "default": "key:backspace",
+          "label": {
+            "de": "BACK – Zurück in Menüs",
+            "en": "BACK – Back in menus"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „BACK“ auslösen. Im Spiel: Zurück in Menüs.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"BACK\". In the game: Back in menus."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 100,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_dpad_up",
+          "type": "string",
+          "default": "key:up",
+          "label": {
+            "de": "Steuerkreuz ↑ – Menüauswahl / Laufen",
+            "en": "D-pad ↑ – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Steuerkreuz ↑“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"D-pad ↑\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 110,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_dpad_down",
+          "type": "string",
+          "default": "key:down",
+          "label": {
+            "de": "Steuerkreuz ↓ – Menüauswahl / Laufen",
+            "en": "D-pad ↓ – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Steuerkreuz ↓“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"D-pad ↓\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 120,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_dpad_left",
+          "type": "string",
+          "default": "key:left",
+          "label": {
+            "de": "Steuerkreuz ← – Menüauswahl / Laufen",
+            "en": "D-pad ← – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Steuerkreuz ←“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"D-pad ←\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 130,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_dpad_right",
+          "type": "string",
+          "default": "key:right",
+          "label": {
+            "de": "Steuerkreuz → – Menüauswahl / Laufen",
+            "en": "D-pad → – Menu selection / walk"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Steuerkreuz →“ auslösen. Im Spiel: Menüauswahl / Laufen.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"D-pad →\". In the game: Menu selection / walk."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 140,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_ls_up",
+          "type": "string",
+          "default": "key:w",
+          "label": {
+            "de": "Linker Stick ↑ – Laufen / Menüauswahl",
+            "en": "Left stick ↑ – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Linker Stick ↑“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Left stick ↑\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 150,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_ls_down",
+          "type": "string",
+          "default": "key:s",
+          "label": {
+            "de": "Linker Stick ↓ – Laufen / Menüauswahl",
+            "en": "Left stick ↓ – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Linker Stick ↓“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Left stick ↓\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 160,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_ls_left",
+          "type": "string",
+          "default": "key:a",
+          "label": {
+            "de": "Linker Stick ← – Laufen / Menüauswahl",
+            "en": "Left stick ← – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Linker Stick ←“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Left stick ←\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 170,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_ls_right",
+          "type": "string",
+          "default": "key:d",
+          "label": {
+            "de": "Linker Stick → – Laufen / Menüauswahl",
+            "en": "Left stick → – Walk / menu selection"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Linker Stick →“ auslösen. Im Spiel: Laufen / Menüauswahl.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Left stick →\". In the game: Walk / menu selection."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 180,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_ls_click",
+          "type": "string",
+          "default": "key:c",
+          "label": {
+            "de": "Linker Stick drücken – ohne Funktion",
+            "en": "Left stick click – no function"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Linker Stick drücken“ auslösen. Im Spiel: ohne Funktion.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Left stick click\". In the game: no function."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 190,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_rs_up",
+          "type": "string",
+          "default": "mouse:move_up",
+          "label": {
+            "de": "Rechter Stick ↑ – Kamera",
+            "en": "Right stick ↑ – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Rechter Stick ↑“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Right stick ↑\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 200,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_rs_down",
+          "type": "string",
+          "default": "mouse:move_down",
+          "label": {
+            "de": "Rechter Stick ↓ – Kamera",
+            "en": "Right stick ↓ – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Rechter Stick ↓“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Right stick ↓\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 210,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_rs_left",
+          "type": "string",
+          "default": "mouse:move_left",
+          "label": {
+            "de": "Rechter Stick ← – Kamera",
+            "en": "Right stick ← – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Rechter Stick ←“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Right stick ←\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 220,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_rs_right",
+          "type": "string",
+          "default": "mouse:move_right",
+          "label": {
+            "de": "Rechter Stick → – Kamera",
+            "en": "Right stick → – Camera"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Rechter Stick →“ auslösen. Im Spiel: Kamera.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Right stick →\". In the game: Camera."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 230,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "kbm_rs_click",
+          "type": "string",
+          "default": "key:v, mouse:middle",
+          "label": {
+            "de": "Rechter Stick drücken – Ego-Ansicht",
+            "en": "Right stick click – First-person view"
+          },
+          "help": {
+            "de": "Welche Eingaben (Tastatur/Maus) die Xbox-Taste „Rechter Stick drücken“ auslösen. Im Spiel: Ego-Ansicht.",
+            "en": "Which inputs (keyboard/mouse) press the Xbox control \"Right stick click\". In the game: First-person view."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 240,
+            "widget": "binding"
+          }
+        },
+        {
+          "name": "pad_mode",
+          "type": "choice",
+          "default": "single",
+          "choices": [
+            {
+              "value": "single",
+              "label": {
+                "de": "Ein Spieler (alle Controller und Tastatur/Maus)",
+                "en": "One player (all controllers and keyboard/mouse)"
+              }
+            },
+            {
+              "value": "per_port",
+              "label": {
+                "de": "Je Controller ein Anschluss",
+                "en": "One port per controller"
+              }
+            }
+          ],
+          "label": {
+            "de": "Controller-Modus",
+            "en": "Controller mode"
+          },
+          "help": {
+            "de": "„Ein Spieler“ legt alle Controller sowie Tastatur und Maus auf den ersten Xbox-Anschluss. Das Spiel hört im Level nur auf einen Anschluss.",
+            "en": "\"One player\" puts all controllers and keyboard and mouse on the first Xbox port. In a level the game listens to one port only."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 300,
+            "widget": "combo"
+          }
+        },
+        {
+          "name": "pad_deadzone",
+          "type": "int",
+          "default": "0",
+          "min": 0,
+          "max": 50,
+          "step": 1,
+          "unit": "%",
+          "label": {
+            "de": "Stick-Totzone (zusätzlich)",
+            "en": "Stick dead zone (additional)"
+          },
+          "help": {
+            "de": "Schneidet diesen Anteil des Stick-Wegs zusätzlich ab, etwa gegen einen driftenden Stick. Das Spiel hat selbst eine große Totzone (40 %).",
+            "en": "Cuts this share of the stick travel in addition, e.g. against a drifting stick. The game has a large dead zone of its own (40 %)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 310,
+            "widget": "slider"
+          }
+        },
+        {
+          "name": "mouse_sensitivity",
+          "type": "float",
+          "default": "1.0",
+          "min": 0.1,
+          "max": 10.0,
+          "step": 0.1,
+          "unit": "×",
+          "label": {
+            "de": "Mausempfindlichkeit",
+            "en": "Mouse sensitivity"
+          },
+          "help": {
+            "de": "Wie stark die Maus die Kamera (rechter Stick) dreht.",
+            "en": "How strongly the mouse turns the camera (right stick)."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 320,
+            "widget": "slider"
+          }
+        },
+        {
+          "name": "rumble",
+          "type": "bool",
+          "default": "1",
+          "label": {
+            "de": "Rumble (Vibration)",
+            "en": "Rumble (vibration)"
+          },
+          "help": {
+            "de": "Vibration des Controllers bei Treffern und Explosionen. Die Spieloption „Vibration“ wirkt zusätzlich.",
+            "en": "Controller vibration on hits and explosions. The game's own \"Vibration\" option applies as well."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 330,
+            "widget": "check"
+          }
+        },
+        {
+          "name": "rumble_strength",
+          "type": "int",
+          "default": "100",
+          "min": 0,
+          "max": 100,
+          "step": 5,
+          "unit": "%",
+          "label": {
+            "de": "Rumble-Stärke",
+            "en": "Rumble strength"
+          },
+          "help": {
+            "de": "Stärke der Vibration im Verhältnis zum Original.",
+            "en": "Strength of the vibration relative to the original."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "controls",
+            "order": 340,
+            "widget": "slider"
+          }
         }
       ]
     },
@@ -1379,6 +2540,217 @@
         "en": "Audio"
       },
       "keys": [
+        {
+          "name": "enabled",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Ton",
+            "en": "Sound"
+          },
+          "help": {
+            "de": "Ton an oder aus. Aus: Das Spiel läuft gleich, aber ohne Ausgabe.",
+            "en": "Sound on or off. Off: the game runs the same, without output."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "audio",
+            "order": 10,
+            "widget": "check"
+          },
+          "developer": false
+        },
+        {
+          "name": "device",
+          "type": "string",
+          "default": "",
+          "label": {
+            "de": "Ausgabegerät",
+            "en": "Output device"
+          },
+          "help": {
+            "de": "Gerät für den Ton; leer = Windows-Standardgerät.",
+            "en": "Device for the sound; empty = the Windows default device."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "audio",
+            "order": 20,
+            "widget": "audio_device"
+          },
+          "developer": false
+        },
+        {
+          "name": "speakers",
+          "type": "choice",
+          "default": "auto",
+          "label": {
+            "de": "Lautsprecher",
+            "en": "Speakers"
+          },
+          "help": {
+            "de": "Kanalanordnung der Ausgabe.",
+            "en": "Channel layout of the output."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "choices": [
+            {
+              "value": "auto",
+              "label": {
+                "de": "Wie das Gerät",
+                "en": "Like the device"
+              }
+            },
+            {
+              "value": "stereo",
+              "label": {
+                "de": "Stereo",
+                "en": "Stereo"
+              }
+            },
+            {
+              "value": "5.1",
+              "label": {
+                "de": "5.1",
+                "en": "5.1"
+              }
+            }
+          ],
+          "ui": {
+            "tab": "audio",
+            "order": 30,
+            "widget": "combo"
+          },
+          "developer": false
+        },
+        {
+          "name": "master_volume",
+          "type": "int",
+          "default": 100,
+          "label": {
+            "de": "Gesamtlautstärke",
+            "en": "Master volume"
+          },
+          "help": {
+            "de": "Zusätzlich zu den Reglern im Spiel.",
+            "en": "On top of the game's sliders."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "min": 0,
+          "max": 100,
+          "step": 5,
+          "unit": "%",
+          "ui": {
+            "tab": "audio",
+            "order": 40,
+            "widget": "slider"
+          },
+          "developer": false
+        },
+        {
+          "name": "reverb",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Hall",
+            "en": "Reverb"
+          },
+          "help": {
+            "de": "I3DL2-Hall der 3D-Geräusche.",
+            "en": "I3DL2 reverb of the 3D sounds."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "ui": {
+            "tab": "audio",
+            "order": 50,
+            "widget": "check"
+          },
+          "developer": false
+        },
+        {
+          "name": "positional",
+          "type": "choice",
+          "default": "corrected",
+          "label": {
+            "de": "Vorne/hinten",
+            "en": "Front/back"
+          },
+          "help": {
+            "de": "Wie das Original (vertauscht) oder korrigiert.",
+            "en": "Like the original (swapped) or corrected."
+          },
+          "advanced": false,
+          "restart_required": true,
+          "choices": [
+            {
+              "value": "corrected",
+              "label": {
+                "de": "Korrigiert",
+                "en": "Corrected"
+              }
+            },
+            {
+              "value": "xbox",
+              "label": {
+                "de": "Wie auf der Xbox",
+                "en": "Like on the Xbox"
+              }
+            }
+          ],
+          "ui": {
+            "tab": "audio",
+            "order": 60,
+            "widget": "combo"
+          },
+          "developer": false
+        },
+        {
+          "name": "limiter",
+          "type": "bool",
+          "default": true,
+          "label": {
+            "de": "Begrenzer",
+            "en": "Limiter"
+          },
+          "help": {
+            "de": "Begrenzer auf der Gesamtmischung.",
+            "en": "Limiter on the final mix."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 810,
+            "widget": "check"
+          },
+          "developer": false
+        },
+        {
+          "name": "capture_wav",
+          "type": "path_file",
+          "default": "",
+          "label": {
+            "de": "Tonmitschnitt (WAV-Datei)",
+            "en": "Audio capture (WAV file)"
+          },
+          "help": {
+            "de": "Für Entwickler.",
+            "en": "For developers."
+          },
+          "advanced": true,
+          "restart_required": true,
+          "ui": {
+            "tab": "advanced",
+            "order": 820,
+            "widget": "file"
+          },
+          "developer": true
+        },
         {
           "name": "dummy_streams",
           "type": "bool",

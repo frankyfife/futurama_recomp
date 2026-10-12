@@ -1,5 +1,6 @@
 #include "core/settings_model.h"
 
+#include "core/bindings.h"
 #include "core/l10n.h"
 
 #include <QDir>
@@ -56,8 +57,16 @@ bool SettingsModel::isAtDefault(const KeyDef& key) const {
 
 void SettingsModel::setValue(const KeyDef& key, const QString& value) {
     // Review M3c finding 10: paths without enclosing quotes (Explorer's "Als Pfad kopieren").
-    const QString newValue =
+    QString newValue =
         key.type == KeyType::PathFile || key.type == KeyType::PathDir ? CleanPathInput(value) : value;
+    // M4: a valid binding list is written in the contract's canonical form ("key:enter, mouse:left",
+    // INTERFACES.md 4.26); an invalid one is kept as typed (validation reports it).
+    if (const auto binding = ParseBindingKey(key)) {
+        const BindingParse parse = ParseBindingList(newValue, binding->device);
+        if (parse.ok()) {
+            newValue = FormatBindingList(parse.tokens);
+        }
+    }
     const QString name = key.fullName();
     const std::optional<QString> inFile = ini_.value(key.section, key.name);
     if (inFile) {

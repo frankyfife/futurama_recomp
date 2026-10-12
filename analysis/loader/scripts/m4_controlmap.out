@@ -1,0 +1,42 @@
+call 0005e4c9 -> 0005dfc0 args [2, 1]
+call 0005e4d2 -> 0005dfc0 args [3, 1]
+call 0005e4db -> 0005dfc0 args [5, 4]
+call 0005e4e4 -> 0005dfc0 args [6, 4]
+call 0005e4ed -> 0005dfc0 args [8, 7]
+call 0005e4f6 -> 0005dfc0 args [9, 7]
+call 0005e4fd -> 0005df80 args [1]
+
+action | cfg0 | cfg1 | cfg2 | cfg3 | cfg4 | cfg5 | cfg6 | cfg7 | cfg8 | cfg9
+     0 | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0  
+     1 | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0  
+     2 | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0  
+     3 | -        | -        | -        | -        | -        | -        | -        | -        | -        | -       
+     4 | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1  
+     5 | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1  
+     6 | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0  
+     7 | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0   | stick0  
+     8 | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1   | stick1  
+     9 | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L  
+    10 | DPad-U   | DPad-U   | DPad-U   | DPad-U   | DPad-U   | DPad-U   | DPad-U   | DPad-U   | DPad-U   | DPad-U  
+    11 | DPad-D   | DPad-D   | DPad-D   | DPad-D   | DPad-D   | DPad-D   | DPad-D   | DPad-D   | DPad-D   | DPad-D  
+    12 | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L  
+    13 | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R  
+    14 | LT       | LT       | LT       | LT       | LT       | LT       | LT       | LT       | LT       | LT      
+    15 | RT       | RT       | RT       | RT       | RT       | RT       | RT       | RT       | RT       | RT      
+    16 | -        | -        | -        | -        | -        | -        | -        | -        | -        | -       
+    17 | -        | -        | -        | -        | -        | -        | -        | -        | -        | -       
+    18 | -        | -        | -        | -        | -        | -        | -        | -        | -        | -       
+    19 | -        | -        | -        | -        | -        | -        | -        | -        | -        | -       
+    20 | RS-Klick | RS-Klick | RS-Klick | RS-Klick | RS-Klick | RS-Klick | RS-Klick | RS-Klick | RS-Klick | RS-Klick
+    21 | LS-Klick | LS-Klick | LS-Klick | LS-Klick | LS-Klick | LS-Klick | LS-Klick | LS-Klick | LS-Klick | LS-Klick
+    22 | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L   | DPad-L  
+    23 | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R   | DPad-R  
+    24 | B        | B        | B        | B        | B        | B        | B        | B        | B        | B       
+    25 | Y        | Y        | Y        | Y        | Y        | Y        | Y        | Y        | Y        | Y       
+    26 | LT       | LT       | LT       | LT       | LT       | LT       | LT       | LT       | LT       | LT      
+    27 | WHITE    | WHITE    | WHITE    | WHITE    | WHITE    | WHITE    | WHITE    | WHITE    | WHITE    | WHITE   
+    28 | BLACK    | BLACK    | BLACK    | BLACK    | BLACK    | BLACK    | BLACK    | BLACK    | BLACK    | BLACK   
+    29 | BACK     | BACK     | BACK     | BACK     | BACK     | BACK     | BACK     | DPad-L   | DPad-L   | DPad-L  
+    30 | START    | START    | START    | START    | START    | START    | START    | START    | START    | START   
+    31 | A        | A        | A        | A        | A        | A        | A        | A        | A        | A       
+    32 | X        | X        | X        | X        | X        | X        | X        | X        | X        | X       

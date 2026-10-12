@@ -39,9 +39,7 @@ std::atomic<std::uint64_t> g_flickerKept{0};
 std::atomic<bool> g_reporter{false};
 
 void RegisterReporter() noexcept {
-    if (!g_reporter.exchange(true)) {
-        core::AddExitReporter("frame fixes", &LogFrameFixSummary);
-    }
+    RegisterFrameFixReporter();
 }
 
 guest::GuestAddr Trampoline(guest::GuestAddr address) noexcept {
@@ -101,6 +99,12 @@ std::uint32_t FlickerValue(std::uint32_t randResult) noexcept {
     return v;
 }
 
+void RegisterFrameFixReporter() noexcept {
+    if (!g_reporter.exchange(true)) {
+        core::AddExitReporter("frame fixes", &LogFrameFixSummary);
+    }
+}
+
 FrameFixStats GetFrameFixStats() noexcept {
     FrameFixStats s;
     s.deathTimeCleared = g_deathCleared.load();
@@ -122,7 +126,8 @@ void LogFrameFixSummary() noexcept {
 
 }  // namespace xapi
 
-FUT_PROBE(0x0002BF10, &xapi::DeathRenderProbe, Thiscall, "probe:Death::Render", "56 8B F1 8B 4E 3C", 6);
-FUT_PROBE(0x000CD340, &xapi::OccluderFadeProbe, Thiscall, "probe:Session::OccluderFade", "83 EC 3C 56 8B F1", 6);
-FUT_HOOK_EX(0x00045EF0, &xapi::RandomFlickerHook, Thiscall, "Session::RandomFlicker", "56 8B F1 E8 D4 09 12 00",
-            true);
+FUT_PROBE(xapi::kDeathRender, &xapi::DeathRenderProbe, Thiscall, "probe:Death::Render", "56 8B F1 8B 4E 3C", 6);
+FUT_PROBE(xapi::kOccluderFade, &xapi::OccluderFadeProbe, Thiscall, "probe:Session::OccluderFade", "83 EC 3C 56 8B F1",
+          6);
+FUT_HOOK_EX(xapi::kRandomFlicker, &xapi::RandomFlickerHook, Thiscall, "Session::RandomFlicker",
+            "56 8B F1 E8 D4 09 12 00", true);

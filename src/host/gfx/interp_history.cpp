@@ -25,7 +25,11 @@ namespace {
 using ni::GuestPtr;
 
 // Guest layouts used here (gfx/ni_guest_layouts.h, analysis 3.8).
+constexpr std::uint32_t kAvParent = 0x14;          // NiAVObject parent NiNode* (NiAVObject::Update 0x101840 calls
+                                                   // [this+0x14]->vf44; NiNode::~NiNode detaches its children)
 constexpr std::uint32_t kAvWorld = 0x70;           // NiAVObject world NiTransform (slot argument of 48-53)
+constexpr std::uint32_t kAvWorldBound = 0x20;      // NiAVObject world NiBound (radius at +0x2C)
+constexpr std::uint32_t kAvSize = 0xC0;            // sizeof(NiAVObject)
 constexpr std::uint32_t kBoundRadius = 0x0C;       // NiBound radius
 constexpr std::uint32_t kSkinData = 0x08;          // NiSkinInstance -> NiSkinData*
 constexpr std::uint32_t kSkinRoot = 0x0C;          // NiSkinInstance -> root parent NiAVObject*
@@ -40,6 +44,7 @@ constexpr float kSelfTestTolerance = 1e-4f;
 constexpr std::uint32_t kMaxCameras = 16;
 constexpr std::uint32_t kMaxStateLogs = 16;
 constexpr std::uint32_t kCostBuckets = 4096;  // per-frame cost histogram in microseconds (last = overflow)
+constexpr std::uint32_t kGuestPages = 0x80000000u >> 12;  // readable-page bitmap of the hierarchy walk
 
 bool Plausible(GuestPtr address) noexcept {
     return address >= 0x10000u && address < 0x80000000u;
@@ -227,7 +232,38 @@ std::uint32_t __fastcall NiAVObjectDestroyProbe(std::uint32_t self, std::uint32_
 // ---- history tables ----------------------------------------------------------------------------------------------
 
 enum EntryFlag : std::uint8_t {
-    kMotionKnown = 1u << 0,  // step/angle hold the motion of the tick ending at this generation
+    kMotionKnown = 1u << 0,    // step/angle hold the motion of the tick ending at this generation
+    kAfterDestroy = 1u << 1,   // captured after a destruction of the same address in the capture frame (review
+                               // finding 3: that destruction concerns the previous object, not this capture)
+    kChainSnap = 1u << 2,      // node: this node or an ancestor of its chain jumped in this generation
+};
+
+// Per-tick motion reference of a key whose motion of the last tick is `known` (MotionSnapRule).
+MotionReference Reference(bool known, float step, float angle) noexcept {
+    MotionReference r;
+    r.known = known;
+    r.step = known ? step : 0.0f;
+    r.angleDeg = known ? angle : 0.0f;
+    return r;
+}
+
+// Entry::refAngleCenti (an angle per tick is at most 180 degrees).
+std::uint16_t ToCenti(float degrees) noexcept {
+    const float v = std::isfinite(degrees) ? std::clamp(degrees, 0.0f, 655.0f) : 0.0f;
+    return static_cast<std::uint16_t>(std::lround(v * 100.0f));
+}
+float FromCenti(std::uint16_t centi) noexcept {
+    return static_cast<float>(centi) / 100.0f;
+}
+
+// How a node's interpolated world (stage 1b) was formed.
+enum class NodeKind : std::uint8_t {
+    Current,    // no history in G-1 (or another node / parent): the current world
+    Static,     // world unchanged since G-1: the current world
+    World,      // topmost node with history: interpolated in world space
+    Snapped,    // topmost node with history whose world jumped: the current world
+    Local,      // parent(alpha) * interp(local)
+    LocalSnap,  // parent(alpha) * current local (the local transform jumped or failed a matrix check)
 };
 
 // One key of one generation (5.2: 128 bytes).
@@ -241,7 +277,7 @@ struct Entry {
     GuestPtr skin;
     GuestPtr propertyState;
     ni::NiTransform world;        // the captured world transform
-    float step;                   // motion of the tick G-1 -> G (kMotionKnown)
+    float step;                   // motion per tick of the tick G-1 -> G (kMotionKnown)
     float angle;
     std::uint32_t frameDrivenUntil;  // frame number until which the key counts as frame-driven
     std::uint32_t boneOffset;     // bone records in the table's pool
@@ -249,27 +285,56 @@ struct Entry {
     std::uint8_t occurrence;
     std::uint8_t flags;           // EntryFlag
     std::uint8_t lastReason;      // decision of the last interpolating frame (debug tint in the frames between)
-    std::uint8_t pad[3];
+    std::uint8_t pad;
+    std::uint16_t refAngleCenti;  // reference of the next tick's rule (kMotionKnown): max angle of the last two ticks
+                                  // in 1/100 degree
     float rootScale;              // skinned: world scale of the skin's root (bone radius in root space)
-    std::uint32_t pad2;
+    float refStep;                // reference of the next tick's rule: max step of the last two ticks
 };
 static_assert(sizeof(Entry) == 128, "history entry layout (analysis 5.2)");
 
 // Relative pose root^-1 * bone of one bone of a skinned draw.
 struct BoneRecord {
     ni::NiTransform relative;
-    float step;
+    float step;     // per tick (known)
     float angle;
     std::uint32_t known;
-    std::uint32_t pad;
+    float refStep;  // max step of the last two ticks (reference of the next tick's rule)
 };
 static_assert(sizeof(BoneRecord) == 80);
 
-class Table {
+// Stage 1b (3.5): one scene-graph node (an ancestor of a drawn object, or the drawn object itself) of one generation,
+// keyed (node, camera, 0). `shown` caches the interpolated world of the frame `shownFrame`.
+struct NodeEntry {
+    GuestPtr object;              // the NiAVObject
+    GuestPtr camera;              // NiCamera of the last SetCameraData (billboard worlds depend on it)
+    std::uint32_t stamp;          // generation (0 = never used)
+    std::uint32_t frame;          // frame of the last capture
+    GuestPtr parent;              // +0x14 at the capture
+    GuestPtr vtable;
+    ni::NiTransform world;        // +0x70 at the capture
+    float step;                   // local motion per tick (relative to the parent) of the tick G-1 -> G (kMotionKnown)
+    float angle;
+    float radius;                 // world bound radius +0x2C at the capture
+    std::uint32_t shownFrame;     // frame of `shown` (0 = none)
+    std::uint8_t occurrence;      // always 0 (table key)
+    std::uint8_t flags;           // EntryFlag (kMotionKnown, kChainSnap)
+    std::uint8_t shownKind;       // NodeKind of `shown`
+    std::uint8_t snapReason;      // SnapReason of the jump of this node or the nearest ancestor (kChainSnap)
+    std::uint32_t motionGen;      // generation whose motion step/angle (and shownKind) were evaluated
+    float refStep;                // max step / angle of the last two ticks (reference of the next tick's rule)
+    float refAngle;
+    ni::NiTransform shown;        // interpolated world of the frame shownFrame
+};
+static_assert(sizeof(NodeEntry) == 184);
+
+// Open-addressing table of one generation (5.2). E has the key fields object/camera/occurrence and the stamp.
+template <class E>
+class BasicTable {
 public:
     bool Allocate(std::uint32_t capacity) noexcept {
         try {
-            slots_.assign(capacity, Entry{});
+            slots_.assign(capacity, E{});
             bones.reserve(256);
         } catch (...) {
             slots_.clear();
@@ -282,7 +347,7 @@ public:
     // A new generation: every slot is stale (no clearing needed - stamps grow monotonically).
     void Reset(std::uint32_t generation) noexcept {
         if (generation <= gen_) {  // cannot happen with the monotonic History counter; be safe
-            for (Entry& e : slots_) {
+            for (E& e : slots_) {
                 e.stamp = 0;
             }
         }
@@ -292,15 +357,24 @@ public:
     }
     std::uint32_t Generation() const noexcept { return gen_; }
     std::uint32_t Count() const noexcept { return count_; }
+    // Calls f(entry) for every entry of the current generation.
+    template <class F>
+    void ForEach(F&& f) const {
+        for (const E& e : slots_) {
+            if (e.stamp == gen_ && gen_ != 0) {
+                f(e);
+            }
+        }
+    }
     std::uint32_t Capacity() const noexcept { return static_cast<std::uint32_t>(slots_.size()); }
 
-    Entry* Find(GuestPtr object, GuestPtr camera, std::uint32_t occurrence) noexcept {
+    E* Find(GuestPtr object, GuestPtr camera, std::uint32_t occurrence) noexcept {
         if (slots_.empty() || gen_ == 0) {
             return nullptr;
         }
         std::uint32_t i = Hash(object, camera, occurrence);
         for (;;) {
-            Entry& e = slots_[i];
+            E& e = slots_[i];
             if (e.stamp != gen_) {
                 return nullptr;
             }
@@ -312,14 +386,14 @@ public:
     }
     // Inserts a key that is not present (Find returned nullptr). nullptr when the table cannot grow. Pointers
     // returned earlier by Find/Insert of THIS table are invalid afterwards (the table may grow).
-    Entry* Insert(GuestPtr object, GuestPtr camera, std::uint32_t occurrence) noexcept {
+    E* Insert(GuestPtr object, GuestPtr camera, std::uint32_t occurrence) noexcept {
         if (slots_.empty()) {
             return nullptr;
         }
         if (count_ + 1 > Capacity() / 2 && !Grow()) {
             return nullptr;
         }
-        Entry* e = Place(object, camera, occurrence);
+        E* e = Place(object, camera, occurrence);
         ++count_;
         return e;
     }
@@ -330,7 +404,7 @@ public:
         }
         std::uint32_t i = Hash(object, camera, occurrence);
         for (std::uint32_t n = 1; n <= Capacity(); ++n) {
-            const Entry& e = slots_[i];
+            const E& e = slots_[i];
             if (e.stamp != gen_ || (e.object == object && e.camera == camera && e.occurrence == occurrence)) {
                 return n;
             }
@@ -342,7 +416,7 @@ public:
     void EnsureCapacity(std::uint32_t capacity) noexcept {
         if (Capacity() < capacity) {
             try {
-                slots_.assign(capacity, Entry{});
+                slots_.assign(capacity, E{});
                 SetCapacity(capacity);
                 count_ = 0;
             } catch (...) {
@@ -350,7 +424,7 @@ public:
         }
     }
 
-    std::vector<BoneRecord> bones;  // bone records of this generation
+    std::vector<BoneRecord> bones;  // bone records of this generation (object tables)
 
 private:
     static std::uint32_t Mix(GuestPtr object, GuestPtr camera, std::uint32_t occurrence) noexcept {
@@ -367,13 +441,13 @@ private:
         }
         shift_ = 32 - bits;
     }
-    Entry* Place(GuestPtr object, GuestPtr camera, std::uint32_t occurrence) noexcept {
+    E* Place(GuestPtr object, GuestPtr camera, std::uint32_t occurrence) noexcept {
         std::uint32_t i = Hash(object, camera, occurrence);
         while (slots_[i].stamp == gen_) {
             i = (i + 1) & mask_;
         }
-        Entry& e = slots_[i];
-        std::memset(&e, 0, sizeof(Entry));
+        E& e = slots_[i];
+        std::memset(&e, 0, sizeof(E));
         e.object = object;
         e.camera = camera;
         e.occurrence = static_cast<std::uint8_t>(occurrence);
@@ -385,30 +459,32 @@ private:
         if (capacity > kMaxTableCapacity) {
             return false;
         }
-        std::vector<Entry> old;
+        std::vector<E> old;
         try {
             old.swap(slots_);
-            slots_.assign(capacity, Entry{});
+            slots_.assign(capacity, E{});
         } catch (...) {
             slots_.swap(old);
             return false;
         }
         SetCapacity(capacity);
-        for (const Entry& e : old) {
+        for (const E& e : old) {
             if (e.stamp == gen_) {
-                Entry* n = Place(e.object, e.camera, e.occurrence);
+                E* n = Place(e.object, e.camera, e.occurrence);
                 *n = e;
             }
         }
         return true;
     }
 
-    std::vector<Entry> slots_;
+    std::vector<E> slots_;
     std::uint32_t mask_ = 0;
     std::uint32_t shift_ = 32;
     std::uint32_t gen_ = 0;
     std::uint32_t count_ = 0;
 };
+using Table = BasicTable<Entry>;
+using NodeTable = BasicTable<NodeEntry>;
 
 // One camera key with the states of the last two generations.
 struct CameraEntry {
@@ -423,6 +499,19 @@ struct CameraEntry {
     float beforeStep = 0.0f, beforeAngle = 0.0f;  // the tick before
     bool beforeKnown = false;
     std::uint32_t frameDrivenUntil = 0;
+    // Destructions of the camera's address from this frame on concern this entry (review finding 4); frame + 1 after a
+    // restart caused by a destruction in that frame.
+    std::uint32_t destroyedCheckFrom = 0;
+};
+
+// One draw of a [render] trace_frames frame (debug = trace, interp_draws.csv).
+struct DrawDetail {
+    std::uint32_t index;
+    GuestPtr object, camera, parent;
+    std::uint8_t occurrence, reason, hierarchy;
+    float radius, prevStep, prevAngle, step, angle;
+    float cur[3], prev[3], shown[3];
+    float lerp[3];  // world-space interpolation (= shown unless the hierarchy formed `shown`)
 };
 
 // Signature check (3.2).
@@ -516,6 +605,9 @@ Settings SettingsFromConfig(const core::Config& config) {
     bool enabledDefault = true;
     core::ParseConfigBool(core::ConfigKeyDefault("render", "interpolation"), enabledDefault);
     s.enabled = config.GetBool("render", "interpolation", enabledDefault);
+    bool hierarchyDefault = true;
+    core::ParseConfigBool(core::ConfigKeyDefault("render", "interpolation_hierarchy"), hierarchyDefault);
+    s.hierarchy = config.GetBool("render", "interpolation_hierarchy", hierarchyDefault);
     if (config.Has("render", "interpolation_debug")) {
         const std::string text = config.GetString("render", "interpolation_debug");
         if (!ParseDebugMode(text, &s.debug)) {
@@ -524,6 +616,7 @@ Settings SettingsFromConfig(const core::Config& config) {
         }
     }
     s.tracePath = config.LogDirectory() / "interp_trace.csv";
+    s.drawTracePath = config.LogDirectory() / "interp_draws.csv";
     return s;
 }
 
@@ -645,9 +738,17 @@ struct History::Impl {
     bool haveTick = false;
     std::uint64_t lastTick = 0;
     std::uint32_t gen = 0;  // generation of the cur table (internal, monotonic; +2 on gaps)
+    // Ticks between the states of the prev and the cur table (1; 2..kMaxPairTicks after a catch-up or the 6 dt cap,
+    // review finding 10). Motions are compared per tick (step / span).
+    std::uint32_t span = 1;
+    float perTick = 1.0f;  // 1 / span
+    std::uint32_t releaseEpoch = 0;  // guest::MemoryReleaseEpoch() the readable-page bitmap is valid for
     Table tables[2];
+    NodeTable nodeTables[2];  // stage 1b (swapped together with `tables`)
+    bool nodesReady = false;
     std::uint32_t curIndex = 0;
     bool prevValid = false;
+    std::vector<std::uint32_t> readablePages;  // stage 1b: bitmap of guest pages verified readable
     GuestPtr camera = 0;
     std::array<CameraEntry, kMaxCameras> cameras{};
     CameraState cameraOut;
@@ -668,12 +769,28 @@ struct History::Impl {
     std::uint32_t stateLogs = 0;
     FILE* trace = nullptr;
     bool traceTried = false;
+    bool detail = false;               // this frame is listed in [render] trace_frames
+    std::vector<DrawDetail> details;   // debug = trace: the draws of a detail frame
+    FILE* drawTrace = nullptr;
+    bool drawTraceTried = false;
+    FILE* nodeTrace = nullptr;              // debug = trace, hierarchy: the node worlds of each traced tick
+    std::uint32_t generationFrame = 0;      // first frame of the cur generation
 
     Table& Cur() noexcept { return tables[curIndex]; }
     Table& Prev() noexcept { return tables[curIndex ^ 1u]; }
+    NodeTable& CurNodes() noexcept { return nodeTables[curIndex]; }
+    NodeTable& PrevNodes() noexcept { return nodeTables[curIndex ^ 1u]; }
+    bool Hierarchy() const noexcept { return settings.hierarchy && nodesReady; }
+
+    // What the parent chain says about a drawn object (EvaluateChain).
+    struct ChainResult {
+        bool shown = false;          // *out holds the interpolated world from the chain (interpolating frames)
+        bool decides = false;        // the drawn object has a parent with history: the chain decides its motion
+        SnapReason snap = SnapReason::None;  // the jump of a node of the chain (decides: the draw's snap reason)
+    };
 
     void Latch() noexcept;
-    void Advance(bool consecutive) noexcept;
+    void Advance(bool consecutive, std::uint32_t pairSpan) noexcept;
     void NoteState(bool nowRecording) noexcept;
     ni::CameraInput Camera(GuestPtr cameraObject, const ni::CameraInput& in) noexcept;
     void Geometry(const ni::GeometryInput& in, ni::ExtractArena& arena, GeometryResult* result) noexcept;
@@ -682,8 +799,13 @@ struct History::Impl {
                              ni::ExtractArena& arena) noexcept;
     GuestPtr BuildSubstitute(GuestPtr real, std::uint32_t count, ni::ExtractArena& arena) noexcept;
     void SkinSelfTest(const ni::GeometryInput& in, const Entry& e, ni::ExtractArena& arena) noexcept;
+    bool NodeReadable(GuestPtr node) noexcept;
+    void CaptureChain(GuestPtr object, const ni::NiTransform& world, float radius) noexcept;
+    ChainResult EvaluateChain(GuestPtr object, ni::NiTransform* out) noexcept;
     void EndFrame(std::uint32_t displayed, bool logFrame) noexcept;
     void WriteTrace(std::uint32_t displayed) noexcept;
+    void WriteDrawTrace(std::uint32_t displayed) noexcept;
+    void WriteNodeTrace(std::uint32_t displayed) noexcept;
     double Microseconds(std::uint64_t ticks) noexcept;
     void Count(SnapReason reason) noexcept { ++fc.reasons[Index(reason)]; }
 };
@@ -724,36 +846,54 @@ void History::Impl::Latch() noexcept {
         return;
     }
     if (!haveTick || fi.tick != lastTick) {
-        Advance(haveTick && fi.tick == lastTick + 1);
+        // One tick, or k = pairTicks ticks at once (catch-up, 6 dt cap): the prev table holds S[G-k].
+        const std::uint64_t delta = haveTick && fi.tick > lastTick ? fi.tick - lastTick : 0;
+        const bool pair = delta == 1 || (delta >= 2 && delta <= kMaxPairTicks && fi.pairTicks == delta);
+        Advance(pair, pair ? static_cast<std::uint32_t>(delta) : 1u);
         haveTick = true;
         lastTick = fi.tick;
     }
     snapAll = (fi.flags & (kFrameInterpSnapAll | kFrameInterpClockReset)) != 0;
-    alpha = std::isnan(fi.alpha) ? 1.0f : std::clamp(fi.alpha, 0.0f, 1.0f);
+    const float a = std::isnan(fi.alpha) ? 1.0f : std::clamp(fi.alpha, 0.0f, 1.0f);
+    // Over a pair of k ticks the displayed time G - 1 + a is the weight (k - 1 + a) / k of S[G] against S[G-k].
+    alpha = span > 1 ? (static_cast<float>(span - 1) + a) / static_cast<float>(span) : a;
     interpolating = alpha < 1.0f - kAlphaOneEpsilon && !snapAll;
     frameRecorded = true;
     frameInterpolated = frameInterpolated || interpolating;
 }
 
-void History::Impl::Advance(bool consecutive) noexcept {
+void History::Impl::Advance(bool consecutive, std::uint32_t pairSpan) noexcept {
     ++stats.generations;
     if (!consecutive) {
         ++stats.generationGaps;
+    } else if (pairSpan > 1) {
+        ++stats.pairSpans;
     }
+    span = consecutive && pairSpan >= 1 ? pairSpan : 1u;
+    perTick = 1.0f / static_cast<float>(span);
     stats.tablePeak = std::max(stats.tablePeak, Cur().Count());
     stats.bonePoolPeak = std::max(stats.bonePoolPeak, static_cast<std::uint32_t>(Cur().bones.size()));
+    stats.nodePeak = std::max(stats.nodePeak, CurNodes().Count());
     const std::uint32_t step = consecutive ? 1u : 2u;
     if (gen > std::numeric_limits<std::uint32_t>::max() - 4) {  // practically unreachable (2^32 ticks)
         gen = 0;
-        tables[0].Reset(0);
-        tables[1].Reset(0);
+        for (int i = 0; i < 2; ++i) {
+            tables[i].Reset(0);
+            nodeTables[i].Reset(0);
+        }
     }
     gen += step;
+    generationFrame = frame;
     curIndex ^= 1u;
     Cur().EnsureCapacity(Prev().Capacity());
     Cur().Reset(gen);
     prevValid = Prev().Generation() != 0 && Prev().Generation() + 1 == gen;
     stats.tableCapacity = std::max(Cur().Capacity(), Prev().Capacity());
+    if (nodesReady) {
+        CurNodes().EnsureCapacity(PrevNodes().Capacity());
+        CurNodes().Reset(gen);
+        stats.nodeCapacity = std::max(CurNodes().Capacity(), PrevNodes().Capacity());
+    }
     Registry().Advance();
 }
 
@@ -773,6 +913,19 @@ ni::CameraInput History::Impl::Camera(GuestPtr cameraObject, const ni::CameraInp
     std::memcpy(s.right, in.right, sizeof(s.right));
     s.frustum = *in.frustum;
     s.port = *in.port;
+    if (detail && settings.debug == DebugMode::Trace) {
+        FUT_LOGI(Gfx,
+                 "interp camera frame %u: 0x%08X location %.6g %.6g %.6g, direction %.6g %.6g %.6g, up %.6g %.6g %.6g, "
+                 "right %.6g %.6g %.6g, frustum %.6g %.6g %.6g %.6g %.6g %.6g",
+                 frame, cameraObject, static_cast<double>(s.location[0]), static_cast<double>(s.location[1]),
+                 static_cast<double>(s.location[2]), static_cast<double>(s.direction[0]),
+                 static_cast<double>(s.direction[1]), static_cast<double>(s.direction[2]), static_cast<double>(s.up[0]),
+                 static_cast<double>(s.up[1]), static_cast<double>(s.up[2]), static_cast<double>(s.right[0]),
+                 static_cast<double>(s.right[1]), static_cast<double>(s.right[2]),
+                 static_cast<double>(s.frustum.left), static_cast<double>(s.frustum.right),
+                 static_cast<double>(s.frustum.top), static_cast<double>(s.frustum.bottom),
+                 static_cast<double>(s.frustum.nearPlane), static_cast<double>(s.frustum.farPlane));
+    }
 
     // Key (camera, occurrence): the n-th SetCameraData of this camera in this frame.
     std::uint32_t occurrence = 0;
@@ -795,6 +948,15 @@ ni::CameraInput History::Impl::Camera(GuestPtr cameraObject, const ni::CameraInp
         frameCost += Ticks() - t0;
         return in;
     }
+    bool restartedAfterDestroy = false;
+    if (e != nullptr && Registry().DestroyedSince(cameraObject, e->destroyedCheckFrom)) {
+        // The NiCamera at this address was destroyed since the last capture (a new shot built at the same address,
+        // review finding 4): another camera - no history.
+        *e = CameraEntry{};
+        e->camera = cameraObject;
+        e->occurrence = occurrence;
+        restartedAfterDestroy = true;
+    }
     if (e == nullptr) {  // free or oldest slot
         e = &cameras[0];
         for (CameraEntry& c : cameras) {
@@ -809,6 +971,11 @@ ni::CameraInput History::Impl::Camera(GuestPtr cameraObject, const ni::CameraInp
         *e = CameraEntry{};
         e->camera = cameraObject;
         e->occurrence = occurrence;
+        restartedAfterDestroy = Registry().DestroyedSince(cameraObject, frame);
+    }
+    if (restartedAfterDestroy || e->destroyedCheckFrom <= frame) {
+        // A destruction recorded in this frame happened before this capture: it concerns the previous camera.
+        e->destroyedCheckFrom = restartedAfterDestroy ? frame + 1 : frame;
     }
     const bool recapture = e->curGen == gen;
     bool changed = false;
@@ -840,8 +1007,8 @@ ni::CameraInput History::Impl::Camera(GuestPtr cameraObject, const ni::CameraInp
             e->known = true;
         } else if (!recapture || changed || interpolating) {
             m = AnalyzeCamera(e->prev, e->cur, limits);
-            e->step = m.step;
-            e->angle = m.angleDeg;
+            e->step = m.step * perTick;  // per tick (a catch-up pair spans several ticks)
+            e->angle = m.angleDeg * perTick;
             e->known = m.check != SnapReason::Mirror && m.check != SnapReason::NotOrthonormal;
         }
     }
@@ -850,6 +1017,8 @@ ni::CameraInput History::Impl::Camera(GuestPtr cameraObject, const ni::CameraInp
         reason = SnapReason::SnapAll;
     } else if (!interpolating) {
         reason = SnapReason::AlphaOne;
+    } else if (restartedAfterDestroy) {
+        reason = SnapReason::Destroyed;
     } else if (!havePrev) {
         reason = e->prevGen != 0 ? SnapReason::GenerationGap : SnapReason::FirstSight;
     } else if (e->frameDrivenUntil >= frame) {
@@ -859,7 +1028,7 @@ ni::CameraInput History::Impl::Camera(GuestPtr cameraObject, const ni::CameraInp
     } else if (m.check != SnapReason::None) {
         reason = m.check;
     } else {
-        reason = CameraCutRule(m.step, m.angleDeg, e->beforeKnown ? e->beforeStep : 0.0f,
+        reason = CameraCutRule(m.step * perTick, m.angleDeg * perTick, e->beforeKnown ? e->beforeStep : 0.0f,
                                e->beforeKnown ? e->beforeAngle : 0.0f, limits);
     }
     ++fc.cameraReasons[Index(reason)];
@@ -936,6 +1105,7 @@ float History::Impl::CaptureBones(Entry& e, GuestPtr skin, bool recapture, const
         }
         r.relative = relative;
         r.known = 0;
+        r.refStep = 0.0f;
         if (before != nullptr) {
             if (BitwiseEqual(before[i].relative, relative)) {
                 r.step = 0.0f;
@@ -943,10 +1113,11 @@ float History::Impl::CaptureBones(Entry& e, GuestPtr skin, bool recapture, const
                 r.known = 1;
             } else {
                 const MotionInfo m = AnalyzeMotion(before[i].relative, relative, limits);
-                r.step = m.step;
-                r.angle = m.angleDeg;
+                r.step = m.step * perTick;
+                r.angle = m.angleDeg * perTick;
                 r.known = m.check == SnapReason::None || m.check == SnapReason::Scale ? 1u : 0u;
             }
+            r.refStep = before[i].known != 0 ? std::max(r.step, before[i].step) : r.step;
         }
     }
     e.rootScale = rootWorld.scale;
@@ -1011,8 +1182,8 @@ GuestPtr History::Impl::InterpolateSkin(const Entry& e, const Entry& p, GuestPtr
         const MotionInfo m = AnalyzeMotion(b[i].relative, c[i].relative, limits);
         SnapReason r = m.check;
         if (r == SnapReason::None) {
-            r = MotionSnap(m.step, m.angleDeg, radius, b[i].known != 0 ? b[i].step : 0.0f,
-                           b[i].known != 0 ? b[i].angle : 0.0f, limits);
+            r = MotionSnapRule(m.step * perTick, m.angleDeg * perTick, radius,
+                               Reference(b[i].known != 0, b[i].refStep, b[i].angle), limits);
         }
         if (r != SnapReason::None) {
             ++fc.boneSnaps;
@@ -1091,6 +1262,233 @@ void History::Impl::SkinSelfTest(const ni::GeometryInput& in, const Entry& e, ni
     }
 }
 
+// ---- stage 1b: hierarchy -----------------------------------------------------------------------------------------
+
+// The parents of a drawn object are live NiNodes (NiNode::~NiNode FUN_001066B0 detaches its children, so a surviving
+// child has parent 0), but the walk may leave the subtree the guest just traversed. Each guest page is checked once
+// with VirtualQuery (guest::IsReadable) and remembered until the HLE memory manager releases or decommits guest memory
+// (guest::MemoryReleaseEpoch, review finding 6): guest::Read has no exception handling, so a page released after its
+// check must not stay "readable".
+bool History::Impl::NodeReadable(GuestPtr node) noexcept {
+    if (!Plausible(node) || node > 0x80000000u - kAvSize) {
+        return false;
+    }
+    if (readablePages.empty()) {
+        try {
+            readablePages.assign(kGuestPages / 32, 0u);
+        } catch (...) {
+            return false;
+        }
+        releaseEpoch = guest::MemoryReleaseEpoch();
+    }
+    if (const std::uint32_t epoch = guest::MemoryReleaseEpoch(); epoch != releaseEpoch) {
+        std::fill(readablePages.begin(), readablePages.end(), 0u);
+        releaseEpoch = epoch;
+        ++stats.readableCacheResets;
+    }
+    for (std::uint32_t page = node >> 12; page <= (node + kAvSize - 1) >> 12; ++page) {
+        std::uint32_t& word = readablePages[page >> 5];
+        const std::uint32_t bit = 1u << (page & 31u);
+        if ((word & bit) != 0) {
+            continue;
+        }
+        if (!guest::IsReadable(page << 12, 0x1000)) {
+            return false;
+        }
+        word |= bit;
+    }
+    return true;
+}
+
+// Records the drawn object and its ancestors in the cur node table, once per generation: a walk stops at a node this
+// generation already recorded (with its ancestors). A node that changes later within the generation (animated per
+// frame) is not re-read - its drawn descendants are frame-driven and drawn as given. The drawn object's world is the
+// slot argument (already read).
+void History::Impl::CaptureChain(GuestPtr object, const ni::NiTransform& world, float radius) noexcept {
+    NodeTable& nodes = CurNodes();
+    GuestPtr node = object;
+    for (std::uint32_t depth = 0; depth <= kMaxHierarchyDepth && node != 0; ++depth) {
+        if (nodes.Find(node, camera, 0) != nullptr) {
+            break;  // this node and its ancestors are recorded for this generation
+        }
+        if (depth != 0 && !NodeReadable(node)) {
+            ++stats.nodeOverflows;
+            break;
+        }
+        NodeEntry* n = nodes.Insert(node, camera, 0);  // may grow the table (no other node pointer is held here)
+        if (n == nullptr) {
+            ++stats.nodeOverflows;
+            break;
+        }
+        n->flags = 0;
+        n->step = 0.0f;
+        n->angle = 0.0f;
+        n->shownFrame = 0;
+        n->motionGen = 0;
+        n->frame = frame;
+        n->vtable = Read<GuestPtr>(node);
+        const GuestPtr parent = Read<GuestPtr>(node + kAvParent);
+        n->parent = Plausible(parent) ? parent : 0u;
+        if (depth == 0) {
+            n->world = world;
+            n->radius = radius;
+        } else {
+            n->world = Read<ni::NiTransform>(node + kAvWorld);
+            n->radius = Read<float>(node + kAvWorldBound + kBoundRadius);
+        }
+        if (!std::isfinite(n->radius)) {
+            n->radius = 0.0f;
+        }
+        node = n->parent;
+    }
+}
+
+// Evaluates the parent chain of a recorded draw top-down (3.5). Per node: the motion of this generation relative to
+// the parent (once per generation, `motionGen` - the growth rule of the next tick needs it even when no draw of the
+// chain interpolates) and, in interpolating frames, the interpolated world W(alpha) = W_parent(alpha) *
+// interp(L_prev, L_cur, alpha) with L = W_parent^-1 * W (once per frame, `shownFrame`); the topmost node with history
+// of both ticks interpolates in world space. The jump rule runs per node with the node's own radius and local motion
+// (review finding 1: a small part of a rigid assembly that starts moving, or the reversal point of an oscillation, is
+// no jump of the part - only a node whose own local transform jumps is). A node that jumped keeps its current local
+// transform; kChainSnap marks it and its descendants for this generation.
+// Result: `decides` when the drawn object has a parent with history (its motion is judged by the chain, not by the
+// world-space rule of the draw), `snap` = the jump of the chain if any, `shown` (*out = the drawn object's
+// interpolated world) in interpolating frames when the chain decides.
+History::Impl::ChainResult History::Impl::EvaluateChain(GuestPtr object, ni::NiTransform* out) noexcept {
+    ChainResult result;
+    NodeTable& cur = CurNodes();
+    NodeTable* prev = PrevNodes().Generation() != 0 && PrevNodes().Generation() + 1 == gen ? &PrevNodes() : nullptr;
+    const bool blend = interpolating;
+    const auto done = [&](const NodeEntry* n) { return blend ? n->shownFrame == frame : n->motionGen == gen; };
+    NodeEntry* chain[kMaxHierarchyDepth + 1];
+    const NodeEntry* history[kMaxHierarchyDepth + 1];  // valid G-1 entry of chain[i] once evaluated (nullptr: none)
+    bool evaluated[kMaxHierarchyDepth + 1];
+    std::uint32_t count = 0;
+    for (NodeEntry* n = cur.Find(object, camera, 0); n != nullptr && count <= kMaxHierarchyDepth;) {
+        evaluated[count] = false;
+        chain[count++] = n;
+        if (done(n) || n->parent == 0) {
+            break;
+        }
+        n = cur.Find(n->parent, camera, 0);  // nullptr: not recorded (depth limit, unreadable) -> a root
+    }
+    if (count == 0) {
+        return result;
+    }
+    for (std::uint32_t i = count; i-- > 0;) {
+        NodeEntry* c = chain[i];
+        if (done(c)) {
+            continue;
+        }
+        ++fc.nodesEvaluated;
+        const NodeEntry* p = prev != nullptr ? prev->Find(c->object, camera, 0) : nullptr;
+        if (p != nullptr &&
+            (p->vtable != c->vtable || p->parent != c->parent || Registry().DestroyedSince(c->object, p->frame))) {
+            p = nullptr;  // another node at this address or re-parented: no history
+        }
+        history[i] = p;
+        evaluated[i] = true;
+        // The parent's states of both ticks (evaluated before this node: the chain runs top-down). A parent without
+        // history makes this node the topmost one.
+        const NodeEntry* parentCur = i + 1 < count ? chain[i + 1] : nullptr;
+        const NodeEntry* parentPrev = nullptr;
+        if (parentCur != nullptr && prev != nullptr && parentCur->motionGen == gen &&
+            parentCur->shownKind != static_cast<std::uint8_t>(NodeKind::Current)) {
+            if (evaluated[i + 1]) {
+                parentPrev = history[i + 1];
+            } else {
+                parentPrev = prev->Find(parentCur->object, camera, 0);
+                if (parentPrev != nullptr && parentPrev->vtable != parentCur->vtable) {
+                    parentPrev = nullptr;
+                }
+            }
+        }
+        const bool knownBefore = p != nullptr && (p->flags & kMotionKnown) != 0;
+        c->flags &= static_cast<std::uint8_t>(~(kMotionKnown | kChainSnap));
+        c->snapReason = static_cast<std::uint8_t>(SnapReason::None);
+        NodeKind kind;
+        if (p == nullptr) {
+            kind = NodeKind::Current;
+            c->shown = c->world;
+        } else if (BitwiseEqual(p->world, c->world)) {
+            kind = NodeKind::Static;
+            c->shown = c->world;
+            c->step = 0.0f;
+            c->angle = 0.0f;
+            c->refStep = knownBefore ? p->step : 0.0f;
+            c->refAngle = knownBefore ? p->angle : 0.0f;
+            c->flags |= kMotionKnown;
+        } else {
+            const bool local = parentPrev != nullptr;
+            const ni::NiTransform from = local ? Compose(Inverse(parentPrev->world), p->world) : p->world;
+            const ni::NiTransform to = local ? Compose(Inverse(parentCur->world), c->world) : c->world;
+            const MotionInfo m = AnalyzeMotion(from, to, limits);
+            c->step = m.step * perTick;
+            c->angle = m.angleDeg * perTick;
+            c->refStep = knownBefore ? std::max(c->step, p->step) : c->step;
+            c->refAngle = knownBefore ? std::max(c->angle, p->angle) : c->angle;
+            if (m.check == SnapReason::None || m.check == SnapReason::Scale) {
+                c->flags |= kMotionKnown;
+            }
+            SnapReason r = m.check;
+            if (r == SnapReason::None) {
+                // Rules R2/R4 with the node's bound radius (in the parent's space for a local transform) against the
+                // larger of the last two known motions.
+                const float scale = local ? std::fabs(parentCur->world.scale) : 1.0f;
+                const float radius = scale > 0.0f ? c->radius / scale : c->radius;
+                r = MotionSnapRule(c->step, c->angle, std::isfinite(radius) ? radius : 0.0f,
+                                   Reference(knownBefore, knownBefore ? p->refStep : 0.0f,
+                                             knownBefore ? p->refAngle : 0.0f),
+                                   limits);
+            }
+            if (!local) {
+                kind = r == SnapReason::None ? NodeKind::World : NodeKind::Snapped;
+            } else {
+                kind = r == SnapReason::None ? NodeKind::Local : NodeKind::LocalSnap;
+            }
+            if (r != SnapReason::None) {
+                c->flags |= kChainSnap;
+                c->snapReason = static_cast<std::uint8_t>(r);
+            } else if (local && (parentCur->flags & kChainSnap) != 0) {
+                c->flags |= kChainSnap;  // an ancestor jumped: this node moves with it
+                c->snapReason = parentCur->snapReason;
+            }
+            if (blend) {
+                if (r != SnapReason::None) {
+                    ++fc.nodeSnaps;
+                }
+                if (kind == NodeKind::World) {
+                    BlendTransforms(from, to, m, alpha, &c->shown);
+                } else if (kind == NodeKind::Snapped) {
+                    c->shown = c->world;
+                } else if (kind == NodeKind::Local) {
+                    ni::NiTransform blended;
+                    BlendTransforms(from, to, m, alpha, &blended);
+                    c->shown = Compose(parentCur->shown, blended);
+                } else {
+                    c->shown = Compose(parentCur->shown, to);
+                }
+            }
+        }
+        c->shownKind = static_cast<std::uint8_t>(kind);
+        c->motionGen = gen;
+        if (blend) {
+            c->shownFrame = frame;
+        }
+    }
+    const NodeEntry* leaf = chain[0];
+    const auto kind = static_cast<NodeKind>(leaf->shownKind);
+    result.decides = kind == NodeKind::Local || kind == NodeKind::LocalSnap;
+    if (result.decides && (leaf->flags & kChainSnap) != 0) {
+        result.snap = static_cast<SnapReason>(leaf->snapReason);
+    }
+    if (blend && result.decides) {
+        *out = leaf->shown;
+        result.shown = true;
+    }
+    return result;
+}
+
 void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& arena, GeometryResult* result) noexcept {
     ++fc.draws;
     if (!Plausible(in.transform) || in.transform < 0x10000u + kAvWorld) {
@@ -1101,6 +1499,10 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
     const GuestPtr object = in.transform - kAvWorld;
     const ni::NiTransform world = Read<ni::NiTransform>(in.transform);
     const Signature sig{Read<GuestPtr>(object), in.data, in.skinInstance, in.propertyState};
+    const auto destroyedSince = [&](const Entry& entry) {
+        // A destruction recorded in the capture frame before the capture concerns the previous object (kAfterDestroy).
+        return Registry().DestroyedSince(object, entry.frame + ((entry.flags & kAfterDestroy) != 0 ? 1u : 0u));
+    };
 
     // Key (object, camera, occurrence) of the cur table.
     Table& cur = Cur();
@@ -1122,8 +1524,14 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
     bool changed = false;
     if (recapture && !SameSignature(*e, sig)) {
         recapture = false;  // another object at the same address within the generation: start over
+    } else if (recapture && destroyedSince(*e)) {
+        // Destroyed and re-created with the same signature within the generation (a clone sharing data and property
+        // state, review finding 3): another object as well, not a frame-driven change of this one.
+        recapture = false;
+        ++fc.recaptureDestroyed;
     } else if (recapture) {
         changed = !BitwiseEqual(e->world, world);
+        e->flags &= static_cast<std::uint8_t>(~kAfterDestroy);  // the capture moves to this (later) frame
     }
     if (e == nullptr) {
         e = cur.Insert(object, camera, occurrence);
@@ -1135,15 +1543,20 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
         }
     }
     const Entry* p = prevValid ? Prev().Find(object, camera, occurrence) : nullptr;
-    const bool pValid = p != nullptr && SameSignature(*p, sig);
+    const bool pSame = p != nullptr && SameSignature(*p, sig);
+    const bool pDestroyed = pSame && destroyedSince(*p);  // the G-1 capture belongs to a destroyed object
+    const bool pValid = pSame && !pDestroyed;
+    const bool pKnown = pValid && (p->flags & kMotionKnown) != 0;
     if (!recapture) {
         e->vtable = sig.vtable;
         e->data = sig.data;
         e->skin = sig.skin;
         e->propertyState = sig.propertyState;
-        e->flags = 0;
+        e->flags = Registry().DestroyedSince(object, frame) ? kAfterDestroy : 0u;
         e->step = 0.0f;
         e->angle = 0.0f;
+        e->refStep = 0.0f;
+        e->refAngleCenti = 0;
         e->boneCount = 0;
         e->boneOffset = 0;
         e->frameDrivenUntil = pValid ? p->frameDrivenUntil : 0;
@@ -1156,7 +1569,8 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
         ++fc.frameDrivenChanges;
     }
 
-    // Motion of the tick G-1 -> G: the decision now and the snap rule of the next tick.
+    // Motion of the tick G-1 -> G (per tick: a catch-up pair spans `span` ticks): the decision now and the reference
+    // of the next tick's rule (the larger of the last two known motions).
     MotionInfo motion;
     bool analyzed = false;
     bool same = false;
@@ -1165,12 +1579,16 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
         if (same) {
             e->step = 0.0f;
             e->angle = 0.0f;
+            e->refStep = pKnown ? p->step : 0.0f;
+            e->refAngleCenti = ToCenti(pKnown ? p->angle : 0.0f);
             e->flags |= kMotionKnown;
         } else if (!recapture || changed || interpolating) {
             motion = AnalyzeMotion(p->world, world, limits);
             analyzed = true;
-            e->step = motion.step;
-            e->angle = motion.angleDeg;
+            e->step = motion.step * perTick;
+            e->angle = motion.angleDeg * perTick;
+            e->refStep = pKnown ? std::max(e->step, p->step) : e->step;
+            e->refAngleCenti = ToCenti(pKnown ? std::max(e->angle, p->angle) : e->angle);
             if (motion.check == SnapReason::None || motion.check == SnapReason::Scale) {
                 e->flags |= kMotionKnown;
             } else {
@@ -1196,7 +1614,19 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
         }
     }
 
+    // Stage 1b: the parent chain of this generation (first occurrence only - further occurrences of one object in a
+    // frame are drawn with other transforms and interpolate in world space).
+    float boundRadius = Plausible(in.bound) ? Read<float>(in.bound + kBoundRadius) : 0.0f;
+    if (!std::isfinite(boundRadius)) {
+        boundRadius = 0.0f;
+    }
+    const bool chainKey = Hierarchy() && occurrence == 0;
+    if (chainKey) {
+        CaptureChain(object, world, boundRadius);
+    }
+
     SnapReason reason;
+    bool motionRule = false;  // the jump rule R2/R4 made the decision (the parent chain may judge it instead)
     if (snapAll) {
         reason = SnapReason::SnapAll;
     } else if (!interpolating) {
@@ -1204,10 +1634,10 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
     } else if (p == nullptr) {
         reason = !prevValid && Prev().Find(object, camera, occurrence) != nullptr ? SnapReason::GenerationGap
                                                                                   : SnapReason::FirstSight;
+    } else if (pDestroyed) {
+        reason = SnapReason::Destroyed;
     } else if (!pValid) {
         reason = SnapReason::Identity;
-    } else if (Registry().DestroyedSince(object, p->frame)) {
-        reason = SnapReason::Destroyed;
     } else if (e->frameDrivenUntil >= frame) {
         reason = SnapReason::FrameDriven;
     } else if (same) {
@@ -1215,27 +1645,67 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
     } else {
         if (!analyzed) {
             motion = AnalyzeMotion(p->world, world, limits);
+            analyzed = true;
         }
         if (motion.check != SnapReason::None) {
             reason = motion.check;
         } else {
-            const float radius = Plausible(in.bound) ? Read<float>(in.bound + kBoundRadius) : 0.0f;
-            const bool known = (p->flags & kMotionKnown) != 0;
-            reason = MotionSnap(motion.step, motion.angleDeg, std::isfinite(radius) ? radius : 0.0f,
-                                known ? p->step : 0.0f, known ? p->angle : 0.0f, limits);
+            reason = MotionSnapRule(motion.step * perTick, motion.angleDeg * perTick, boundRadius,
+                                    Reference(pKnown, p->refStep, FromCenti(p->refAngleCenti)), limits);
+            motionRule = true;
         }
     }
 
+    // The node motion of the chain (also when this draw does not interpolate: the reference of the next tick) and,
+    // when the drawn object has a parent with history, the chain's verdict on the jump (review finding 1).
+    ChainResult chain;
+    ni::NiTransform chainWorld = world;
+    if (chainKey) {
+        chain = EvaluateChain(object, &chainWorld);
+    }
+    const bool useChain = motionRule && chain.decides && chain.shown;
+    if (useChain && chain.snap != reason) {
+        ++fc.chainDecisions;  // the world-space rule of the leaf would have decided otherwise
+    }
+    if (useChain) {
+        reason = chain.snap;
+    }
+
     bool interpolated = false;
-    if (reason == SnapReason::None) {
+    std::uint8_t hierarchy = 0;  // detail trace: 1 = along the parent chain, 2 = world (no node history)
+    float lerpTranslate[3] = {};
+    bool haveLerp = false;
+    if (reason == SnapReason::None || useChain) {
         auto* t = arena.AllocateArray<ni::NiTransform>(1);
         if (t == nullptr) {
             ++stats.arenaFailures;
-            reason = SnapReason::Disabled;
+            if (reason == SnapReason::None) {
+                reason = SnapReason::Disabled;
+            }
         } else {
-            BlendTransforms(p->world, world, motion, alpha, t);
+            if (useChain) {
+                // The chain's world: interpolated, or - after a jump in the chain - the jumped node's current local
+                // transform under its interpolated parents with the nodes below it still interpolated.
+                *t = chainWorld;
+                hierarchy = 1;
+                if (reason == SnapReason::None) {
+                    ++fc.hierarchical;
+                }
+                if (detail) {
+                    ni::NiTransform lerp;
+                    BlendTransforms(p->world, world, motion, alpha, &lerp);
+                    std::memcpy(lerpTranslate, lerp.translate, sizeof(lerpTranslate));
+                    haveLerp = true;
+                }
+            } else {
+                BlendTransforms(p->world, world, motion, alpha, t);
+                if (chainKey) {
+                    hierarchy = 2;
+                    ++fc.hierarchyFallbacks;
+                }
+            }
             result->input.transform = guest::Addr(t);
-            interpolated = true;
+            interpolated = reason == SnapReason::None;
         }
     }
     if (in.skinInstance != 0 && pValid && (reason == SnapReason::None || reason == SnapReason::Static)) {
@@ -1266,6 +1736,32 @@ void History::Impl::Geometry(const ni::GeometryInput& in, ni::ExtractArena& aren
         const auto shown = interpolating || snapAll ? reason : static_cast<SnapReason>(e->lastReason);
         result->tint = IsSnap(shown) ? shown : SnapReason::None;
     }
+    if (detail && settings.debug == DebugMode::Trace) {
+        DrawDetail dd{};
+        dd.index = static_cast<std::uint32_t>(fc.draws);
+        dd.object = object;
+        dd.camera = camera;
+        dd.parent = Read<GuestPtr>(object + kAvParent);
+        dd.occurrence = static_cast<std::uint8_t>(occurrence);
+        dd.reason = static_cast<std::uint8_t>(reason);
+        dd.hierarchy = hierarchy;
+        dd.radius = boundRadius;
+        dd.prevStep = pKnown ? p->step : -1.0f;
+        dd.prevAngle = pKnown ? p->angle : -1.0f;
+        dd.step = (e->flags & kMotionKnown) != 0 ? e->step : -1.0f;
+        dd.angle = (e->flags & kMotionKnown) != 0 ? e->angle : -1.0f;
+        const ni::NiTransform shownWorld = Read<ni::NiTransform>(result->input.transform);
+        for (int c = 0; c < 3; ++c) {
+            dd.cur[c] = world.translate[c];
+            dd.prev[c] = pValid ? p->world.translate[c] : world.translate[c];
+            dd.shown[c] = shownWorld.translate[c];
+            dd.lerp[c] = haveLerp ? lerpTranslate[c] : shownWorld.translate[c];
+        }
+        try {
+            details.push_back(dd);
+        } catch (...) {
+        }
+    }
 }
 
 double History::Impl::Microseconds(std::uint64_t ticks) noexcept {
@@ -1291,10 +1787,11 @@ void History::Impl::WriteTrace(std::uint32_t displayed) noexcept {
         FUT_LOGI(Gfx, "interpolation: trace -> %s", settings.tracePath.string().c_str());
         std::fputs("frame,tick,steps,alpha,flags,recording,interpolating,draws,interpolated", trace);
         for (std::size_t r = 0; r < kSnapReasonCount; ++r) {
-            std::fprintf(trace, ",%s", SnapReasonName(static_cast<SnapReason>(r)));
+            // "reason_" keeps the names unique (SnapReason::None is called "interpolated" like the column before).
+            std::fprintf(trace, ",reason_%s", SnapReasonName(static_cast<SnapReason>(r)));
         }
         std::fputs(",cameras,camera_interpolated,camera_cut,camera_first_sight,skinned,substitute_skins,bones,bone_snaps,"
-                   "frame_driven_changes,cost_us\n", trace);
+                   "frame_driven_changes,hierarchical,hierarchy_fallbacks,nodes,node_snaps,cost_us\n", trace);
     }
     if (trace == nullptr) {
         return;
@@ -1306,13 +1803,97 @@ void History::Impl::WriteTrace(std::uint32_t displayed) noexcept {
     for (std::size_t r = 0; r < kSnapReasonCount; ++r) {
         std::fprintf(trace, ",%llu", static_cast<unsigned long long>(fc.reasons[r]));
     }
-    std::fprintf(trace, ",%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%.1f\n", static_cast<unsigned long long>(fc.cameras),
+    std::fprintf(trace, ",%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%.1f\n",
+                 static_cast<unsigned long long>(fc.cameras),
                  static_cast<unsigned long long>(fc.cameraReasons[Index(SnapReason::None)]),
                  static_cast<unsigned long long>(fc.cameraReasons[Index(SnapReason::CameraCut)]),
                  static_cast<unsigned long long>(fc.cameraReasons[Index(SnapReason::FirstSight)]),
                  static_cast<unsigned long long>(fc.skinnedDraws), static_cast<unsigned long long>(fc.skinsInterpolated),
                  static_cast<unsigned long long>(fc.bonesInterpolated), static_cast<unsigned long long>(fc.boneSnaps),
-                 static_cast<unsigned long long>(fc.frameDrivenChanges), Microseconds(frameCost));
+                 static_cast<unsigned long long>(fc.frameDrivenChanges), static_cast<unsigned long long>(fc.hierarchical),
+                 static_cast<unsigned long long>(fc.hierarchyFallbacks),
+                 static_cast<unsigned long long>(fc.nodesEvaluated), static_cast<unsigned long long>(fc.nodeSnaps),
+                 Microseconds(frameCost));
+}
+
+void History::Impl::WriteDrawTrace(std::uint32_t displayed) noexcept {
+    if (details.empty()) {
+        return;
+    }
+    if (!drawTraceTried) {
+        drawTraceTried = true;
+        if (!settings.drawTracePath.empty()) {
+            std::error_code ec;
+            std::filesystem::create_directories(settings.drawTracePath.parent_path(), ec);
+            drawTrace = _wfopen(settings.drawTracePath.c_str(), L"w");
+        }
+        if (drawTrace == nullptr) {
+            FUT_LOGW(Gfx, "interpolation: draw trace file %s could not be opened - no draw trace",
+                     settings.drawTracePath.string().c_str());
+            return;
+        }
+        FUT_LOGI(Gfx, "interpolation: draw trace of the trace_frames frames -> %s",
+                 settings.drawTracePath.string().c_str());
+        std::fputs("frame,tick,alpha,draw,object,camera,parent,occurrence,reason,hierarchy,radius,prev_step,prev_angle,"
+                   "step,angle,prev_x,prev_y,prev_z,cur_x,cur_y,cur_z,shown_x,shown_y,shown_z,lerp_x,lerp_y,lerp_z\n",
+                   drawTrace);
+    }
+    if (drawTrace == nullptr) {
+        return;
+    }
+    for (const DrawDetail& d : details) {
+        std::fprintf(drawTrace,
+                     "%u,%llu,%.4f,%u,0x%08X,0x%08X,0x%08X,%u,%s,%u,%.6g,%.6g,%.6g,%.6g,%.6g,%.7g,%.7g,%.7g,%.7g,%.7g,"
+                     "%.7g,%.7g,%.7g,%.7g,%.7g,%.7g,%.7g\n",
+                     displayed, static_cast<unsigned long long>(fi.tick), static_cast<double>(alpha), d.index, d.object,
+                     d.camera, d.parent, d.occurrence, SnapReasonName(static_cast<SnapReason>(d.reason)), d.hierarchy,
+                     static_cast<double>(d.radius), static_cast<double>(d.prevStep), static_cast<double>(d.prevAngle),
+                     static_cast<double>(d.step), static_cast<double>(d.angle), static_cast<double>(d.prev[0]),
+                     static_cast<double>(d.prev[1]), static_cast<double>(d.prev[2]), static_cast<double>(d.cur[0]),
+                     static_cast<double>(d.cur[1]), static_cast<double>(d.cur[2]), static_cast<double>(d.shown[0]),
+                     static_cast<double>(d.shown[1]), static_cast<double>(d.shown[2]), static_cast<double>(d.lerp[0]),
+                     static_cast<double>(d.lerp[1]), static_cast<double>(d.lerp[2]));
+    }
+    std::fflush(drawTrace);
+}
+
+// Debug = trace with the hierarchy: the recorded nodes of every traced tick (first frame of a generation) with their
+// world transform and world bound center - input of the offline two-tick midpoint test (interp(S[G-2], S[G], 1/2)
+// against the real S[G-1]) of hierarchical against world interpolation.
+void History::Impl::WriteNodeTrace(std::uint32_t displayed) noexcept {
+    if (!detail || !Hierarchy() || !frameRecorded || generationFrame != displayed || drawTrace == nullptr) {
+        return;
+    }
+    if (nodeTrace == nullptr) {
+        const std::filesystem::path path = settings.drawTracePath.parent_path() / "interp_nodes.csv";
+        nodeTrace = _wfopen(path.c_str(), L"w");
+        if (nodeTrace == nullptr) {
+            return;
+        }
+        std::fputs("frame,tick,node,camera,parent,r00,r01,r02,r10,r11,r12,r20,r21,r22,tx,ty,tz,scale,cx,cy,cz,radius\n",
+                   nodeTrace);
+    }
+    CurNodes().ForEach([&](const NodeEntry& n) {
+        if (n.frame != displayed) {
+            return;
+        }
+        const ni::NiBound bound = Read<ni::NiBound>(n.object + kAvWorldBound);
+        const ni::NiTransform& w = n.world;
+        std::fprintf(nodeTrace,
+                     "%u,%llu,0x%08X,0x%08X,0x%08X,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,"
+                     "%.9g,%.9g,%.9g,%.9g\n",
+                     displayed, static_cast<unsigned long long>(fi.tick), n.object, n.camera, n.parent,
+                     static_cast<double>(w.rotate[0][0]), static_cast<double>(w.rotate[0][1]),
+                     static_cast<double>(w.rotate[0][2]), static_cast<double>(w.rotate[1][0]),
+                     static_cast<double>(w.rotate[1][1]), static_cast<double>(w.rotate[1][2]),
+                     static_cast<double>(w.rotate[2][0]), static_cast<double>(w.rotate[2][1]),
+                     static_cast<double>(w.rotate[2][2]), static_cast<double>(w.translate[0]),
+                     static_cast<double>(w.translate[1]), static_cast<double>(w.translate[2]),
+                     static_cast<double>(w.scale), static_cast<double>(bound.center[0]),
+                     static_cast<double>(bound.center[1]), static_cast<double>(bound.center[2]),
+                     static_cast<double>(bound.radius));
+    });
+    std::fflush(nodeTrace);
 }
 
 void History::Impl::EndFrame(std::uint32_t displayed, bool logFrame) noexcept {
@@ -1342,6 +1923,12 @@ void History::Impl::EndFrame(std::uint32_t displayed, bool logFrame) noexcept {
             t.boneSnaps += fc.boneSnaps;
             t.skinsWithoutHistory += fc.skinsWithoutHistory;
             t.frameDrivenChanges += fc.frameDrivenChanges;
+            t.hierarchical += fc.hierarchical;
+            t.hierarchyFallbacks += fc.hierarchyFallbacks;
+            t.nodesEvaluated += fc.nodesEvaluated;
+            t.nodeSnaps += fc.nodeSnaps;
+            t.chainDecisions += fc.chainDecisions;
+            t.recaptureDestroyed += fc.recaptureDestroyed;
             for (std::size_t r = 0; r < kSnapReasonCount; ++r) {
                 t.reasons[r] += fc.reasons[r];
                 t.cameraReasons[r] += fc.cameraReasons[r];
@@ -1356,6 +1943,7 @@ void History::Impl::EndFrame(std::uint32_t displayed, bool logFrame) noexcept {
             stats.tablePeak = std::max(stats.tablePeak, Cur().Count());
             stats.bonePoolPeak = std::max(stats.bonePoolPeak, static_cast<std::uint32_t>(Cur().bones.size()));
             stats.tableCapacity = std::max(stats.tableCapacity, Cur().Capacity());
+            stats.nodePeak = std::max(stats.nodePeak, CurNodes().Count());
             if (logFrame) {
                 char reasons[512];
                 std::size_t used = 0;
@@ -1384,11 +1972,14 @@ void History::Impl::EndFrame(std::uint32_t displayed, bool logFrame) noexcept {
                     }
                 }
                 FUT_LOGI(Gfx,
-                         "interp frame %u: tick %llu alpha %.3f%s, %llu draws (%llu interpolated, %llu static, %llu alpha "
-                         "one, %llu snapped%s%s), %llu skinned (%llu substitute skins, %llu bones), camera %s, %.1f us",
+                         "interp frame %u: tick %llu alpha %.3f%s, %llu draws (%llu interpolated [%llu along the "
+                         "hierarchy, %llu nodes], %llu static, %llu alpha one, %llu snapped%s%s), %llu skinned (%llu "
+                         "substitute skins, %llu bones), camera %s, %.1f us",
                          displayed, static_cast<unsigned long long>(fi.tick), static_cast<double>(alpha),
                          snapAll ? " snap-all" : "", static_cast<unsigned long long>(fc.draws),
                          static_cast<unsigned long long>(fc.interpolated),
+                         static_cast<unsigned long long>(fc.hierarchical),
+                         static_cast<unsigned long long>(fc.nodesEvaluated),
                          static_cast<unsigned long long>(fc.reasons[Index(SnapReason::Static)]),
                          static_cast<unsigned long long>(fc.reasons[Index(SnapReason::AlphaOne)]),
                          static_cast<unsigned long long>(snapped), used != 0 ? ": " : "", reasons,
@@ -1398,8 +1989,12 @@ void History::Impl::EndFrame(std::uint32_t displayed, bool logFrame) noexcept {
             }
         }
         WriteTrace(displayed);
+        WriteDrawTrace(displayed);
+        WriteNodeTrace(displayed);
         ++stats.frames;
     }
+    details.clear();
+    detail = false;
     substitutes.clear();
     fc = FrameCounters{};
     frameCost = 0;
@@ -1424,6 +2019,14 @@ History::History(const Settings& settings, const SnapLimits& limits) noexcept {
     if (settings.enabled) {
         d.ready = d.tables[0].Allocate(kInitialTableCapacity) && d.tables[1].Allocate(kInitialTableCapacity) &&
                   Registry().Allocate();
+        if (d.ready && settings.hierarchy) {
+            d.nodesReady = d.nodeTables[0].Allocate(kInitialTableCapacity) &&
+                           d.nodeTables[1].Allocate(kInitialTableCapacity);
+            if (!d.nodesReady) {
+                FUT_LOGW(Gfx, "interpolation: out of memory for the node tables - no hierarchical interpolation");
+            }
+            d.stats.nodeCapacity = d.nodesReady ? kInitialTableCapacity : 0u;
+        }
         try {
             d.substitutes.reserve(32);
             d.costHistogram.assign(kCostBuckets, 0);
@@ -1440,6 +2043,12 @@ History::History(const Settings& settings, const SnapLimits& limits) noexcept {
 History::~History() {
     if (impl_ != nullptr && impl_->trace != nullptr) {
         std::fclose(impl_->trace);
+    }
+    if (impl_ != nullptr && impl_->drawTrace != nullptr) {
+        std::fclose(impl_->drawTrace);
+    }
+    if (impl_ != nullptr && impl_->nodeTrace != nullptr) {
+        std::fclose(impl_->nodeTrace);
     }
     Registry().tracking.store(false);
 }
@@ -1484,6 +2093,13 @@ GeometryResult History::Geometry(ni::DrawKind kind, const ni::GeometryInput& in,
     return result;
 }
 
+void History::BeginFrame(std::uint32_t frame, bool detail) noexcept {
+    if (impl_ != nullptr && impl_->settings.enabled) {
+        impl_->detail = detail && impl_->settings.debug == DebugMode::Trace;
+        static_cast<void>(frame);  // EndFrame numbers the frames (frame = last displayed + 1)
+    }
+}
+
 void History::EndFrame(std::uint32_t frame, bool logFrame) noexcept {
     if (impl_ != nullptr) {
         impl_->EndFrame(frame, logFrame);
@@ -1499,7 +2115,12 @@ void History::OnObjectDestroyed(ni::GuestPtr object) noexcept {
 }
 
 const Settings& History::GetSettings() const noexcept {
-    static const Settings kOff{false, DebugMode::Off, {}};
+    static const Settings kOff = [] {
+        Settings s;
+        s.enabled = false;
+        s.hierarchy = false;
+        return s;
+    }();
     return impl_ != nullptr ? impl_->settings : kOff;
 }
 
@@ -1536,8 +2157,9 @@ void History::LogConfiguration() const noexcept {
                  "tick state");
         return;
     }
-    FUT_LOGI(Gfx, "interpolation: on ([render] interpolation_debug = %s; frame clock source %s; active while the clock "
-             "produces intermediate frames, display latency 1/2 tick at 120 Hz)%s",
+    FUT_LOGI(Gfx, "interpolation: on ([render] interpolation_hierarchy = %s, interpolation_debug = %s; frame clock "
+             "source %s; active while the clock produces intermediate frames, display latency 1/2 tick at 120 Hz)%s",
+             d.settings.hierarchy ? (d.nodesReady ? "on" : "on, but no node tables") : "off",
              DebugModeName(d.settings.debug), FrameInterpSourceName(),
              d.ready ? "" : " - history tables unavailable, nothing is interpolated");
 }
@@ -1579,29 +2201,39 @@ void History::LogStatistics() const noexcept {
              "interpolation: %llu frames (%llu recorded, %llu with alpha < 1); draws %llu: interpolated %llu, static %llu, "
              "alpha one %llu, first sight %llu, snapped %llu (translation %llu, rotation %llu, scale %llu, identity %llu, "
              "destroyed %llu, generation gap %llu, frame-driven %llu, snap-all %llu, not orthonormal %llu, mirror %llu), "
-             "not recorded %llu; skins without bone history %llu",
+             "not recorded %llu; skins without bone history %llu; recaptures after a destruction %llu",
              n(s.frames), n(s.recordedFrames), n(s.interpolatingFrames), n(t.draws), n(t.interpolated),
              r(SnapReason::Static), r(SnapReason::AlphaOne), r(SnapReason::FirstSight),
              n(snapped - t.reasons[Index(SnapReason::FirstSight)]), r(SnapReason::Translation), r(SnapReason::Rotation),
              r(SnapReason::Scale), r(SnapReason::Identity), r(SnapReason::Destroyed), r(SnapReason::GenerationGap),
              r(SnapReason::FrameDriven), r(SnapReason::SnapAll), r(SnapReason::NotOrthonormal), r(SnapReason::Mirror),
-             r(SnapReason::Disabled), n(t.skinsWithoutHistory));
+             r(SnapReason::Disabled), n(t.skinsWithoutHistory), n(t.recaptureDestroyed));
     FUT_LOGI(Gfx,
              "interpolation: cameras %llu (interpolated %llu, static %llu, alpha one %llu, first sight %llu, cuts %llu, "
-             "generation gap %llu, frame-driven %llu, snap-all %llu); skinned draws %llu (substitute skins %llu, bones "
-             "interpolated %llu, bone snaps %llu); frame-driven changes %llu",
+             "generation gap %llu, frame-driven %llu, snap-all %llu, destroyed %llu); skinned draws %llu (substitute "
+             "skins %llu, bones interpolated %llu, bone snaps %llu); frame-driven changes %llu",
              n(t.cameras), c(SnapReason::None), c(SnapReason::Static), c(SnapReason::AlphaOne), c(SnapReason::FirstSight),
              c(SnapReason::CameraCut), c(SnapReason::GenerationGap), c(SnapReason::FrameDriven), c(SnapReason::SnapAll),
-             n(t.skinnedDraws), n(t.skinsInterpolated), n(t.bonesInterpolated), n(t.boneSnaps), n(t.frameDrivenChanges));
+             c(SnapReason::Destroyed), n(t.skinnedDraws), n(t.skinsInterpolated), n(t.bonesInterpolated), n(t.boneSnaps),
+             n(t.frameDrivenChanges));
     FUT_LOGI(Gfx,
-             "interpolation: %llu generations (%llu gaps); table peak %u entries (capacity %u), bone pool peak %u records "
+             "interpolation: %llu generations (%llu gaps, %llu catch-up pairs interpolated); table peak %u entries "
+             "(capacity %u), bone pool peak %u records "
              "(%u KiB); %llu destructions recorded; overflows: table %llu, occurrences %llu, arena %llu; skin self-test "
              "%u run, %u failed (max relative difference %.2e); cost average %.1f us, p99 %.0f us, max %.1f us per "
              "recorded frame",
-             n(s.generations), n(s.generationGaps), s.tablePeak, s.tableCapacity, s.bonePoolPeak,
+             n(s.generations), n(s.generationGaps), n(s.pairSpans), s.tablePeak, s.tableCapacity, s.bonePoolPeak,
              static_cast<unsigned>(s.bonePoolPeak * sizeof(BoneRecord) / 1024), n(Registry().recorded.load()),
              n(s.tableOverflows), n(s.occurrenceOverflows), n(s.arenaFailures), s.skinSelfTests, s.skinSelfTestFailures,
              static_cast<double>(s.skinSelfTestMaxError), average, p99, d.Microseconds(s.costMaxTicks));
+    if (d.settings.hierarchy) {
+        FUT_LOGI(Gfx,
+                 "interpolation: hierarchy: %llu draws along the parent chain, %llu without node history (world); %llu "
+                 "node evaluations, %llu node snaps; %llu jump verdicts of the chain against the leaf rule; node table "
+                 "peak %u entries (capacity %u), %llu nodes not recorded, readable-page cache reset %llu times",
+                 n(t.hierarchical), n(t.hierarchyFallbacks), n(t.nodesEvaluated), n(t.nodeSnaps), n(t.chainDecisions),
+                 s.nodePeak, s.nodeCapacity, n(s.nodeOverflows), n(s.readableCacheResets));
+    }
 }
 
 }  // namespace gfx::interp

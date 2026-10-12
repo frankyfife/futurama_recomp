@@ -194,3 +194,36 @@ void SchemaTest::isoResult() {
     QCOMPARE(r.verdict(), IsoVerdict::CheckFailed);
     QVERIFY(!ParseIsoCheckResult("garbage", &r, &error));
 }
+
+// M5: tab "audio", widget "audio_device", section [audio] falls back to the audio tab, [audio] device of type string
+// gets the device list even without the widget name; advanced/developer audio keys stay on the advanced tab.
+void SchemaTest::audioTab() {
+    const ConfigSchema schema = LoadSample();
+    QCOMPARE(UiTabName(UiTab::Audio), QStringLiteral("audio"));
+    QCOMPARE(UiWidgetName(UiWidget::AudioDevice), QStringLiteral("audio_device"));
+    const QList<const KeyDef*> audio = schema.keysForTab(UiTab::Audio);
+    QVERIFY(audio.size() >= 5);
+    QCOMPARE(audio.first()->name, QStringLiteral("enabled"));
+    QCOMPARE(schema.find(QStringLiteral("audio.device"))->widget, UiWidget::AudioDevice);
+    QCOMPARE(schema.find(QStringLiteral("audio.master_volume"))->widget, UiWidget::Slider);
+    QCOMPARE(schema.find(QStringLiteral("audio.capture_wav"))->tab, UiTab::Advanced);
+    QCOMPARE(schema.find(QStringLiteral("audio.limiter"))->tab, UiTab::Advanced);
+    QCOMPARE(kAllTabs[2], UiTab::Audio);
+
+    const QByteArray json = R"({"schema_version":1,"build":"t","sections":[
+        {"name":"audio","keys":[
+          {"name":"device","type":"string","default":""},
+          {"name":"out","type":"string","default":"","ui":{"widget":"audio_device","tab":"audio"}},
+          {"name":"bad","type":"int","default":1,"ui":{"widget":"audio_device"}},
+          {"name":"label","type":"string","default":"","ui":{"widget":"text","tab":"game"}}]}]})";
+    ConfigSchema s;
+    QString error;
+    QStringList warnings;
+    QVERIFY(ParseSchema(json, &s, &error, &warnings));
+    QCOMPARE(s.find(QStringLiteral("audio.device"))->widget, UiWidget::AudioDevice);
+    QCOMPARE(s.find(QStringLiteral("audio.device"))->tab, UiTab::Audio);
+    QCOMPARE(s.find(QStringLiteral("audio.out"))->widget, UiWidget::AudioDevice);
+    QCOMPARE(s.find(QStringLiteral("audio.bad"))->widget, UiWidget::Spin);
+    QCOMPARE(s.find(QStringLiteral("audio.label"))->tab, UiTab::Game);
+    QCOMPARE(warnings.size(), 1);  // only "bad"
+}

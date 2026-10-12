@@ -1,0 +1,42 @@
+# m5_frontend.txt - M5 audio check, run R1/R2 of analysis\loader\m5_audio.md 9.2: the front-end music streams for
+# more than one loop (113.6 s, loop gap at the end) while the script navigates the main menu (menu sounds) and opens
+# the options once. Used by tools\m5_check.py (frontend run, with [audio] capture_wav). Format: README.md.
+# The main menu goes to the attract movie after about 60 s without input (m5_audio.md 3.4), so the script presses a
+# key at least every 20 s. Nothing is saved ("Uebernehmen" is never pressed).
+
+wait context Frontend timeout 60s
+wait main_menu timeout 60s
+log "M5: main menu"
+wait 10s                                  # music alone: level and continuity of the stream
+
+# menu sounds: cursor down/up (entry 0 "Neues Spiel" <-> entry 1 "Optionen")
+repeat 3
+  press DOWN 1t
+  wait 40t
+  press UP 1t
+  wait 40t
+end
+log "M5: menu navigation done"
+
+# options and back (go_to / go_back sounds)
+press DOWN 1t
+wait 30t
+press A 3t
+wait 150t
+screenshot m5_options
+press B 3t
+wait 150t
+expect no_dialog
+wait main_menu timeout 20s
+press UP 1t
+log "M5: options done"
+
+# keep the menu awake until the music has looped once (front-end.wav is 113.6 s long)
+repeat 6
+  wait 18s
+  press DOWN 1t
+  wait 30t
+  press UP 1t
+end
+log "M5: frontend done"
+quit 0

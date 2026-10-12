@@ -501,6 +501,14 @@ public:
     // back buffer - resolved and downsampled to DeviceInfo::outputWidth x outputHeight ([render] screenshot_size
     // = output). Call before Present.
     virtual bool CaptureOutput(Image& out) noexcept { return CaptureBackBuffer(out); }
+    // M3d F1 (add-only; default false = not supported, Present behaves as usual): until the next Present the
+    // persistent back buffer shown by the PREVIOUS Present stands for the current one - the present pass,
+    // CaptureBackBuffer and CaptureOutput read it - and that Present keeps the rotation (the current back buffer
+    // stays current for the next frame). For a frame between two logic ticks that drew nothing (the pacer's
+    // PresentRequest::repeatPrevious): the swap chain still gets one Present per frame, so the frame-latency
+    // waitable keeps its rhythm of one signal per Present on the vblank plans, and the screen shows the previous
+    // picture for one more frame. True if the device will do so.
+    virtual bool RepeatPreviousPicture() noexcept { return false; }
     // Highest sample count <= `requested` (1, 2, 4, 8) that the device supports for a render target of `color`
     // together with a depth buffer of `depth` (Format::Unknown = no depth); 1 = no multisampling.
     virtual std::uint32_t SupportedSampleCount(Format color, Format depth, std::uint32_t requested) const noexcept {

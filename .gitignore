@@ -37,3 +37,4 @@ analysis/_tmp*
 
 # --- added in M3c (launcher agent): player packages assembled by tools/package.py ---
 dist/
+/build*/

@@ -113,6 +113,19 @@ TEST_CASE("schema: every row has complete player-facing metadata") {
         if (FullName(k) == "render.monitor") {
             CHECK(k.type == core::ConfigKeyType::String);
             CHECK(k.widget == core::ConfigUiWidget::Monitor);
+        } else if (k.widget == core::ConfigUiWidget::Binding) {
+            // M4 (input agent): [input] pad_* / kbm_* binding lists are strings with their own validator.
+            CHECK(k.type == core::ConfigKeyType::String);
+            CHECK(std::string(k.section) == "input");
+            CHECK(k.validate != nullptr);
+        } else if (k.widget == core::ConfigUiWidget::AudioDevice) {
+            // M5 (tooling/launcher agent): an audio endpoint ID shown as a device list ([audio] device).
+            CHECK(k.type == core::ConfigKeyType::String);
+            CHECK(std::string(k.section) == "audio");
+        } else if (k.widget == core::ConfigUiWidget::Slider) {
+            // M4 (input agent): sliders are ranged int/float keys.
+            CHECK((k.type == core::ConfigKeyType::Int || k.type == core::ConfigKeyType::Float));
+            CHECK(k.ranged);
         } else {
             CHECK(k.widget == ExpectedWidget(k.type));
         }
@@ -497,9 +510,15 @@ TEST_CASE("schema: --print-config-schema JSON follows the shared contract (item 
             CHECK(key["restart_required"].IsBool());
             CHECK(key["developer"].IsBool());
             CHECK(key["dynamic_default"].IsBool());
-            static const std::set<std::string> kTabs = {"game", "graphics", "paths", "advanced"};
-            static const std::set<std::string> kWidgets = {"combo", "check", "spin",       "dspin",  "text",
-                                                           "file",  "dir",   "resolution", "monitor"};
+            // M4 (input agent): tab "controls", widgets "binding" and "slider" (src/INTERFACES.md 4.26).
+            // M5 (tooling/launcher agent): tab "audio", widget "audio_device" (src/INTERFACES.md 4.29).
+            static const std::set<std::string> kTabs = {"game", "graphics", "paths", "advanced", "controls", "audio"};
+            static const std::set<std::string> kWidgets = {"combo",   "check",   "spin",   "dspin",
+                                                           "text",    "file",    "dir",    "resolution",
+                                                           "monitor", "binding", "slider", "audio_device"};
+            if (k->unit != nullptr) {
+                CHECK(key["unit"].text == k->unit);
+            }
             CHECK(kTabs.count(key["ui"]["tab"].text) == 1);
             CHECK(key["ui"]["order"].IsInteger());
             CHECK(kWidgets.count(key["ui"]["widget"].text) == 1);

@@ -2,6 +2,7 @@
 // function name or -v2). Qt Test's own stdout logger stays silent in some Windows console setups
 // (observed with Qt 6.8.3 on the development machine, also for a minimal QTEST_GUILESS_MAIN probe), so
 // unless "-o" is given each class logs into <exe dir>\test_results\<Class>.txt and the file is echoed.
+#include "tst_bindings.h"
 #include "tst_ini.h"
 #include "tst_misc.h"
 #include "tst_paths.h"
@@ -54,6 +55,7 @@ int main(int argc, char* argv[]) {
     tests.push_back(std::make_unique<ValidationTest>());
     tests.push_back(std::make_unique<PathsTest>());
     tests.push_back(std::make_unique<MiscTest>());
+    tests.push_back(std::make_unique<BindingsTest>());
     int failed = 0;
     for (const auto& t : tests) {
         failed += RunClass(t.get(), args, explicitOutput);

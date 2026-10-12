@@ -1,0 +1,709 @@
+# SetRumble(left,right,force): 16 call sites
+== 0002198b in nofunc_000218f0
+     00021964  mov ecx, eax
+     00021966  call 0xefb60
+     0002196b  jmp 0x2196f
+     0002196d  xor eax, eax
+     0002196f  push edi
+     00021970  push ebx
+     00021971  push ebx
+     00021972  push ebx
+     00021973  mov dword ptr [esp + 0xac], 0xffffffff
+     0002197e  mov dword ptr [esi + 0x1c8], eax
+     00021984  call 0x9b690
+     00021989  mov ecx, eax
+== 00028ab3 in nofunc_00028960
+     00028a8e  fcomp dword ptr [0x293a18]  ([0x293a18]=0f)
+     00028a94  fnstsw ax
+     00028a96  test ah, 0x41
+     00028a99  jp 0x28acf
+     00028a9b  xor esi, esi
+     00028a9d  push esi
+     00028a9e  push esi
+     00028a9f  push esi
+     00028aa0  mov dword ptr [ebp + 0x1090], esi
+     00028aa6  mov dword ptr [ebp + 0x1094], esi
+     00028aac  call 0x9b690
+     00028ab1  mov ecx, eax
+== 00028ae2 in nofunc_00028960
+     00028ac7  pop esi
+     00028ac8  pop ebp
+     00028ac9  mov al, 1
+     00028acb  pop ebx
+     00028acc  ret 4
+     00028acf  mov ecx, dword ptr [ebp + 0x1094]
+     00028ad5  push 0
+     00028ad7  push ecx
+     00028ad8  mov edx, ecx
+     00028ada  push edx
+     00028adb  call 0x9b690
+     00028ae0  mov ecx, eax
+== 000297cf in nofunc_000290f0
+     000297a9  push esi
+     000297aa  push 1
+     000297ac  call 0x9ba40
+     000297b1  add esp, 8
+     000297b4  mov eax, 0x3f800000
+     000297b9  push esi
+     000297ba  push eax
+     000297bb  push eax
+     000297bc  mov dword ptr [ebp + 0x1094], eax
+     000297c2  mov dword ptr [ebp + 0x1090], eax
+     000297c8  call 0x9b690
+     000297cd  mov ecx, eax
+== 00032e88 in FUN_00032e50
+     00032e65  push ecx
+     00032e66  push esi
+     00032e67  mov esi, ecx
+     00032e69  mov dword ptr [esp + 4], esi
+     00032e6d  mov eax, dword ptr [esi + 0xc]
+     00032e70  mov ecx, dword ptr [eax + 0x7b8]
+     00032e76  test ecx, ecx
+     00032e78  mov dword ptr [esp + 0x10], 1
+     00032e80  je 0x32e8d
+     00032e82  push 0
+     00032e84  push 0
+     00032e86  push 0
+== 00032fa4 in FUN_00032ed0
+     00032f82  mov edx, dword ptr [ecx]
+     00032f84  push 1
+     00032f86  call dword ptr [edx]
+     00032f88  mov dword ptr [ebx + esi*4], 0
+     00032f8f  inc esi
+     00032f90  cmp esi, 2
+     00032f93  jl 0x32f76
+     00032f95  mov eax, dword ptr [ebx + 0xc]
+     00032f98  mov ecx, dword ptr [eax + 0x7b8]
+     00032f9e  push 0
+     00032fa0  push 0
+     00032fa2  push 0
+== 000334bb in FUN_00032fb0
+     00033494  fld dword ptr [ebx + 0x8c]
+     0003349a  push 0
+     0003349c  fld st(0)
+     0003349e  fmul st(1)
+     000334a0  fmul dword ptr [0x295608]  ([0x295608]=11.1111f)
+     000334a6  fstp dword ptr [esp + 0x18]
+     000334aa  mov eax, dword ptr [esp + 0x18]
+     000334ae  push eax
+     000334af  fstp st(0)
+     000334b1  push eax
+     000334b2  mov eax, dword ptr [ebx + 0xc]
+     000334b5  mov ecx, dword ptr [eax + 0x7b8]
+== 000434a8 in FUN_00043470
+     00043478  or byte ptr [eax], al
+     0004347a  mov eax, dword ptr [0x2dabc4]
+     0004347f  mov esi, dword ptr [eax + 0x94]
+     00043485  mov ecx, dword ptr [eax + 0x8c]
+     0004348b  push esi
+     0004348c  call 0x18fb0
+     00043491  mov eax, dword ptr [0x2dabc4]
+     00043496  mov ecx, dword ptr [eax + 0x94]
+     0004349c  mov ecx, dword ptr [ecx + 0x7b8]
+     000434a2  push 0
+     000434a4  push 0
+     000434a6  push 0
+== 0005eff7 in FUN_0005efe0
+     0005efcf  fld dword ptr [0x2939f8]  ([0x2939f8]=1f)
+     0005efd5  fdiv dword ptr [esp + 0xc]
+     0005efd9  fstp dword ptr [ecx + edx*4 + 0x78]
+     0005efdd  ret 0x10
+     0005efe0  mov al, byte ptr [ecx + 0xc8]
+     0005efe6  sub esp, 8
+     0005efe9  test al, al
+     0005efeb  je 0x5f002
+     0005efed  mov ecx, dword ptr [esp + 0xc]
+     0005eff1  push 0
+     0005eff3  push 0
+     0005eff5  push 0
+== 0005f0f6 in FUN_0005efe0
+     0005f0cf  and al, 0
+     0005f0d1  fcomp dword ptr [0x2939f8]  ([0x2939f8]=1f)
+     0005f0d7  fnstsw ax
+     0005f0d9  test ah, 0x41
+     0005f0dc  jne 0x5f0e6
+     0005f0de  mov dword ptr [esp], 0x3f800000
+     0005f0e6  mov eax, dword ptr [esp]
+     0005f0ea  mov ecx, dword ptr [esp + 4]
+     0005f0ee  push 0
+     0005f0f0  push eax
+     0005f0f1  push ecx
+     0005f0f2  mov ecx, dword ptr [esp + 0x18]
+== 000a5b90 in FUN_000a5940
+     000a5b6c  jne 0xa5f46
+     000a5b72  cmp byte ptr [esi], 0
+     000a5b75  je 0xa5c4f
+     000a5b7b  push ebp
+     000a5b7c  push 1
+     000a5b7e  call 0x9ba40
+     000a5b83  add esp, 8
+     000a5b86  push ebp
+     000a5b87  push ebp
+     000a5b88  push ebp
+     000a5b89  call 0x9b690
+     000a5b8e  mov ecx, eax
+== 000a81e0 in FUN_000a8190
+     000a81bd  adc al, 0xe8
+     000a81bf  sub eax, 0x6afff7d5
+     000a81c4  add byte ptr [edx + 1], ch
+     000a81c7  call 0x9ba40
+     000a81cc  mov eax, dword ptr [esi + 0x34]
+     000a81cf  mov ecx, dword ptr [esi + 0x30]
+     000a81d2  add esp, 8
+     000a81d5  push 0
+     000a81d7  push eax
+     000a81d8  push ecx
+     000a81d9  call 0x9b690
+     000a81de  mov ecx, eax
+== 000b04b2 in FUN_000b0490
+     000b048e  nop 
+     000b048f  nop 
+     000b0490  mov eax, dword ptr [0x2dabc4]
+     000b0495  mov ecx, dword ptr [0x2e6fa4]
+     000b049b  push esi
+     000b049c  mov esi, dword ptr [eax + 0x94]
+     000b04a2  add esi, 0xa04
+     000b04a8  test ecx, ecx
+     000b04aa  je 0xb04b7
+     000b04ac  push 1
+     000b04ae  push 0
+     000b04b0  push 0
+== 000c22e6 in FUN_000c22b0
+     000c22cb  push ebx
+     000c22cc  push ebp
+     000c22cd  push esi
+     000c22ce  push edi
+     000c22cf  mov ebp, ecx
+     000c22d1  call 0xca8f0
+     000c22d6  mov ecx, dword ptr [0x2e6fa4]
+     000c22dc  test ecx, ecx
+     000c22de  je 0xc22eb
+     000c22e0  push 1
+     000c22e2  push 0
+     000c22e4  push 0
+== 000c83a3 in FUN_000c8360
+     000c837b  mov esi, ecx
+     000c837d  push edi
+     000c837e  mov dword ptr [esp + 0x14], esi
+     000c8382  mov dword ptr [esi], 0x2a3454
+     000c8388  mov dword ptr [esi + 8], 0x2a344c
+     000c838f  xor ebx, ebx
+     000c8391  push ebx
+     000c8392  push ebx
+     000c8393  push ebx
+     000c8394  mov dword ptr [esp + 0x2c], 0x11
+     000c839c  call 0x9b690
+     000c83a1  mov ecx, eax
+== 000c89ce in FUN_000c8360
+     000c89ac  mov eax, esp
+     000c89ae  mov dword ptr [eax], ebx
+     000c89b0  mov eax, dword ptr [0x2eb310]
+     000c89b5  mov ecx, dword ptr [eax + 0xf0]
+     000c89bb  mov edx, dword ptr [ecx]
+     000c89bd  mov dword ptr [esp + 0x14], esp
+     000c89c1  call dword ptr [edx + 0x20]
+     000c89c4  push ebx
+     000c89c5  push ebx
+     000c89c6  push ebx
+     000c89c7  call 0x9b690
+     000c89cc  mov ecx, eax
+
+# SetVibrationOption(on,delay): 13 call sites
+== 00021992 in nofunc_000218f0
+     0002196d  xor eax, eax
+     0002196f  push edi
+     00021970  push ebx
+     00021971  push ebx
+     00021972  push ebx
+     00021973  mov dword ptr [esp + 0xac], 0xffffffff
+     0002197e  mov dword ptr [esi + 0x1c8], eax
+     00021984  call 0x9b690
+     00021989  mov ecx, eax
+     0002198b  call 0x9b6b0
+     00021990  push ebx
+     00021991  push ebx
+== 00028aba in nofunc_00028960
+     00028a99  jp 0x28acf
+     00028a9b  xor esi, esi
+     00028a9d  push esi
+     00028a9e  push esi
+     00028a9f  push esi
+     00028aa0  mov dword ptr [ebp + 0x1090], esi
+     00028aa6  mov dword ptr [ebp + 0x1094], esi
+     00028aac  call 0x9b690
+     00028ab1  mov ecx, eax
+     00028ab3  call 0x9b6b0
+     00028ab8  push esi
+     00028ab9  push esi
+== 00029426 in nofunc_000290f0
+     000293fa  jne 0x2945e
+     000293fc  mov ecx, dword ptr [ebp + 0x1084]
+     00029402  mov dword ptr [ebp + 0x14], edi
+     00029405  mov eax, dword ptr [ecx + 0xe0]
+     0002940b  test eax, eax
+     0002940d  push 0
+     0002940f  jne 0x2944f
+     00029411  mov edx, dword ptr [0x2e7b84]
+     00029417  mov ecx, dword ptr [edx + 0xa8]
+     0002941d  call 0xa1820
+     00029422  push 0
+     00029424  push 0
+== 0002978e in nofunc_000290f0
+     00029766  push ss
+     00029767  fdiv st(7), st(0)
+     00029769  inc dword ptr [ebx - 0x40fcf783]
+     0002976f  or al, byte ptr [eax]
+     00029771  add byte ptr [eax], al
+     00029773  jne 0x29801
+     00029779  mov eax, dword ptr [ebp + 0x1084]
+     0002977f  mov dword ptr [ebp + 0x14], edi
+     00029782  cmp dword ptr [eax + 0xe0], 1
+     00029789  push esi
+     0002978a  jne 0x297f2
+     0002978c  push 1
+== 000297ac in nofunc_000290f0
+     00029784  loopne 0x29786
+     00029786  add byte ptr [eax], al
+     00029788  add dword ptr [esi + 0x75], edx
+     0002978b  push 1
+     0002978e  call 0x9ba40
+     00029793  mov ecx, dword ptr [0x2e7b84]
+     00029799  mov ecx, dword ptr [ecx + 0xa8]
+     0002979f  add esp, 8
+     000297a2  push 1
+     000297a4  call 0xa1820
+     000297a9  push esi
+     000297aa  push 1
+== 000a5b7e in FUN_000a5940
+     000a5b50  call 0xa57f0
+     000a5b55  mov ecx, dword ptr [esi + 0x8c]
+     000a5b5b  inc ecx
+     000a5b5c  mov dword ptr [esi + 0x8c], ecx
+     000a5b62  cmp ecx, dword ptr [esi + 0x80]
+     000a5b68  jb 0xa5b40
+     000a5b6a  test bl, bl
+     000a5b6c  jne 0xa5f46
+     000a5b72  cmp byte ptr [esi], 0
+     000a5b75  je 0xa5c4f
+     000a5b7b  push ebp
+     000a5b7c  push 1
+== 000a6311 in FUN_000a62b0
+     000a62f6  call dword ptr [edx + 0x40]
+     000a62f9  mov eax, dword ptr [edi]
+     000a62fb  push 1
+     000a62fd  push ebx
+     000a62fe  mov ecx, edi
+     000a6300  call dword ptr [eax + 0x44]
+     000a6303  mov edx, dword ptr [edi]
+     000a6305  mov ecx, edi
+     000a6307  call dword ptr [edx + 0x40]
+     000a630a  call 0xcaf40
+     000a630f  push ebx
+     000a6310  push ebx
+== 000a81c7 in FUN_000a8190
+     000a81a5  sbb al, 0xe8
+     000a81a7  aad 0x16
+     000a81a9  clc 
+     000a81aa  inc dword ptr [eax + eax*8 + 0x4e8b4375]
+     000a81b1  and al, ch
+     000a81b3  leave 
+     000a81b4  push ss
+     000a81b5  clc 
+     000a81b6  inc dword ptr [eax + eax*8 + 0x4e8b3775]
+     000a81bd  adc al, 0xe8
+     000a81bf  sub eax, 0x6afff7d5
+     000a81c4  add byte ptr [edx + 1], ch
+== 000a8260 in FUN_000a8220
+     000a823d  lea edx, [esi + 0x30]
+     000a8240  push edx
+     000a8241  mov byte ptr [esi + 0x24], 1
+     000a8245  mov byte ptr [esi + 0x25], bl
+     000a8248  mov byte ptr [esi + 0x3c], 1
+     000a824c  mov byte ptr [esi + 0x3d], bl
+     000a824f  mov dword ptr [esi + 0x28], ebx
+     000a8252  call 0x9b690
+     000a8257  mov ecx, eax
+     000a8259  call 0x9b760
+     000a825e  push ebx
+     000a825f  push ebx
+== 000c5922 in FUN_000c5340
+     000c5904  push ecx
+     000c5905  push ebx
+     000c5906  mov ecx, edi
+     000c5908  call 0x51d50
+     000c590d  inc ebx
+     000c590e  cmp ebx, 5
+     000c5911  jl 0xc5900
+     000c5913  mov ecx, dword ptr [esp + 0x24]
+     000c5917  push 1
+     000c5919  call 0xe0190
+     000c591e  push 0
+     000c5920  push 1
+== 000c83aa in FUN_000c8360
+     000c8382  mov dword ptr [esi], 0x2a3454
+     000c8388  mov dword ptr [esi + 8], 0x2a344c
+     000c838f  xor ebx, ebx
+     000c8391  push ebx
+     000c8392  push ebx
+     000c8393  push ebx
+     000c8394  mov dword ptr [esp + 0x2c], 0x11
+     000c839c  call 0x9b690
+     000c83a1  mov ecx, eax
+     000c83a3  call 0x9b6b0
+     000c83a8  push ebx
+     000c83a9  push ebx
+== 000d350a in FUN_000d34d0
+     000d34f1  jle 0xd3503
+     000d34f3  mov eax, dword ptr [esi + 0x6c]
+     000d34f6  mov ecx, dword ptr [eax + edi*4]
+     000d34f9  call 0xd63c0
+     000d34fe  inc edi
+     000d34ff  cmp edi, ebp
+     000d3501  jl 0xd34f3
+     000d3503  pop edi
+     000d3504  mov dword ptr [esi + 0x38], ebx
+     000d3507  pop ebp
+     000d3508  push ebx
+     000d3509  push ebx
+== 000d5757 in FUN_000d5700
+     000d572f  retf 
+     000d5730  je 0xd5740
+     000d5732  dec dword ptr [ecx + 4]
+     000d5735  jne 0xd573d
+     000d5737  mov edx, dword ptr [ecx]
+     000d5739  push 1
+     000d573b  call dword ptr [edx]
+     000d573d  mov dword ptr [esi + 0x3c], ebx
+     000d5740  push 0x3f800000  (=1f)
+     000d5745  push 1
+     000d5747  mov dword ptr [esi + 0x11c], ebx
+     000d574d  mov dword ptr [esi + 0x120], 0x3dcccd38
+
+# AddRumbleEffect(left,right,duration,shape): 24 call sites
+== 00012f85 in FUN_00012e40
+     00012f57  test ah, 0x41
+     00012f5a  jne 0x12f64
+     00012f5c  mov dword ptr [esp + 0x10], 0x3f800000
+     00012f64  mov ecx, dword ptr [0x2d6748]  ([0x2d6748]=0.02f)
+     00012f6a  mov eax, dword ptr [esp + 0x10]
+     00012f6e  mov edx, dword ptr [0x2dabc4]
+     00012f74  push 0
+     00012f76  push ecx
+     00012f77  mov ecx, dword ptr [edx + 0x94]
+     00012f7d  push eax
+     00012f7e  push eax
+     00012f7f  add ecx, 0xa04
+== 00038b5c in FUN_00038880
+     00038b37  stosd dword ptr es:[edi], eax
+     00038b38  sub eax, 0x8c8a8b00
+     00038b3d  add byte ptr [eax], al
+     00038b3f  add al, ch
+     00038b41  jmp 0x38ae8
+     00038b43  std 
+     00038b44  jmp ptr [edx]
+     00038b47  push 0x3e99999a  (=0.3f)
+     00038b4c  push 0x3f000000  (=0.5f)
+     00038b51  push 0x3f000000  (=0.5f)
+     00038b56  lea ecx, [ebx + 0xa04]
+== 00038d78 in FUN_00038880
+     00038d4c  int3 
+     00038d4d  cmp eax, 0x68
+     00038d52  aas 
+     00038d53  push 0
+     00038d55  push 0
+     00038d57  push 0x3f4ccccd  (=0.8f)
+     00038d5c  call 0x13130
+     00038d61  push 0
+     00038d63  push 0x3f000000  (=0.5f)
+     00038d68  push 0x3f000000  (=0.5f)
+     00038d6d  push 0x3f000000  (=0.5f)
+     00038d72  lea ecx, [ebx + 0xa04]
+== 0003c5ea in FUN_0003c090
+     0003c5bf  call dword ptr [edx + 0xd4]
+     0003c5c5  mov ecx, dword ptr [ebx + 0x10]
+     0003c5c8  mov edx, dword ptr [ecx]
+     0003c5ca  push 2
+     0003c5cc  call dword ptr [edx + 0xc]
+     0003c5cf  test al, al
+     0003c5d1  je 0x3c5ef
+     0003c5d3  push 0
+     0003c5d5  push 0x3e4ccccd  (=0.2f)
+     0003c5da  push 0x3f000000  (=0.5f)
+     0003c5df  push 0x3f000000  (=0.5f)
+     0003c5e4  lea ecx, [ebx + 0xa04]
+== 0004287a in FUN_00042800
+     00042853  push 0
+     00042855  lea ecx, [esp + 0x10]
+     00042859  push ecx
+     0004285a  mov ecx, dword ptr [eax + edx*4]
+     0004285d  push ecx
+     0004285e  call 0xc9a30
+     00042863  add esp, 0xc
+     00042866  push 3
+     00042868  push 0x3eb33333  (=0.35f)
+     0004286d  push 0x3f000000  (=0.5f)
+     00042872  push 0
+     00042874  lea ecx, [edi + 0xa04]
+== 000428eb in FUN_00042800
+     000428c4  push 0
+     000428c6  lea eax, [esp + 0x10]
+     000428ca  push eax
+     000428cb  mov edx, dword ptr [ecx + edx*4]
+     000428ce  push edx
+     000428cf  call 0xc9a30
+     000428d4  add esp, 0xc
+     000428d7  push 3
+     000428d9  push 0x3eb33333  (=0.35f)
+     000428de  push 0x3f000000  (=0.5f)
+     000428e3  push 0
+     000428e5  lea ecx, [edi + 0xa04]
+== 0004539f in FUN_000445a0
+     0004536f  pushfd 
+     00045370  and al, 0xb4
+     00045372  add byte ptr [eax], al
+     00045374  add byte ptr [ebx + 0x52ff5011], cl
+     0004537a  adc al, 0x85
+     0004537c  sal byte ptr [esi + eax - 0x75], 0x4d
+     00045381  or byte ptr [ecx + 0x4d8b4048], cl
+     00045387  or byte ptr [edx], ch
+     0004538a  push 0x3e19999a  (=0.15f)
+     0004538f  push 0x3eb33333  (=0.35f)
+     00045394  push 0x3eb33333  (=0.35f)
+     00045399  add ecx, 0xa04
+== 000456b9 in FUN_000445a0
+     0004568a  cmp eax, 2
+     0004568d  je 0x456a2
+     0004568f  push 0
+     00045691  push 0x3ecccccd  (=0.4f)
+     00045696  push 0x3f800000  (=1f)
+     0004569b  push 0x3f000000  (=0.5f)
+     000456a0  jmp 0x456b3
+     000456a2  push 0
+     000456a4  push 0x3ecccccd  (=0.4f)
+     000456a9  push 0x3f000000  (=0.5f)
+     000456ae  push 0x3f800000  (=1f)
+     000456b3  add ecx, 0xa04
+== 000517a9 in nofunc_00051520
+     0005177e  test al, al
+     00051780  jne 0x517ba
+     00051782  push 0xb8
+     00051787  mov ecx, esi
+     00051789  call 0x33e20
+     0005178e  test al, al
+     00051790  je 0x517c0
+     00051792  push 0
+     00051794  push 0x3e4ccccd  (=0.2f)
+     00051799  push 0x3f000000  (=0.5f)
+     0005179e  push 0x3f000000  (=0.5f)
+     000517a3  lea ecx, [esi + 0xa04]
+== 00051980 in nofunc_00051520
+     00051950  test byte ptr [eax + eax + 0x66eb0000], al
+     00051957  mov eax, dword ptr [esi + 0xa4]
+     0005195d  push eax
+     0005195e  mov ecx, esi
+     00051960  call 0x4feb0
+     00051965  test al, al
+     00051967  je 0x51985
+     00051969  push 0
+     0005196b  push 0x3e99999a  (=0.3f)
+     00051970  push 0x3ecccccd  (=0.4f)
+     00051975  push 0x3ecccccd  (=0.4f)
+     0005197a  lea ecx, [esi + 0xa04]
+== 000519d4 in nofunc_00051520
+     000519aa  mov ecx, dword ptr [esi + 0x528]
+     000519b0  test ecx, ecx
+     000519b2  je 0x519d9
+     000519b4  mov edx, dword ptr [ecx]
+     000519b6  call dword ptr [edx + 0x7c]
+     000519b9  test eax, eax
+     000519bb  jne 0x519d9
+     000519bd  push 0
+     000519bf  push 0x3e99999a  (=0.3f)
+     000519c4  push 0x3f19999a  (=0.6f)
+     000519c9  push 0x3f19999a  (=0.6f)
+     000519ce  lea ecx, [esi + 0xa04]
+== 00051c09 in FUN_00051ad0
+     00051bdb  mov ecx, esi
+     00051bdd  call 0x354b0
+     00051be2  fld dword ptr [ebp + 8]
+     00051be5  fcomp dword ptr [0x293b8c]  ([0x293b8c]=10f)
+     00051beb  fnstsw ax
+     00051bed  test ah, 0x41
+     00051bf0  jne 0x51c0e
+     00051bf2  push 0
+     00051bf4  push 0x3e99999a  (=0.3f)
+     00051bf9  push 0x3f000000  (=0.5f)
+     00051bfe  push 0x3f000000  (=0.5f)
+     00051c03  lea ecx, [esi + 0xa04]
+== 00051f64 in FUN_00051da0
+     00051f42  add al, byte ptr [eax]
+     00051f44  pop edi
+     00051f45  pop esi
+     00051f46  pop ebx
+     00051f47  mov esp, ebp
+     00051f49  pop ebp
+     00051f4a  ret 8
+     00051f4d  push 3
+     00051f4f  push 0x3e19999a  (=0.15f)
+     00051f54  push 0x3ecccccd  (=0.4f)
+     00051f59  push 0x3ecccccd  (=0.4f)
+     00051f5e  lea ecx, [edi + 0xa04]
+== 00052e21 in FUN_00052c20
+     00052df3  test ah, 5
+     00052df6  jp 0x52e85
+     00052dfc  mov eax, dword ptr [esi]
+     00052dfe  mov ecx, esi
+     00052e00  call dword ptr [eax + 0x12c]
+     00052e06  test al, al
+     00052e08  je 0x52e85
+     00052e0a  push 0
+     00052e0c  push 0x3e4ccccd  (=0.2f)
+     00052e11  push 0x3f000000  (=0.5f)
+     00052e16  push 0x3f000000  (=0.5f)
+     00052e1b  lea ecx, [esi + 0xa04]
+== 0005c1d5 in FUN_0005a700
+     0005c1a8  dec dword ptr [ebx + 0x6a104e]
+     0005c1ae  push 0
+     0005c1b0  push 3
+     0005c1b2  lea edx, [esp + 0x4c]
+     0005c1b6  push edx
+     0005c1b7  push 0x32
+     0005c1b9  call 0x3fea0
+     0005c1be  push 0
+     0005c1c0  push 0x3e99999a  (=0.3f)
+     0005c1c5  push 0x3f000000  (=0.5f)
+     0005c1ca  push 0x3f000000  (=0.5f)
+     0005c1cf  lea ecx, [esi + 0xa04]
+== 0005c22a in FUN_0005a700
+     0005c1fa  test dword ptr [edx], ecx
+     0005c1fc  add dword ptr [eax], eax
+     0005c1fe  add byte ptr [ebx + 0x28be8b06], cl
+     0005c204  add eax, 0x6a0000
+     0005c209  push 0x41c80000  (=25f)
+     0005c20e  mov ecx, esi
+     0005c210  call dword ptr [eax + 0x7c]
+     0005c213  push 0
+     0005c215  push 0x3e99999a  (=0.3f)
+     0005c21a  push 0x3f000000  (=0.5f)
+     0005c21f  push 0x3f000000  (=0.5f)
+     0005c224  lea ecx, [esi + 0xa04]
+== 0005c624 in FUN_0005a700
+     0005c5f6  mov word ptr [eax], es
+     0005c5f8  add byte ptr [eax], al
+     0005c5fa  test ecx, ecx
+     0005c5fc  je 0x5c60d
+     0005c5fe  push 0x3ecccccd  (=0.4f)
+     0005c603  push 0x3f000000  (=0.5f)
+     0005c608  call 0x11290
+     0005c60d  push 1
+     0005c60f  push 0x3e4ccccd  (=0.2f)
+     0005c614  push 0x3f666666  (=0.9f)
+     0005c619  push 0x3f666666  (=0.9f)
+     0005c61e  lea ecx, [esi + 0xa04]
+== 0005c943 in FUN_0005a700
+     0005c916  call 0x3ce70
+     0005c91b  mov edx, dword ptr [esi]
+     0005c91d  lea eax, [esp + 0x4c]
+     0005c921  push eax
+     0005c922  mov ecx, esi
+     0005c924  mov byte ptr [esp + 0x1f], 0
+     0005c929  call dword ptr [edx + 0x34]
+     0005c92c  push 1
+     0005c92e  push 0x3e4ccccd  (=0.2f)
+     0005c933  push 0x3f666666  (=0.9f)
+     0005c938  push 0x3f666666  (=0.9f)
+     0005c93d  lea ecx, [esi + 0xa04]
+== 00080dcd in FUN_00080690
+     00080da3  mov dword ptr [esi + 4], eax
+     00080da6  fstp dword ptr [esp + 0x40]
+     00080daa  mov ecx, dword ptr [esp + 0x40]
+     00080dae  mov dword ptr [esi + 8], ecx
+     00080db1  jmp 0x80db5
+     00080db3  fstp st(0)
+     00080db5  xor esi, esi
+     00080db7  push esi
+     00080db8  push 0x3e99999a  (=0.3f)
+     00080dbd  push 0x3f000000  (=0.5f)
+     00080dc2  push 0x3f000000  (=0.5f)
+     00080dc7  lea ecx, [ebx + 0xa04]
+== 00082eb0 in FUN_00082a20
+     00082e81  push eax
+     00082e82  call 0xc9c10
+     00082e87  mov eax, dword ptr [0x2dabc4]
+     00082e8c  mov eax, dword ptr [eax + 0x94]
+     00082e92  add esp, 8
+     00082e95  test eax, eax
+     00082e97  je 0x82eff
+     00082e99  push 0
+     00082e9b  push 0x3e99999a  (=0.3f)
+     00082ea0  push 0x3f000000  (=0.5f)
+     00082ea5  push 0x3f000000  (=0.5f)
+     00082eaa  lea ecx, [eax + 0xa04]
+== 00083c47 in nofunc_000837d0
+     00083c1c  sbb dword ptr [edi], eax
+     00083c1e  add byte ptr [eax], al
+     00083c20  mov ecx, dword ptr [esi + 0x528]
+     00083c26  mov edx, dword ptr [ecx]
+     00083c28  call dword ptr [edx + 0x7c]
+     00083c2b  cmp eax, 4
+     00083c2e  jne 0x83c4c
+     00083c30  push 0
+     00083c32  push 0x3f4ccccd  (=0.8f)
+     00083c37  push 0x3f666666  (=0.9f)
+     00083c3c  push 0x3f666666  (=0.9f)
+     00083c41  lea ecx, [esi + 0xa04]
+== 00084926 in FUN_000843d0
+     000848fa  rep movsd dword ptr es:[edi], dword ptr [esi]
+     000848fc  mov esi, dword ptr [ebp + 8]
+     000848ff  push 0x29d548  (=3.84177e-39f)
+     00084904  mov ecx, ebx
+     00084906  call 0x39d60
+     0008490b  test al, al
+     0008490d  je 0x8492b
+     0008490f  push 0
+     00084911  push 0x3e99999a  (=0.3f)
+     00084916  push 0x3f000000  (=0.5f)
+     0008491b  push 0x3f000000  (=0.5f)
+     00084920  lea ecx, [ebx + 0xa04]
+== 00085a73 in FUN_00084e60
+     00085a47  inc esp
+     00085a48  and al, 0x38
+     00085a4a  push 0
+     00085a4c  fmul dword ptr [0x293a00]  ([0x293a00]=0.5f)
+     00085a52  push 0x3e99999a  (=0.3f)
+     00085a57  lea ecx, [ebx + 0xa04]
+     00085a5d  fadd dword ptr [0x2939f8]  ([0x2939f8]=1f)
+     00085a63  fmul dword ptr [0x293a00]  ([0x293a00]=0.5f)
+     00085a69  fstp dword ptr [esp + 0x74]
+     00085a6d  mov eax, dword ptr [esp + 0x74]
+     00085a71  push eax
+     00085a72  push eax
+== 00085ad0 in FUN_00084e60
+     00085aa9  push eax
+     00085aaa  call dword ptr [edx + 0x70]
+     00085aad  mov edx, dword ptr [esi]
+     00085aaf  mov ecx, esi
+     00085ab1  call dword ptr [edx + 0x7c]
+     00085ab4  cmp eax, 3
+     00085ab7  jne 0x85ad5
+     00085ab9  push 0
+     00085abb  push 0x3e99999a  (=0.3f)
+     00085ac0  push 0x3f000000  (=0.5f)
+     00085ac5  push 0x3f000000  (=0.5f)
+     00085aca  lea ecx, [ebx + 0xa04]
+
+# SetRumbleMute(on): 1 call sites
+== 000b04be in FUN_000b0490
+     000b049b  push esi
+     000b049c  mov esi, dword ptr [eax + 0x94]
+     000b04a2  add esi, 0xa04
+     000b04a8  test ecx, ecx
+     000b04aa  je 0xb04b7
+     000b04ac  push 1
+     000b04ae  push 0
+     000b04b0  push 0
+     000b04b2  call 0x9b6b0
+     000b04b7  mov ecx, dword ptr [esp + 8]
+     000b04bb  push ecx
+     000b04bc  mov ecx, esi
+

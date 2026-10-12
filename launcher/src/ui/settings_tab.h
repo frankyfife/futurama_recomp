@@ -38,6 +38,14 @@ public:
     static constexpr const char* kFormLabelProperty = "flFormLabel";
     // The scrolled content (screenshots of the whole tab).
     QWidget* contentWidget() const { return content_; }
+    // M4: errors of editors outside the key rows (the binding tables of the controls tab) count for the footer
+    // and focusFirstError(); `focus` focuses the first of them.
+    void setExtraErrors(std::function<int()> count, std::function<bool()> focus);
+    // M4: rows outside the generic list that "Auf Standard zurücksetzen" also resets (the binding tables); counted for
+    // the confirmation.
+    void setExtraResetCount(std::function<int()> count);
+    // M4: hides "this game build has no settings here" (the tab has other content, e.g. the binding tables).
+    void setEmptyNoteVisible(bool visible);
 
 signals:
     void valueEdited(const fl::KeyDef* key);
@@ -62,6 +70,10 @@ private:
     QVBoxLayout* topLayout_ = nullptr;
     QVBoxLayout* bottomLayout_ = nullptr;
     QWidget* content_ = nullptr;
+    QLabel* emptyNote_ = nullptr;
+    std::function<int()> extraErrorCount_;
+    std::function<bool()> extraFocus_;
+    std::function<int()> extraResetCount_;
     int labelWidth_ = 0;
 };
 
