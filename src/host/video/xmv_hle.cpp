@@ -14,6 +14,8 @@
 #include "audio/dsound_hle.h"
 #include "audio/xdk_entries.h"
 #include "core/guest.h"
+#include "core/config.h"
+#include "core/config_schema.h"
 #include "core/guest_call.h"
 #include "core/log.h"
 #include "gfx/d3d_shim.h"
@@ -134,6 +136,7 @@ struct Movie {
     bool ended = false;
     bool failed = false;
     bool audioClock = false;
+    bool skipAll = false;  // [debug] movies = skip
     std::uint64_t lastAudioFrames = 0;
     std::int64_t lastAudioChange = 0;
     std::int64_t freq = 1;
@@ -151,6 +154,26 @@ std::atomic<std::uint32_t> g_nextId{1};
 std::atomic<std::uint32_t> g_opened{0}, g_finished{0}, g_closedEarly{0}, g_failed{0}, g_framesShown{0},
     g_framesDropped{0}, g_maxLateMs{0}, g_audioPackets{0}, g_audioRejected{0};
 std::atomic<bool> g_loggedDecoderMissing{false};
+std::atomic<int> g_skipAll{-1};  // [debug] movies = skip (-1 = not read yet)
+
+// [debug] movies = skip: every movie ends at its first GetNextFrame without picture and sound (the M2-M5 stub
+// behaviour) - for regression checks whose frame timelines assume it (m2/m3/m3c/m3d checks).
+bool SkipAllMovies() noexcept {
+    int v = g_skipAll.load(std::memory_order_relaxed);
+    if (v < 0) {
+        std::string text = "play";
+        try {
+            text = core::GetConfig().GetString("debug", "movies", core::ConfigKeyDefault("debug", "movies"));
+        } catch (...) {
+        }
+        v = (text == "skip" || text == "SKIP") ? 1 : 0;
+        g_skipAll.store(v, std::memory_order_relaxed);
+        if (v != 0) {
+            FUT_LOGI(Vid, "XMV: [debug] movies = skip - every movie ends at once (no picture, no sound)");
+        }
+    }
+    return v != 0;
+}
 
 Movie* Find(void* decoder) noexcept {
     if (decoder == nullptr) {
@@ -259,8 +282,10 @@ std::uint64_t ClockNow(Movie& m) noexcept {
     }
     const TrackStream& t = *m.tracks.front();
     const std::uint64_t played = FramesPlayed(t);
-    bool finished = m.core.Eof() && m.core.Audio(t.track).empty() && t.framesSubmitted != 0 &&
-                    played >= t.framesSubmitted;
+    // Played out: everything submitted and either counted as played, within 100 ms of it (a resampling voice
+    // holds its last source frames in the filter and never reports them) or every packet completed.
+    bool finished = m.core.Eof() && m.core.Audio(t.track).empty() && t.discontinuity && t.framesSubmitted != 0 &&
+                    (played + t.rate / 10u >= t.framesSubmitted || snd::DsoundStreamQueuedPackets(t.stream) == 0);
     if (played != m.lastAudioFrames) {
         m.lastAudioFrames = played;
         m.lastAudioChange = now;
@@ -465,6 +490,7 @@ std::int32_t __stdcall XMVDecoder_CreateDecoderForPacketsHle(std::uint32_t flags
                 m->source = std::make_unique<GamePacketSource>(A(context), A(getNextPacket),
                                                                A(releasePreviousPacket), parsed.maxPacketSize);
                 m->core.Open(m->source.get(), parsed.firstPacketSize, 0);
+                m->skipAll = SkipAllMovies();
                 {
                     std::lock_guard<std::mutex> lock(g_mutex);
                     g_movies[A(handle)] = std::move(m);
@@ -489,9 +515,11 @@ std::int32_t __stdcall XMVDecoder_CreateDecoderForPacketsHle(std::uint32_t flags
                 rates = std::to_string(t.sampleRate) + " Hz " + std::to_string(t.channels) + " ch";
             }
         }
-        FUT_LOGI(Vid, "XMV: movie #%u: %ux%u, %u ms, %u audio tracks%s%s, packets up to 0x%X bytes", id,
-                 parsed.width, parsed.height, parsed.durationMs, static_cast<std::uint32_t>(parsed.tracks.size()),
-                 rates.empty() ? "" : " of ", rates.c_str(), parsed.maxPacketSize);
+        FUT_LOGI(Vid,
+                 "XMV: movie #%u: %ux%u, %u ms, %u audio tracks%s%s, packets up to 0x%X bytes (first 0x%X, next 0x%X)",
+                 id, parsed.width, parsed.height, parsed.durationMs, static_cast<std::uint32_t>(parsed.tracks.size()),
+                 rates.empty() ? "" : " of ", rates.c_str(), parsed.maxPacketSize, parsed.firstPacketSize,
+                 parsed.nextPacketSize);
     }
     XDK_TRACE_CALL(
         XMVDecoder_CreateDecoderForPackets,
@@ -568,6 +596,8 @@ std::int32_t __stdcall XMVDecoder_EnableAudioStreamHle(void* decoder, std::uint3
     Movie* m = Find(decoder);
     if (m == nullptr || stream >= m->header.tracks.size() || m->started) {
         hr = kE_InvalidArg;
+    } else if (m->skipAll) {
+        created = nullptr;  // [debug] movies = skip: no stream, like the M2-M5 stub
     } else if (TrackStream* existing = FindTrack(*m, stream)) {
         created = existing->stream;
     } else {
@@ -657,6 +687,10 @@ std::int32_t __stdcall XMVDecoder_GetNextFrameHle(void* decoder, void* surface, 
             res = kXmvEndOfFile;
         } else if (m->failed) {
             res = kXmvFailure;
+        } else if (m->skipAll) {
+            m->ended = true;  // [debug] movies = skip: end of file on the first frame (the M2-M5 stub)
+            g_finished.fetch_add(1);
+            res = kXmvEndOfFile;
         } else {
             snd::DirectSoundDoWorkHle();  // finished audio packets -> free slots (the original calls DoWork too)
             if (!m->started) {

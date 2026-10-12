@@ -443,7 +443,8 @@ extract/ff failures).
   renderer (the game must still run).
 - Texture renderer data (`NiPCTextureData`, nipc_renderer.h): reserved host fields `+0x64` = host texture
   handle id (`rhi::TextureHandle::id`, 0 = none), `+0x68` = texconv status/source, `+0x6C` = uploaded
-  NiPixelData revision. The movie player's YUY2 textures (+0x3C from the D3D shim) stay black until M6.
+  NiPixelData revision. The movie player's YUY2 textures (+0x3C from the D3D shim) show the XMV HLE's frames
+  since M6 (section 15; until M6 they were black).
   `TextureResolver` looks up +0x64 along the chain at NiTexture +0x20; data destroy (slot 0 of the data
   vtables, slot 33) destroys the RHI texture.
 - Slot 39 stays FALSE, NiGeometryData +0x30 stays 0 (renderer.md 5.3); a static geometry cache keyed by
@@ -480,8 +481,8 @@ extract/ff failures).
   `kHostOwnsTexture` (0x100), +0x6C revision; data slot 0 destroys an owned texture. A slot-65 stack probe
   measures the loading-fiber stack use (log line `NiPCRenderer slot 65 stack: ...`).
 - **TextureResolver** = FUN_0015F930: data created on demand for an NiSourceTexture, FUN_0015E260 re-upload when a
-  non-static texture's (+0x38 == 0) NiPixelData revision changed, movie (+0x3C from the shim) and rendered
-  textures -> black texture.
+  non-static texture's (+0x38 == 0) NiPixelData revision changed, rendered textures -> black texture; movie
+  textures (+0x3C from the shim) -> `GpuRenderer::MovieTexture` since M6 (section 15; black before).
 - **Log lines** (m3_check reads them): `draw trace frame N #i: <Kind> 0x.. -> <outcome>[: note]: ...` for
   `trace_frames`; `draw summary frame N: X draw calls, Y drawn, Z not drawn, C clears; <Kind> n (<outcome> n,
   ...)` for trace and screenshot frames; exit reporter "gfx": `NiPCRenderer textures: ...`, `NiPCRenderer slot 65
@@ -877,3 +878,34 @@ skin cache); schema rows `[render] outline_color/outline_opacity/outline_thickne
   for the guest globals.
 - **Known limit:** large thickness factors (about 3 and more) let the shell show through concave parts of the face
   (nose, eye sockets) - inherent in inverted hulls; 1.5-2 keeps the look clean.
+
+## 15. M6: movie textures (YUY2) and texel addressing
+
+The movie player (avi.md 3.2) creates `D3DDevice_CreateTexture2(640, 480, 1, 1, 0, 0x24 = D3DFMT_YUY2, 3)` through
+the D3D shim, writes the D3DTexture* into its NiSourceTexture's renderer data (+0x3C, Open 0xEE53D) and draws a
+full-screen NiScreenPolygon with it between `D3DDevice_SetRenderState_YuvEnable(1)` and `(0)` (Update 0xEDE90).
+
+- **Producer**: the XMV HLE (`video\xmv_hle.cpp`) writes each new frame as YUY2 (Y0 U Y1 V, pitch 2 * W) into the
+  pixels of the surface the game passes to `GetNextFrame` (level 0 of that texture) and calls
+  `d3d::NoteResourceWritten(surface)`; `d3d::ResourceInfo` carries a unique `serial` per shim resource and the
+  texture's content `generation`.
+- **Resolver** (`nipc_renderer.cpp` ResolveTexture): renderer data with a shim D3DTexture* and no host-owned
+  texture = movie texture -> `GpuRenderer::MovieTexture(info, d3d::GetShimState().yuvEnable)`. The black 1x1
+  texture is no longer used for movie textures (only for rendered textures, P2); a D3DTexture* that is not a shim
+  resource resolves to nothing (the original's texture manager would fail).
+- **Conversion** (`tex::ConvertYuy2ToBgra`): with YuvEnable set (the NV2A colour-space converter, CONTROL_0
+  CSCONVERT) ITU-R BT.601 limited range, 8-bit fixed point (298/409/100/208/516); without it (never seen in the game)
+  ASSUMPTION raw components R = Cr, G = Y, B = Cb. One BGRA8 host texture per shim resource (at most 4 cached, least
+  recently used reused), uploaded with `UpdateTexture` when the generation or the mode changed (one upload per new
+  movie frame, 15 or 25 per second).
+- **Texel addressing**: Xbox linear (non-swizzled) textures are addressed in texels on the NV2A; the movie quad
+  carries UVs 0..W x 0..H (Open 0xEE5A1..0xEE647 fills them from the texture size +0x48/+0x4C). Before `ff.Draw`
+  (`GpuRenderer::Impl::ApplyTexelAddressing`) every stage that samples a movie texture gets its coordinates scaled by
+  1/W, 1/H after its own transform (TTFF COUNT2 with the scale if it had no transform) and clamped addressing
+  (ASSUMPTION: linear textures do not wrap on the NV2A; with wrap the bilinear filter blends the first and last
+  column at the picture edges). Without the scale every pixel sampled texel (0, 0): one flat colour.
+- **Statistics**: exit line `d3d11 movie textures (YUY2): N frame uploads, S texel-addressed stage draws, R draws
+  without YuvEnable, F failures`; the resolver line counts `movie (YUY2)`.
+- **Known difference**: at 2x internal resolution the top row and the left column of the picture are black (half a
+  guest pixel), the same half-pixel rule as every pre-transformed draw (section 9 viewport rule); not compared with
+  xemu.

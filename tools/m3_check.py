@@ -517,7 +517,8 @@ def main() -> int:
     if not frontend_dirs and (repo / "run" / "xemu_ref_steam").is_dir():
         frontend_dirs = [repo / "run" / "xemu_ref_steam"]
 
-    extra_args = ["--selftest"]
+    # M6: movies end at once like before M6 ([debug] movies = skip), so the scene frames stay valid.
+    extra_args = ["--selftest", "--set=debug.movies=skip"]
     frames = int(m2_check.ini_value(cp, "debug", "frames", "0") or "0", 0)
     if frames == 0:
         frames = DEFAULT_FRAMES

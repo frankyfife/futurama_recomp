@@ -260,7 +260,9 @@ def run_variant(exe: Path, ini: Path, userdata: Path, frames: int, fps: float, d
         grabber = threading.Thread(target=grab_desktop, args=(userdata / "desktop.png", desktop), daemon=True)
         grabber.start()
     try:
-        proc = subprocess.run([str(exe), f"--config={ini}", "--selftest", "--trace=vfs"], cwd=userdata,
+        # M6: [debug] movies = skip keeps the pre-M6 timeline (Intro -> Frontend at ~15 s) the variants assume.
+        proc = subprocess.run([str(exe), f"--config={ini}", "--selftest", "--trace=vfs", "--set=debug.movies=skip"],
+                              cwd=userdata,
                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=timeout)
         code, stderr = proc.returncode, proc.stderr.decode("utf-8", errors="replace").strip()
     except subprocess.TimeoutExpired:

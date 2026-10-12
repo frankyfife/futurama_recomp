@@ -363,7 +363,7 @@ TEST_CASE("CRC-32 matches zlib") {
 // Real files (optional): the two samples avi.md 3.4 decoded with FFmpeg (45 frames / 130944 samples per track and
 // 71 frames / 260928 samples). Skipped when the git-ignored samples are missing.
 TEST_CASE("XMV decode of the disc samples through the Windows WMV decoder (if present)") {
-    // The repository is a parent of the test executable (build\<dir>inut_tests.exe).
+    // The repository is a parent of the test executable (build/<dir>/bin/fut_tests.exe).
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::filesystem::path dir;

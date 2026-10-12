@@ -1,7 +1,12 @@
 # m4b_freecam.txt - freecam in the 3D main menu and in Level 1-1 (M4b). Format: README.md in this folder.
 # L3+R3 (LS RS) toggles the freecam; while it is on the port is diverted and the sticks drive the camera.
 
-wait context Frontend timeout 60s
+# M6: the boot movies (fox, SCI, uds, intro) play in real time (about 50 s); START skips each intro step
+# (Intro::Update 0x2B9B0), so the front end comes after a few seconds like with the pre-M6 stub.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
 wait main_menu timeout 60s
 wait 30t
 screenshot fc_menu_game

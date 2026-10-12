@@ -4,7 +4,12 @@
 # The main menu goes to the attract movie after about 60 s without input (m5_audio.md 3.4), so the script presses a
 # key at least every 20 s. Nothing is saved ("Uebernehmen" is never pressed).
 
-wait context Frontend timeout 60s
+# M6: the boot movies (fox, SCI, uds, intro) play in real time (about 50 s); START skips each intro step
+# (Intro::Update 0x2B9B0), so the front end comes after a few seconds like with the pre-M6 stub.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
 wait main_menu timeout 60s
 log "M5: main menu"
 wait 10s                                  # music alone: level and continuity of the stream

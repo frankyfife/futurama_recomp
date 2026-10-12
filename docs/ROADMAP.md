@@ -1,6 +1,6 @@
 # Roadmap: Futurama-PC-Port
 
-Stand: 2026-10-12. Diese Seite ist die Agenda. Die technischen Details stehen in [`loader_design.md`](loader_design.md), Abschnitt 6 (Meilensteine), und in den Berichten `m1_report.md` bis `m5_report.md`.
+Stand: 2026-10-12. Diese Seite ist die Agenda. Die technischen Details stehen in [`loader_design.md`](loader_design.md), Abschnitt 6 (Meilensteine), und in den Berichten `m1_report.md` bis `m6_report.md`.
 
 ## Erledigt
 
@@ -15,18 +15,18 @@ Stand: 2026-10-12. Diese Seite ist die Agenda. Die technischen Details stehen in
 | M4 | Eingabe: XPP-HLE mit Eingabe-Router (XInput 1.4, Tastatur/Maus über Raw Input, alle 24 Xbox-Tasten frei belegbar, Rumble mit Stärke, Hotplug), Reiter „Steuerung“ im Launcher (Belegungsdialog, Controller-Test), Eingabeskript `[debug] input_script` und `tools\m4_check.py`. **Das Spiel erreicht zum ersten Mal ein Level:** „Neues Spiel“ → Level 1-1 (Planet-Express-Hangar), Fry ist steuerbar; 10 Minuten Zufallseingaben ohne Absturz. 17 Review-Befunde nachgeprüft und behoben. Ohne echten Controller geprüft (simuliert und per Unit-Tests). Sichtbare Lücken im Level (Render to Texture, Partikel, schwarze Schiffsunterseite) gehen an P2 ([Bericht](m4_report.md), Abweichungen: [`loader_design.md`](loader_design.md) 8.11) |
 | M5 | Audio: DSOUND-HLE auf XAudio2 2.9 (40 Einstiege + Stream-Methoden), Xbox-ADPCM (bitgleich mit ffmpeg), gestreamte Musik, 3D-Klang mit dem exakten DSOUND-Entfernungsmodell und X3DAudio-Richtung, I3DL2-Hall, Lautstärke-Kategorien; Software-Mixer ohne Gerät, Gerätewechsel in beide Richtungen ohne Ruckler, Reiter „Audio“ im Launcher (Gerät, Lautsprecher, Testton). Ohne Zuhören geprüft: `[audio] capture_wav` und `tools\m5_check.py` gegen die Originaldateien (2D-Pegel −6,0 dB, Tonhöhe 1,0000, Musik ohne Aussetzer, Panning, Begrenzer) – ALL PASS am 5.1-Fernseher in allen drei Bauten. 17 Review-Befunde nachgeprüft und behoben. **Abhören durch den Nutzer steht aus** ([Bericht](m5_report.md) mit Hör-Checkliste, Abweichungen: [`loader_design.md`](loader_design.md) 8.12–8.15) |
 | M4b | Freecam ([Bericht](m4b_report.md)): ein/aus mit L3+R3 (einzelne Stick-Klicks erreichen das Spiel weiter, höchstens 4 Ticks verzögert) oder F6, im 3D-Hauptmenü, in Levels und Zwischensequenzen. Probe-Hook auf `NiCamera::Click`: Kulling und Bild nutzen die Freecam, danach bekommt das Spiel seine Kamera zurück (Spiellogik und 3D-Ton bleiben bei der Spielkamera). Gamepad und Tastatur/Maus, Tempo und Zoom im Flug verstellbar, HUD ausblendbar, Optionen im Launcher-Reiter „Steuerung“. Geprüft mit Eingabeskript `m4b_freecam.txt`, Unit-Tests und `m4_check` (ALL PASS) |
+| M6 | Video ([Bericht](m6_report.md)): Alle 47 Filme laufen – Logos, Intro, Zwischensequenzen, Attract-Modus, Abspann, Trailer. Eigener XMV-Demuxer, WMV2 über den in Windows eingebauten WMVideo-Decoder (kein FFmpeg, kein Download), Ton der gewählten Sprache über einen DSOUND-HLE-Stream, Bild strikt nach pts am Audiotakt (15- und 25-fps-Dateien in richtiger Geschwindigkeit, höchstens 29 ms nach dem Soll), YUY2 wie im Original in die Filmtextur des Spiels. Testmodus `--decode-movies`: 47/47 Dateien, 39 602 Bilder ohne Fehler, Bild und Ton gegen FFmpeg geprüft (Ton bitgleich, Luma ≥ 61 dB). **Alle Filme überspringbar** mit A/START, auch die beim ersten Ansehen gesperrten: `[game] skip_videos = always` (Standard) oder `original`. **Ansehen/Anhören durch den Nutzer steht aus** (Checkliste im Bericht) |
 | G1 | Konturen einstellbar ([Analyse und Umsetzung](../analysis/loader/g1_outlines.md)): Die Konturen sind vorgefertigte, um 0,05 aufgeblasene Rückseiten-Schalen (`QDOutline`, 75 % schwarz) bzw. beim HUD-Kopf `NiOutline`-Bänder – der Port zeichnete sie schon. Neu: `[render] outline_color` (original/RRGGBB), `outline_opacity`, `outline_thickness` (0–2,5; 0 = aus) im Reiter „Grafik“; Standard unverändert (kein neuer Code aktiv, Trace gleich). Dicke über die Paarung Schale↔Körper (Bereiche ohne Linie bleiben ohne). Freecam dazu: Rückseiten von außen (B), schwarze Leere |
 
 ## In Arbeit
 
 | Meilenstein | Inhalt |
 |---|---|
-| M6 | Video (XMV) – läuft: eigener XMV-Demuxer, Bild über den in Windows eingebauten WMV-Decoder (kein FFmpeg-Download), Ton (Xbox-ADPCM, Sprachspur) über die DSOUND-HLE, Takt nach pts. **Nutzerwunsch: alle Videos überspringbar** – auch die, die das Original beim ersten Ansehen sperrt (Intro-Filme 1-1-01/02; Zwischensequenzen erst nach 2,5 s): Option `[game] skip_videos` (Standard: immer überspringbar) |
-| M7 | Spielstände – nach M6 (Nutzer 2026-10-12: Speichern ist noch ungetestet): Speichern, Neustart, Laden, Optionen/Extras, Signatur, Löschen |
+| M7 | Spielstände – als Nächstes (Nutzer 2026-10-12: Speichern ist noch ungetestet): Speichern, Neustart, Laden, Optionen/Extras, Signatur, Löschen |
 
 ## Als Nächstes
 
-Reihenfolge laut Nutzer (2026-10-12, nach dem Hörtest von M5: „Ton klingt gut“): Freecam (erledigt) → Konturen → Videos.
+Reihenfolge laut Nutzer (2026-10-12, nach dem Hörtest von M5: „Ton klingt gut“): Freecam (erledigt) → Konturen (erledigt) → Videos (erledigt, M6) → Spielstände (M7).
 
 | Meilenstein | Inhalt |
 |---|---|
@@ -139,7 +139,6 @@ Eine frei bewegliche Kamera für Screenshots, Fehlersuche und Level-Inspektion.
 
 | Meilenstein | Inhalt |
 |---|---|
-| M6 | Video: XMV über FFmpeg (WMV2 + Xbox-ADPCM), Untertitel |
 | M7 | Spielstände: XAPI-SaveGame auf Host-Ordner, Signaturschlüssel |
 | M8 | Spielbares Level von Anfang bis Ende, Vergleich mit xemu |
 | M9 | Schrittweise Dekompilierung (re3-Stil), Funktion für Funktion |

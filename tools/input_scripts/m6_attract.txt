@@ -1,0 +1,14 @@
+# m6_attract.txt - M6: front end idle -> attract mode (Attract-PAL.xmv, 25 fps) after about 60 s, screenshot,
+# A returns to the front end. About 90 s.
+
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait context Attract timeout 100s
+wait 5s
+screenshot m6_attract
+press A 3t
+wait context Frontend timeout 10s
+wait 2s
+quit

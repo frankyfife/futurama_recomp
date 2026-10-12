@@ -4,7 +4,7 @@
 //   [paths]    core/config.cpp (iso, xbe, userdata), vfs/vfs_init.cpp (disc_dir)
 //   [debug]    core/config.cpp, core/crash.cpp (minidump, mmio_trap), platform/platform.cpp (timeout),
 //              core/host_main.cpp (exit_hang_test), core/boot.cpp (stop_at, crash_test), gfx/gfx_config.cpp (frames)
-//              input/input_script.cpp (input_script, M4)
+//              input/input_script.cpp (input_script, M4), video/xmv_hle.cpp (movies, M6)
 //   [kernel]   kernel/kernel_settings.cpp (min_guest_stack 0x10000..0x4000000), kernel/mm_kernel_stack.cpp
 //              (fiber_stack, clamped), kernel/kernel_api.cpp (strict)
 //   [log]      core/log.cpp ParseLevel (error|warn|info|debug|trace, "warning" = warn)
@@ -165,6 +165,11 @@ constexpr ConfigChoice kResolutionSuggestions[] = {
 constexpr ConfigChoice kTickRateChoices[] = {
     {"60", {"60 Hz (Standard)", "60 Hz (default)"}},
     {"50", {"50 Hz (PAL-Original)", "50 Hz (original PAL)"}},
+};
+// M6: [debug] movies (video/xmv_hle.cpp).
+constexpr ConfigChoice kDebugMoviesChoices[] = {
+    {"play", {"Abspielen (Standard)", "Play (default)"}},
+    {"skip", {"Sofort beenden (wie vor M6)", "End at once (as before M6)"}},
 };
 // M6: [game] skip_videos (video/movie_skip.cpp).
 constexpr ConfigChoice kSkipVideosChoices[] = {
@@ -1165,6 +1170,14 @@ constexpr ConfigKeyDef kKeys[] = {
               "For developers and automated tests: plays the buttons from this text file as a controller on port 1 "
               "(format: tools/input_scripts/README.md). Empty = off."},
      .tab = Tab::Advanced, .order = 350, .widget = W::File, .flags = kDev, .fileFilter = "*.txt"},
+    // [debug] movies (M6, video/xmv_hle.cpp): the M2-M5 stub behaviour for regression checks with frame timelines.
+    {.section = "debug", .name = "movies", .type = T::Choice, .defaultValue = "play", .choices = kDebugMoviesChoices,
+     .label = {"Filme", "Movies"},
+     .help = {"Für Entwickler und automatische Tests: „skip“ beendet jeden Film sofort ohne Bild und Ton (wie vor "
+              "M6), damit Prüfläufe mit festen Bildnummern gleich bleiben.",
+              "For developers and automated tests: \"skip\" ends every movie at once without picture and sound (as "
+              "before M6), so check runs with fixed frame numbers stay the same."},
+     .tab = Tab::Advanced, .order = 360, .widget = W::Combo, .flags = kDev},
 
     // [kernel]
     {.section = "kernel", .name = "strict", .type = T::Bool, .defaultValue = "0",

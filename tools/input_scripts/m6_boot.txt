@@ -1,0 +1,20 @@
+# m6_boot.txt - M6: the boot movies with the XMV HLE (docs/m6_report.md). Screenshot in each movie, START skips the
+# first one (fox), SCI (25 fps), uds and the intro play to their end; quits in the front end. About 50 s.
+# Log lines used: "XMV: movie #n playing" / "XMV: movie #n ended|closed early" (video/xmv_hle.cpp).
+
+wait log "XMV: movie #1 playing" timeout 40s
+wait 3s
+screenshot m6_fox
+press START 3t                            # skip (Intro::Update, always skippable)
+wait log "XMV: movie #2 playing" timeout 20s
+wait 4s
+screenshot m6_sci
+wait log "XMV: movie #3 playing" timeout 30s
+wait 3s
+screenshot m6_uds
+wait log "XMV: movie #4 playing" timeout 30s
+wait 4s
+screenshot m6_intro
+wait context Frontend timeout 40s
+wait 2s
+quit

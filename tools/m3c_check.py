@@ -321,7 +321,7 @@ MAX_EDGE_RATIO_ARG = [MAX_EDGE_RATIO]  # set from the command line
 def run_variant(exe: Path, ini: Path, userdata: Path, frames: int, rate: int) -> tuple[int, str, str, str, float, int]:
     for sub in ("hdd", "cache", "logs", "screenshots", "m3_check"):
         shutil.rmtree(userdata / sub, ignore_errors=True)
-    extra = ["--selftest", "--trace=vfs"]
+    extra = ["--selftest", "--trace=vfs", "--set=debug.movies=skip"]  # M6: pre-M6 frame timeline
     timeout = frames // max(rate, 1) + 90
     start = time.monotonic()
     try:

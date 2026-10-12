@@ -202,6 +202,7 @@ struct Object final : public VoiceEvents {
     std::deque<Packet> packets;
     std::uint32_t nextSeq = 0;
     bool starving = false;  // queue ran empty while running (underrun episode)
+    bool endOfData = false;  // M6: Discontinuity - running empty afterwards is the end, not a dropout
 
     // Diagnostics of the last Apply (SoundEvent::levelDb / distance; Level3D events).
     float levelDb = 0.0f;
@@ -890,7 +891,7 @@ std::uint32_t DoWorkLocked(std::vector<PendingCallback>& callbacks) noexcept {
             continue;
         }
         const bool empty = o->packets.empty();
-        if (empty && o->nextSeq != 0 && o->pauseState == kStreamResume && !o->starving) {
+        if (empty && o->nextSeq != 0 && o->pauseState == kStreamResume && !o->starving && !o->endOfData) {
             o->starving = true;
             if (g_state.stats.starvations++ < 4) {
                 FUT_LOGW(Snd, "DSOUND: stream 0x%08X (\"%s\") ran out of packets (dropout)", o->Addr(), o->tag.name);
@@ -997,6 +998,7 @@ std::int32_t __stdcall DsStreamProcess(void* self, const XMediaPacket* in, const
     if (p.seq == 0) {
         p.seq = ++s->nextSeq;
     }
+    s->endOfData = false;  // more data after a Discontinuity
     p.pdwStatus = in->pdwStatus;
     p.pdwCompletedSize = in->pdwCompletedSize;
     p.eventOrContext = in->hCompletionEvent;
@@ -1053,6 +1055,7 @@ std::int32_t __stdcall DsStreamDiscontinuity(void* self) noexcept {
     }
     if (s != nullptr) {
         s->starving = true;  // end of the data: running empty afterwards is expected
+        s->endOfData = true;
     }
     return kS_OK;
 }

@@ -415,6 +415,8 @@ XDK_HOOK(DirectSoundCreate, &DirectSoundCreateHle);  // static_assert stdcall no
   `Process` sets E_PENDING synchronously, packets complete after their play time in `DirectSoundDoWork`).
 - **M5:** the 40 DSOUND entries are HLE (`audio\dsound_hle.cpp`, section 4.29 "DSOUND core"; `dsound_stubs.*`
   deleted); the DSOUND stub behaviour above and `[audio] dummy_streams` are history (the key is still accepted).
+- **M6:** the 7 XMV entries are HLE (`video\xmv_hle.cpp`, section 4.32; `xmv_stubs.*` renamed to `xmv_hle.*`); the
+  XMV stub behaviour above survives only as `[debug] movies = skip`. The summary line reads `XDK XMV HLE: ...`.
 - Log: one INFO line per library on first use (`DSOUND: stub device`, `XMV: stub decoder`, `XPP: stub
   input`), every call site once at debug on SND/VID/INP (`XDK <LIB>::<Id>(args) -> result ret=<site>`).
 
@@ -1531,6 +1533,49 @@ ipc_renderer.h`);
   mouse_sensitivity, invert_y` (launcher tab Steuerung).
 - **Tests**: `tests\freecam_tests.cpp`; script `tools\input_scripts\m4b_freecam.txt`. Report: `docs\m4b_report.md`.
 
+### 4.32 Video (M6): XMV HLE, movie textures, skip option - `video\*.h`, `gfx\d3d_shim.h`, `gfx\nipc_gpu.h`
+
+- **Modules** (`src\host\video\`, all new except `xmv_hle.*`): `xmv_demux.h` (XMV demuxer: `vid::xmv::ParseFileHeader`,
+  `ConvertExtradata`, `Demuxer::PushPacket` -> `VideoFrame` {index, ptsMs, keyframe, WMV2 data byte-swapped} and
+  `AudioChunk` per track), `wmv_decoder.h` (`vid::WmvDecoder`: the Windows "WMVideo Decoder DMO" from wmvdecod.dll
+  through `DllGetClassObject`, WMV2 in, planar I420 out; `WmvDecoderAvailable`), `movie_core.h` (`PacketSource`,
+  `MemoryPacketSource`, `MovieCore` = source -> demuxer -> queues + decoder), `movie_clock.h` (`MovieClock`: audio
+  clock from the stream's played frames, wall clock without audio and after the audio end; `FramesDue`,
+  `MovieEndMs`), `yuv_pack.h` (`PackI420ToYuy2`, interstitial chroma), `xmv_hle.h` (the 7 entries,
+  `IsXmvDecoder`, `LiveXmvDecoders`, `GetMovieStatistics`, `LogMovieSummary`), `movie_skip.h` (`SkipVideos`,
+  `ParseSkipVideos`, `CutsceneSkipAllowed`, probe hook), `xmv_test_mode.h` (`DecodeMoviesJson`, `Crc32`).
+- **Packets**: through the movie player's callbacks GetNextPacket 0xEDBA0 / ReleasePreviousPacket 0xEDE60
+  (`guest::kMovieGetNextPacket`, `kMovieReleasePreviousPacket`), called from GetNextFrame on the guest thread like
+  the original; each packet is copied at once and the next read started.
+- **Audio**: `EnableAudioStream` creates a DSOUND HLE stream (format 0x69 of the track, 32 packets, no callback),
+  `Pause(2)`; the first `GetNextFrame` queues ~0.6 s and starts it with `DirectSoundCreate` + `SynchPlayback` +
+  `Release`; `GetAudioStream` returns it AddRef'ed (the game calls `SetVolume` + `Release`). `CloseDecoder`:
+  `FlushEx` + `Release`. New additive DSOUND helper `snd::StreamFramesPlayed(stream, frames)` (audio clock);
+  `DsStreamDiscontinuity` marks the end of data (no dropout warning afterwards).
+- **Video**: `GetNextFrame` writes the newest due frame as YUY2 into the shim surface (`gfx::d3d::LookupResource`)
+  and calls `gfx::d3d::NoteResourceWritten(surface)`; `ResourceInfo` gained `serial` and `generation`, the header
+  exports `kFormatYuy2` (additive). Renderer: `GpuRenderer::MovieTexture(info, yuvEnable)` (BGRA8 host texture per
+  shim resource, uploaded when the generation or the YuvEnable mode changes, `tex::ConvertYuy2ToBgra` BT.601 or
+  raw), texel-addressed stages (UV 0..W x 0..H of the movie quad scaled by 1/W, 1/H, clamped). GFX_CONTRACT.md 15.
+- **Results**: 1 new frame, 0 none due, 2 end (all frames shown and the clock past max(last pts + gap, audio end)),
+  3 error (decoder unavailable or broken file: the movie ends, the game continues).
+- **Config**: `[game] skip_videos = always | original` (default always, launcher tab Game): probe hook
+  `probe:Game::CutsceneSkipAllowed` on FUN_000D3120 (`guest::kGameCutsceneSkipAllowed`, only caller 0x2ABD4).
+  `[debug] movies = play | skip` (developer): `skip` = the M2-M5 stub behaviour (no picture, no sound), used by the
+  frame-timeline checks m2/m3/m3c/m3d through `--set=debug.movies=skip`.
+- **Tool mode**: `futurama.exe --decode-movies=<image|folder> --result=<file.json> [--movie-dump=<dir>]
+  [--movie-filter=<text>]` (core/cli_tools.h): decodes every movie; per file the pts, a luma CRC-32 per frame and a
+  PCM CRC-32 per track; `tools\m6_check.py` compares it with FFmpeg (PyAV) and analyses game runs (`--run`).
+- **Logs** (VID): `XMV: movie #n: WxH, D ms, T audio tracks ..., packets up to 0x.. bytes (first 0x.., next 0x..)`,
+  `XMV: movie #n playing: ... (track t), clock audio|wall (QPC)`, `XMV: movie #n ended|closed early (skipped) at N
+  ms: F frames shown of D demuxed, X dropped (late), max L ms late, E decode errors, clock ...`, `movies: cut-scene
+  skip asked (...): original yes|no ... -> skip|keep playing`, exit summary `XMV HLE: ...`; GFX `d3d11 movie
+  textures (YUY2): ...`.
+- **Tests**: `tests\video_tests.cpp` (demuxer on synthetic packets, movie core, YUY2 packing/conversion, clock,
+  skip option, shim generation, CRC-32, optional decode of `analysis\loader\samples`), `tests\xdk_tests.cpp` (XMV
+  entries without callbacks). Scripts `tools\input_scripts\m6_boot.txt`, `m6_level.txt`, `m6_attract.txt`.
+  Report: `docs\m6_report.md`.
+
 ## 5. Cross-module contracts
 
 | Contract | Provider -> user |
@@ -1733,3 +1778,10 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-12 | M5 phase 5 | `docs\loader_design.md` (new section 8.15), `docs\m5_report.md` (new) | Review findings R1-R17 (accepted/rejected) and the M5 report (German). |
 | 2026-10-12 | M4b (main session) | `input\host_router.h`, `input\kbm_source.h`, `gfx\nipc_renderer.h`, `core\config_schema.cpp` | `HostRouter::SetSampleFilter`, `KeyboardMouseSource::SetPadEmulation`, `gfx::RenderTargetOf`, `gfx::ClearBackBuffer`, section `[freecam]`; new `gfx\freecam.*`, `gfx\freecam_math.h`, `input\chord_filter.h` (section 4.31) |
 | 2026-10-12 | G1 outlines | new `gfx\outline.h/.cpp`, `tests\outline_tests.cpp`; `gfx\gfx_config.h/.cpp` (`OutlineSettings`, `ParseOutlineColor/Opacity/Thickness`), `gfx\ni_extract.h` (additive `GeometryInput::positionsOverride`), `gfx\ni_extract.cpp` (`Skin` source positions, cache bypass while `DAT_0030EB40 != 0`), `gfx\ni_guest_layouts.h` (`kNiOutlinePositionBuffer`), `gfx\nipc_gpu.cpp`, `gfx\nipc_renderer.cpp` (one call in `CreateRenderer`), `core\config_schema.cpp` (3 rows + 2 validators), `tests\extract_tests.cpp` (one case) | `[render] outline_color` (original\|RRGGBB), `outline_opacity` (original\|0..1), `outline_thickness` (0..4, 1.0) on the Graphics tab; defaults run no outline code. GFX_CONTRACT.md section 14, `analysis\loader\g1_outlines.md`. |
+| 2026-10-12 | M6 (video) | `video\xmv_stubs.*` -> `video\xmv_hle.*`; new `video\xmv_demux.*`, `wmv_decoder.*`, `movie_core.*`, `movie_clock.h`, `yuv_pack.*`, `movie_skip.*`, `xmv_test_mode.*`; `tests\video_tests.cpp`, `tests\xdk_tests.cpp` (XMV case) | XMV HLE: own demuxer, WMV2 through the Windows WMVideo Decoder DMO, audio through a DSOUND HLE stream, A/V by pts on the audio clock (section 4.32). |
+| 2026-10-12 | M6 (video) | `audio\dsound_hle.h/.cpp` (additive), `audio\xdk_entries.h/.cpp` | `snd::StreamFramesPlayed`; stream `endOfData` after `Discontinuity` (no dropout warning at a movie end); XDK summary says "XMV HLE" and calls `vid::LogMovieSummary`. |
+| 2026-10-12 | M6 (video) | `gfx\d3d_shim.h/.cpp` (additive), `gfx\texconv.h/.cpp` (additive), `gfx\nipc_gpu.h/.cpp`, `gfx\nipc_renderer.cpp` | `ResourceInfo::serial/generation`, `NoteResourceWritten`, `kFormatYuy2`; `tex::Yuy2Mode`, `YuvToRgbBt601`, `ConvertYuy2ToBgra`; `GpuRenderer::MovieTexture` + texel addressing of movie stages; the resolver no longer returns the black texture for movie textures (GFX_CONTRACT.md 15). |
+| 2026-10-12 | M6 (video) | `core\guest.h` | added `kGameCutsceneSkipAllowed` 0xD3120, `kGameCutsceneSkipAllowedReturn` 0x2ABD9, `kGameCheatSkipCutscenesVar` 0x2EB7D4, `kMovieGetNextPacket` 0xEDBA0, `kMovieReleasePreviousPacket` 0xEDE60 (evidence in the header). |
+| 2026-10-12 | M6 (video) | `core\config_schema.cpp`, `core\cli_tools.h/.cpp`, `src\host\CMakeLists.txt` | `[game] skip_videos` (always\|original, tab Game), `[debug] movies` (play\|skip, developer); tool mode `--decode-movies` (+ `--movie-dump`, `--movie-filter`, `--result`); `ole32.lib` (CoTaskMemFree for the DMO media types). |
+| 2026-10-12 | M6 (video) | `tools\m6_check.py` (new), `tools\m2_check.py`, `m3_check.py`, `m3c_check.py`, `m3d_check.py`, `tools\input_scripts\m4_newgame.txt`, `m4_rumble.txt`, `m4b_freecam.txt`, `m5_frontend.txt`, new `m6_boot.txt`, `m6_level.txt`, `m6_attract.txt` | Frame-timeline checks run with `--set=debug.movies=skip`; the scripts press START until the front end (the boot movies play in real time since M6). |
+| 2026-10-12 | M6 (video) | `docs\loader_design.md` (new section 8.16), `docs\m6_report.md` (new), `gfx\GFX_CONTRACT.md` (section 15), `docs\ROADMAP.md`, `README.md` | M6 deviations, report (German), movie texture contract, roadmap, player notes. |

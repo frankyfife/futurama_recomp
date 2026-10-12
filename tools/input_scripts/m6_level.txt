@@ -1,0 +1,24 @@
+# m6_level.txt - M6: "Neues Spiel" -> Level 1-1 -> the level movie 1-1-01 on its first viewing (the original refuses
+# the skip, [game] skip_videos = always allows it): 9 s of the movie (German speech from 4 s on), screenshot, A skips,
+# the player is controllable. About 45 s. (1-1-02 comes later in the level, not at its start.)
+
+loop timeout 120s until context Frontend   # boot movies: START skips each intro step
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait cutscene timeout 150s                  # first level movie (1-1-01): title card, then the movie
+wait 13s                                    # ~3.5 s title card + 9 s movie (the language tracks differ from 4 s on)
+screenshot m6_1-1-01
+press A 3t
+wait 2s
+screenshot m6_after_skip1
+expect controllable                         # back in the level right after the skip
+wait 2s
+quit

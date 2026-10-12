@@ -469,7 +469,8 @@ def main() -> int:
         sys.exit("m2_check: the test config must not set [debug] stop_at (M2 runs past main)")
     language = expected_language(cp)
 
-    extra_args = ["--selftest"]
+    # M6: movies end at once like the M2 XMV stub, so the frame timeline of this check stays valid.
+    extra_args = ["--selftest", "--set=debug.movies=skip"]
     frames = int(ini_value(cp, "debug", "frames", "0") or "0", 0)
     if frames == 0:
         frames = DEFAULT_FRAMES

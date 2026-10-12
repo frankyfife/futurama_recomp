@@ -2,7 +2,12 @@
 # (1.0/1.0, fading to 0 in 1 s; analysis\loader\m4_input.md 6, 0x297CF / 0x28A59). Used by tools\m4_check.py
 # (criterion M4-7). The options are not saved ("Uebernehmen" is never pressed). Format: README.md.
 
-wait context Frontend timeout 60s
+# M6: the boot movies (fox, SCI, uds, intro) play in real time (about 50 s); START skips each intro step
+# (Intro::Update 0x2B9B0), so the front end comes after a few seconds like with the pre-M6 stub.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
 wait main_menu timeout 60s
 wait 30t
 expect no_dialog

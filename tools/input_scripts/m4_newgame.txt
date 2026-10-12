@@ -2,8 +2,13 @@
 # Used by tools\m4_check.py ([debug] input_script). Format: README.md in this folder.
 # Flow and conditions: analysis\loader\m4_input.md 7 and 10. Port 1 (the script's logical port 0).
 
-# 1-2: the intro runs without input (about 15 s at 60 Hz); the main menu takes input after the camera move.
-wait context Frontend timeout 60s
+# 1-2: the intro (about 15 s at 60 Hz without movies); the main menu takes input after the camera move.
+# M6: the boot movies (fox, SCI, uds, intro) play in real time (about 50 s); START skips each intro step
+# (Intro::Update 0x2B9B0), so the front end comes after a few seconds like with the pre-M6 stub.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
 wait main_menu timeout 60s
 wait 30t
 
@@ -19,12 +24,15 @@ end
 # 5-6: the Ingame context loads Level1-1.
 wait level_loaded timeout 180s
 
-# 7: movies end at once with the XMV stub (until M6); cutscenes can be skipped after 2.5 s.
+# 7: level movies 1-1-01/1-1-02 play since M6; A skips them ([game] skip_videos = always, the default; with
+# "original" the first viewing cannot be skipped and cut scenes only after 2.5 s).
 loop timeout 300s until controllable
   wait 160t
   press A 3t
 end
 log "M4: Level1-1 spielbar"
+# M6: after a skipped cut scene the game fades in from black for about 0.5 s.
+wait 60t
 screenshot level1-1_start
 
 # 8: play: walk forward, turn the camera, jump, both attacks, walk back.

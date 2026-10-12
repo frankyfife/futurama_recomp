@@ -311,7 +311,40 @@ struct GpuRenderer::Impl {
     static constexpr std::size_t kMovieTextures = 4;
     MovieTex movies[kMovieTextures];
     std::vector<std::uint8_t> movieScratch;
-    std::uint64_t movieUploads = 0, movieRawDraws = 0, movieFailures = 0;
+    std::uint64_t movieUploads = 0, movieRawDraws = 0, movieFailures = 0, movieStageDraws = 0;
+
+    // M6: Xbox linear (non-swizzled) textures - here the movie player's YUY2 texture - are addressed in texels on the
+    // NV2A: the movie quad (Open 0xEE5A1..0xEE647) carries UVs 0..W x 0..H. A stage sampling such a texture gets
+    // its coordinates scaled by 1/W, 1/H after the stage's own transform (TTFF COUNT2 with a scale if it had none),
+    // and clamped addressing.
+    void ApplyTexelAddressing() noexcept {
+        for (std::uint32_t i = 0; i < ni::kMaxTextureStages; ++i) {
+            ni::TextureStageDesc& st = item.state.stages[i];
+            if (!st.texture) {
+                continue;
+            }
+            for (const MovieTex& m : movies) {
+                if (!m.texture || m.texture != st.texture || m.width == 0 || m.height == 0) {
+                    continue;
+                }
+                const float sx = 1.0f / static_cast<float>(m.width), sy = 1.0f / static_cast<float>(m.height);
+                if ((st.transformFlags & 0xFFu) == FF_TTFF_DISABLE) {
+                    st.transform = IdentityMatrix();
+                    st.transformFlags = FF_TTFF_COUNT2;
+                }
+                for (int r = 0; r < 4; ++r) {  // row vector * M * diag(sx, sy, 1, 1)
+                    st.transform.m[r][0] *= sx;
+                    st.transform.m[r][1] *= sy;
+                }
+                // ASSUMPTION (NV2A): linear textures support no wrapping - the hardware clamps them; with wrap the
+                // bilinear filter would blend the first and last column/row of the picture at the edges.
+                st.addressU = rhi::AddressMode::Clamp;
+                st.addressV = rhi::AddressMode::Clamp;
+                ++movieStageDraws;
+                break;
+            }
+        }
+    }
 
     rhi::CommandContext& Ctx() noexcept { return device->Context(); }
 
@@ -593,6 +626,7 @@ void GpuRenderer::Impl::Submit(ni::DrawKind kind, ni::GuestPtr object, ni::Extra
         Count(kind, object, OutcomeOf(status), false);
         return;
     }
+    ApplyTexelAddressing();
     const ff::DrawResult result = ff.Draw(item);
     Count(kind, object, OutcomeOf(result), true);
 }
@@ -1365,9 +1399,10 @@ void GpuRenderer::LogStatistics() noexcept {
         static_cast<unsigned long long>(d.texturesDestroyed),
         static_cast<unsigned long long>(d.textureFailures), d.arenaPeak);
     if (d.movieUploads != 0 || d.movieFailures != 0 || d.movieRawDraws != 0) {
-        FUT_LOGI(Gfx, "d3d11 movie textures (YUY2): %llu frame uploads, %llu draws without YuvEnable, %llu failures",
-                 static_cast<unsigned long long>(d.movieUploads), static_cast<unsigned long long>(d.movieRawDraws),
-                 static_cast<unsigned long long>(d.movieFailures));
+        FUT_LOGI(Gfx, "d3d11 movie textures (YUY2): %llu frame uploads, %llu texel-addressed stage draws, %llu draws "
+                 "without YuvEnable, %llu failures",
+                 static_cast<unsigned long long>(d.movieUploads), static_cast<unsigned long long>(d.movieStageDraws),
+                 static_cast<unsigned long long>(d.movieRawDraws), static_cast<unsigned long long>(d.movieFailures));
     }
     const ff::PipelineStats f = d.ff.Stats();
     FUT_LOGI(
