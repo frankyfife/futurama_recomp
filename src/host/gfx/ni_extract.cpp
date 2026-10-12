@@ -1679,8 +1679,11 @@ bool IndicesInRange(const std::uint16_t* indices, std::uint32_t count, std::uint
 // (skin +0x14 frame stamp vs VB manager frame counter). The output lands in the arena.
 // Deviation: the cache key includes the geometry data (the original would leave the second geometry of a
 // shared skin instance undeformed within a frame).
+// G1: `sourcePositions` (0 = the data's) replaces the bind-pose positions (outline thickness); such draws bypass
+// the cache. The cache is also bypassed while DAT_0030EB40 (NiOutline position buffer) is set: NiOutline::vf33
+// forces a new deformation there (skin +0x14 = 1), whose tail fills the buffer (g1_outlines.md 4.2).
 ExtractStatus Skin(const ExtractContext& context, StateShadow& s, GuestPtr skin, GuestPtr data,
-                   GeometryDesc* g) noexcept {
+                   GuestPtr sourcePositions, GeometryDesc* g) noexcept {
     ++s.counters.skinnedDraws;
     if (!context.allowGuestCalls) {
         return ExtractStatus::Unsupported;
@@ -1688,7 +1691,11 @@ ExtractStatus Skin(const ExtractContext& context, StateShadow& s, GuestPtr skin,
     const NiGeometryData* gd = G<NiGeometryData>(data);
     const std::uint32_t count = gd->vertexCount;
     const bool hasNormals = Plausible(gd->normals);
+    const bool useCache = sourcePositions == 0 && R32(kNiOutlinePositionBuffer) == 0;
     for (const StateShadow::SkinEntry& e : s.skinCache) {
+        if (!useCache) {
+            break;
+        }
         if (e.skin == skin && e.data == data && e.frame == context.frame && e.vertexCount == count &&
             e.arenaGeneration == context.arena->Generation() && e.vertices != nullptr) {
             ++s.counters.skinCacheHits;
@@ -1705,7 +1712,8 @@ ExtractStatus Skin(const ExtractContext& context, StateShadow& s, GuestPtr skin,
     }
     ++s.counters.skinDeforms;
     core::CallGuestThiscall(kNiSkinInstanceDeform, skin,
-                            {gd->vertices, hasNormals ? gd->normals : 0u, count, GuestAddr(out),
+                            {sourcePositions != 0 ? sourcePositions : gd->vertices, hasNormals ? gd->normals : 0u,
+                             count, GuestAddr(out),
                              hasNormals ? GuestAddr(out + 3) : 0u, stride});
     StateShadow::SkinEntry& e = s.skinCache[s.skinCacheNext];
     s.skinCacheNext = (s.skinCacheNext + 1) % StateShadow::kSkinCacheSize;
@@ -1729,6 +1737,9 @@ ExtractStatus FinishGeometry(const ExtractContext& context, const GeometryInput&
     out->worldScale = t->scale;
     out->useScreenCamera = false;
     FillStreams(input.data, vertexCount, &out->geometry);
+    if (input.positionsOverride != 0) {
+        out->geometry.positions = {G<float>(input.positionsOverride), 12};  // G1 outline thickness
+    }
     std::optional<StateShadow> local;
     ExtractContext ctx = context;
     if (ctx.shadow == nullptr) {
@@ -1738,7 +1749,8 @@ ExtractStatus FinishGeometry(const ExtractContext& context, const GeometryInput&
         if (!Plausible(input.skinInstance)) {
             return ExtractStatus::Error;
         }
-        const ExtractStatus st = Skin(ctx, *ctx.shadow, input.skinInstance, input.data, &out->geometry);
+        const ExtractStatus st =
+            Skin(ctx, *ctx.shadow, input.skinInstance, input.data, input.positionsOverride, &out->geometry);
         if (st != ExtractStatus::Ok) {
             return st;
         }
@@ -1892,7 +1904,8 @@ ExtractStatus ExtractTriangles(const ExtractContext& context, const GeometryInpu
     g.primitiveCount = triangles;
     const ExtractStatus st = FinishGeometry(
         context,
-        GeometryInput{input.data, 0, input.transform, input.bound, input.propertyState, input.effectState},
+        GeometryInput{input.data, 0, input.transform, input.bound, input.propertyState, input.effectState,
+                      input.positionsOverride},
         DrawKind::Triangles, vertices, out);
     out->geometry.vertexCount = triangles * 3u;
     return st;
@@ -1920,7 +1933,8 @@ ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput
     g.primitiveCount = triangles;
     const ExtractStatus st = FinishGeometry(
         context,
-        GeometryInput{input.data, 0, input.transform, input.bound, input.propertyState, input.effectState},
+        GeometryInput{input.data, 0, input.transform, input.bound, input.propertyState, input.effectState,
+                      input.positionsOverride},
         DrawKind::TriStrip, vertices, out);
     out->geometry.vertexCount = triangles + 2u;
     return st;

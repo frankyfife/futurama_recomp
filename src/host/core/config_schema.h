@@ -44,7 +44,13 @@ enum class ConfigUiWidget : std::uint8_t {
     Binding, Slider,
     // M5 (tooling/launcher agent, src/INTERFACES.md 4.29): "audio_device" = a string key holding a Windows audio
     // endpoint ID (IMMDevice::GetId; empty = the Windows default device), shown as a list of the output devices.
-    AudioDevice
+    AudioDevice,
+    // G1 (main session): "color" = a string key holding "original" or RRGGBB, shown as a colour button with a
+    // colour dialog and an "original" check.
+    Color,
+    // G1 (main session): "fraction" = a string key holding "original" or a number 0..1, shown as an "original" check
+    // plus a percent slider.
+    Fraction
 };
 
 // Player-facing text in German and English (UTF-8).

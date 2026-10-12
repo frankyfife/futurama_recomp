@@ -198,6 +198,9 @@ struct NiSkinInstance {
 static_assert(sizeof(NiSkinInstance) == 0x18);
 inline constexpr GuestPtr kNiSkinInstanceDeform = 0x0014F710;  // FUN_0014F710 (see above)
 inline constexpr std::uint32_t kNiSkinInstanceDeformStackArgs = 6;
+// G1: DAT_0030EB40 - world-position buffer of NiOutline::vf33 (0x13E840). Non-zero while an NiOutline draws its
+// outline geometry; the tail of FUN_0014F710 (and NiTriShape::vf33 for rigid shapes) fills it and clears it.
+inline constexpr GuestPtr kNiOutlinePositionBuffer = 0x0030EB40;
 
 // ---- properties (FUN_00159CD0, renderer.md 5.4) ------------------------------------------------------
 

@@ -66,6 +66,14 @@
 //   [render] screenshot_size = output  internal | output: screenshots of the back buffer at the internal
 //                               render size (resolution x render_scale, MSAA resolved) or of the presented
 //                               image (resolution, after the downsample)
+// G1 (character outlines, analysis/loader/g1_outlines.md, GFX_CONTRACT.md "Konturen"):
+//   [render] outline_color = original    original | RRGGBB (hex): colour of the inverted-hull shells
+//                               ("QDOutline", technique A) and of the NiOutline ribbons (technique B)
+//   [render] outline_opacity = original  original | 0..1: A replaces the material alpha 0.75, B multiplies
+//                               the ribbon vertex alpha
+//   [render] outline_thickness = 1.0     0..4: factor on the original thickness (A: shell offset per vertex,
+//                               B: DAT_002D7AB0 = 0.003 * k); 0 = outlines off
+//   All three at their defaults = no outline code runs (bit-identical to the original look).
 // "Classic" (bit-identical to M3, the xemu regression): resolution = 640x480, render_scale = 1, msaa = off,
 // anisotropy = off (alpha_to_coverage has no effect without MSAA).
 // The section is [render], not [gfx]: tests/test_core.cpp uses [gfx] as its example of an unknown
@@ -106,6 +114,25 @@ inline constexpr std::uint32_t kMaxRenderDimension = 16384;  // D3D11_REQ_TEXTUR
 inline constexpr float kMinRenderScale = 1.0f;
 inline constexpr float kMaxRenderScale = 2.0f;
 inline constexpr float kRenderScaleStep = 0.25f;  // launcher step (any value in range is accepted)
+
+// G1 outline options (OutlineSettings::Active() == false at the defaults).
+inline constexpr float kDefaultOutlineThickness = 1.0f;
+inline constexpr float kMaxOutlineThickness = 2.5f;  // above ~2 the shells show through (nose, eyes)
+struct OutlineSettings {
+    bool hasColor = false;                      // [render] outline_color != original
+    float color[3] = {0.0f, 0.0f, 0.0f};        // 0..1 (RRGGBB / 255)
+    bool hasOpacity = false;                    // [render] outline_opacity != original
+    float opacity = 0.75f;
+    float thickness = kDefaultOutlineThickness; // [render] outline_thickness
+    bool Active() const noexcept { return hasColor || hasOpacity || thickness != kDefaultOutlineThickness; }
+};
+// "original" (case-insensitive) -> *has = false; "RRGGBB" (6 hex digits, optional leading '#') -> *has = true and
+// rgb / 255. Blanks around the value are ignored. The schema (core/config_schema.cpp) accepts the same values.
+bool ParseOutlineColor(std::string_view text, bool* has, float rgb[3]) noexcept;
+// "original" -> *has = false; a decimal number 0..1 -> *has = true.
+bool ParseOutlineOpacity(std::string_view text, bool* has, float* opacity) noexcept;
+// A decimal number 0..kMaxOutlineThickness.
+bool ParseOutlineThickness(std::string_view text, float* thickness) noexcept;
 
 // M3c parsers = the syntax of the new keys (values as in the INI; blanks ignored; case-insensitive). They use
 // the configuration schema's value parsers (core/config_schema.h), so the INI validation and the renderer agree.
@@ -157,6 +184,8 @@ struct Settings {
     // M3d (frame rates up to 120 Hz, platform/frame_pacer.h)
     platform::pacing::FrameRateMode frameRateMode = platform::pacing::FrameRateMode::Fixed;  // [render] frame_rate
     bool lowLatency = true;                                  // [render] low_latency
+    // G1 (character outlines)
+    OutlineSettings outline;                                 // [render] outline_color/opacity/thickness
 };
 
 // Parses the settings from `cfg` (GetSettings does this once for core::GetConfig(); tests). May throw

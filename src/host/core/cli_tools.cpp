@@ -8,6 +8,7 @@
 #include "platform/pacer_display.h"
 #include "shared/xbe_format.h"
 #include "vfs/vfs.h"
+#include "video/xmv_test_mode.h"
 
 #include <d3d11.h>
 #include <dxgi1_6.h>
@@ -526,7 +527,7 @@ void WriteU32Array(JsonWriter& w, const std::vector<std::uint32_t>& values) {
 
 // ---- command line --------------------------------------------------------------------------------------------
 
-enum class Tool : std::uint8_t { None, Schema, CheckIso, QueryGpu, Paths };
+enum class Tool : std::uint8_t { None, Schema, CheckIso, QueryGpu, Paths, DecodeMovies };
 
 struct ToolArgs {
     Tool tool = Tool::None;
@@ -535,6 +536,9 @@ struct ToolArgs {
     std::wstring output;      // schema / gpu / paths target
     std::wstring iso;
     std::wstring result;
+    std::wstring movieSource;  // M6 --decode-movies
+    std::wstring movieDump;
+    std::wstring movieFilter;
     bool hasResult = false;
     std::wstring config;
     std::vector<std::wstring> unexpected;
@@ -590,6 +594,14 @@ ToolArgs ParseToolArgs(const wchar_t* commandLine) {
             tool(Tool::QueryGpu, &a.output);
         } else if (MatchOption(arg, L"--print-paths", v)) {
             tool(Tool::Paths, &a.output);
+        } else if (MatchOption(arg, L"--decode-movies", v)) {
+            tool(Tool::DecodeMovies, &a.movieSource);
+        } else if (MatchOption(arg, L"--movie-dump", v)) {
+            a.anyToolArg = true;
+            a.movieDump = v;
+        } else if (MatchOption(arg, L"--movie-filter", v)) {
+            a.anyToolArg = true;
+            a.movieFilter = v;
         } else if (MatchOption(arg, L"--result", v)) {
             a.anyToolArg = true;
             a.hasResult = true;
@@ -605,7 +617,8 @@ ToolArgs ParseToolArgs(const wchar_t* commandLine) {
 
 constexpr char kUsage[] =
     "usage: futurama.exe --print-config-schema=<file.json> | --check-iso=<image> --result=<file.json> | "
-    "--query-gpu=<file.json> | --print-paths=<file.json> [--config=<file>]  ('-' = stdout)";
+    "--query-gpu=<file.json> | --print-paths=<file.json> | --decode-movies=<image|folder> --result=<file.json> "
+    "[--movie-dump=<dir>] [--movie-filter=<text>] [--config=<file>]  ('-' = stdout)";
 
 int RunTool(const ToolArgs& a, const std::filesystem::path& exePath) {
     if (a.toolOptions != 1) {
@@ -622,11 +635,19 @@ int RunTool(const ToolArgs& a, const std::filesystem::path& exePath) {
         ReportToolError(std::string("--check-iso needs an image path and --result=<file.json>; ") + kUsage);
         return kToolExitUsage;
     }
-    if (a.tool != Tool::CheckIso && a.hasResult) {
-        ReportToolError(std::string("--result belongs to --check-iso; ") + kUsage);
+    if (a.tool == Tool::DecodeMovies && (a.movieSource.empty() || !a.hasResult || a.result.empty())) {
+        ReportToolError(std::string("--decode-movies needs an image or folder and --result=<file.json>; ") + kUsage);
         return kToolExitUsage;
     }
-    if (a.tool != Tool::CheckIso && a.output.empty()) {
+    if (a.tool != Tool::DecodeMovies && (!a.movieDump.empty() || !a.movieFilter.empty())) {
+        ReportToolError(std::string("--movie-dump/--movie-filter belong to --decode-movies; ") + kUsage);
+        return kToolExitUsage;
+    }
+    if (a.tool != Tool::CheckIso && a.tool != Tool::DecodeMovies && a.hasResult) {
+        ReportToolError(std::string("--result belongs to --check-iso or --decode-movies; ") + kUsage);
+        return kToolExitUsage;
+    }
+    if (a.tool != Tool::CheckIso && a.tool != Tool::DecodeMovies && a.output.empty()) {
         ReportToolError(std::string("missing output file; ") + kUsage);
         return kToolExitUsage;
     }
@@ -648,6 +669,18 @@ int RunTool(const ToolArgs& a, const std::filesystem::path& exePath) {
     case Tool::QueryGpu:
         text = GpuInfoJson(QueryGpu());
         break;
+    case Tool::DecodeMovies: {
+        // M6 (video/xmv_test_mode.h): demux + decode every movie of the disc, results for tools/m6_check.py.
+        vid::DecodeMoviesOptions o;
+        o.source = std::filesystem::path(a.movieSource);
+        o.dumpDir = std::filesystem::path(a.movieDump);
+        o.filter = WideToUtf8(a.movieFilter);
+        bool allOk = false;
+        text = vid::DecodeMoviesJson(o, allOk);
+        target = a.result;
+        okCode = allOk ? kToolExitOk : kToolExitNotSupported;
+        break;
+    }
     case Tool::Paths: {
         std::filesystem::path config;
         if (!a.config.empty()) {

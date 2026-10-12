@@ -1940,6 +1940,18 @@ std::uint32_t DsoundStreamQueuedPackets(const void* stream) noexcept {
     return s != nullptr ? static_cast<std::uint32_t>(s->packets.size()) : 0;
 }
 
+// M6 (XMV HLE audio clock): source frames the stream's engine voice played since its creation.
+bool StreamFramesPlayed(const void* stream, std::uint64_t& frames) noexcept {
+    std::lock_guard<std::mutex> lock(g_state.mutex);
+    Object* s = Find(stream, Kind::Stream);
+    if (s == nullptr || s->voice == nullptr) {
+        frames = 0;
+        return false;
+    }
+    frames = s->voice->FramesPlayed();
+    return true;
+}
+
 ObjectView InspectObject(const void* object) noexcept {
     ObjectView v;
     std::lock_guard<std::mutex> lock(g_state.mutex);

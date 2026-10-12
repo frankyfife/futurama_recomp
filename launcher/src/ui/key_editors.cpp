@@ -6,6 +6,7 @@
 #include "ui/screen_info.h"
 
 #include <QCheckBox>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
@@ -13,9 +14,11 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
+#include <QPixmap>
 #include <QSlider>
 #include <QSpinBox>
 #include <QToolButton>
@@ -103,6 +106,10 @@ public:
     CheckEditor(const KeyDef& key, const EditorContext& context, QWidget* parent)
         : KeyEditor(key, context, parent) {
         check_ = new QCheckBox(this);
+        // A check box without text is exactly as wide as its indicator; the windows11 style draws the indicator's
+        // anti-aliased frame slightly beyond that at fractional scaling (150 %, 225 %), so its right edge was cut
+        // off (user report 2026-10-12). A few pixels of room keep the frame whole in every style.
+        check_->setMinimumSize(check_->sizeHint() + QSize(4, 2));
         MakeRowLayout(this)->addWidget(check_, 0, Qt::AlignLeft);
         connect(check_, &QCheckBox::clicked, this, [this](bool) { emitEdited(); });
     }
@@ -359,6 +366,130 @@ public:
 
 private:
     QLineEdit* edit_ = nullptr;
+};
+
+// --- colour ("original" or RRGGBB, G1 outline colour) --------------------------------------------
+class ColorEditor final : public KeyEditor {
+public:
+    ColorEditor(const KeyDef& key, const EditorContext& context, QWidget* parent)
+        : KeyEditor(key, context, parent) {
+        auto* layout = MakeRowLayout(this);
+        original_ = new QCheckBox(T("editor.color.original"), this);
+        original_->setToolTip(T("editor.color.original.tip"));
+        button_ = new QToolButton(this);
+        button_->setToolTip(T("editor.color.pick.tip"));
+        button_->setMinimumWidth(button_->fontMetrics().horizontalAdvance(QStringLiteral("#MMMMMM")) + 48);
+        layout->addWidget(original_);
+        layout->addWidget(button_);
+        layout->addStretch(1);
+        connect(original_, &QCheckBox::clicked, this, [this](bool on) {
+            original_->setChecked(on);
+            updateButton();
+            emitEdited();
+        });
+        connect(button_, &QToolButton::clicked, this, [this] {
+            const QColor picked = QColorDialog::getColor(color_, this, T("editor.color.dialog"));
+            if (!picked.isValid()) {
+                return;
+            }
+            color_ = picked;
+            original_->setChecked(false);
+            updateButton();
+            emitEdited();
+        });
+    }
+    void setValue(const QString& value) override {
+        updating_ = true;
+        const QString v = value.trimmed();
+        const bool hex = v.size() == 6 && QColor::isValidColorName(QLatin1Char('#') + v);
+        original_->setChecked(!hex);
+        if (hex) {
+            color_ = QColor(QLatin1Char('#') + v);
+        }
+        updateButton();
+        updating_ = false;
+    }
+    QString value() const override {
+        if (original_->isChecked()) {
+            return QStringLiteral("original");
+        }
+        return color_.name(QColor::HexRgb).mid(1).toUpper();
+    }
+    QWidget* focusTarget() override { return button_; }
+
+private:
+    void updateButton() {
+        // The swatch shows the colour that is used (black for the original look) and its hex value.
+        const QColor shown = original_->isChecked() ? QColor(Qt::black) : color_;
+        QPixmap swatch(button_->fontMetrics().height(), button_->fontMetrics().height());
+        swatch.fill(shown);
+        button_->setIcon(QIcon(swatch));
+        button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button_->setText(shown.name(QColor::HexRgb).toUpper());
+    }
+
+    QCheckBox* original_ = nullptr;
+    QToolButton* button_ = nullptr;
+    QColor color_ = QColor(Qt::black);
+};
+
+// --- fraction ("original" or 0..1 as a percent slider, G1 outline opacity) -------------------------
+class FractionEditor final : public KeyEditor {
+public:
+    FractionEditor(const KeyDef& key, const EditorContext& context, QWidget* parent)
+        : KeyEditor(key, context, parent) {
+        auto* layout = MakeRowLayout(this);
+        original_ = new QCheckBox(T("editor.color.original"), this);
+        slider_ = new QSlider(Qt::Horizontal, this);
+        slider_->setRange(0, 100);
+        slider_->setSingleStep(1);
+        slider_->setPageStep(10);
+        slider_->setMinimumWidth(fontMetrics().height() * 14);
+        label_ = new QLabel(this);
+        label_->setMinimumWidth(label_->fontMetrics().horizontalAdvance(QStringLiteral("100 %0")));
+        layout->addWidget(original_);
+        layout->addWidget(slider_, 1);
+        layout->addWidget(label_);
+        layout->addStretch(1);
+        connect(original_, &QCheckBox::clicked, this, [this](bool) {
+            updateLabel();
+            emitEdited();
+        });
+        connect(slider_, &QSlider::valueChanged, this, [this](int) {
+            if (updating_) {
+                return;
+            }
+            original_->setChecked(false);  // moving the slider chooses an own value
+            updateLabel();
+            emitEdited();
+        });
+    }
+    void setValue(const QString& value) override {
+        updating_ = true;
+        const std::optional<double> v = ParseFloatText(value);
+        original_->setChecked(!v.has_value());
+        // "original": the slider shows the original look of the characters (0.75).
+        slider_->setValue(static_cast<int>(std::lround(std::clamp(v.value_or(0.75), 0.0, 1.0) * 100.0)));
+        updateLabel();
+        updating_ = false;
+    }
+    QString value() const override {
+        if (original_->isChecked()) {
+            return QStringLiteral("original");
+        }
+        return QString::number(slider_->value() / 100.0, 'g', 3);
+    }
+    QWidget* focusTarget() override { return slider_; }
+
+private:
+    void updateLabel() {
+        label_->setText(QStringLiteral("%1 %").arg(slider_->value()));
+        label_->setEnabled(!original_->isChecked());
+    }
+
+    QCheckBox* original_ = nullptr;
+    QSlider* slider_ = nullptr;
+    QLabel* label_ = nullptr;
 };
 
 // --- file / directory ----------------------------------------------------------------------------
@@ -804,6 +935,10 @@ KeyEditor* CreateKeyEditor(const KeyDef& key, const EditorContext& context, QWid
         return new SliderEditor(key, context, parent);
     case UiWidget::AudioDevice:
         return new AudioDeviceEditor(key, context, parent);
+    case UiWidget::Color:
+        return new ColorEditor(key, context, parent);
+    case UiWidget::Fraction:
+        return new FractionEditor(key, context, parent);
     case UiWidget::Binding:  // shown by the controls tab's binding tables (ui/controls_panel.h); text as fallback
     case UiWidget::Text:
         break;

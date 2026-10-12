@@ -607,6 +607,9 @@ requirements: anti-aliasing by MSAA (no FXAA, no TAA), native render resolution 
 | `anisotropy` | `off` \| `2` \| `4` \| `8` \| `16` (16) | anisotropic filtering of mip-mapped 3D textures |
 | `screenshot_size` | `output` \| `internal` (output) | screenshots of the presented image (output size) or of the resolved back buffer (output x render_scale) |
 | `linear_aa` | bool (off) | review M3c finding 3: the MSAA resolve and the downsample average linear light (sRGB views of TYPELESS targets) instead of gamma-encoded values; rendering and blending unchanged; off = the Xbox's gamma resolve |
+| `outline_color` | `original` \| `RRGGBB` (original) | G1 (section 14): colour of the character outlines (shells and NiOutline ribbons); `original` = black like the Xbox |
+| `outline_opacity` | `original` \| 0..1 (original) | G1: shells replace the material alpha 0.75, ribbons multiply their vertex alpha |
+| `outline_thickness` | 0..2.5, UI step 0.25 (1.0) | G1: factor on the original thickness; 0 = outlines off |
 
 The existing `scaling` (linear | point | integer) applies when the output is smaller than the view. Classic =
 `resolution = 640x480`, `render_scale = 1`, `msaa = off`, `anisotropy = off`. The defaults (`gfx::kDefault*`) equal
@@ -831,3 +834,46 @@ values: `gfx/interp_frame.h` (provided by `xapi/game_timing`, `src/INTERFACES.md
     geometry rigidly attached to a rotating camera node moves in view space by up to 0.1 px (3 deg/tick) .. 10 px
     (20 deg/tick, 5 units boom) at 640 px (finding 5, measure with M4b/M8 cutscenes); mirrored rotations
     (det <= 0) always snap - the disc has none (finding 7).
+
+## 14. G1: Konturen (character outlines)
+
+Analysis: `analysis/loader/g1_outlines.md` (techniques, addresses, measurements). Code: `gfx/outline.h/.cpp`,
+`gfx/gfx_config.*` (`OutlineSettings`, parsers), `gfx/nipc_gpu.cpp` (`DrawGeometry`, `DrawScreenPolygon`),
+`gfx/nipc_renderer.cpp` (`CreateRenderer`: guest globals), `gfx/ni_extract.*` (`GeometryInput::positionsOverride`,
+skin cache); schema rows `[render] outline_color/outline_opacity/outline_thickness` (Graphics tab, order 76-78); tests
+`tests/outline_tests.cpp`, `tests/extract_tests.cpp` ("positionsOverride").
+
+- Two techniques of the original, both drawn by the port without any option:
+  - **A, inverted hull "QDOutline"** (all characters in the levels): a NiLODNode named "QDOutline" (LOD 0..45 units)
+    holds one skinned shell per body mesh (same triangles in the same order, welded vertices moved by 0.05 model
+    units or 0 along the normal), NiStencilProperty draw mode CW (-> D3DCULL_CCW), material emissive 0 / alpha 0.75,
+    no lights -> black at 75 %, about 0.9 px at 640x480. Slot 48 like any skinned NiTriShape.
+  - **B, NiOutline** (HUD head, a few menu/cockpit NIFs): CPU silhouette ribbons (`FUN_00153E90`), 404-vertex
+    NiScreenPolygon strips with the property set of `FUN_0013CE60` (texturing `0x3044BC`, alpha `0x3044E8`), black
+    vertex colours, half width `DAT_002D7AB0` = 0.003; slot 54.
+- **Defaults = no outline code:** `OutlineSettings::Active()` is false, `GpuRenderer::Impl::outlines` stays nullptr,
+  `outline::ApplyGuestSettings` writes nothing, `positionsOverride` stays 0. Verified with normalized draw traces
+  (g1_outlines.md section 11: frame 1560 identical draw by draw).
+- **Shell recognition:** `outline::FindOutlineNode(transform)`: object = slot transform - 0x70, up to 3 parents
+  (+0x14) whose name (+0x08) is "QDOutline" (10 bytes like `FUN_0003F8D0`). The guest transform is used (not the
+  interpolated arena copy).
+- **Colour/opacity A:** after `ExtractState`: lighting on, all material sources MATERIAL, emissive = colour,
+  ambient/diffuse rgb = 0, no lights, global ambient 0 -> output = colour; alpha = material alpha (0.75) or the
+  option.
+- **Thickness A (k):** pairing shell <-> body once per shell `NiTriShapeData` (cached, revalidated by vertex/triangle
+  counts and vertex pointers): body = an NiTriShape below the QDOutline node's parent (outside QDOutline, NiNode test
+  through the guest's GetRTTI) with the same triangle count whose corners lie within max(0.1, 10 % of the shell bound
+  radius) in triangle order; per draw an arena array `p + (k - 1) (p - body)` is the source of `FUN_0014F710`
+  (`Skin(..., sourcePositions)`, such draws bypass the skin cache) or the position stream of rigid shells. No
+  partner -> unchanged (counted, logged). k = 0: shell draws are counted as `Empty` and not drawn.
+- **B:** k != 1 -> `DAT_002D7AB0 = 0.003 k` once in `CreateRenderer`; k = 0 -> `DAT_002D7AB8 = 0` (NiOutline::vf33
+  falls back to NiNode::vf33). Colour/opacity: ribbon polygons (property state = the ribbon set) get an arena copy
+  of their colours (rgb = colour, alpha x opacity).
+- **Skin cache (both, also at the defaults):** `Skin()` bypasses its per-frame cache while `DAT_0030EB40 != 0`
+  (NiOutline::vf33 forces a new deformation with skin +0x14 = 1, whose tail fills that buffer). No run so far
+  had a cache hit, so the default draw list is unchanged.
+- **Log:** with an active option `outlines: colour ..., opacity ..., thickness ...; shells N draws (skipped,
+  recoloured, scaled, without body mesh; pairings, cached), ribbons M draws (recoloured)` at exit, plus one line
+  for the guest globals.
+- **Known limit:** large thickness factors (about 3 and more) let the shell show through concave parts of the face
+  (nose, eye sockets) - inherent in inverted hulls; 1.5-2 keeps the look clean.

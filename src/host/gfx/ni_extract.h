@@ -480,6 +480,10 @@ struct GeometryInput {
     GuestPtr bound = 0;         // NiBound* (unused for drawing)
     GuestPtr propertyState = 0;
     GuestPtr effectState = 0;
+    // G1 (gfx/outline.h, [render] outline_thickness != 1): guest address of replacement bind-pose positions
+    // (float3 x data vertex count) used instead of NiGeometryData +0x1C - as the source of FUN_0014F710 for
+    // skinned draws, as the position stream otherwise. 0 = the data's own positions (always at the defaults).
+    GuestPtr positionsOverride = 0;
 };
 ExtractStatus ExtractShape(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept;
 ExtractStatus ExtractStrips(const ExtractContext& context, const GeometryInput& input,

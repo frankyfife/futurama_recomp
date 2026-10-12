@@ -39,6 +39,8 @@ constexpr NamePair kWidgetNames[] = {
     {"dir", static_cast<int>(UiWidget::Dir)},         {"resolution", static_cast<int>(UiWidget::Resolution)},
     {"monitor", static_cast<int>(UiWidget::Monitor)}, {"binding", static_cast<int>(UiWidget::Binding)},
     {"slider", static_cast<int>(UiWidget::Slider)},  {"audio_device", static_cast<int>(UiWidget::AudioDevice)},
+    {"color", static_cast<int>(UiWidget::Color)},
+    {"fraction", static_cast<int>(UiWidget::Fraction)},
 };
 
 template <typename Enum, std::size_t N>
@@ -131,6 +133,8 @@ bool WidgetFitsType(UiWidget widget, KeyType type) {
     case UiWidget::Slider:
         return type == KeyType::Int || type == KeyType::Float;
     case UiWidget::AudioDevice:
+    case UiWidget::Color:     // G1: "original" or RRGGBB
+    case UiWidget::Fraction:  // G1: "original" or 0..1
         return type == KeyType::String;
     case UiWidget::Text:
         return true;

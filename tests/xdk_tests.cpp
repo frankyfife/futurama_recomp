@@ -7,7 +7,7 @@
 #include "audio/xdk_entries.h"
 #include "core/guest.h"
 #include "input/xpp_hle.h"
-#include "video/xmv_stubs.h"
+#include "video/xmv_hle.h"
 
 #include <cstring>
 #include <memory>
@@ -134,14 +134,21 @@ TEST_CASE("DSOUND HLE (M5): device singleton, NULL handles tolerated, GetStatus 
     snd::SetEngineForTesting(nullptr);
 }
 
-TEST_CASE("XMV stubs: decoder from the header, end of file on the first frame") {
-    vid::XmvFileHeader hdr{0x6000, 0x6000, 0x6000, vid::kXmvMagic, 2, 640, 480, 5917, 5, 0};
+TEST_CASE("XMV HLE: decoder from the header; without packet callbacks the movie fails cleanly") {
+    vid::XmvFileHeader hdr{0x6000, 0x6000, 0x6000, vid::kXmvMagic, 2, 640, 480, 5917, 1, 0};
+    // One audio track descriptor follows the fixed header (avi.md 3.3): Xbox ADPCM, 2 ch, 22050 Hz, 4 bit.
+    struct {
+        vid::XmvFileHeader h;
+        std::uint16_t tag, channels;
+        std::uint32_t rate;
+        std::uint16_t bits, flags;
+    } file{hdr, 0x69, 2, 22050, 4, 0};
     void* decoder = nullptr;
-    REQUIRE(vid::XMVDecoder_CreateDecoderForPacketsHle(0, &hdr, nullptr, nullptr, nullptr, &decoder) == 0);
+    REQUIRE(vid::XMVDecoder_CreateDecoderForPacketsHle(0, &file.h, nullptr, nullptr, nullptr, &decoder) == 0);
     REQUIRE(decoder != nullptr);
-    CHECK(vid::IsStubDecoder(decoder));
+    CHECK(vid::IsXmvDecoder(decoder));
     CHECK(static_cast<std::uint64_t>(guest::Addr(decoder)) < guest::kGuestMemoryLimit);
-    const std::uint32_t live = vid::LiveStubDecoders();
+    const std::uint32_t live = vid::LiveXmvDecoders();
     CHECK(live >= 1);
 
     vid::XmvVideoDescriptor desc{0, 0, 0xDEADBEEFu, 0};
@@ -149,30 +156,33 @@ TEST_CASE("XMV stubs: decoder from the header, end of file on the first frame") 
     CHECK(desc.width == 640);
     CHECK(desc.height == 480);
     CHECK(desc.notWritten == 0xDEADBEEFu);  // like the original 0x264759
-    CHECK(desc.audioStreamCount == 5);
+    CHECK(desc.audioStreamCount == 1);
 
     void* audio = reinterpret_cast<void*>(0x1234);
-    CHECK(vid::XMVDecoder_EnableAudioStreamHle(decoder, 1, 0, nullptr, &audio) == 0);
+    CHECK(vid::XMVDecoder_EnableAudioStreamHle(decoder, 3, 0, nullptr, &audio) < 0);  // no track 3
     CHECK(audio == nullptr);
     audio = reinterpret_cast<void*>(0x1234);
-    vid::XMVDecoder_GetAudioStreamHle(decoder, 1, &audio);
-    CHECK(audio == nullptr);  // movie player 0xEE429 skips SetVolume/Release
+    vid::XMVDecoder_GetAudioStreamHle(decoder, 0, &audio);
+    CHECK(audio == nullptr);  // not enabled: movie player 0xEE429 skips SetVolume/Release
 
-    std::int32_t result = vid::kXmvFailure;
+    // No callbacks: the first GetNextFrame cannot read a packet -> error result 3 (the player sets its done flag).
+    std::int32_t result = vid::kXmvNewFrame;
     std::uint32_t timestamp = 0xCAFEu;
     CHECK(vid::XMVDecoder_GetNextFrameHle(decoder, nullptr, &result, &timestamp) == 0);
-    CHECK(result == vid::kXmvEndOfFile);  // player 0xEDEEA sets its done flag
-    CHECK(timestamp == 0xCAFEu);          // only written with a new frame (original)
+    CHECK(result == vid::kXmvFailure);
+    CHECK(timestamp == 0xCAFEu);  // only written with a new frame
+    CHECK(vid::XMVDecoder_GetNextFrameHle(decoder, nullptr, &result, nullptr) == 0);
+    CHECK(result == vid::kXmvFailure);
     CHECK(vid::XMVDecoder_GetPlaybackTimeMsHle(decoder) == 0);
 
     vid::XMVDecoder_CloseDecoderHle(decoder);
-    CHECK_FALSE(vid::IsStubDecoder(decoder));
-    CHECK(vid::LiveStubDecoders() == live - 1);
+    CHECK_FALSE(vid::IsXmvDecoder(decoder));
+    CHECK(vid::LiveXmvDecoders() == live - 1);
 
     // A header without 'xobX' fails like a broken file; *ppDecoder stays untouched.
-    hdr.magic = 0;
+    file.h.magic = 0;
     void* none = reinterpret_cast<void*>(0x1234);
-    CHECK(vid::XMVDecoder_CreateDecoderForPacketsHle(0, &hdr, nullptr, nullptr, nullptr, &none) < 0);
+    CHECK(vid::XMVDecoder_CreateDecoderForPacketsHle(0, &file.h, nullptr, nullptr, nullptr, &none) < 0);
     CHECK(none == reinterpret_cast<void*>(0x1234));
 }
 

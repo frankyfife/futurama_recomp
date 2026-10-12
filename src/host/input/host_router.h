@@ -41,6 +41,10 @@ public:
     // Explicit source list (tests); `useRegistry` = true returns to the global registry.
     void UseSources(const std::vector<InputSource*>& sources) noexcept;
     void UseRegistry() noexcept;
+    // M4b: called in SampleGamePort with the merged state of `port` before the divert check (freecam hotkeys, held
+    // back chord buttons). It may change the state and call Divert. nullptr = none.
+    using SampleFilter = void (*)(int port, PadState& merged) noexcept;
+    void SetSampleFilter(SampleFilter filter) noexcept;
 
     // ---- InputRouter -------------------------------------------------------------------------------------
     std::uint32_t ConnectedPorts() const noexcept override;
@@ -94,6 +98,7 @@ private:
     mutable std::recursive_mutex mutex_;
     Options options_{};
     FocusQuery focusQuery_ = nullptr;
+    SampleFilter sampleFilter_ = nullptr;
     bool explicitSources_ = false;
     std::vector<InputSource*> sources_;
 

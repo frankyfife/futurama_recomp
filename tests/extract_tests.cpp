@@ -858,6 +858,27 @@ TEST_CASE("extract: RenderShape (slot 48) streams, indices, transform") {
     CHECK(sc.shadow.counters.skinnedDraws == 1);
 }
 
+// G1 (gfx/outline.h): GeometryInput::positionsOverride replaces the position stream (rigid draws) and stays 0 =
+// the data's own positions at the defaults.
+TEST_CASE("extract: positionsOverride replaces the position stream") {
+    Scene sc;
+    ShapeObjects o = MakeShape(sc, false);
+    GeometryInput in;
+    in.data = A(o.data);
+    in.transform = A(o.transform);
+    in.propertyState = A(sc.state);
+    CHECK(in.positionsOverride == 0);
+    DrawItem item;
+    REQUIRE(ExtractShape(sc.Context(), in, &item) == ExtractStatus::Ok);
+    CHECK(item.geometry.positions.data == o.positions);
+    auto* scaled = sc.heap.New<float>(12);
+    in.positionsOverride = A(scaled);
+    REQUIRE(ExtractShape(sc.Context(), in, &item) == ExtractStatus::Ok);
+    CHECK(item.geometry.positions.data == scaled);
+    CHECK(item.geometry.positions.stride == 12);
+    CHECK(item.geometry.normals.data == o.normals);
+}
+
 TEST_CASE("extract: RenderTristrips (slot 51) joins strips with 0xFFFF") {
     Scene sc;
     auto* data = sc.heap.New<NiTriStripsData>();

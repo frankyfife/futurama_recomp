@@ -1,0 +1,64 @@
+# m4b_freecam.txt - freecam in the 3D main menu and in Level 1-1 (M4b). Format: README.md in this folder.
+# L3+R3 (LS RS) toggles the freecam; while it is on the port is diverted and the sticks drive the camera.
+
+wait context Frontend timeout 60s
+wait main_menu timeout 60s
+wait 30t
+screenshot fc_menu_game
+
+# Main menu: on, fly forward and up, turn right, look down, zoom in; R3 alone must not reach the game.
+press LS RS 3t
+wait 10t
+hold LY=1.0 20t
+hold RT 15t
+hold RX=1.0 20t
+hold RY=-0.6 10t
+screenshot fc_menu_free
+press UP 20t
+screenshot fc_menu_zoom
+press BACK 3t
+wait 10t
+screenshot fc_menu_reset
+press LS RS 3t
+wait 30t
+screenshot fc_menu_back
+
+# New game -> Level 1-1 (as m4_newgame.txt).
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 30t
+screenshot fc_level_game
+
+# Level: on, fly backwards and up for an overview, turn around.
+press LS RS 3t
+wait 10t
+hold LY=-1.0 90t
+hold RT 60t
+hold RY=-0.5 30t
+screenshot fc_level_free
+hold RX=1.0 30t
+screenshot fc_level_turn
+wait 5t
+press B 3t
+wait 10t
+screenshot fc_level_culled
+wait 5t
+press B 3t
+wait 5t
+press Y 3t
+wait 30t
+screenshot fc_level_nohud
+wait 30t
+press LS RS 3t
+wait 30t
+expect controllable
+screenshot fc_level_back
+quit 0

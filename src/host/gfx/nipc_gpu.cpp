@@ -6,6 +6,7 @@
 #include "core/log.h"
 #include "gfx/gfx_config.h"
 #include "gfx/interp_history.h"
+#include "gfx/outline.h"
 #include "gfx/rhi/d3d11/d3d11_device.h"
 #include "platform/frame_pacer.h"
 #include "platform/screenshot.h"
@@ -296,6 +297,21 @@ struct GpuRenderer::Impl {
     // M3d: renderer-level interpolation between the last two logic ticks (gfx/interp_history.h). Passes every
     // camera and draw through unchanged while the frame clock produces no intermediate frames (60 fps).
     std::unique_ptr<interp::History> history;
+    // G1: [render] outline_* (gfx/outline.h); nullptr at the defaults (no outline code runs).
+    std::unique_ptr<outline::Outlines> outlines;
+
+    // M6: movie textures (the D3D shim's YUY2 textures written by the XMV HLE), converted to BGRA8 on upload.
+    struct MovieTex {
+        std::uint32_t header = 0, serial = 0, generation = 0;
+        std::uint32_t width = 0, height = 0;
+        tex::Yuy2Mode mode = tex::Yuy2Mode::ConvertBt601;
+        rhi::TextureHandle texture;
+        std::uint32_t lastFrame = 0;
+    };
+    static constexpr std::size_t kMovieTextures = 4;
+    MovieTex movies[kMovieTextures];
+    std::vector<std::uint8_t> movieScratch;
+    std::uint64_t movieUploads = 0, movieRawDraws = 0, movieFailures = 0;
 
     rhi::CommandContext& Ctx() noexcept { return device->Context(); }
 
@@ -656,6 +672,11 @@ GpuRenderer::~GpuRenderer() {
         if (impl_->blackTexture) {
             impl_->device->Destroy(impl_->blackTexture);
         }
+        for (Impl::MovieTex& m : impl_->movies) {
+            if (m.texture) {
+                impl_->device->Destroy(m.texture);
+            }
+        }
         impl_->ff.Shutdown();
     }
 }
@@ -836,6 +857,14 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
     } catch (...) {
         FUT_LOGW(Gfx, "interpolation: not available (out of memory)");
     }
+    // G1: outline options (nothing is created at the defaults).
+    if (GetSettings().outline.Active()) {
+        try {
+            d.outlines = std::make_unique<outline::Outlines>(GetSettings().outline);
+        } catch (...) {
+            FUT_LOGW(Gfx, "outlines: options not available (out of memory)");
+        }
+    }
     d.PrepareFrame(1);
     return r;
 }
@@ -989,6 +1018,19 @@ void GpuRenderer::DrawGeometry(ni::DrawKind kind, const ni::GeometryInput& input
     if (d.history != nullptr) {
         interpolated = d.history->Geometry(kind, input, d.arena);
     }
+    // G1: QDOutline shells (only with a non-default outline option; recognised by the guest transform).
+    const bool shell = d.outlines != nullptr && d.outlines->IsShell(input.transform);
+    if (shell) {
+        const float k = d.outlines->Settings().thickness;
+        if (k <= 0.0f) {
+            d.outlines->NoteShell(true, false);
+            d.Count(kind, input.data, DrawOutcome::Empty, false);  // outline_thickness = 0: outlines off
+            return;
+        }
+        if (k != kDefaultOutlineThickness) {
+            interpolated.input.positionsOverride = d.outlines->ScaledPositions(input.transform, input.data, d.arena);
+        }
+    }
     const ni::GeometryInput& in = interpolated.input;
     ni::ExtractStatus status = ni::ExtractStatus::Unsupported;
     switch (kind) {
@@ -1007,6 +1049,14 @@ void GpuRenderer::DrawGeometry(ni::DrawKind kind, const ni::GeometryInput& input
     default:
         break;
     }
+    if (shell) {
+        const bool recolor = status == ni::ExtractStatus::Ok &&
+                             (d.outlines->Settings().hasColor || d.outlines->Settings().hasOpacity);
+        if (recolor) {
+            outline::ApplyShellColor(d.outlines->Settings(), &d.item);
+        }
+        d.outlines->NoteShell(false, recolor);
+    }
     float tint[4];
     if (status == ni::ExtractStatus::Ok && interp::TintColor(interpolated.tint, tint)) {
         interp::ApplyTint(&d.item, tint);  // [render] interpolation_debug = tint
@@ -1020,7 +1070,14 @@ void GpuRenderer::DrawScreenPolygon(ni::GuestPtr polygon) noexcept {
         d.Count(ni::DrawKind::ScreenPolygon, polygon, DrawOutcome::TextureTarget, false);
         return;
     }
-    d.Submit(ni::DrawKind::ScreenPolygon, polygon, ni::ExtractScreenPolygon(d.Context(), polygon, &d.item));
+    const ni::ExtractStatus status = ni::ExtractScreenPolygon(d.Context(), polygon, &d.item);
+    // G1: NiOutline ribbons (only with a non-default outline option).
+    if (d.outlines != nullptr && outline::IsRibbonPolygon(polygon)) {
+        const bool recolored = status == ni::ExtractStatus::Ok &&
+                               outline::RecolorRibbon(d.outlines->Settings(), d.arena, &d.item.geometry);
+        d.outlines->NoteRibbon(recolored);
+    }
+    d.Submit(ni::DrawKind::ScreenPolygon, polygon, status);
 }
 
 void GpuRenderer::DrawScreenTexture(ni::GuestPtr screenTexture) noexcept {
@@ -1179,6 +1236,89 @@ rhi::TextureHandle GpuRenderer::BlackTexture() const noexcept {
     return impl_->blackTexture;
 }
 
+// M6: the host texture of a YUY2 shim texture (movie player). One BGRA8 texture per shim resource (serial), re-uploaded
+// when the XMV HLE wrote a new frame (generation) or the YuvEnable state at the draw changed the conversion; the least
+// recently used of kMovieTextures entries is reused (the game has one movie texture at a time).
+rhi::TextureHandle GpuRenderer::MovieTexture(const d3d::ResourceInfo& info, bool yuvEnable) noexcept {
+    Impl& d = *impl_;
+    if (info.format != d3d::kFormatYuy2 || info.width == 0 || info.height == 0 || (info.width & 1) != 0 ||
+        info.pixels == 0 || info.pitch < 2u * info.width) {
+        ++d.movieFailures;
+        return {};
+    }
+    const tex::Yuy2Mode mode = yuvEnable ? tex::Yuy2Mode::ConvertBt601 : tex::Yuy2Mode::Raw;
+    if (!yuvEnable && d.movieRawDraws++ == 0) {
+        FUT_LOGW(Gfx, "d3d11: YUY2 texture 0x%08X drawn without YuvEnable - raw components (R = Cr, G = Y, B = Cb), "
+                 "logged once", info.header);
+    }
+    Impl::MovieTex* slot = nullptr;
+    for (Impl::MovieTex& m : d.movies) {
+        if (m.texture && m.serial == info.serial) {
+            slot = &m;
+            break;
+        }
+    }
+    if (slot == nullptr) {
+        slot = &d.movies[0];
+        for (Impl::MovieTex& m : d.movies) {
+            if (!m.texture) {
+                slot = &m;
+                break;
+            }
+            if (m.lastFrame < slot->lastFrame) {
+                slot = &m;
+            }
+        }
+        if (slot->texture && (slot->width != info.width || slot->height != info.height)) {
+            d.device->Destroy(slot->texture);
+            slot->texture = {};
+        }
+        if (!slot->texture) {
+            rhi::TextureDesc desc;
+            desc.width = info.width;
+            desc.height = info.height;
+            desc.mipLevels = 1;
+            desc.format = rhi::Format::BGRA8_UNorm;
+            desc.usage = rhi::kTextureSampled;
+            desc.debugName = "movie texture (YUY2)";
+            slot->texture = d.device->CreateTexture(desc, nullptr);
+            if (!slot->texture) {
+                ++d.movieFailures;
+                return {};
+            }
+            ++d.texturesCreated;
+        }
+        slot->header = info.header;
+        slot->serial = info.serial;
+        slot->width = info.width;
+        slot->height = info.height;
+        slot->generation = info.generation + 1;  // force the upload below
+    }
+    slot->lastFrame = d.framesDone + 1;
+    if (slot->generation != info.generation || slot->mode != mode) {
+        try {
+            d.movieScratch.resize(static_cast<std::size_t>(info.width) * info.height * 4u);
+        } catch (...) {
+            ++d.movieFailures;
+            return slot->texture;
+        }
+        tex::ConvertYuy2ToBgra(guest::Ptr<const std::uint8_t>(info.pixels), info.pitch, info.width, info.height,
+                               d.movieScratch.data(), info.width * 4u, mode);
+        rhi::SubresourceData level;
+        level.data = d.movieScratch.data();
+        level.rowPitch = info.width * 4u;
+        level.slicePitch = level.rowPitch * info.height;
+        if (d.device->UpdateTexture(slot->texture, 0, level)) {
+            slot->generation = info.generation;
+            slot->mode = mode;
+            ++d.movieUploads;
+        } else {
+            ++d.movieFailures;
+        }
+    }
+    return slot->texture;
+}
+
 bool GpuRenderer::OnRenderThread() const noexcept {
     return impl_->renderThread == GetCurrentThreadId();
 }
@@ -1224,6 +1364,11 @@ void GpuRenderer::LogStatistics() noexcept {
         static_cast<unsigned long long>(d.texturesCreated),
         static_cast<unsigned long long>(d.texturesDestroyed),
         static_cast<unsigned long long>(d.textureFailures), d.arenaPeak);
+    if (d.movieUploads != 0 || d.movieFailures != 0 || d.movieRawDraws != 0) {
+        FUT_LOGI(Gfx, "d3d11 movie textures (YUY2): %llu frame uploads, %llu draws without YuvEnable, %llu failures",
+                 static_cast<unsigned long long>(d.movieUploads), static_cast<unsigned long long>(d.movieRawDraws),
+                 static_cast<unsigned long long>(d.movieFailures));
+    }
     const ff::PipelineStats f = d.ff.Stats();
     FUT_LOGI(
         Gfx,
@@ -1278,6 +1423,9 @@ void GpuRenderer::LogStatistics() noexcept {
              ds.gpuFrameMsMax);
     if (d.history != nullptr) {
         d.history->LogStatistics();  // M3d: "interpolation: ..."
+    }
+    if (d.outlines != nullptr) {
+        d.outlines->LogStatistics();  // G1: "outlines: ..."
     }
 }
 

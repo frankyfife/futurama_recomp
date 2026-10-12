@@ -122,6 +122,10 @@ TEST_CASE("schema: every row has complete player-facing metadata") {
             // M5 (tooling/launcher agent): an audio endpoint ID shown as a device list ([audio] device).
             CHECK(k.type == core::ConfigKeyType::String);
             CHECK(std::string(k.section) == "audio");
+        } else if (k.widget == core::ConfigUiWidget::Color || k.widget == core::ConfigUiWidget::Fraction) {
+            // G1: "original" or RRGGBB shown as a colour button ([render] outline_color), with a validator.
+            CHECK(k.type == core::ConfigKeyType::String);
+            CHECK(k.validate != nullptr);
         } else if (k.widget == core::ConfigUiWidget::Slider) {
             // M4 (input agent): sliders are ranged int/float keys.
             CHECK((k.type == core::ConfigKeyType::Int || k.type == core::ConfigKeyType::Float));
@@ -515,7 +519,8 @@ TEST_CASE("schema: --print-config-schema JSON follows the shared contract (item 
             static const std::set<std::string> kTabs = {"game", "graphics", "paths", "advanced", "controls", "audio"};
             static const std::set<std::string> kWidgets = {"combo",   "check",   "spin",   "dspin",
                                                            "text",    "file",    "dir",    "resolution",
-                                                           "monitor", "binding", "slider", "audio_device"};
+                                                           "monitor", "binding", "slider", "audio_device",
+                                                           "color",   "fraction"};
             if (k->unit != nullptr) {
                 CHECK(key["unit"].text == k->unit);
             }

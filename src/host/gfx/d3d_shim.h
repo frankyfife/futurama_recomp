@@ -15,7 +15,8 @@
 //   +0x10 Size    ASSUMPTION: XDK D3DSIZE for linear formats (width-1 | height-1 << 12 | pitch/64-1 << 24)
 //   +0x14 Parent  surfaces only: owning texture (AddRef'ed, released with the surface)
 // Every resource is listed in a host registry (LookupResource), so a later renderer (M3) or the XMV
-// HLE (M6) can find the pixels of a movie texture. AddRef/Release follow the original refcount rules
+// HLE (M6) can find the pixels of a movie texture (M6: the XMV HLE writes the YUY2 frames there and raises the
+// generation, NoteResourceWritten; the renderer converts YUY2 on upload, nipc_gpu MovieTexture). AddRef/Release follow the original refcount rules
 // (0x2373B0/0x2373F0); unknown pointers and NULL are ignored and logged once.
 #pragma once
 
@@ -63,7 +64,15 @@ struct ResourceInfo {
     std::uint32_t pixelBytes = 0; // texture: whole mip chain; surface: its level
     std::uint32_t parent = 0;     // surface: texture header
     std::uint32_t refCount = 0;   // Common & 0xFFFF
+    // M6: unique number of the resource (never reused, a new resource at the same header address differs) and the
+    // content generation of its texture (surfaces: of the parent), raised by NoteResourceWritten.
+    std::uint32_t serial = 0;
+    std::uint32_t generation = 0;
 };
+inline constexpr std::uint32_t kFormatYuy2 = 0x24;  // Xbox D3DFMT_YUY2 (movie player texture, avi.md 3.2)
+// M6 (XMV HLE): the pixels of `header` (a texture or one of its surfaces) were written on the host side; raises the
+// texture's generation so the renderer uploads the new contents. Returns the new generation (0 = unknown resource).
+std::uint32_t NoteResourceWritten(std::uint32_t header) noexcept;
 bool LookupResource(std::uint32_t header, ResourceInfo& out) noexcept;
 
 // Guest-visible dummy IDirect3DDevice8 (0x2040 zero bytes, the size the original device memset in

@@ -30,6 +30,8 @@
 //       it at runtime), "unavailable" (no tearing support), "unknown" (DXGI 1.5 missing). Extensions: per adapter
 //       "device_id", "software", "feature_level", "msaa", "max_anisotropy", "dedicated_mb_source"; per output
 //       "adapter" (index), "hz", "refresh_source", "dpi", "attached"; top level "default_adapter", "vrr" {..}.
+//   futurama.exe --decode-movies=<image|folder> --result=<file.json> [--movie-dump=<dir>] [--movie-filter=<text>]
+//       (M6 extension, video/xmv_test_mode.h) Decodes every movie of the disc; exit 0 = all ok, 2 = a file failed.
 //   futurama.exe --print-paths=<file.json> [--config=<file>]   (extension)
 //       Where this exe reads its configuration and keeps user data (core::ResolveConfigLocation + the INI):
 //       {"ok","error","mode":"default|portable|explicit","portable","exe_dir","config","config_exists",

@@ -43,7 +43,6 @@ static_assert(kTextureCommonInit == 0x1040001 && kSurfaceCommonInit == 0x1050001
 
 constexpr std::uint32_t kResourceTypeTexture = 3;  // D3DRTYPE_TEXTURE (CreateTexture2 arg 7; 4 volume, 5 cube)
 constexpr std::uint32_t kDummyDeviceSize = 0x2040;  // 0x810 DWORDs (rep stosd at 0x23448A)
-constexpr std::uint32_t kFormatYuy2 = 0x24;
 
 // ASSUMPTION (XDK d3d8types.h, from memory): Xbox D3DFORMAT codes -> bits per pixel and linear flag.
 struct FormatInfo {
@@ -124,6 +123,8 @@ struct Resource {
     void* pages;  // textures: pixel allocation (AllocGuestPages)
     std::uint32_t pixels, pixelBytes;
     std::uint32_t parent;
+    std::uint32_t serial = 0;
+    std::uint32_t generation = 0;  // textures: content generation (NoteResourceWritten)
 };
 
 std::recursive_mutex g_mutex;  // recursive: Release of a surface releases its parent
@@ -133,6 +134,7 @@ std::uint32_t g_deviceRefCount = 1;  // the renderer holds the device it "create
 bool g_yuvEnable = false;
 float g_screenOffsetX = 0.0f, g_screenOffsetY = 0.0f;
 std::uint32_t g_texturesCreated = 0, g_surfacesCreated = 0, g_ignoredReleases = 0;
+std::uint32_t g_nextSerial = 1;
 bool g_loggedNullAddRef = false, g_loggedNullRelease = false;
 
 XboxResource* Header(std::uint32_t addr) noexcept {
@@ -275,7 +277,7 @@ std::uint32_t __stdcall DeviceCreateTexture2(std::uint32_t width, std::uint32_t 
         {
             std::lock_guard<std::recursive_mutex> lock(g_mutex);
             g_resources[addr] = Resource{ResourceKind::Texture, width, height, levels, format, pitch, pages,
-                                         guest::Addr(pages), total, 0};
+                                         guest::Addr(pages), total, 0, g_nextSerial++, 0};
             ++g_texturesCreated;
         }
         FUT_LOGI(Gfx, "D3DDevice_CreateTexture2(%u, %u, %u, %u, 0x%X, fmt 0x%02X%s, type %u) from %s -> 0x%08X "
@@ -324,7 +326,7 @@ std::uint32_t __stdcall TextureGetSurfaceLevel2(std::uint32_t texture, std::uint
     const std::uint32_t addr = guest::Addr(s);
     try {
         g_resources[addr] = Resource{ResourceKind::Surface, w, h, level, t.format, pitch, nullptr, t.pixels + offset,
-                                     LevelBytes(*f, w, h), texture};
+                                     LevelBytes(*f, w, h), texture, g_nextSerial++, 0};
     } catch (...) {
         FreeGuestBlock(s);
         return 0;
@@ -407,7 +409,31 @@ bool LookupResource(std::uint32_t header, ResourceInfo& out) noexcept {
     out = ResourceInfo{r.kind,     header,  r.width,  r.height,     r.levels,
                        r.format,   r.pitch, r.pixels, r.pixelBytes, r.parent,
                        Header(header)->common & kCommonRefMask};
+    out.serial = r.serial;
+    out.generation = r.generation;
+    if (r.kind == ResourceKind::Surface) {
+        const auto p = g_resources.find(r.parent);
+        out.generation = p != g_resources.end() ? p->second.generation : 0;
+    }
     return true;
+}
+
+std::uint32_t NoteResourceWritten(std::uint32_t header) noexcept {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    auto it = g_resources.find(header);
+    if (it == g_resources.end()) {
+        return 0;
+    }
+    if (it->second.kind == ResourceKind::Surface) {
+        it = g_resources.find(it->second.parent);
+        if (it == g_resources.end()) {
+            return 0;
+        }
+    }
+    if (++it->second.generation == 0) {
+        it->second.generation = 1;
+    }
+    return it->second.generation;
 }
 
 std::uint32_t DummyDevice() noexcept {

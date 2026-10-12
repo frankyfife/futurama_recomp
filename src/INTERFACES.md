@@ -1513,6 +1513,24 @@ unchanged into WAV files and analysed against the original sound files, which th
   engine, an XAudio2 submix-tap test that is skipped without an audio endpoint), `tests\schema_tests.cpp` (tab `audio`, widget `audio_device`); launcher
   `tst_misc` (`audioTestTone`, `audioDeviceList`, `audioValueMapping`), `tst_schema::audioTab`, `tst_ui::audioTab`.
 
+### 4.31 Freecam (M4b) - `gfx\freecam.h`, `input\chord_filter.h`
+
+- **Toggle**: `inp::HostRouter::SetSampleFilter(fn)` - called in `SampleGamePort` with the merged state before the
+  divert check; the freecam's filter (`gfx::freecam::SampleFilter`) runs `inp::ChordFilter` (L3+R3, chord buttons
+  held back up to 4 ticks, a short tap becomes a one-tick press) and the toggle key (`[freecam] toggle_key`, F6).
+  Registered in `inp::StartInput` together with `gfx::freecam::Configure()`.
+- **Input while active**: `InputRouter::Divert(port, freecam)`; `inp::KeyboardMouseSource::SetPadEmulation(false)`
+  (no pad state from the keyboard, raw keys/mouse through `ReadRaw`).
+- **Camera**: probe hook `probe:NiCamera::Click` 0x100C50 (`[hooks] disable` name). Swaps the scene camera's world
+  pose and frustum for the call and recomputes the derived NiCamera data (vf39 tail), then restores them.
+- **Renderer**: `gfx::RenderTargetOf(renderer)`, `gfx::ClearBackBuffer(renderer)` (`gfx
+ipc_renderer.h`);
+  `gfx::freecam::NoteCameraData(location)` from slot 47 and `gfx::freecam::SuppressOverlayDraw(target, geometry)` in
+  slots 48-51/54/55 (HUD hidden).
+- **Config**: `[freecam] enabled, toggle_pad (l3r3|off), toggle_key (off|f1..f12), move_speed, look_speed,
+  mouse_sensitivity, invert_y` (launcher tab Steuerung).
+- **Tests**: `tests\freecam_tests.cpp`; script `tools\input_scripts\m4b_freecam.txt`. Report: `docs\m4b_report.md`.
+
 ## 5. Cross-module contracts
 
 | Contract | Provider -> user |
@@ -1713,3 +1731,5 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-12 | M5 phase 5 (review fixes) | `launcher\src\core\audio_output.*`, `launcher\src\ui\audio_panel.cpp`, `launcher\src\core\l10n_table.cpp`, `launcher\tests\tst_ui.cpp`, `core\config_schema.cpp` (help text) | Findings 10/11: test tone stops when the player is destroyed, "Geräte neu suchen" disabled while it plays, test tone falls back to the default device like the game; texts: no device = silent until a device appears, not connected = default device shown and named, downmix note; `[audio] device` help mentions following the default and switching back. Section 4.30. |
 | 2026-10-12 | M5 phase 5 (final check) | `audio\spatial_x3d.cpp`, `audio\audio_engine.cpp`, `tests\audio_spatial_tests.cpp`, `tests\audio_dsound_tests.cpp`, `tools\m5_check.py` | The finding-2 fix panned every 3D voice to front left on the 5.1 side layout 0x60F (X3DAudio with the non-standard mask 0x60B): X3DAudio now pans over quad/stereo and the host maps to the output (test covers 0x3F and 0x60F); XAudio2 `FramesPlayed` after `Discontinuity` takes the stream-end value at the pass end (was 0 in the test, now at most one pass short); A9 requires sound louder on each side (a one-sided panning passed before). Sections 4.29, 4.30. |
 | 2026-10-12 | M5 phase 5 | `docs\loader_design.md` (new section 8.15), `docs\m5_report.md` (new) | Review findings R1-R17 (accepted/rejected) and the M5 report (German). |
+| 2026-10-12 | M4b (main session) | `input\host_router.h`, `input\kbm_source.h`, `gfx\nipc_renderer.h`, `core\config_schema.cpp` | `HostRouter::SetSampleFilter`, `KeyboardMouseSource::SetPadEmulation`, `gfx::RenderTargetOf`, `gfx::ClearBackBuffer`, section `[freecam]`; new `gfx\freecam.*`, `gfx\freecam_math.h`, `input\chord_filter.h` (section 4.31) |
+| 2026-10-12 | G1 outlines | new `gfx\outline.h/.cpp`, `tests\outline_tests.cpp`; `gfx\gfx_config.h/.cpp` (`OutlineSettings`, `ParseOutlineColor/Opacity/Thickness`), `gfx\ni_extract.h` (additive `GeometryInput::positionsOverride`), `gfx\ni_extract.cpp` (`Skin` source positions, cache bypass while `DAT_0030EB40 != 0`), `gfx\ni_guest_layouts.h` (`kNiOutlinePositionBuffer`), `gfx\nipc_gpu.cpp`, `gfx\nipc_renderer.cpp` (one call in `CreateRenderer`), `core\config_schema.cpp` (3 rows + 2 validators), `tests\extract_tests.cpp` (one case) | `[render] outline_color` (original\|RRGGBB), `outline_opacity` (original\|0..1), `outline_thickness` (0..4, 1.0) on the Graphics tab; defaults run no outline code. GFX_CONTRACT.md section 14, `analysis\loader\g1_outlines.md`. |

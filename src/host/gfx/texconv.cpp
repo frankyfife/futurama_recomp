@@ -953,4 +953,44 @@ TextureSource SelectTextureSource(const TextureSourceInput& input) noexcept {
     return chosen;
 }
 
+// ---- M6: YUY2 movie textures -------------------------------------------------------------------------------
+
+void YuvToRgbBt601(std::int32_t y, std::int32_t u, std::int32_t v, std::uint8_t& r, std::uint8_t& g,
+                   std::uint8_t& b) noexcept {
+    const std::int32_t c = 298 * (y - 16) + 128;
+    const std::int32_t d = u - 128;
+    const std::int32_t e = v - 128;
+    auto clamp = [](std::int32_t x) noexcept {
+        x >>= 8;
+        return static_cast<std::uint8_t>(x < 0 ? 0 : x > 255 ? 255 : x);
+    };
+    r = clamp(c + 409 * e);
+    g = clamp(c - 100 * d - 208 * e);
+    b = clamp(c + 516 * d);
+}
+
+void ConvertYuy2ToBgra(const std::uint8_t* src, std::uint32_t srcPitch, std::uint32_t width, std::uint32_t height,
+                       std::uint8_t* dst, std::uint32_t dstPitch, Yuy2Mode mode) noexcept {
+    for (std::uint32_t row = 0; row < height; ++row) {
+        const std::uint8_t* s = src + static_cast<std::size_t>(row) * srcPitch;
+        std::uint8_t* o = dst + static_cast<std::size_t>(row) * dstPitch;
+        for (std::uint32_t x = 0; x + 1 < width; x += 2, s += 4, o += 8) {
+            const std::int32_t y0 = s[0], u = s[1], y1 = s[2], v = s[3];
+            if (mode == Yuy2Mode::ConvertBt601) {
+                YuvToRgbBt601(y0, u, v, o[2], o[1], o[0]);
+                YuvToRgbBt601(y1, u, v, o[6], o[5], o[4]);
+            } else {
+                o[0] = static_cast<std::uint8_t>(u);
+                o[1] = static_cast<std::uint8_t>(y0);
+                o[2] = static_cast<std::uint8_t>(v);
+                o[4] = static_cast<std::uint8_t>(u);
+                o[5] = static_cast<std::uint8_t>(y1);
+                o[6] = static_cast<std::uint8_t>(v);
+            }
+            o[3] = 0xFF;
+            o[7] = 0xFF;
+        }
+    }
+}
+
 }  // namespace gfx::tex

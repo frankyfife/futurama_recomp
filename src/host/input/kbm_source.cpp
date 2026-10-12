@@ -186,6 +186,12 @@ bool KeyboardMouseSource::KeyDown(std::uint16_t vk) const noexcept {
     return vk < 256 && down_[vk];
 }
 
+void KeyboardMouseSource::SetPadEmulation(bool on) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    padEmulation_ = on;
+    dx_ = dy_ = 0;
+}
+
 bool KeyboardMouseSource::Connected() const noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     return enabled_;
@@ -196,6 +202,12 @@ bool KeyboardMouseSource::Sample(int port, std::uint64_t tick, PadState& out) no
     (void)tick;
     std::unique_lock<std::mutex> lock(mutex_);
     if (!enabled_) {
+        return false;
+    }
+    if (!padEmulation_) {
+        tapped_.fill(false);
+        buttonsTapped_ = 0;
+        dx_ = dy_ = 0;
         return false;
     }
     ++stats_.samples;

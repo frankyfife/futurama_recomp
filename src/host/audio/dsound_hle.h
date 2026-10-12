@@ -258,6 +258,10 @@ bool IsDsoundDevice(const void* p) noexcept;
 bool IsDsoundBuffer(const void* p) noexcept;
 bool IsDsoundStream(const void* p) noexcept;
 std::uint32_t DsoundStreamQueuedPackets(const void* stream) noexcept;
+// M6 (XMV HLE, video/xmv_hle.cpp): source frames the stream's engine voice has played since the stream was created
+// (monotonic; 0 before its start at SynchPlayback). False (frames = 0) for an unknown stream or one without an
+// engine voice - the movie clock then falls back to the wall clock.
+bool StreamFramesPlayed(const void* stream, std::uint64_t& frames) noexcept;
 // Read-only view of an object's current output parameters (tests).
 struct ObjectView {
     bool found = false;

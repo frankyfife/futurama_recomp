@@ -33,6 +33,9 @@ public:
     void SetMenuQuery(MenuQuery query) noexcept;
     // false: the source reports "not connected" and ignores events.
     void SetEnabled(bool enabled) noexcept;
+    // M4b: false = Sample feeds no pad state (the freecam reads keys and mouse through ReadRaw instead); events are
+    // still tracked. Motion and taps collected meanwhile are dropped, so returning to the game does not jump.
+    void SetPadEmulation(bool on) noexcept;
 
     // ---- events (any thread) -----------------------------------------------------------------------------
     void KeyEvent(std::uint16_t vk, bool down) noexcept;  // vk 1..255, left/right modifiers (VK_LSHIFT ...)
@@ -86,6 +89,7 @@ private:
     bool menuEscape_ = true;
     MenuQuery menuQuery_ = nullptr;
     bool enabled_ = true;
+    bool padEmulation_ = true;
 
     std::array<bool, 256> down_{};
     std::array<bool, 256> tapped_{};

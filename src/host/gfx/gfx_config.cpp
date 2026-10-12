@@ -93,6 +93,94 @@ bool ParseRenderScale(std::string_view text, float* scale) noexcept {
     return true;
 }
 
+namespace {
+bool IsOriginal(std::string_view text) noexcept {
+    static constexpr char kWord[] = "original";
+    if (text.size() != sizeof(kWord) - 1) {
+        return false;
+    }
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if ((text[i] | 0x20) != kWord[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+int HexDigit(char c) noexcept {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    c = static_cast<char>(c | 0x20);
+    return c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+}
+}  // namespace
+
+// G1 outline options (gfx_config.h).
+bool ParseOutlineColor(std::string_view text, bool* has, float rgb[3]) noexcept {
+    text = TrimView(text);
+    if (IsOriginal(text)) {
+        if (has != nullptr) {
+            *has = false;
+        }
+        return true;
+    }
+    if (!text.empty() && text.front() == '#') {
+        text.remove_prefix(1);
+    }
+    if (text.size() != 6) {
+        return false;
+    }
+    float v[3];
+    for (int i = 0; i < 3; ++i) {
+        const int hi = HexDigit(text[2 * i]), lo = HexDigit(text[2 * i + 1]);
+        if (hi < 0 || lo < 0) {
+            return false;
+        }
+        v[i] = static_cast<float>(hi * 16 + lo) / 255.0f;
+    }
+    if (has != nullptr) {
+        *has = true;
+    }
+    if (rgb != nullptr) {
+        rgb[0] = v[0];
+        rgb[1] = v[1];
+        rgb[2] = v[2];
+    }
+    return true;
+}
+
+bool ParseOutlineOpacity(std::string_view text, bool* has, float* opacity) noexcept {
+    text = TrimView(text);
+    if (IsOriginal(text)) {
+        if (has != nullptr) {
+            *has = false;
+        }
+        return true;
+    }
+    double v = 0.0;
+    if (!core::ParseConfigFloat(text, v) || v < 0.0 || v > 1.0) {
+        return false;
+    }
+    if (has != nullptr) {
+        *has = true;
+    }
+    if (opacity != nullptr) {
+        *opacity = static_cast<float>(v);
+    }
+    return true;
+}
+
+bool ParseOutlineThickness(std::string_view text, float* thickness) noexcept {
+    double v = 0.0;
+    if (!core::ParseConfigFloat(text, v) || v < 0.0 || v > kMaxOutlineThickness) {
+        return false;
+    }
+    if (thickness != nullptr) {
+        *thickness = static_cast<float>(v);
+    }
+    return true;
+}
+
 bool ParseMsaa(std::string_view text, std::uint32_t* samples) noexcept {
     text = TrimView(text);
     std::uint32_t n = 0;
@@ -242,6 +330,15 @@ Settings SettingsFromConfig(const core::Config& cfg) {
                 [](const std::string& t, std::uint32_t* v) { return ParseAnisotropy(t, v); }, &s.anisotropy);
     s.alphaToCoverage = cfg.GetBool("render", "alpha_to_coverage", kDefaultAlphaToCoverage);
     s.linearAa = cfg.GetBool("render", "linear_aa", kDefaultLinearAa);  // review M3c finding 3
+    // G1: character outlines (invalid values: GFX/warn + the original look).
+    ParseOrWarn(cfg, "outline_color", "original or RRGGBB",
+                [](const std::string& t, bool* h, float* c) { return ParseOutlineColor(t, h, c); },
+                &s.outline.hasColor, s.outline.color);
+    ParseOrWarn(cfg, "outline_opacity", "original or a number from 0 to 1",
+                [](const std::string& t, bool* h, float* v) { return ParseOutlineOpacity(t, h, v); },
+                &s.outline.hasOpacity, &s.outline.opacity);
+    ParseOrWarn(cfg, "outline_thickness", "a number from 0 to 2.5",
+                [](const std::string& t, float* v) { return ParseOutlineThickness(t, v); }, &s.outline.thickness);
     if (cfg.Has("render", "screenshot_size")) {
         const std::string size = Lower(cfg.GetString("render", "screenshot_size"));
         if (size == "internal") {

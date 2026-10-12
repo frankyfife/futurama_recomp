@@ -6,6 +6,7 @@
 #include "core/guest.h"
 #include "core/host_main.h"
 #include "core/log.h"
+#include "gfx/freecam.h"
 #include "input/input_script.h"
 #include "input/kbm_window.h"
 #include "input/xpp_hle.h"
@@ -108,6 +109,8 @@ void StartInput() noexcept {
         HostRouter& router = GlobalRouter();
         router.Configure({s.rumble, s.rumbleStrength, s.backgroundInput});
         router.SetFocusQuery(&GameWindowFocused);
+        gfx::freecam::Configure();  // M4b: L3+R3 / key toggle, held-back chord buttons
+        router.SetSampleFilter(&gfx::freecam::SampleFilter);
 
         XInputApi& xinput = SystemXInput();
         for (std::uint32_t i = 0; i < kXInputUsers; ++i) {

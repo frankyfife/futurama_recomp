@@ -63,6 +63,7 @@
 //   - "Classic" (resolution 640x480, render_scale 1, msaa off, anisotropy off) is the M3 renderer bit for bit.
 #pragma once
 
+#include "gfx/d3d_shim.h"
 #include "gfx/ff_pipeline.h"
 #include "gfx/gfx_config.h"
 #include "gfx/ni_extract.h"
@@ -214,7 +215,11 @@ public:
     rhi::TextureHandle CreateTexture(const tex::HostImage& image, const char* debugName) noexcept;
     void DestroyTexture(rhi::TextureHandle texture) noexcept;
     rhi::TextureHandle DefaultTexture() const noexcept;  // FUN_0014AB50 8x8 test pattern
-    rhi::TextureHandle BlackTexture() const noexcept;    // movie (YUY2, M6) and rendered (P2) textures
+    rhi::TextureHandle BlackTexture() const noexcept;    // rendered textures (P2)
+    // M6: host texture of a YUY2 shim texture (the movie player's, written by the XMV HLE): BGRA8, re-uploaded when
+    // the shim generation changed; `yuvEnable` = D3DRS_YUVENABLE at the draw (BT.601 conversion, else raw components,
+    // tex::Yuy2Mode). Empty handle for anything but a valid YUY2 resource.
+    rhi::TextureHandle MovieTexture(const d3d::ResourceInfo& info, bool yuvEnable) noexcept;
 
     // Totals (exit reporter "gfx"): draws per kind and outcome, clears, frames without draws / color clear,
     // ff/extract/device statistics. On another thread than the render thread (the WM_CLOSE fallback of

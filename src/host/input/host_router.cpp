@@ -293,6 +293,9 @@ bool HostRouter::SampleGamePort(int port, PadState& out) noexcept {
     if (retarget) {
         ApplyRumbleLocked(port);
     }
+    if (sampleFilter_ != nullptr) {
+        sampleFilter_(port, merged);
+    }
     if (InputConsumer* c = consumer_[port]) {
         ++st.divertedSamples;
         c->Consume(port, tick, merged);
@@ -307,6 +310,11 @@ bool HostRouter::SampleGamePort(int port, PadState& out) noexcept {
     }
     out = merged;
     return true;
+}
+
+void HostRouter::SetSampleFilter(SampleFilter filter) noexcept {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    sampleFilter_ = filter;
 }
 
 void HostRouter::Divert(int port, InputConsumer* consumer) noexcept {

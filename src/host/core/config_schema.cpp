@@ -17,7 +17,7 @@
 //              is obsolete since M5); M5 capture keys capture_wav, capture_format, capture_stems, event_log
 //              (audio/capture_session.cpp, tooling agent); M5 speakers, reverb (audio/audio_engine.cpp) and
 //              positional, trim_3d (audio/spatial_x3d.cpp, codec/3D/reverb agent)
-//   [game]     xapi/game_timing.cpp (tick_rate, frame_clock)
+//   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos)
 //   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26)
 #include "core/config_schema.h"
 
@@ -43,6 +43,7 @@ constexpr ConfigSectionDef kSections[] = {
     {"game", {"Spiellogik", "Game logic"}},
     {"render", {"Grafik", "Graphics"}},
     {"input", {"Eingabegeräte und Vibration", "Input devices and rumble"}},
+    {"freecam", {"Freie Kamera", "Free camera"}},
     {"paths", {"Pfade", "Paths"}},
     {"settings", {"Xbox-Systemeinstellungen", "Xbox system settings"}},
     {"saves", {"Spielstände", "Save games"}},
@@ -165,6 +166,11 @@ constexpr ConfigChoice kTickRateChoices[] = {
     {"60", {"60 Hz (Standard)", "60 Hz (default)"}},
     {"50", {"50 Hz (PAL-Original)", "50 Hz (original PAL)"}},
 };
+// M6: [game] skip_videos (video/movie_skip.cpp).
+constexpr ConfigChoice kSkipVideosChoices[] = {
+    {"always", {"Immer (Standard)", "Always (default)"}},
+    {"original", {"Wie im Original", "As in the original"}},
+};
 constexpr ConfigChoice kFrameClockChoices[] = {
     {"lockstep", {"Bildsynchron (empfohlen)", "Frame-locked (recommended)"}},
     {"realtime", {"Echtzeit (wie das Original)", "Real time (like the original)"}},
@@ -193,6 +199,17 @@ constexpr ConfigChoice kPadModeChoices[] = {
     {"single", {"Ein Spieler: alle Controller an Anschluss 1", "One player: all controllers on port 1"}},
     {"per_port", {"Ein Anschluss je Controller", "One port per controller"}},
 };
+// [freecam] toggles (M4b, gfx/freecam.cpp).
+constexpr ConfigChoice kFreecamPadChoices[] = {
+    {"l3r3", {"Beide Sticks drücken (L3+R3)", "Press both sticks (L3+R3)"}},
+    {"off", {"Aus", "Off"}},
+};
+constexpr ConfigChoice kFreecamKeyChoices[] = {
+    {"off", {"Aus", "Off"}}, {"f1", {"F1", "F1"}},   {"f2", {"F2", "F2"}},   {"f3", {"F3", "F3"}},
+    {"f4", {"F4", "F4"}},    {"f5", {"F5", "F5"}},   {"f6", {"F6", "F6"}},   {"f7", {"F7", "F7"}},
+    {"f8", {"F8", "F8"}},    {"f9", {"F9", "F9"}},   {"f10", {"F10", "F10"}}, {"f11", {"F11", "F11"}},
+    {"f12", {"F12", "F12"}},
+};
 // Shared help texts of the [input] binding rows (src/INTERFACES.md 4.26).
 constexpr ConfigText kPadBindingHelp = {
     "Tasten, Trigger oder Stickrichtungen des Xbox-Controllers, die diese Xbox-Taste auslösen, durch Komma getrennt "
@@ -210,6 +227,60 @@ constexpr const char* kDebugBuildDefault = "0";
 #else
 constexpr const char* kDebugBuildDefault = "1";
 #endif
+
+// G1 (outlines, gfx/gfx_config.h ParseOutlineColor / ParseOutlineOpacity accept the same values): "original" or
+// 6 hex digits (optional '#'), "original" or a number 0..1. Blanks around the value are ignored.
+std::string_view TrimOutlineValue(std::string_view v) noexcept {
+    while (!v.empty() && (v.front() == ' ' || v.front() == '	')) {
+        v.remove_prefix(1);
+    }
+    while (!v.empty() && (v.back() == ' ' || v.back() == '	')) {
+        v.remove_suffix(1);
+    }
+    return v;
+}
+bool IsOriginalWord(std::string_view v) noexcept {
+    static constexpr char kWord[] = "original";
+    if (v.size() != sizeof(kWord) - 1) {
+        return false;
+    }
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        if ((v[i] | 0x20) != kWord[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+bool ValidateOutlineColor(std::string_view value, std::string& error) noexcept {
+    std::string_view v = TrimOutlineValue(value);
+    if (IsOriginalWord(v)) {
+        return true;
+    }
+    if (!v.empty() && v.front() == '#') {
+        v.remove_prefix(1);
+    }
+    bool ok = v.size() == 6;
+    for (std::size_t i = 0; ok && i < v.size(); ++i) {
+        const char c = static_cast<char>(v[i] | 0x20);
+        ok = (v[i] >= '0' && v[i] <= '9') || (c >= 'a' && c <= 'f');
+    }
+    if (!ok) {
+        error = "expected original or a colour RRGGBB (6 hex digits, e.g. 000000 = black)";
+    }
+    return ok;
+}
+bool ValidateOutlineOpacity(std::string_view value, std::string& error) noexcept {
+    const std::string_view v = TrimOutlineValue(value);
+    if (IsOriginalWord(v)) {
+        return true;
+    }
+    double d = 0.0;
+    if (!ParseConfigFloat(v, d) || d < 0.0 || d > 1.0) {
+        error = "expected original or a number from 0 to 1";
+        return false;
+    }
+    return true;
+}
 
 constexpr std::uint32_t kAdv = kConfigAdvanced;
 constexpr std::uint32_t kDev = kConfigAdvanced | kConfigDeveloper;
@@ -234,6 +305,16 @@ constexpr ConfigKeyDef kKeys[] = {
               "Where the game logic takes its time from. Frame-locked computes exactly one step per displayed frame "
               "and so avoids stutter; real time reads the clock like the original."},
      .tab = Tab::Advanced, .order = 200, .widget = W::Combo, .flags = kAdv},
+    // M6 (video/movie_skip.cpp): skip condition of the cut scenes (FUN_000D3120 probe hook).
+    {.section = "game", .name = "skip_videos", .type = T::Choice, .defaultValue = "always",
+     .choices = kSkipVideosChoices, .label = {"Filme überspringen", "Skip movies"},
+     .help = {"Ob sich Filme und Zwischensequenzen mit A oder START überspringen lassen. „Immer“ erlaubt das bei "
+              "jedem Film sofort; „Wie im Original“ sperrt die ersten beiden Filme von Level 1-1 beim ersten Ansehen "
+              "und jede Zwischensequenz in ihren ersten 2,5 Sekunden.",
+              "Whether movies and cut scenes can be skipped with A or START. \"Always\" allows it for every movie "
+              "right away; \"As in the original\" locks the first two movies of level 1-1 on first viewing and "
+              "every cut scene in its first 2.5 seconds."},
+     .tab = Tab::Game, .order = 30, .widget = W::Combo},
 
     // [render] - window and output (M3, gfx/gfx_config.h)
     // M3c (integration): monitor selection, platform/window.h WindowOptions::monitor. Type string: the values are
@@ -318,6 +399,35 @@ constexpr ConfigKeyDef kKeys[] = {
               "dark lines on a bright background slightly finer. Only has an effect with MSAA or a render scale "
               "above 1.0. Off = like the original."},
      .tab = Tab::Graphics, .order = 75, .widget = W::Check},
+    // G1 (character outlines, gfx/gfx_config.h OutlineSettings; analysis/loader/g1_outlines.md 7). Defaults = the
+    // original look (no outline code runs).
+    {.section = "render", .name = "outline_color", .type = T::String, .defaultValue = "original",
+     .label = {"Konturfarbe", "Outline colour"},
+     .help = {"Farbe der Konturlinien um Figuren und um den Kopf im Lebensanzeiger. „original“ = wie auf der Xbox "
+              "(schwarz). Sonst eine Farbe als RRGGBB in Hexadezimal, z. B. 000000 = schwarz, FFFFFF = weiß, "
+              "FF0000 = rot.",
+              "Colour of the outlines around characters and around the head in the health display. \"original\" = "
+              "like on the Xbox (black). Otherwise a colour as RRGGBB in hexadecimal, e.g. 000000 = black, "
+              "FFFFFF = white, FF0000 = red."},
+     .tab = Tab::Graphics, .order = 76, .widget = W::Color, .validate = &ValidateOutlineColor},
+    {.section = "render", .name = "outline_opacity", .type = T::String, .defaultValue = "original",
+     .label = {"Konturdeckkraft", "Outline opacity"},
+     .help = {"Wie deckend die Konturlinien sind, von 0 (unsichtbar) bis 1 (voll deckend). „original“ = wie auf "
+              "der Xbox (Figuren 0,75).",
+              "How opaque the outlines are, from 0 (invisible) to 1 (fully opaque). \"original\" = like on the "
+              "Xbox (characters 0.75)."},
+     .tab = Tab::Graphics, .order = 77, .widget = W::Fraction, .validate = &ValidateOutlineOpacity},
+    {.section = "render", .name = "outline_thickness", .type = T::Float, .defaultValue = "1.0", .ranged = true,
+     .min = 0.0, .max = 2.5, .step = 0.25, .label = {"Konturstärke", "Outline thickness"},
+     .help = {"Faktor auf die Dicke der Konturlinien. 1,0 = wie auf der Xbox, 2,0 = doppelt so dick, 0 = keine "
+              "Konturlinien. Empfohlen bis etwa 2: Die Konturen sind aufgeblasene Kopien der Figuren, bei größeren "
+              "Werten scheinen sie an Nase und Augen durch. Wie im Original werden die Linien in der Entfernung "
+              "dünner und verschwinden weit weg ganz.",
+              "Factor on the thickness of the outlines. 1.0 = like on the Xbox, 2.0 = twice as thick, 0 = no "
+              "outlines. Recommended up to about 2: the outlines are inflated copies of the characters, with larger "
+              "values they show through at nose and eyes. As in the original, the lines get thinner with distance "
+              "and disappear far away."},
+     .tab = Tab::Graphics, .order = 78, .widget = W::DSpin},
     {.section = "render", .name = "scaling", .type = T::Choice, .defaultValue = "linear", .choices = kScalingChoices,
      .label = {"Bildskalierung", "Image scaling"},
      .help = {"Wie das fertige Bild auf die Fenstergröße gebracht wird, wenn die Renderauflösung kleiner ist. "
@@ -911,6 +1021,64 @@ constexpr ConfigKeyDef kKeys[] = {
               "menu sounds, to match the Xbox. 0 = levels as computed by DSOUND."},
      .tab = Tab::Advanced, .order = 855, .widget = W::DSpin, .flags = kDev, .unit = "dB"},
 
+    // [freecam] (M4b, gfx/freecam.cpp; docs/ROADMAP.md "M4b")
+    {.section = "freecam", .name = "enabled", .type = T::Bool, .defaultValue = "1",
+     .label = {"Freie Kamera verfügbar", "Free camera available"},
+     .help = {"Eine frei bewegliche Kamera für Screenshots und zum Umsehen, im Hauptmenü, in Levels und "
+              "Zwischensequenzen. Während sie aktiv ist, erhält das Spiel keine Eingaben. Gamepad: linker Stick "
+              "bewegen, rechter Stick umsehen, RT/LT hoch/runter, A schneller, X langsamer, Steuerkreuz hoch/runter "
+              "zoomen, links/rechts Tempo, Y HUD aus/ein, B Wände von außen, BACK zurück zur Spielkamera. Tastatur/Maus: WASD bewegen, "
+              "E/Q hoch/runter, Maus umsehen, Umschalt schneller, Strg langsamer, Mausrad zoomen, +/- Tempo, H HUD "
+              "aus/ein, B Wände von außen, R zurück zur Spielkamera.",
+              "A freely movable camera for screenshots and looking around, in the main menu, in levels and cut "
+              "scenes. While it is active the game receives no input. Gamepad: left stick move, right stick look, "
+              "RT/LT up/down, A faster, X slower, D-pad up/down zoom, left/right speed, Y HUD off/on, B walls from outside, BACK back to the "
+              "game camera. Keyboard/mouse: WASD move, E/Q up/down, mouse look, Shift faster, Ctrl slower, mouse "
+              "wheel zoom, +/- speed, H HUD off/on, B walls from outside, R back to the game camera."},
+     .tab = Tab::Controls, .order = 300, .widget = W::Check},
+    {.section = "freecam", .name = "toggle_pad", .type = T::Choice, .defaultValue = "l3r3",
+     .choices = kFreecamPadChoices, .label = {"Ein/aus am Gamepad", "On/off on the gamepad"},
+     .help = {"Schaltet die freie Kamera ein und aus. Ein einzelner Stick-Klick erreicht das Spiel weiterhin (bis "
+              "zu 4 Ticks verzögert, damit die Kombination nicht als Ego-Ansicht ankommt).",
+              "Turns the free camera on and off. A single stick click still reaches the game (delayed by up to 4 "
+              "ticks so that the chord does not arrive as the first-person view)."},
+     .tab = Tab::Controls, .order = 310, .widget = W::Combo},
+    {.section = "freecam", .name = "toggle_key", .type = T::Choice, .defaultValue = "f6",
+     .choices = kFreecamKeyChoices, .label = {"Ein/aus per Taste", "On/off key"},
+     .help = {"Taste, die die freie Kamera ein- und ausschaltet.", "Key that turns the free camera on and off."},
+     .tab = Tab::Controls, .order = 320, .widget = W::Combo},
+    {.section = "freecam", .name = "move_speed", .type = T::Float, .defaultValue = "40", .ranged = true,
+     .min = 5.0, .max = 1000.0, .step = 5.0, .label = {"Tempo", "Speed"},
+     .help = {"Bewegungstempo der freien Kamera in Spieleinheiten pro Sekunde (Stick ganz ausgelenkt, im Level; im "
+              "kleineren Hauptmenü entsprechend langsamer). Während des Flugs mit Steuerkreuz links/rechts bzw. "
+              "+/- verstellbar.",
+              "Movement speed of the free camera in game units per second (stick fully deflected, in a level; "
+              "slower in the smaller main menu). Adjustable in flight with D-pad left/right or +/-."},
+     .tab = Tab::Controls, .order = 330, .widget = W::DSpin},
+    {.section = "freecam", .name = "look_speed", .type = T::Float, .defaultValue = "120", .ranged = true,
+     .min = 10.0, .max = 720.0, .step = 10.0, .label = {"Drehtempo", "Turn speed"},
+     .help = {"Drehtempo mit dem rechten Stick in Grad pro Sekunde.", "Turn speed with the right stick in degrees "
+              "per second."},
+     .tab = Tab::Controls, .order = 340, .widget = W::DSpin, .unit = "°/s"},
+    {.section = "freecam", .name = "mouse_sensitivity", .type = T::Float, .defaultValue = "1", .ranged = true,
+     .min = 0.1, .max = 10.0, .step = 0.1, .label = {"Mausempfindlichkeit", "Mouse sensitivity"},
+     .help = {"Faktor für das Umsehen mit der Maus (1 = 0,08 Grad je Mauszählschritt).",
+              "Factor for looking around with the mouse (1 = 0.08 degrees per mouse count)."},
+     .tab = Tab::Controls, .order = 350, .widget = W::DSpin, .unit = "×"},
+    {.section = "freecam", .name = "back_faces", .type = T::Bool, .defaultValue = "1",
+     .label = {"Wände von außen zeigen", "Show walls from outside"},
+     .help = {"Die Levels sind nur von innen gebaut: Von außen gesehen fehlen Wände, dort erscheint schwarze Leere. "
+              "An = auch die Rückseiten zeichnen, so sind Gebäude von außen sichtbar (mit ihrer Innentextur). Im "
+              "Flug mit B umschaltbar. Wirkt nur bei aktiver freier Kamera.",
+              "The levels are only built from inside: seen from outside, walls are missing and black void shows. "
+              "On = also draw the back faces, so buildings are visible from outside (with their inside texture). "
+              "Toggle in flight with B. Only affects the active free camera."},
+     .tab = Tab::Controls, .order = 355, .widget = W::Check},
+    {.section = "freecam", .name = "invert_y", .type = T::Bool, .defaultValue = "0",
+     .label = {"Vertikal invertiert", "Invert vertical"},
+     .help = {"Kehrt das Auf- und Abschauen um (Stick und Maus).", "Inverts looking up and down (stick and mouse)."},
+     .tab = Tab::Controls, .order = 360, .widget = W::Check},
+
     // [log] (core/log.h)
     {.section = "log", .name = "level", .type = T::Choice, .defaultValue = "info", .choices = kLogLevelChoices,
      .label = {"Protokollstufe", "Log level"},
@@ -1297,6 +1465,10 @@ const char* ConfigUiWidgetName(ConfigUiWidget widget) noexcept {
         return "slider";
     case ConfigUiWidget::AudioDevice:
         return "audio_device";
+    case ConfigUiWidget::Color:
+        return "color";
+    case ConfigUiWidget::Fraction:
+        return "fraction";
     }
     return "text";
 }

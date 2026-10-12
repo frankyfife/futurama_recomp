@@ -443,6 +443,23 @@ inline constexpr std::uint32_t kSoundDataNameOffset = 0x20;       // char* (requ
 inline constexpr std::uint32_t kSoundDataMonoOffset = 0x25;       // u8, mono (3D capable)
 inline constexpr std::uint32_t kSoundDataStreamOffset = 0x27;     // u8, streamed
 
+// --- added in M6 (XMV HLE / movie skip, video/xmv_hle.cpp, video/movie_skip.cpp; see Changelog) ---------------------
+// Cut-scene skip condition FUN_000D3120 (thiscall ecx = cut-scene manager [kGameCutscenePtr], no stack args, al =
+// skippable). Only caller: the session update 0x2ABD4 after PressedFree(START/A) (m4_input.md 4.4 step 2); TRUE ->
+// FUN_000D5700 skips. Original logic: the cheat flag kGameCheatSkipCutscenesVar set -> TRUE; a playing 1-1-01.avi /
+// 1-1-02.avi (table 0x2D6D10, 12-byte rows {u8 playing, u32 play count}) with play count <= 1 -> FALSE; manager
+// +0x2D set -> TRUE; else TRUE once more than 2.5 s passed since manager +0x138 (FUN_000D2B90/2B30/2B80).
+// Prologue A0 D4 B7 2E 00 = mov al,[0x2EB7D4] (5 bytes, absolute address, no branch into it).
+inline constexpr GuestAddr kGameCutsceneSkipAllowed = 0x000D3120;
+inline constexpr GuestAddr kGameCutsceneSkipAllowedReturn = 0x0002ABD9;
+// Cheat toggle "all cut scenes skippable" (FUN_0002C530 cheat case 0x1C toggles it; only reader FUN_000D3120).
+inline constexpr GuestAddr kGameCheatSkipCutscenesVar = 0x002EB7D4;
+// XMV packet callbacks of the movie player (stdcall, passed to XMVDecoder_CreateDecoderForPackets by Open 0xEE34C):
+// GetNextPacket(player, void** ppPacket, DWORD* pNextSize) 0xEDBA0 (ret 0xC) and ReleasePreviousPacket(player,
+// LONGLONG offset, DWORD nextSize) 0xEDE60 (ret 0x10, reads the next packet sequentially into the free buffer).
+inline constexpr GuestAddr kMovieGetNextPacket = 0x000EDBA0;
+inline constexpr GuestAddr kMovieReleasePreviousPacket = 0x000EDE60;
+
 // ---------------------------------------------------------------------------------------------
 // Memory helpers
 // ---------------------------------------------------------------------------------------------

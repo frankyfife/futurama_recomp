@@ -251,4 +251,20 @@ const char* TextureSourceName(TextureSource source) noexcept;
 // FUN_0015E010's test: non-zero and a power of two.
 bool IsPowerOfTwo(std::uint32_t value) noexcept;
 
+// ---- M6: YUY2 movie textures (D3D shim format 0x24, video/xmv_hle.cpp) ----------------------------------------
+
+// What the texture unit returns for a YUY2 texel (Xbox D3DFMT_YUY2 = NV2A CR8YB8CB8YA8, 2 pixels per 4 bytes
+// Y0 U Y1 V). D3DRS_YUVENABLE (D3D shim YuvEnable, NV2A CONTROL_0 CSCONVERT) set: ITU-R BT.601 limited-range
+// YCbCr -> RGB like the NV2A colour-space converter (the movie player draws its quad between YuvEnable(1) and (0),
+// 0xEDE90). Not set: ASSUMPTION - the raw components (R = Cr, G = Y, B = Cb), as the hardware samples the bytes
+// without conversion (never seen in the game: only the movie player uses YUY2).
+enum class Yuy2Mode : std::uint8_t { ConvertBt601, Raw };
+// BT.601 limited range, 8-bit fixed point (298/409/100/208/516 per 256), clamped to 0..255.
+void YuvToRgbBt601(std::int32_t y, std::int32_t u, std::int32_t v, std::uint8_t& r, std::uint8_t& g,
+                   std::uint8_t& b) noexcept;
+// Converts width x height YUY2 pixels (rows of srcPitch bytes, width even) into BGRA8 rows of dstPitch bytes,
+// alpha 255.
+void ConvertYuy2ToBgra(const std::uint8_t* src, std::uint32_t srcPitch, std::uint32_t width, std::uint32_t height,
+                       std::uint8_t* dst, std::uint32_t dstPitch, Yuy2Mode mode) noexcept;
+
 }  // namespace gfx::tex

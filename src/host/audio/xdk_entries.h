@@ -1,7 +1,7 @@
 // XDK library entry points (DSOUND, XMV, XPP) and the registration of their host replacements
 // (design E7, 2.1, Anhang B "M2"; analysis/loader/avi.md 2.2, 3.1, 4.1). Shared by audio/, video/
 // and input/ (namespace xdk); the per-library replacements live in audio/dsound_hle.cpp (HLE since M5),
-// video/xmv_stubs.cpp (stubs) and input/xpp_hle.cpp (HLE since M4).
+// video/xmv_hle.cpp (HLE since M6) and input/xpp_hle.cpp (HLE since M4).
 //
 // The entry table is generated from analysis/loader/avi_api_surface.tsv by
 // tools/gen/gen_xdk_entries.py (gen/xdk_entries.gen.inc): address, library, hook name, stack purge

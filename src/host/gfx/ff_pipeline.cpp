@@ -7,6 +7,7 @@
 #include "gfx/ff_pipeline.h"
 
 #include "core/log.h"
+#include "gfx/freecam.h"
 
 #include "ff_ps_flat.h"  // gen_shaders/ (fut_add_shader in src/host/CMakeLists.txt)
 #include "ff_ps_smooth.h"
@@ -212,6 +213,12 @@ rhi::DepthStencilDesc MakeDepthStencilDesc(const ni::RenderStateDesc& state) noe
 rhi::RasterDesc MakeRasterDesc(const ni::RenderStateDesc& state) noexcept {
     rhi::RasterDesc desc;
     desc.cull = state.cullMode;  // D3D8 meaning (FUN_001599E0 table, left-right swap applied by ni_extract)
+    // M4b: the freecam can look at level walls from outside, where only their back faces exist. The normal back-face
+    // cull (CW, draw mode 0) is dropped then; CCW (the QDOutline shells, NiStencilProperty DRAW_CW) stays, so the
+    // outlines are unchanged. Left-right swap (mirrors the table) is not considered - the game never sets it.
+    if (desc.cull == rhi::CullMode::CW && freecam::ShowBackFaces()) {
+        desc.cull = rhi::CullMode::None;
+    }
     desc.fill = state.fillMode;
     desc.scissorEnable = false;
     desc.depthClip = true;

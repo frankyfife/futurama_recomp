@@ -38,7 +38,7 @@ namespace fl {
 
 enum class KeyType { Choice, Bool, Int, Float, String, PathFile, PathDir, Resolution };
 enum class UiTab { Game, Graphics, Paths, Advanced, Controls, Audio };
-enum class UiWidget { Combo, Check, Spin, DSpin, Text, File, Dir, Resolution, Monitor, Binding, Slider, AudioDevice };
+enum class UiWidget { Combo, Check, Spin, DSpin, Text, File, Dir, Resolution, Monitor, Binding, Slider, AudioDevice, Color, Fraction };
 
 // Order of the main window's tabs (M4: "Steuerung" after "Grafik"; M5: "Audio" between them).
 inline constexpr UiTab kAllTabs[] = {UiTab::Game,     UiTab::Graphics, UiTab::Audio,

@@ -162,6 +162,13 @@ const std::uint32_t* RenderedTextureDataVtable() noexcept;
 
 // Most recently created NiPCRenderer (guest address), 0 if none.
 std::uint32_t CurrentRenderer() noexcept;
+// M4b: render target of the renderer at guest address `renderer` (NiRenderedTexture*, 0 = back buffer or not an
+// NiPCRenderer).
+std::uint32_t RenderTargetOf(std::uint32_t renderer) noexcept;
+// M4b: clears color (`argb`) and depth (the game's depth clear value) of the whole back buffer (slot 17, mode 5)
+// when the renderer at guest address `renderer` currently draws to it. The freecam calls it before the first
+// back-buffer camera of each frame: the game itself never clears the whole back buffer.
+void ClearBackBuffer(std::uint32_t renderer, std::uint32_t argb) noexcept;
 // Frames shown by DisplayFrame (slot 16) while the back buffer was the render target.
 std::uint32_t FramesDisplayed() noexcept;
 // Calls of a renderer slot since start (0 for slots 2..10, which run original code).

@@ -11,11 +11,13 @@
 #include "core/log.h"
 #include "gfx/d3d_shim.h"
 #include "gfx/d3d_traps.h"
+#include "gfx/freecam.h"
 #include "gfx/gfx_abi.h"
 #include "gfx/gfx_config.h"
 #include "gfx/guest_memory.h"
 #include "gfx/nipc_gpu.h"
 #include "gfx/nipc_validate.h"
+#include "gfx/outline.h"
 #include "gfx/purge_probe.h"
 #include "gfx/texconv.h"
 #include "kernel/mm_kernel_stack.h"
@@ -431,8 +433,9 @@ std::uint32_t CreateSourceData(NiPCRenderer* self, std::uint32_t texture) noexce
 // TextureResolver of ni_extract (GFX_CONTRACT.md 9) = what the texture manager vf2 FUN_0015F930 does for
 // a stage texture: renderer data at NiTexture +0x20 (created on demand for an NiSourceTexture, through
 // FUN_0015E010), FUN_0015E260 re-conversion when a non-static texture's NiPixelData revision changed, and
-// the data's D3D texture. Movie textures (the shim's YUY2 surface at +0x3C) and rendered textures (P2)
-// resolve to a black texture; an empty handle = the original's texture manager failing.
+// the data's D3D texture. Movie textures (the shim's YUY2 texture at +0x3C, M6) resolve to their converted host
+// texture (GpuRenderer::MovieTexture), rendered textures (P2) to a black texture; an empty handle = the original's
+// texture manager failing.
 rhi::TextureHandle ResolveTexture(void* user, ni::GuestPtr niTexture) noexcept {
     auto* self = static_cast<NiPCRenderer*>(user);
     HostRenderer* h = self != nullptr ? Host(self) : nullptr;
@@ -463,8 +466,14 @@ rhi::TextureHandle ResolveTexture(void* user, ni::GuestPtr niTexture) noexcept {
         return h->gpu->BlackTexture();  // render to texture is P2
     }
     if (d->d3dTexture != 0 && (d->hostInfo & kHostOwnsTexture) == 0) {
+        // M6: the movie player's texture (FUN_000EE220 writes its shim D3DTexture* to +0x3C): the YUY2 frame the XMV
+        // HLE wrote, converted like the NV2A does with D3DRS_YUVENABLE (set by the player around its quad, 0xEDE90).
         g_resolveMovie.fetch_add(1, std::memory_order_relaxed);
-        return h->gpu->BlackTexture();  // movie player texture: contents from M6
+        d3d::ResourceInfo info;
+        if (!d3d::LookupResource(d->d3dTexture, info)) {
+            return {};  // not a shim texture: the original's texture manager would fail as well
+        }
+        return h->gpu->MovieTexture(info, d3d::GetShimState().yuvEnable);
     }
     if ((d->hostInfo & kHostOwnsTexture) != 0 &&
         guest::Read<std::uint8_t>(niTexture + ni::kNiSourceTextureStatic) == 0) {
@@ -826,6 +835,7 @@ std::uint32_t __fastcall SlotSetCameraData(NiPCRenderer* self, void*, std::uint3
         return 0;
     }
     NoteCall(47, _ReturnAddress());
+    freecam::NoteCameraData(location);  // M4b: overlay detection with the HUD hidden
     HostRenderer* h = Host(self);
     if (h != nullptr && h->gpu != nullptr) {
         if (location != 0 && direction != 0 && up != 0 && right != 0 && frustum != 0 && port != 0) {
@@ -852,8 +862,8 @@ std::uint32_t __fastcall SlotSetCameraData(NiPCRenderer* self, void*, std::uint3
 void RenderGeometry(NiPCRenderer* self, ni::DrawKind kind, std::uint32_t data, std::uint32_t skin,
                     std::uint32_t transform, std::uint32_t bound) noexcept {
     HostRenderer* h = Host(self);
-    if (h == nullptr) {
-        return;
+    if (h == nullptr || freecam::SuppressOverlayDraw(h->renderTarget, true)) {
+        return;  // M4b: freecam with the HUD hidden
     }
     if (h->gpu != nullptr) {
         if (!h->inScene) {
@@ -901,6 +911,9 @@ std::uint32_t __fastcall SlotRenderScreenPolygon(NiPCRenderer* self, void*, std:
     }
     NoteCall(54, _ReturnAddress());
     HostRenderer* h = Host(self);
+    if (h != nullptr && freecam::SuppressOverlayDraw(h->renderTarget, false)) {
+        return 0;  // M4b: freecam with the HUD hidden
+    }
     if (h != nullptr && h->gpu != nullptr) {
         if (!h->inScene) {
             h->gpu->CountNotInScene(ni::DrawKind::ScreenPolygon, polygon);
@@ -918,6 +931,9 @@ std::uint32_t __fastcall SlotRenderScreenTexture(NiPCRenderer* self, void*, std:
     }
     NoteCall(55, _ReturnAddress());
     HostRenderer* h = Host(self);
+    if (h != nullptr && freecam::SuppressOverlayDraw(h->renderTarget, false)) {
+        return 0;  // M4b: freecam with the HUD hidden
+    }
     if (h != nullptr && h->gpu != nullptr) {
         if (!h->inScene) {
             h->gpu->CountNotInScene(ni::DrawKind::ScreenTexture, screenTexture);
@@ -1412,6 +1428,8 @@ std::uint32_t CreateRenderer(std::uint32_t width, std::uint32_t height, std::uin
         core::AddExitReporter("gfx", &LogRendererStatistics);
     });
     const Settings& s = GetSettings();
+    // G1: [render] outline_thickness != 1 -> NiOutline ribbon width / switch in the guest (nothing at the default).
+    outline::ApplyGuestSettings(s.outline);
     // M3: [render] backend = d3d11 -> device, swap chain and fixed-function pipeline for the main window
     // (stage 12). Review M3c finding 2: a failure ends the game with core::Fatal (exit code 3) - the null renderer
     // would run it invisibly. Without a window (headless) the null renderer stays (GFX/error).
@@ -1493,6 +1511,27 @@ std::uint32_t CurrentRenderer() noexcept {
     return g_currentRenderer.load();
 }
 
+void ClearBackBuffer(std::uint32_t renderer, std::uint32_t argb) noexcept {
+    const std::uint32_t* vtable = RendererVtable();
+    if (renderer == 0 || vtable == nullptr || guest::Read<std::uint32_t>(renderer) != guest::Addr(vtable)) {
+        return;
+    }
+    HostRenderer* h = Host(guest::Ptr<const NiPCRenderer>(renderer));
+    if (h != nullptr && h->gpu != nullptr && h->renderTarget == 0) {
+        h->gpu->ClearBuffer(nullptr, 5, argb, h->depthClear, h->stencilClear);
+    }
+}
+
+std::uint32_t RenderTargetOf(std::uint32_t renderer) noexcept {
+    const std::uint32_t* vtable = RendererVtable();
+    if (renderer == 0 || vtable == nullptr ||
+        guest::Read<std::uint32_t>(renderer) != guest::Addr(vtable)) {
+        return 0;
+    }
+    const HostRenderer* h = Host(guest::Ptr<const NiPCRenderer>(renderer));
+    return h != nullptr ? h->renderTarget : 0;
+}
+
 std::uint32_t FramesDisplayed() noexcept {
     return g_framesDisplayed.load();
 }
@@ -1540,7 +1579,7 @@ void LogRendererStatistics() noexcept {
         FUT_LOGI(Gfx,
                  "NiPCRenderer textures: %u uploaded (%llu KiB;%s), %u re-uploaded (revision), conversion failures: "
                  "%u no pixel data, %u unsupported, %u no palette, %u bad data, %u out of memory; resolver: %u "
-                 "created on demand, %u without data, %u movie (black), %u rendered (black, P2), %u foreign",
+                 "created on demand, %u without data, %u movie (YUY2), %u rendered (black, P2), %u foreign",
                  g_uploads.load(), static_cast<unsigned long long>(g_uploadBytes.load() >> 10),
                  used != 0 ? formats : " none", g_reuploads.load(), g_convertFailures[1].load(),
                  g_convertFailures[2].load(), g_convertFailures[3].load(), g_convertFailures[4].load(),

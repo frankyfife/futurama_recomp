@@ -10,6 +10,7 @@
 #include "core/host_main.h"
 #include "core/log.h"
 #include "core/selftest.h"
+#include "video/xmv_hle.h"
 
 #include <atomic>
 #include <cstdarg>
@@ -276,10 +277,10 @@ void LogCallSummary(core::Level level) noexcept {
         }
         const core::Channel ch = LibraryChannel(lib);
         if (core::LogEnabled(ch, level)) {
-            // XPP is HLE since M4 (input/xpp_hle.cpp), DSOUND since M5 (audio/dsound_hle.cpp); XMV stays a
-            // stub until M6.
+            // XPP is HLE since M4 (input/xpp_hle.cpp), DSOUND since M5 (audio/dsound_hle.cpp), XMV since M6
+            // (video/xmv_hle.cpp).
             core::LogWrite(ch, level, "XDK %s %s: %llu calls to %u of %u entries from %u call sites",
-                           LibraryName(lib), lib == Library::Xmv ? "stubs" : "HLE",
+                           LibraryName(lib), "HLE",
                            static_cast<unsigned long long>(calls), used, entries, sites);
         }
         for (const EntryInfo& e : kEntries) {
@@ -290,6 +291,7 @@ void LogCallSummary(core::Level level) noexcept {
         }
     }
     snd::LogDsoundSummary(level);  // M5: DSOUND HLE objects and packets
+    vid::LogMovieSummary();        // M6: XMV HLE movies
 }
 
 void* AllocGuestObject(std::uint32_t size) noexcept {

@@ -14,23 +14,25 @@ Stand: 2026-10-12. Diese Seite ist die Agenda. Die technischen Details stehen in
 | M3d | Bildraten bis 120 Hz: Logik bleibt bei 60 Hz, der Renderer interpoliert Kamera, starre Objekte (entlang der Elternkette) und Skins zwischen den beiden letzten Ticks; Halbtakt-Uhr mit alpha ½/1, Takt bis 120 Hz (Vblank, VRR-Timer, Kadenz), Just-in-time-Start (Bildstart → sichtbar bei 60 fps 6,6 statt 16,6 ms), Vollbild über den ganzen Monitor. Launcher-Option „60“ / „120 (interpoliert)“ / „Monitor (max. 120)“. Am 120-Hz-Fernseher 119,9 Hz, 99,6–99,7 % der Bilder genau ein Refresh, 99,9 % der bewegten Draws interpoliert. 13 Review-Befunde nachgeprüft, 10 behoben ([Bericht](m3d_report.md), Abweichungen: [`loader_design.md`](loader_design.md) 8.9) |
 | M4 | Eingabe: XPP-HLE mit Eingabe-Router (XInput 1.4, Tastatur/Maus über Raw Input, alle 24 Xbox-Tasten frei belegbar, Rumble mit Stärke, Hotplug), Reiter „Steuerung“ im Launcher (Belegungsdialog, Controller-Test), Eingabeskript `[debug] input_script` und `tools\m4_check.py`. **Das Spiel erreicht zum ersten Mal ein Level:** „Neues Spiel“ → Level 1-1 (Planet-Express-Hangar), Fry ist steuerbar; 10 Minuten Zufallseingaben ohne Absturz. 17 Review-Befunde nachgeprüft und behoben. Ohne echten Controller geprüft (simuliert und per Unit-Tests). Sichtbare Lücken im Level (Render to Texture, Partikel, schwarze Schiffsunterseite) gehen an P2 ([Bericht](m4_report.md), Abweichungen: [`loader_design.md`](loader_design.md) 8.11) |
 | M5 | Audio: DSOUND-HLE auf XAudio2 2.9 (40 Einstiege + Stream-Methoden), Xbox-ADPCM (bitgleich mit ffmpeg), gestreamte Musik, 3D-Klang mit dem exakten DSOUND-Entfernungsmodell und X3DAudio-Richtung, I3DL2-Hall, Lautstärke-Kategorien; Software-Mixer ohne Gerät, Gerätewechsel in beide Richtungen ohne Ruckler, Reiter „Audio“ im Launcher (Gerät, Lautsprecher, Testton). Ohne Zuhören geprüft: `[audio] capture_wav` und `tools\m5_check.py` gegen die Originaldateien (2D-Pegel −6,0 dB, Tonhöhe 1,0000, Musik ohne Aussetzer, Panning, Begrenzer) – ALL PASS am 5.1-Fernseher in allen drei Bauten. 17 Review-Befunde nachgeprüft und behoben. **Abhören durch den Nutzer steht aus** ([Bericht](m5_report.md) mit Hör-Checkliste, Abweichungen: [`loader_design.md`](loader_design.md) 8.12–8.15) |
+| M4b | Freecam ([Bericht](m4b_report.md)): ein/aus mit L3+R3 (einzelne Stick-Klicks erreichen das Spiel weiter, höchstens 4 Ticks verzögert) oder F6, im 3D-Hauptmenü, in Levels und Zwischensequenzen. Probe-Hook auf `NiCamera::Click`: Kulling und Bild nutzen die Freecam, danach bekommt das Spiel seine Kamera zurück (Spiellogik und 3D-Ton bleiben bei der Spielkamera). Gamepad und Tastatur/Maus, Tempo und Zoom im Flug verstellbar, HUD ausblendbar, Optionen im Launcher-Reiter „Steuerung“. Geprüft mit Eingabeskript `m4b_freecam.txt`, Unit-Tests und `m4_check` (ALL PASS) |
+| G1 | Konturen einstellbar ([Analyse und Umsetzung](../analysis/loader/g1_outlines.md)): Die Konturen sind vorgefertigte, um 0,05 aufgeblasene Rückseiten-Schalen (`QDOutline`, 75 % schwarz) bzw. beim HUD-Kopf `NiOutline`-Bänder – der Port zeichnete sie schon. Neu: `[render] outline_color` (original/RRGGBB), `outline_opacity`, `outline_thickness` (0–2,5; 0 = aus) im Reiter „Grafik“; Standard unverändert (kein neuer Code aktiv, Trace gleich). Dicke über die Paarung Schale↔Körper (Bereiche ohne Linie bleiben ohne). Freecam dazu: Rückseiten von außen (B), schwarze Leere |
 
 ## In Arbeit
 
 | Meilenstein | Inhalt |
 |---|---|
-| – | Abhören von M5 durch den Nutzer (Checkliste in [`m5_report.md`](m5_report.md) Abschnitt 8) |
+| M6 | Video (XMV) – läuft: eigener XMV-Demuxer, Bild über den in Windows eingebauten WMV-Decoder (kein FFmpeg-Download), Ton (Xbox-ADPCM, Sprachspur) über die DSOUND-HLE, Takt nach pts. **Nutzerwunsch: alle Videos überspringbar** – auch die, die das Original beim ersten Ansehen sperrt (Intro-Filme 1-1-01/02; Zwischensequenzen erst nach 2,5 s): Option `[game] skip_videos` (Standard: immer überspringbar) |
+| M7 | Spielstände – nach M6 (Nutzer 2026-10-12: Speichern ist noch ungetestet): Speichern, Neustart, Laden, Optionen/Extras, Signatur, Löschen |
 
 ## Als Nächstes
 
-Reihenfolge seit 2026-10-12 (Nutzertest mit echtem Controller: Controller, Vibration und Bild in Ordnung; ohne Ton und Filme lässt sich der Spielfortschritt nicht beurteilen – der Ton kam mit M5):
+Reihenfolge laut Nutzer (2026-10-12, nach dem Hörtest von M5: „Ton klingt gut“): Freecam (erledigt) → Konturen → Videos.
 
 | Meilenstein | Inhalt |
 |---|---|
-| M3e (Renderer P2) | Render to Texture (Avatarbild in der Lebensanzeige oben links: separat gerenderter Kopf, Konturen `NiOutline`), Partikel (Slot 52), schwarze Schiffsunterseite, fehlende Texturen ([`m4_report.md`](m4_report.md) 6.1) |
-| M6 | Video (XMV mit FFmpeg, Ton der Zwischensequenzen über die DSOUND-Teile, die XMV benutzt: Callback-Streams, `Pause(2)`/`SynchPlayback`, `FlushEx`, `Discontinuity` – in M5 umgesetzt und synthetisch getestet) |
-| M4b | Freecam auf dem Eingabe-Router (Details unten): `InputRouter::Divert` übernimmt Anschluss 1, Tastatur/Maus über `KeyboardMouseSource::ReadRaw`; danach mit Ingame-Szenen die offenen M3d-Punkte messen (Kamera-Interpolation, Schnittregel, Kosten bei etwa 2000 Draws) |
-| G1 | Konturen der Figuren: Farbe und Stärke einstellbar (nach M3e, Details unter „Vorgemerkte Grafik-Features“) |
+| M3e (Renderer P2) | Rest nach G1: Render to Texture (Avatarbild in der Lebensanzeige oben links: separat gerenderter Kopf, Konturen `NiOutline`), Partikel (Slot 52), schwarze Schiffsunterseite, fehlende Texturen ([`m4_report.md`](m4_report.md) 6.1) |
+| G4 | **Level- und Figurenauswahl** (Nutzerwunsch 2026-10-12). Das Spiel hat keine eingebaute Auswahl (Strings durchsucht: kein Debug-/Cheat-Menü; die Extras-Freischaltung über `menu/extras/unlock.txt` betrifft nur Bilder/Musik/Videos). Plan: (1) **Levelauswahl:** „Neues Spiel“ startet fest `Level1-1` (String 0x2940C0, Nutzer 0x20090/0x20B60/0xA26A0); Liste aller Level aus den Archiven (`LevelN-M`, z. B. 1-1…5-3), Auswahl im Launcher (`[game] start_level`) und optional als eigener Eintrag im Hauptmenü bzw. Overlay; prüfen, welchen Spielstand-/Fortschrittszustand ein Level beim Einstieg erwartet (Waffen, Leben, Zwischensequenzen). (2) **Figurenauswahl:** klären, wo ein Level die Spielfigur festlegt (Fry/Bender/Leela; Leveldaten oder Code), dann Figur pro Level wählbar machen – nur wo Fähigkeiten/Skript es zulassen, sonst als „experimentell“ markiert. Prüfung: Kurzläufe in jedes Level mit Screenshot und `controllable`. |
+| G3 | **Breitbild** (Nutzerwunsch 2026-10-12): Option 16:9 / 16:10 / 21:9 / Monitor im Launcher statt 4:3 mit Seitenbalken. 3D mit Hor+-Sichtfeld (vertikales Sichtfeld bleibt, horizontal mehr Bild; Frustum der Szenenkamera, Kulling-Ebenen wie bei der Freecam über `NiCamera::Click` neu berechnet). **HUD korrekt platziert:** HUD-Elemente an ihrem Bildrand verankern (Lebensanzeige/Avatar oben links, Zähler unten links/rechts) statt sie zu strecken oder mittig im 4:3-Bereich zu lassen; Menüs, Texte und Vollbild-Elemente (Ladebilder, Videos) bleiben 4:3-zentriert mit Balken. Vorher klären: welche Bildschirmpolygone/HUD-Kameras zu welchem Rand gehören (Position im 640×480-Raster), Ausnahmen per Tabelle. Prüfung mit Screenshots in Menü, Level 1-1 und Zwischensequenz gegen 4:3. |
 | G2 | Texturen artstyle-gerecht aufwerten: Austauschsystem im Renderer und lokales Upscale-Werkzeug (nach M4b, für Vorher/Nachher-Vergleiche mit der Freecam) |
 | – | Takt bei 120 Hz: In der M5-Endprüfung (Fernseher an) bestanden `m3_check` inkl. M3b-7 und die 60-Hz-Varianten von `m3d_check`, aber D1 (120 Hz: nur 43 % der Bilder genau ein Refresh) und L1 scheiterten – mit dem M4-Bau genauso, also Anzeige-Umgebung, nicht M5 ([`m5_report.md`](m5_report.md) 7, 10). Fernseher-Modus/VRR und Treiber prüfen, dann `m3d_check` ohne `--display-optional` wiederholen. Mit echtem Controller sind Controller, Vibration und Bild bestätigt (Nutzertest 2026-10-12). |
 
@@ -55,7 +57,7 @@ Ein eigenes Programm **`FuturamaLauncher.exe`** (Qt 6.8.3 Widgets, 64 Bit, lokal
 - **Sprache der Oberfläche:** Deutsch und Englisch.
 - **Später ergänzt:** Steuerung (ab M4), Audio (ab M5).
 
-Zur Auflösung gehört eine Renderer-Erweiterung: In 3D wird in Zielauflösung gerendert, statt 640×480 hochzuskalieren. 2D-Elemente werden mitskaliert, der Tiefenpuffer hat die Zielgröße. Breitbild (16:9 mit angepasstem Sichtfeld) ist ein eigener späterer Punkt.
+Zur Auflösung gehört eine Renderer-Erweiterung: In 3D wird in Zielauflösung gerendert, statt 640×480 hochzuskalieren. 2D-Elemente werden mitskaliert, der Tiefenpuffer hat die Zielgröße. Breitbild (16:9 mit angepasstem Sichtfeld und korrekt verankertem HUD) ist der eigene Punkt G3.
 
 **Anti-Aliasing** (Vorgabe: kein FXAA) gehört zur selben Renderer-Arbeit wie die Auflösung:
 - **MSAA** 2×/4×/8×, je nachdem was die Grafikkarte kann. Render-Target und Tiefenpuffer werden multisampled, danach folgt ein Resolve vor Skalierung und Present. Der Renderer zeichnet vorwärts mit Fixed-Function-Nachbau, deshalb ist MSAA die passende und günstige Lösung.
@@ -93,7 +95,7 @@ Vorgabe: mindestens 60 fps, höchstens 120 Hz.
 
 XInput, Tastatur und Maus mit frei belegbaren Tasten, Rumble, Reiter „Steuerung“ im Launcher, Eingabeskripte für automatische Läufe bis ins erste Level. Bericht: [`m4_report.md`](m4_report.md).
 
-### M4b – Freecam
+### M4b – Freecam (erledigt, Plan zur Referenz)
 
 Eine frei bewegliche Kamera für Screenshots, Fehlersuche und Level-Inspektion.
 
@@ -141,5 +143,4 @@ Eine frei bewegliche Kamera für Screenshots, Fehlersuche und Level-Inspektion.
 | M7 | Spielstände: XAPI-SaveGame auf Host-Ordner, Signaturschlüssel |
 | M8 | Spielbares Level von Anfang bis Ende, Vergleich mit xemu |
 | M9 | Schrittweise Dekompilierung (re3-Stil), Funktion für Funktion |
-| – | Breitbild 16:9 mit angepasstem Sichtfeld und HUD-Positionen |
 | M10 | Vulkan- bzw. D3D12-Backend hinter der vorhandenen RHI |
