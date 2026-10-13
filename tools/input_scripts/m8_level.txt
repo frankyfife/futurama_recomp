@@ -1,0 +1,38 @@
+# m8_level.txt - M8 / M3e renderer P2: "Neues Spiel" -> Level1-1, look at the player's shadow (render to texture +
+# projected shadow), particles and the HUD, then quit. About 40-50 s with [debug] movies = skip.
+# Format: README.md in this folder.
+
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 90t
+screenshot m8_start
+hold LY=1.0 90t
+wait 30t
+screenshot m8_walk
+hold RX=1.0 50t
+wait 30t
+screenshot m8_turn
+press B 3t
+wait 12t
+screenshot m8_jump
+wait 60t
+press X 3t
+wait 10t
+screenshot m8_attack
+wait 60t
+log "M8: level run done"
+quit 0

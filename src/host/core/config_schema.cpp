@@ -12,13 +12,16 @@
 //   [saves]    kernel/kernel_settings.cpp (key_mode, signature_key, xbox_cert_key)
 //   [render]   gfx/gfx_config.cpp (M2/M3/M3b keys); M3c keys resolution, render_scale, msaa, alpha_to_coverage,
 //              anisotropy (shared contract item 5, read by the renderer); M3d interpolation, interpolation_debug,
-//              interpolation_hierarchy (gfx/interp_history.cpp SettingsFromConfig)
+//              interpolation_hierarchy (gfx/interp_history.cpp SettingsFromConfig); M6b movie_pack
+//              (video/xmv_hle.cpp)
 //   [audio]    M5 enabled, device, master_volume, limiter (audio/audio_engine.cpp, DSOUND core agent; dummy_streams
 //              is obsolete since M5); M5 capture keys capture_wav, capture_format, capture_stems, event_log
 //              (audio/capture_session.cpp, tooling agent); M5 speakers, reverb (audio/audio_engine.cpp) and
 //              positional, trim_3d (audio/spatial_x3d.cpp, codec/3D/reverb agent)
 //   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos);
 //              G4 xapi/game_select.cpp (start_level, play_as), G7 input/level_skip.cpp (level_skip_cheat)
+//   [cheats]   G8 xapi/cheats.cpp (invulnerable, one_hit_kill, enemies_ignore, ingame_toggles; the toggles' D-pad
+//              sequences in input/cheat_toggles.cpp)
 //   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26);
 //              G5 xapi/camera_response.cpp (camera_response); G6 xapi/first_person.cpp (first_person,
 //              first_person_look_speed)
@@ -44,6 +47,7 @@ using W = ConfigUiWidget;
 // ---- sections ----------------------------------------------------------------------------------------------
 constexpr ConfigSectionDef kSections[] = {
     {"game", {"Spiellogik", "Game logic"}},
+    {"cheats", {"Cheats", "Cheats"}},
     {"render", {"Grafik", "Graphics"}},
     {"input", {"Eingabegeräte und Vibration", "Input devices and rumble"}},
     {"freecam", {"Freie Kamera", "Free camera"}},
@@ -105,6 +109,14 @@ constexpr ConfigChoice kScalingChoices[] = {
     {"linear", {"Weich (linear)", "Smooth (linear)"}},
     {"point", {"Scharf (nächster Pixel)", "Sharp (nearest pixel)"}},
     {"integer", {"Ganzzahlig (pixelgenau, mit Rand)", "Integer (pixel-exact, with border)"}},
+};
+// G3 (gfx/widescreen.h ParseAspect accepts the same words).
+constexpr ConfigChoice kAspectChoices[] = {
+    {"original", {"Original 4:3 (mit Balken)", "Original 4:3 (with bars)"}},
+    {"16:9", {"16:9", "16:9"}},
+    {"16:10", {"16:10", "16:10"}},
+    {"21:9", {"21:9", "21:9"}},
+    {"monitor", {"Wie der Bildschirm", "Like the display"}},
 };
 constexpr ConfigChoice kPacingChoices[] = {
     {"auto", {"Automatisch (empfohlen)", "Automatic (recommended)"}},
@@ -247,8 +259,8 @@ constexpr ConfigChoice kCameraResponseChoices[] = {
 };
 // G6: [input] first_person (xapi/first_person.h).
 constexpr ConfigChoice kFirstPersonChoices[] = {
-    {"off", {"Aus (wie im Original)", "Off (as in the original)"}},
-    {"on", {"An: Ego-Steuerung", "On: first-person control"}},
+    {"off", {"Aus: R3 = Zielansicht des Originals (Figur steht)", "Off: R3 = the original aim view (standing)"}},
+    {"on", {"An: steuerbare Egoperspektive (R3 wechselt)", "On: playable first person (R3 switches)"}},
 };
 // [freecam] toggles (M4b, gfx/freecam.cpp).
 constexpr ConfigChoice kFreecamPadChoices[] = {
@@ -404,6 +416,49 @@ constexpr ConfigKeyDef kKeys[] = {
               "cut scenes or the pause). The presses also reach the game (jump/attack)."},
      .tab = Tab::Game, .order = 60, .widget = W::Check},
 
+    // [cheats] - G8 (xapi/cheats.cpp, input/cheat_toggles.cpp). All off = no hooks.
+    {.section = "cheats", .name = "invulnerable", .type = T::Bool, .defaultValue = "0",
+     .label = {"Unverwundbar", "Invulnerable"},
+     .help = {"Die Spielfigur nimmt keinen Schaden: Gegner, Geschosse, Explosionen, Fallen und schädliche Böden "
+              "ziehen keine Gesundheit mehr ab, und es geht kein Leben verloren. Wie beim eingebauten Gott-Modus des "
+              "Spiels töten nur die Todeszonen (Abgründe, tödliches Wasser oder Lava) weiterhin – die Figur beginnt "
+              "dann am letzten Kontrollpunkt, ohne ein Leben zu verlieren.",
+              "The character takes no damage: enemies, projectiles, explosions, traps and damaging floors no longer "
+              "reduce health, and no life is lost. As with the game's built-in god mode, only the death zones "
+              "(bottomless pits, deadly water or lava) still kill - the character then restarts at the last "
+              "checkpoint without losing a life."},
+     .tab = Tab::Game, .order = 70, .widget = W::Check},
+    {.section = "cheats", .name = "one_hit_kill", .type = T::Bool, .defaultValue = "0",
+     .label = {"Gegner sterben mit einem Treffer", "Enemies die with one hit"},
+     .help = {"Jeder Treffer der Spielfigur tötet einen Gegner. Bosse (Panzer, Chickenwalker, Destructor) verlieren "
+              "pro Treffer ein Viertel ihrer Gesundheit, damit ihre Kampfphasen erhalten bleiben. Figuren, die das "
+              "Spiel selbst unverwundbar macht (z. B. Pflanzen, Krokodil, Sonnengott), bleiben es.",
+              "Every hit of the character kills an enemy. Bosses (tank, chickenwalker, Destructor) lose a quarter "
+              "of their health per hit so that their fight phases are kept. Characters the game itself makes "
+              "invulnerable (e.g. plants, crocodile, sun god) stay invulnerable."},
+     .tab = Tab::Game, .order = 71, .widget = W::Check},
+    {.section = "cheats", .name = "enemies_ignore", .type = T::Bool, .defaultValue = "0",
+     .label = {"Feinde ignorieren mich", "Enemies ignore me"},
+     .help = {"Gegner bemerken die Spielfigur nicht und greifen nicht an – so wie während der Zwischensequenzen. "
+              "Wer angegriffen wird, dreht sich zur Figur um, greift aber nicht an. Bosse kämpfen weiter; Geschosse, "
+              "die schon fliegen, und Fallen treffen weiterhin.",
+              "Enemies do not notice the character and do not attack - just like during cut scenes. An enemy that "
+              "is hit turns towards the character but does not attack. Bosses keep fighting; projectiles already "
+              "in flight and traps still hit."},
+     .tab = Tab::Game, .order = 72, .widget = W::Check},
+    {.section = "cheats", .name = "ingame_toggles", .type = T::Bool, .defaultValue = "0",
+     .label = {"Cheats im Spiel per Steuerkreuz umschalten", "Toggle cheats in game with the D-pad"},
+     .help = {"Im Level schaltet je eine Folge auf dem Steuerkreuz (Tastatur: Pfeiltasten) einen Cheat an oder aus, "
+              "zügig gedrückt (8 Drücke in höchstens 5 Sekunden): Unverwundbar = hoch hoch runter runter links rechts "
+              "links rechts; Ein Treffer = links rechts links rechts hoch runter hoch runter; Feinde ignorieren mich "
+              "= runter hoch runter hoch rechts links rechts links. Bestätigung: grünes (an) bzw. rotes (aus) "
+              "Aufblitzen und ein kurzes Vibrieren.",
+              "In a level one D-pad sequence (keyboard: arrow keys) each switches a cheat on or off, pressed quickly "
+              "(8 presses within 5 seconds): invulnerable = up up down down left right left right; one hit = left "
+              "right left right up down up down; enemies ignore me = down up down up right left right left. "
+              "Confirmation: a green (on) or red (off) flash and a short rumble."},
+     .tab = Tab::Game, .order = 73, .widget = W::Check},
+
     // [render] - window and output (M3, gfx/gfx_config.h)
     // M3c (integration): monitor selection, platform/window.h WindowOptions::monitor. Type string: the values are
     // the GDI device names of --query-gpu "outputs[].device"; the launcher shows them as a monitor list.
@@ -436,11 +491,25 @@ constexpr ConfigKeyDef kKeys[] = {
     {.section = "render", .name = "resolution", .type = T::Resolution, .defaultValue = "auto",
      .choices = kResolutionSuggestions, .ranged = true, .min = kConfigResolutionMin, .max = kConfigResolutionMax,
      .step = 1, .label = {"Renderauflösung", "Render resolution"},
-     .help = {"Auflösung, in der das Spiel gezeichnet wird. „Automatisch“ nimmt die größte 4:3-Fläche im Fenster "
-              "bzw. auf dem Bildschirm, der Rest bleibt schwarz. 640×480 entspricht der Xbox.",
-              "Resolution the game is rendered at. Automatic uses the largest 4:3 area of the window or screen; "
-              "the rest stays black. 640×480 matches the Xbox."},
+     .help = {"Auflösung, in der das Spiel gezeichnet wird. „Automatisch“ nimmt die größte Fläche im Bildformat "
+              "(4:3 oder Breitbild) im Fenster bzw. auf dem Bildschirm, der Rest bleibt schwarz. 640×480 entspricht "
+              "der Xbox.",
+              "Resolution the game is rendered at. Automatic uses the largest area of the aspect ratio (4:3 or "
+              "widescreen) in the window or screen; the rest stays black. 640×480 matches the Xbox."},
      .tab = Tab::Graphics, .order = 30, .widget = W::Resolution},
+    // G3 widescreen (gfx/widescreen.h): default original = the game unchanged (no frustum patch, no placement).
+    {.section = "render", .name = "aspect", .type = T::Choice, .defaultValue = "original", .choices = kAspectChoices,
+     .label = {"Bildformat (Breitbild)", "Aspect ratio (widescreen)"},
+     .help = {"Breitbild statt 4:3. Die 3D-Grafik zeigt seitlich mehr (Hor+: das senkrechte Sichtfeld bleibt wie im "
+              "Original). Die Anzeigen im Level (Lebensanzeige, Zähler) rücken an ihren Bildrand. Menüs, Ladebilder, "
+              "Filme und Texte bleiben in der 4:3-Mitte mit schwarzen Rändern. „Wie der Bildschirm“ nimmt das Format "
+              "der Renderauflösung bzw. des Bildschirms. „Original“ = unverändert wie auf der Xbox.",
+              "Widescreen instead of 4:3. The 3D graphics show more at the sides (Hor+: the vertical field of view "
+              "stays as in the original). The in-level displays (health, counters) move to their screen edge. Menus, "
+              "loading pictures, movies and texts stay in the 4:3 centre with black borders. \"Like the display\" "
+              "uses the shape of the render resolution or of the screen. \"Original\" = unchanged, like on the "
+              "Xbox."},
+     .tab = Tab::Graphics, .order = 32, .widget = W::Combo},
     {.section = "render", .name = "render_scale", .type = T::Float, .defaultValue = "1.0", .ranged = true,
      .min = 1.0, .max = 2.0, .step = 0.25, .label = {"Supersampling (Render-Skala)", "Supersampling (render scale)"},
      .help = {"Zeichnet intern um diesen Faktor größer und rechnet das Bild danach herunter. Das glättet alle "
@@ -516,6 +585,36 @@ constexpr ConfigKeyDef kKeys[] = {
               "values they show through at nose and eyes. As in the original, the lines get thinner with distance "
               "and disappear far away."},
      .tab = Tab::Graphics, .order = 78, .widget = W::DSpin},
+    // G2 (texture replacement, gfx/texture_pack.h): pack folder and dump.
+    {.section = "render", .name = "texture_pack", .type = T::PathDir,
+     .label = {"Texturpaket", "Texture pack"},
+     .help = {"Ordner mit Ersatztexturen (<Hash>.dds oder <Hash>.png), z. B. von tools\\texture_upscale.py aus dem "
+              "eigenen Textur-Abzug erzeugt. Leer = aus: das Spiel zeigt seine Originaltexturen. Ersatztexturen "
+              "erscheinen nach dem Laden eines Levels, sobald sie eingelesen sind.",
+              "Folder with replacement textures (<hash>.dds or <hash>.png), e.g. made by tools\\texture_upscale.py "
+              "from your own texture dump. Empty = off: the game shows its original textures. Replacements appear "
+              "after a level has loaded, as soon as they are read."},
+     .tab = Tab::Graphics, .order = 113, .widget = W::Dir},
+    {.section = "render", .name = "texture_pack_dump", .type = T::Bool, .defaultValue = "0",
+     .label = {"Texturen abspeichern", "Dump textures"},
+     .help = {"Speichert jede geladene Textur des Spiels einmal als PNG in den Ordner „texture_dump“ der "
+              "Benutzerdaten (Dateiname = Hash). Grundlage für ein eigenes Texturpaket. Kostet beim Laden etwas Zeit.",
+              "Saves every texture the game loads once as PNG in the folder \"texture_dump\" of the user data (file "
+              "name = hash). The basis for your own texture pack. Costs some time while loading."},
+     .tab = Tab::Graphics, .order = 114, .widget = W::Check},
+    // M6b (movie packs, video/movie_pack.h): upscaled movie pictures, read by video/xmv_hle.cpp.
+    {.section = "render", .name = "movie_pack", .type = T::PathDir,
+     .label = {"Filmpaket", "Movie pack"},
+     .help = {"Ordner mit hochskalierten Filmen (<Name>.mp4 und index.tsv), z. B. von tools\\movie_upscale.py aus "
+              "den Filmen der eigenen Disc erzeugt. Das Bild der Filme kommt dann aus dem Paket (z. B. 1280 × 960 "
+              "statt 640 × 480), Ton, Takt und Überspringen bleiben wie beim Original. Leer = aus: die Filme zeigen "
+              "ihr Originalbild. Filme, die nicht im Paket sind, und jeder Lesefehler zeigen ebenfalls das "
+              "Originalbild.",
+              "Folder with upscaled movies (<name>.mp4 and index.tsv), e.g. made by tools\\movie_upscale.py from "
+              "the movies of your own disc. The movie picture then comes from the pack (e.g. 1280 x 960 instead of "
+              "640 x 480); sound, timing and skipping stay as in the original. Empty = off: the movies show their "
+              "original picture. Movies not in the pack, and any read error, show the original picture as well."},
+     .tab = Tab::Graphics, .order = 115, .widget = W::Dir},
     {.section = "render", .name = "scaling", .type = T::Choice, .defaultValue = "linear", .choices = kScalingChoices,
      .label = {"Bildskalierung", "Image scaling"},
      .help = {"Wie das fertige Bild auf die Fenstergröße gebracht wird, wenn die Renderauflösung kleiner ist. "
@@ -718,14 +817,16 @@ constexpr ConfigKeyDef kKeys[] = {
               "Angriffe gehen in Blickrichtung (Frys Waffen zielen auf die Bildmitte). Rechten Stick drücken wechselt "
               "zwischen Ego- und Verfolgerkamera. Zwischensequenzen, Kamerafahrten und die Level mit Fahrzeug "
               "(Chickenwalker, Kanone, Ratte, Railgun) behalten die Kamera des Spiels. Die Option „Ziel umkehren“ "
-              "im Spiel kehrt das Auf- und Abschauen um. Aus: unverändert wie im Original.",
+              "im Spiel kehrt das Auf- und Abschauen um. Aus: unverändert wie im Original; R3 zeigt dann die Zielansicht des "
+              "Spiels, in der die Figur stehen bleibt und nicht gesteuert werden kann.",
               "On: the game's first-person view (press the right stick, keyboard V, middle mouse button) becomes "
               "playable and is active from the start of a level. The camera sits in the character's head, the right "
               "stick or the mouse looks around, the left stick or WASD walks along the view and sideways, jumps and "
               "attacks go along the view (Fry's weapons aim at the centre of the screen). Pressing the right stick "
               "switches between first-person and follow camera. Cut scenes, camera moves and the levels with a "
               "vehicle (Chicken Walker, cannon, rat, railgun) keep the game's camera. The game's option \"invert "
-              "aim\" inverts looking up and down. Off: unchanged as in the original."},
+              "aim\" inverts looking up and down. Off: unchanged as in the original; R3 then shows the game's aim view, "
+              "in which the character stands still and cannot be moved."},
      .tab = Tab::Controls, .order = 56, .widget = W::Combo},
     {.section = "input", .name = "first_person_look_speed", .type = T::Float, .defaultValue = "180", .ranged = true,
      .min = 30.0, .max = 720.0, .step = 10.0, .label = {"Ego: Drehtempo am Stick", "First person: stick turn speed"},

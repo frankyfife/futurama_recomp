@@ -129,3 +129,5 @@ Die Sprache der Filme folgt `[settings] language` (Englisch, Deutsch, Französis
 
 - **M7 Spielstände** (laut Roadmap als Nächstes): Speichern, Neustart, Laden, Optionen/Extras, Signatur, Löschen.
 - Filme mit xemu vergleichen, sobald Referenzaufnahmen von Filmszenen vorliegen (Halbpixelrand, Farbumrechnung).
+
+**Nachtrag 2026-10-13 (M6b):** Mit `[render] movie_pack` zeigen die Filme ein KI-hochskaliertes Bild (1280 × 960) aus einem Paket, das `tools\movie_upscale.py` aus der eigenen Disc baut; Ton, Takt und Überspringen bleiben wie hier beschrieben. Bericht: [`m6b_report.md`](m6b_report.md).

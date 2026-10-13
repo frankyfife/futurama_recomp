@@ -9,6 +9,7 @@
 #include "core/host_main.h"
 #include "core/log.h"
 #include "gfx/gfx_config.h"
+#include "gfx/widescreen.h"
 #include "kernel/kernel_hle.h"
 #include "platform/window.h"
 
@@ -45,6 +46,8 @@ bool StageCreateWindow(const core::Config& config) {
     options.scale = settings.windowScale;
     options.fullscreen = settings.fullscreen;
     options.monitor = settings.monitor.empty() ? nullptr : settings.monitor.c_str();
+    options.aspectW = gfx::widescreen::GetDisplay().aspectW;  // G3: [render] aspect (0 x 0 = 4:3)
+    options.aspectH = gfx::widescreen::GetDisplay().aspectH;
     const char* error = nullptr;
     if (!CreateMainWindow(options, &error)) {
         FUT_LOGE(Core, "CreateWindow: %s (error %lu) - continuing without a window", error != nullptr ? error : "?",

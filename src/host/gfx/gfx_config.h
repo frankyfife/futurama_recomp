@@ -74,6 +74,9 @@
 //   [render] outline_thickness = 1.0     0..4: factor on the original thickness (A: shell offset per vertex,
 //                               B: DAT_002D7AB0 = 0.003 * k); 0 = outlines off
 //   All three at their defaults = no outline code runs (bit-identical to the original look).
+// G2 (texture replacement, gfx/texture_pack.h):
+//   [render] texture_pack = <folder>     replacement files (<hash>.dds / <hash>.png); empty = off (default)
+//   [render] texture_pack_dump = 0       1: every static game texture once as <userdata>\texture_dump\<hash>.png
 // "Classic" (bit-identical to M3, the xemu regression): resolution = 640x480, render_scale = 1, msaa = off,
 // anisotropy = off (alpha_to_coverage has no effect without MSAA).
 // The section is [render], not [gfx]: tests/test_core.cpp uses [gfx] as its example of an unknown
@@ -186,6 +189,10 @@ struct Settings {
     bool lowLatency = true;                                  // [render] low_latency
     // G1 (character outlines)
     OutlineSettings outline;                                 // [render] outline_color/opacity/thickness
+    // G2 (texture replacement)
+    std::filesystem::path texturePack;                       // [render] texture_pack (empty = off)
+    bool texturePackDump = false;                            // [render] texture_pack_dump
+    std::filesystem::path texturePackDumpDir;                // <userdata>\texture_dump
 };
 
 // Parses the settings from `cfg` (GetSettings does this once for core::GetConfig(); tests). May throw

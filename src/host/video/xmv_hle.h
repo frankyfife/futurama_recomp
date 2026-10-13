@@ -10,6 +10,9 @@
 //             IDirectSoundStream_SetVolume and Release on it (0xEE471/0xEE47D);
 //   timing    strictly by pts on the audio clock (video/movie_clock.h), start of all streams with Pause(2) +
 //             IDirectSound_SynchPlayback like the original.
+//   pack      M6b: with [render] movie_pack the shown frame's upscaled picture from the pack .mp4 (video/movie_pack.h,
+//             Media Foundation reader on its own thread) is attached to the texture as a host image; timing, audio
+//             and the XMV picture (fallback) stay as above.
 //
 // Entry points (evidence per function in xmv_hle.cpp):
 //   CreateDecoderForPackets  S_OK, *ppDecoder = guest handle; E_FAIL for a header without 'xobX' or a bad size
@@ -87,6 +90,10 @@ struct MovieStatistics {
     std::uint32_t maxLateMs = 0;     // largest clock - pts of a shown frame
     std::uint32_t audioPackets = 0;  // ADPCM chunks submitted to the DSOUND streams
     std::uint32_t audioRejected = 0;
+    std::uint32_t packMovies = 0;     // M6b: movies whose picture came from [render] movie_pack
+    std::uint32_t packFrames = 0;     // frames shown from the pack
+    std::uint32_t packMisses = 0;     // pack frames not decoded in time (original picture for that frame)
+    std::uint32_t packFallbacks = 0;  // pack unusable or abandoned during a movie (original picture)
 };
 MovieStatistics GetMovieStatistics() noexcept;
 // One summary line on VID (exit reporter / tests).

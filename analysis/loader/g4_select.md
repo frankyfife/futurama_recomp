@@ -66,7 +66,7 @@ Quellen: `CharacterDef::` in `defs.nif` und die `::PLAYER`-Instanz in den Stage-
 
 Weitere Spielerfiguren gibt es nicht. Der Def-Lader kennt außerdem `Fry-1-6` und `Railgunfry`, aber kein Level benutzt sie. `chars\fry-1-6.ucf` (323 KB) und `chars\railgunfry.ucf` liegen trotzdem im Archiv. Alle Spieler-Modelle stehen in `FutPAL00.img` (immer gemountet): bender.ucf 1,79 MB, leela.ucf 1,55 MB, fry.ucf 3,01 MB, fry-1-1 1,31 MB, fry-1-5 2,06 MB, fry-5-3 1,85 MB, rodent.ucf 1,03 MB.
 
-Waffen-Defs (`WeaponDef::`) stehen **nur** in den Fry-Leveln (1-1/1-2: HammerP, Pistol; 1-3/1-4: + Shotgun; 1-5/1-6/1-7: + MachineGun; 5-3: Railgun). Bender- und Leela-Level haben nur Powerups (Bier/Öl bzw. Vitamine).
+Waffen-Defs (`WeaponDef::`) stehen **nur** in den Fry-Leveln (1-1/1-2: Hammer, Pistol - Nachtrag 2026-10-13: zuerst als „HammerP“ gelesen, das P ist das Byte nach dem längenpräfixierten Namen; 1-3/1-4: + Shotgun; 1-5/1-6/1-7: + MachineGun; 5-3: Railgun). Bender- und Leela-Level haben nur Powerups (Bier/Öl bzw. Vitamine).
 
 ### 2.2 Wie das nächste Level gewählt wird
 

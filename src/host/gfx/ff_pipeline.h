@@ -123,6 +123,13 @@ rhi::SamplerDesc MakeSamplerDesc(const ni::TextureStageDesc& stage, std::uint32_
                                  bool screenSpace) noexcept;
 // True if `state` is drawn with alpha-to-coverage under `options` (rule above).
 bool UsesAlphaToCoverage(const ni::RenderStateDesc& state, const RenderOptions& options) noexcept;
+// G2 fix (menu text boxes): true if `state` blends with SRCALPHA / INVSRCALPHA or SRCALPHA / ONE, has no alpha test
+// and writes depth. A fragment with alpha 0 then changes no colour, but under D3D8 rules it still writes depth, so
+// the transparent part of every glyph quad of the menu text hid the pulsing highlight drawn after it (darker
+// rectangles behind the selected item, with and without texture pack). The Xbox shows no such rectangles (xemu
+// reference frames of the main menu), so these draws discard alpha-0 fragments (alpha test GREATER 0, depth
+// unchanged there; colour identical).
+bool DiscardsTransparentFragments(const ni::RenderStateDesc& state) noexcept;
 // Review M3c finding 5: true if blending with `blend` reads the destination alpha (DESTALPHA, INVDESTALPHA or
 // SRCALPHASAT in a color or alpha factor).
 bool ReadsDestinationAlpha(const rhi::BlendDesc& blend) noexcept;

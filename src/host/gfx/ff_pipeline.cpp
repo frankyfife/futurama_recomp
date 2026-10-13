@@ -8,6 +8,7 @@
 
 #include "core/log.h"
 #include "gfx/freecam.h"
+#include "gfx/texture_pack.h"
 
 #include "ff_ps_flat.h"  // gen_shaders/ (fut_add_shader in src/host/CMakeLists.txt)
 #include "ff_ps_smooth.h"
@@ -279,6 +280,12 @@ bool UsesAlphaToCoverage(const ni::RenderStateDesc& state, const RenderOptions& 
     }
 }
 
+bool DiscardsTransparentFragments(const ni::RenderStateDesc& state) noexcept {
+    return state.alphaBlendEnable && !state.alphaTestEnable && state.zWriteEnable &&
+           state.srcBlend == rhi::BlendFactor::SrcAlpha &&
+           (state.dstBlend == rhi::BlendFactor::InvSrcAlpha || state.dstBlend == rhi::BlendFactor::One);
+}
+
 bool ReadsDestinationAlpha(const rhi::BlendDesc& blend) noexcept {
     if (!blend.enable) {
         return false;
@@ -399,6 +406,11 @@ void FillDrawConstants(const ni::DrawItem& item, const ni::CameraDesc& camera, F
                   std::min<std::uint32_t>(item.geometry.uvSetCount, FF_MAX_UV_SETS), ActiveStageCount(state)};
     c.colorSources = {state.diffuseSource, state.ambientSource, state.specularSource, state.emissiveSource};
     c.alphaTest = {state.alphaTestEnable ? 1u : 0u, static_cast<std::uint32_t>(state.alphaFunc), state.alphaRef, 0u};
+    if (DiscardsTransparentFragments(state)) {
+        // G2 fix: a fully transparent fragment of an alpha-blended draw changes no colour but would still write
+        // depth; discard it (alpha test GREATER 0, see the declaration in ff_pipeline.h).
+        c.alphaTest = {1u, static_cast<std::uint32_t>(rhi::CompareFunc::Greater), 0u, 0u};
+    }
     c.fog = {state.fogEnable ? static_cast<std::uint32_t>(state.fogTableMode) : static_cast<std::uint32_t>(FF_FOG_NONE),
              state.rangeFogEnable ? 1u : 0u, 0u, 0u};
     *out = c;
@@ -776,6 +788,7 @@ DrawResult FixedFunctionPipeline::Impl::Draw(const ni::DrawItem& item) noexcept 
                 ++stats.missingTextures;
             }
             rhi::SamplerDesc samplerDesc = MakeSamplerDesc(stage, options.maxAnisotropy, screenSpace);
+            texpack::AdjustSampler(texture, &samplerDesc);  // G2: mip filter NONE on a larger pack replacement
             if (samplerDesc.maxAnisotropy > 1) {
                 ++stats.anisotropicStages;
             }

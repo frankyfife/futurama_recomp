@@ -66,6 +66,7 @@ enum class Format : std::uint8_t {
     R8_UNorm,          // single channel (luminance via shader swizzle)
     D24_UNorm_S8_UInt, // depth/stencil of the back buffer (Create gets PC D3DFMT_D24S8 = 0x4B)
     D32_Float,
+    BC7_UNorm,         // G2 texture packs (DDS with DX10 header); feature level 11_0+ (IsFormatSupported)
     Count
 };
 
@@ -110,6 +111,10 @@ struct TextureDesc {
     Format format = Format::Unknown;
     std::uint8_t usage = kTextureSampled;  // TextureUsage bits
     const char* debugName = nullptr;
+    // M8 (add-only): samples per pixel of a render-target or depth-stencil texture (render to texture with MSAA);
+    // > 1 requires mipLevels 1, no initial data and no kTextureSampled (Device::ResolveTexture makes it sampleable).
+    // Clamped like DeviceDesc::sampleCount (Device::SupportedSampleCount).
+    std::uint32_t sampleCount = 1;
 };
 // One mip level of initial/updated texture data (tightly packed rows allowed: rowPitch = RowPitch()).
 struct SubresourceData {
@@ -532,6 +537,14 @@ public:
         return false;
     }
     virtual bool ReadTexture(TextureHandle texture, std::uint32_t level, Image& out) noexcept = 0;
+    // M8 (add-only; default false = not supported): resolves the multisampled render-target texture `source` into the
+    // single-sampled texture `destination` of the same size and format (D3D11 ResolveSubresource; a plain copy when
+    // `source` has one sample).
+    virtual bool ResolveTexture(TextureHandle destination, TextureHandle source) noexcept {
+        (void)destination;
+        (void)source;
+        return false;
+    }
 
     virtual DebugLayerInfo DebugLayer() const noexcept = 0;
     // Moves the queued validation messages to `out` (appends), returns their number.

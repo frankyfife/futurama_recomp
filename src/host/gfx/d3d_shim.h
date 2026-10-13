@@ -21,6 +21,8 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace gfx::d3d {
 
@@ -74,6 +76,22 @@ inline constexpr std::uint32_t kFormatYuy2 = 0x24;  // Xbox D3DFMT_YUY2 (movie p
 // texture's generation so the renderer uploads the new contents. Returns the new generation (0 = unknown resource).
 std::uint32_t NoteResourceWritten(std::uint32_t header) noexcept;
 bool LookupResource(std::uint32_t header, ResourceInfo& out) noexcept;
+
+// M6b (movie packs, video/movie_pack.h): a host-side YUY2 picture that the renderer shows instead of a texture's
+// guest pixels - the upscaled movie frame (e.g. 1280x960 for the game's 640x480 movie texture). The guest resource
+// keeps its size and pixels (the game's texel coordinates still address width x height; the renderer scales them,
+// nipc_gpu MovieTexture). Any even size up to 4096.
+struct HostImage {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t pitch = 0;          // bytes per row (>= 2 * width)
+    std::vector<std::uint8_t> yuy2;   // pitch * height bytes
+};
+// Attaches the picture to `header` (a texture, or a surface: its texture); nullptr removes it. Does not raise the
+// generation - call NoteResourceWritten afterwards. False for an unknown resource. Dropped with the resource.
+bool SetHostImage(std::uint32_t header, std::shared_ptr<const HostImage> image) noexcept;
+// The picture attached to `header` (texture or surface), or nullptr.
+std::shared_ptr<const HostImage> GetHostImage(std::uint32_t header) noexcept;
 
 // Guest-visible dummy IDirect3DDevice8 (0x2040 zero bytes, the size the original device memset in
 // D3DDevice_Release 0x23447E) for NiPCRenderer+0x60; never dereferenced by the shim. 0 on failure.

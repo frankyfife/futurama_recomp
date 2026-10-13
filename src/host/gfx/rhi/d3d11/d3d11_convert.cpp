@@ -54,6 +54,9 @@ TextureFormats TextureFormatsOf(Format format, std::uint8_t usage) noexcept {
         f.resource = sampled ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_D32_FLOAT;
         f.srv = sampled ? DXGI_FORMAT_R32_FLOAT : DXGI_FORMAT_UNKNOWN;
         break;
+    case Format::BC7_UNorm:
+        f.resource = f.srv = DXGI_FORMAT_BC7_UNORM;
+        break;
     case Format::Unknown:
     case Format::Count:
         break;

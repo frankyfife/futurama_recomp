@@ -105,6 +105,7 @@ Ablauf pro Frame:
   * Farbe: Der Aufruf bei 0x1551DB übergibt **r, g, b = 0, 0, 0** (Immediates `push eax` mit eax = 0) und als Farbausgabe NULL. Alpha ist 1, nur das letzte Vertexpaar jedes Bandes hat Alpha 0.
   * Ein volles Polygon bekommt `+0x1C |= 7` und kommt über `FUN_00019460` in die Liste `cam+0x160`, sofern `DAT_002D7AB8 == 2` (0x13D4BD).
   * `NiCamera::Click` setzt den Pool mit `FUN_0013C750` zurück und hängt mit `FUN_0013E360` das letzte, mit Nullen aufgefüllte Polygon an. Gezeichnet wird über Slot 54.
+  * Ergänzung 2026-10-13 (Abschnitt 12): Ein Polygon enthält viele Ketten hintereinander. Die Nullfüllung beim Abschließen (`FUN_0013D3B0` bei vollem Polygon, `FUN_0013E360(Kamera)`, cdecl mit einem Argument) beginnt bei Anzahl − 2 und überschreibt damit auch das letzte Vertexpaar der letzten Kette.
 * **Globale Schalter:** `DAT_002D7AB8` = 2 (Modus, `.data`). Nur das Render-to-Texture `FUN_0003B960` setzt ihn um seinen `NiCamera::Click` herum (0x3BBD4–0x3BBEE) auf 0 und stellt ihn danach wieder her. `DAT_002D7AB4` = 0,7 hat keinen Leser.
 * „outline.tga“ (0x2A37B4) holt der Level-Lader `FUN_000C5B40` (0xC5CD4–0xC5CEE) über `FUN_000C29F0`; die Textur steckt in `effects\level*.nif` (19 Dateien). Danach folgt `FUN_0013CE60(tex)`.
 * `NiData_OutlineColor=RRRGGGBBB` wird zwar in `NiOutlineData+0x18` geparst (Dezimal-Tripel / 255), von `FUN_00153E90` aber nicht verwendet. Vermutung: Rest einer früheren Version.
@@ -305,3 +306,63 @@ Bildausschnitte (Fry 2× vergrößert, rechts das HUD-Porträt):
 * `run\g1_impl\thick3\crop_fry.png`
 * `run\g1_impl\off\crop_fry.png`
 * Übersicht: `run\g1_impl\compare_sheet.png`
+
+
+---
+
+## 12. Avatar-Fix: schwarze Ausreißer im HUD-Porträt (2026-10-13)
+
+Nutzermeldung (12. und 13.10.): „kleinere Grafikfehler im Avatarbild oben links“, „schwarze Polygonausreißer“. Im eigenen Screenshot des Nutzers (`%LOCALAPPDATA%\FuturamaPC\screenshots\frame_022096.png`, nur gelesen) läuft ein dunkler, auslaufender Keil vom Ohr nach links unten über den Porträt-Hintergrund.
+
+### 12.1 Nachstellung
+
+Läufe in Level 1-1 mit 2560×1920, ohne MSAA, neun Screenshots über etwa 4 s (`run\avatar\portrait.txt`). Der Keil ist in **jedem** Bild da (`run\avatar\base\shots\`, Ausschnitt `run\avatar\base_p01_zoom.png`). Für die Ursache wurde vorübergehend (danach wieder entfernt) in den Trace-Frames jedes 404-Vertex-Band mit Gastpositionen, Farben und UVs ins Log geschrieben; `run\avatar\ribana.py` und `ribdraw.py` werten das aus. `run\avatar\rib1481.png` zeichnet die Dreiecke des Frames 1481 nach: schwarz/blau = Dreiecke eines Bandes (blau = weggeculled), rot/rosa = Dreiecke zwischen zwei Ketten.
+
+### 12.2 Ursache: zwei Eigenheiten des Originalcodes
+
+Die Bänder baut der Gastcode selbst (`FUN_00153E90`), der Port zeichnet sie nur. Beide Fehler stecken also im Original:
+
+1. **Brücken zwischen Ketten.** `FUN_0013D3B0` hängt jede Kette an den laufenden Strip an: Farbe (0, 0, 0, 1), das letzte Vertexpaar Alpha 0 (0x13D43F–0x13D463). Im Strip entstehen so zwischen dem Ende einer Kette und dem Anfang der nächsten zwei Dreiecke mit Alpha (0, 0, 1) und (0, 1, 1). Sie sind bis zur halben Porträtbreite lang. Frame 1481: 54 + 19 Ketten in 2 Polygonen, etwa die Hälfte der Brücken zeigt zur Kamera (Cull CW wie jede Geometrie ohne `NiStencilProperty`). Die meisten liegen hinter dem Kopf und scheitern am Tiefentest. Wo sie über den Hintergrund laufen, bleiben dünne dunkle Splitter (Haar, Ohr).
+2. **Nullfüllung ab Anzahl − 2.** Beim Abschließen eines Polygons füllen `FUN_0013D3B0` (0x13D4CF `add ecx,-2`, wenn die nächste Kette nicht mehr passt) und `FUN_0013E360` (0x13E390 `add edx,-2`, aus `NiCamera::Click` 0x100D48) Positionen und Farben ab **Anzahl − 2** mit Nullen. Das letzte Paar der letzten Kette landet damit auf (0, 0, 0). Für Slot 54 ist das die linke untere Ecke des Ports, Tiefe = near, vor allem anderen. Das vorletzte Paar hat noch Alpha 1. So entsteht pro Polygon ein Keil, der bis zur Port-Ecke reicht und nach links unten ausläuft. Bei 1920 Zeilen sind davon etwa 40 px deutlich sichtbar. **Das ist der gemeldete Ausreißer** (`rib1481.png`: die zwei langen Dreiecke zur Ecke).
+
+Gehrungsspitzen (`FUN_00153E90`, Gehrung ohne Begrenzung) kommen in den gemessenen Frames nicht vor: Paarbreite höchstens das 1,4-Fache des Medians (`run\avatar\bandstat.py`). Interpolation (M3d), Breitbild (G3), MSAA und die Konturoptionen sind nicht beteiligt. Die Fehler entstehen im Gastcode vor dem Zeichnen, und dieselben Daten zeigen sie auch bei 4:3 ohne Optionen.
+
+Auf der Xbox entstehen dieselben Dreiecke (gleicher Code, gleiche Daten). Bei 640×480 auf dem Fernseher sind Keil und Splitter dort 1–2 px breit. Ein scharfes xemu-Bild des Porträts gibt es nicht (`run\xemu_ref` zeigt nur die unscharfe Attract-Aufnahme).
+
+### 12.3 Behebung (immer an, keine Option)
+
+* **Zeichnen als Kettenliste:** `GpuRenderer::DrawScreenPolygon` gibt jedes Band-Polygon (`IsRibbonPolygon`) an `outline::SplitRibbonStrip`. Daraus wird eine Dreiecksliste in der Arena:
+  * Strip-Dreieck k bleibt, wenn Vertex k Alpha ≠ 0 hat. Dann liegt k vor dem Endpaar seiner Kette, und alle drei Vertices gehören zu ihr.
+  * Kein Vertex darf Füllung sein (Position (0, 0, 0) mit Alpha 0).
+  * Bei ungeradem k gilt die vertauschte Reihenfolge von D3D, damit die Ausrichtung gleich bleibt.
+
+  Die Bänder selbst bleiben unverändert: gleiche Vertices, gleiche Farben, gleiches Culling, auslaufendes Kettenende.
+* **Kettenende zurückholen:** Zwei Probes sichern vor einem Abschluss mit Nullfüllung die 6 Floats des Endpaars und schreiben sie danach zurück (`PoolCloseZeroesTail`: Polygon vorhanden, Modus 2, Anzahl ≥ 2, bei `FUN_0013D3B0` Anzahl + n > 404):
+  * `probe:NiOutline::AppendRibbon` (0x13D3B0, thiscall mit 7 Stack-Argumenten, `ret 0x1C`, gestohlen `6A FF 68 1E CD 17 00`)
+  * `probe:NiOutline::FlushRibbons` (0x13E360, cdecl mit der Kamera, gestohlen `A1 B8 7A 2D 00`)
+
+  Die Farben bleiben (0, 0, 0, 0), wie das Original sie setzt. Capstone-Durchlauf über .text 0x11000–0x1A0000: kein Sprung und kein Rohzeiger in die gestohlenen Bytes. Aufrufer: 0x1551DB, 0x13D81E (Rekursion nach vollem Polygon) und 0x100D48.
+  * Ohne die Probes (etwa über `[hooks] disable`) fängt die Füllungsregel den Keil trotzdem ab. Dann fehlt aber das letzte, auslaufende Segment einer Kette pro Polygon.
+* Die Option `outline_color`/`outline_opacity` kopiert die Farben wie bisher (nach dem Aufteilen). `outline_thickness = 0` schaltet die Bänder im Gast ab, die Probes tun dann nichts (Modus 0).
+* Exit-Zeile: `outline ribbons: N strips drawn as chain lists (T triangles, B visible bridge/corner triangles left out), R chain ends restored after the pool zero fill`.
+
+### 12.4 Prüfung
+
+* `fut_tests`: 526 Fälle (4 neu in `tests\outline_tests.cpp`):
+  * Kettenliste mit Brücken, Füllung, Windungsreihenfolge und Nullfüllung
+  * `PoolCloseZeroesTail`
+  * `SplitRibbonStrip` an einem Gast-Polygon
+  * Probe-Ziele sind Funktionsanfänge
+* Läufe (je ≤ 35 s, Ton 0, Vibration 0, `movies = skip`):
+
+| Lauf | Einstellungen | Ergebnis |
+|---|---|---|
+| `base` (vorher) | 1-1, 2560×1920, 4:3, ohne MSAA, Standardkonturen | Keil vom Ohr nach links unten in allen 9 Bildern |
+| `fix` | wie `base`, mit Trace-Frames | Keil weg; Ohrkontur jetzt geschlossen (wiederhergestelltes Kettenende). Bilddifferenz zu `base` nur im Keil und dem Ohrsegment (`run\avatar\diff_p01.png`). 986 Polygone, 986 Kettenenden zurückgeholt, 70 246 sichtbare Brücken-/Eckdreiecke ausgelassen. Strip-Länge 402 statt 400 (Endpaar nicht mehr genullt). |
+| `user21` | 2-1 Bender, Einstellungen des Nutzers (16:9, MSAA 8, `30260E`/0,6/0,75), 2560×1440 | keine Ausreißer (`run\avatar\user21_zoom.png`) |
+| `leela31` | 3-1 Leela, MSAA 8 | keine Ausreißer (`run\avatar\leela31_zoom.png`) |
+| `breakdown` | Statistikbildschirm (`level_breakdown_menu.nif` hat ebenfalls `NiOutline`) über G7 | unauffällig |
+
+Vorher/nachher-Übersicht: `run\avatar\cmp_sheet.png`. Oben 4 Bilder vorher, unten nachher, jeweils 300×320-Ausschnitt bei 2560×1920.
+
+**Offen:** Nicht geprüft sind sprechende Köpfe (Lippensynchron-Mesh, „Missing lipsynchmesh!“) und das Cockpit von Level 1-6. Die Gehrung bleibt unbegrenzt wie im Original; eine Spitze bei fast umkehrenden Silhouettenkanten wurde nicht beobachtet.

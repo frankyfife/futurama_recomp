@@ -12,6 +12,7 @@
 #include "gfx/d3d_shim.h"
 #include "gfx/d3d_traps.h"
 #include "gfx/freecam.h"
+#include "gfx/widescreen.h"
 #include "gfx/gfx_abi.h"
 #include "gfx/gfx_config.h"
 #include "gfx/guest_memory.h"
@@ -20,6 +21,7 @@
 #include "gfx/outline.h"
 #include "gfx/purge_probe.h"
 #include "gfx/texconv.h"
+#include "gfx/texture_pack.h"
 #include "kernel/mm_kernel_stack.h"
 #include "platform/frame_pacer.h"
 #include "platform/window.h"
@@ -370,8 +372,13 @@ void FillSourceTextureData(HostRenderer* h, NiPCTextureData* data, std::uint32_t
     if (image && GetSettings().validate) {
         validate::OnSourceTexture(pixels);  // M3 phase-2 harness: texconv on the selected image
     }
-    if (image && h != nullptr && h->gpu != nullptr && !UploadImage(h, data, texture, pixels, source)) {
-        source = tex::TextureSource::DefaultUnsupported;
+    if (image && h != nullptr && h->gpu != nullptr) {
+        if (!UploadImage(h, data, texture, pixels, source)) {
+            source = tex::TextureSource::DefaultUnsupported;
+        } else if (texpack::Enabled()) {
+            // G2: hash the original image (before step 4 frees it), dump it and queue a pack replacement.
+            texpack::OnTextureUploaded(*h->gpu, data, texture, pixels);
+        }
     }
     // +0x54 mipmapped = FormatPrefs +0x18 == YES || (== MIP_DEFAULT && DAT_0030EF84); DAT_0030EF84 = 0
     // (BSS, never written).
@@ -434,7 +441,7 @@ std::uint32_t CreateSourceData(NiPCRenderer* self, std::uint32_t texture) noexce
 // a stage texture: renderer data at NiTexture +0x20 (created on demand for an NiSourceTexture, through
 // FUN_0015E010), FUN_0015E260 re-conversion when a non-static texture's NiPixelData revision changed, and
 // the data's D3D texture. Movie textures (the shim's YUY2 texture at +0x3C, M6) resolve to their converted host
-// texture (GpuRenderer::MovieTexture), rendered textures (P2) to a black texture; an empty handle = the original's
+// texture (GpuRenderer::MovieTexture), rendered textures to their render target (M8, GpuRenderer::RenderedTexture); an empty handle = the original's
 // texture manager failing.
 rhi::TextureHandle ResolveTexture(void* user, ni::GuestPtr niTexture) noexcept {
     auto* self = static_cast<NiPCRenderer*>(user);
@@ -462,8 +469,9 @@ rhi::TextureHandle ResolveTexture(void* user, ni::GuestPtr niTexture) noexcept {
     }
     auto* d = guest::Ptr<NiPCTextureData>(data);
     if (Read(data) == RenderedVtableAddr()) {
+        // M8: the texture the game rendered into (slot 15), resolved from its MSAA samples.
         g_resolveRendered.fetch_add(1, std::memory_order_relaxed);
-        return h->gpu->BlackTexture();  // render to texture is P2
+        return h->gpu->RenderedTexture(data, d->width, d->height);
     }
     if (d->d3dTexture != 0 && (d->hostInfo & kHostOwnsTexture) == 0) {
         // M6: the movie player's texture (FUN_000EE220 writes its shim D3DTexture* to +0x3C): the YUY2 frame the XMV
@@ -474,6 +482,9 @@ rhi::TextureHandle ResolveTexture(void* user, ni::GuestPtr niTexture) noexcept {
             return {};  // not a shim texture: the original's texture manager would fail as well
         }
         return h->gpu->MovieTexture(info, d3d::GetShimState().yuvEnable);
+    }
+    if ((d->hostInfo & texpack::kHostReplacementPending) != 0) {
+        texpack::ApplyPending(*h->gpu, d);  // G2: swap in the decoded pack replacement
     }
     if ((d->hostInfo & kHostOwnsTexture) != 0 &&
         guest::Read<std::uint8_t>(niTexture + ni::kNiSourceTextureStatic) == 0) {
@@ -582,7 +593,8 @@ std::uint32_t __fastcall SlotSetRenderTarget(NiPCRenderer* self, void*, std::uin
         if (texture == 0) {
             h->gpu->SetBackBufferTarget();
         } else {
-            h->gpu->SetTextureTarget(h->targetWidth, h->targetHeight);  // P2: draws/clears are counted, not done
+            // M8: render to texture into the target of the head of the renderer data chain (data vf12 descriptor).
+            h->gpu->SetTextureTarget(Read(texture + kNiTextureRendererData), h->targetWidth, h->targetHeight);
         }
     }
     return 1;
@@ -903,6 +915,32 @@ std::uint32_t __fastcall SlotRenderUnskinned(NiPCRenderer* self, void*, std::uin
     return 0;
 }
 
+// slot 52 - RenderPoints(NiParticlesData*, const NiTransform&, const NiBound&) (0x148AE0, ret 0xC; NiParticles::vf33):
+// M8 - the particles as camera-facing quads (ni::ExtractPoints). The original draws only inside a scene (+0x500).
+std::uint32_t __fastcall SlotRenderPoints(NiPCRenderer* self, void*, std::uint32_t data, std::uint32_t transform,
+                                          std::uint32_t bound) noexcept {
+    if (InPurgeProbe()) {
+        return 0;
+    }
+    NoteCall(52, _ReturnAddress());
+    HostRenderer* h = Host(self);
+    if (h == nullptr || h->gpu == nullptr || freecam::SuppressOverlayDraw(h->renderTarget, true)) {
+        return 0;
+    }
+    if (!h->inScene) {
+        h->gpu->CountNotInScene(ni::DrawKind::Points, data);
+        return 0;
+    }
+    ni::GeometryInput in;
+    in.data = data;
+    in.transform = transform;
+    in.bound = bound;
+    in.propertyState = self->propertyState;
+    in.effectState = self->effectState;
+    h->gpu->DrawPoints(in);
+    return 0;
+}
+
 // slot 54 - RenderScreenPolygon(NiScreenPolygon*) (0x14B5F0, ret 4; FUN_00106AF0 set +0x0C = poly +0x08,
 // +0x10 = 0) and slot 55 - RenderScreenTexture(NiScreenTexture*) (0x14C570, ret 4). Both draw only in a scene.
 std::uint32_t __fastcall SlotRenderScreenPolygon(NiPCRenderer* self, void*, std::uint32_t polygon) noexcept {
@@ -1160,6 +1198,8 @@ const void* SlotEntry() noexcept {
         return Checked<Slot>(&SlotRenderUnskinned<50, ni::DrawKind::TriStrip>);
     } else if constexpr (Slot == 51) {
         return Checked<Slot>(&SlotRenderSkinnable<51, ni::DrawKind::TriStrips>);
+    } else if constexpr (Slot == 52) {
+        return Checked<Slot>(&SlotRenderPoints);
     } else if constexpr (Slot == 54) {
         return Checked<Slot>(&SlotRenderScreenPolygon);
     } else if constexpr (Slot == 55) {
@@ -1198,6 +1238,16 @@ std::uint32_t __fastcall DataDestroy(NiPCTextureData* data, void*, std::uint32_t
         if (data->pixelData != 0) {
             ReleaseRefObject(data->pixelData);
             data->pixelData = 0;
+        }
+        if ((data->hostInfo & (texpack::kHostReplacementPending | texpack::kHostReplaced)) != 0) {
+            texpack::OnDataDestroyed(data);  // G2
+        }
+        if (data->vtable == RenderedVtableAddr() && data->renderer != 0 && data->renderer == g_currentRenderer.load()) {
+            // M8: the render target, MSAA and depth textures of a rendered texture.
+            HostRenderer* h = Host(guest::Ptr<NiPCRenderer>(data->renderer));
+            if (h != nullptr && h->gpu != nullptr) {
+                h->gpu->ForgetRenderedTexture(guest::Addr(data));
+            }
         }
         if ((data->hostInfo & kHostOwnsTexture) != 0 && data->hostTexture != 0) {
             // M3: the device texture of this data (shared default/black textures are not owned). The data
@@ -1450,6 +1500,8 @@ std::uint32_t CreateRenderer(std::uint32_t width, std::uint32_t height, std::uin
             params.resolveUser = r;
             params.scaling = s.scaling;
             params.quality = RenderQualityOf(s);  // M3c: [render] resolution, render_scale, msaa, a2c, anisotropy
+            params.aspectWidth = widescreen::GetDisplay().aspectW;  // G3: [render] aspect (0 x 0 = original)
+            params.aspectHeight = widescreen::GetDisplay().aspectH;
             std::string error;
             host->gpu = GpuRenderer::Create(params, &error);
             if (host->gpu == nullptr) {
@@ -1579,7 +1631,7 @@ void LogRendererStatistics() noexcept {
         FUT_LOGI(Gfx,
                  "NiPCRenderer textures: %u uploaded (%llu KiB;%s), %u re-uploaded (revision), conversion failures: "
                  "%u no pixel data, %u unsupported, %u no palette, %u bad data, %u out of memory; resolver: %u "
-                 "created on demand, %u without data, %u movie (YUY2), %u rendered (black, P2), %u foreign",
+                 "created on demand, %u without data, %u movie (YUY2), %u rendered (M8 render to texture), %u foreign",
                  g_uploads.load(), static_cast<unsigned long long>(g_uploadBytes.load() >> 10),
                  used != 0 ? formats : " none", g_reuploads.load(), g_convertFailures[1].load(),
                  g_convertFailures[2].load(), g_convertFailures[3].load(), g_convertFailures[4].load(),
@@ -1621,6 +1673,7 @@ void LogRendererStatistics() noexcept {
     }
     d3d::LogShimState();
     d3d::LogTrapStatistics();
+    texpack::LogStatistics();  // G2 (nothing without [render] texture_pack / texture_pack_dump)
 }
 
 }  // namespace gfx

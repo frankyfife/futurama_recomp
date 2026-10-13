@@ -38,3 +38,17 @@ analysis/_tmp*
 # --- added in M3c (launcher agent): player packages assembled by tools/package.py ---
 dist/
 /build*/
+
+# --- added in G2: texture dumps and texture packs are derived game artwork - never commit them ---
+texture_dump/
+texture_pack*/
+*.dds
+
+# --- added in M6b: movie packs (tools/movie_upscale.py) and extracted movies are derived game media ---
+movie_pack*/
+moviepack*/
+*.mp4
+*.xmv
+
+# --- local agent worktrees ---
+.claude/worktrees/

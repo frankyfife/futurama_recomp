@@ -51,6 +51,11 @@ public:
     bool AddSampleFilter(SampleFilter filter) noexcept;
     // G7: true while `port` is diverted to an InputConsumer (the game sees a neutral pad), e.g. the freecam.
     bool Diverted(int port) const noexcept;
+    // G8: host feedback pulse (cheat toggles): for the next `samples` SampleGamePort calls of `port` the motors run at
+    // least at `strength` (maximum with the game's request), scaled and muted like the game's rumble ([input] rumble,
+    // rumble_strength, focus, diverted port). A new pulse replaces a running one.
+    void PulseRumble(int port, const RumbleState& strength, std::uint32_t samples) noexcept;
+    bool PulseActive(int port) const noexcept;
 
     // ---- InputRouter -------------------------------------------------------------------------------------
     std::uint32_t ConnectedPorts() const noexcept override;
@@ -113,6 +118,8 @@ private:
     std::array<bool, kPortCount> forcedOff_{};
     std::array<std::uint64_t, kPortCount> tick_{};
     std::array<RumbleState, kPortCount> requested_{};
+    std::array<RumbleState, kPortCount> pulse_{};              // G8
+    std::array<std::uint32_t, kPortCount> pulseSamples_{};     // G8: remaining samples of the pulse
     std::array<InputSource*, kPortCount> motorTarget_{};
     std::array<Suppress, kPortCount> suppressPhysical_{};
     std::array<Suppress, kPortCount> suppressAll_{};

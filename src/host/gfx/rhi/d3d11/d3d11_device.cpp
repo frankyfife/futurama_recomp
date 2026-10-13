@@ -1387,13 +1387,24 @@ TextureHandle D3D11Device::CreateTexture(const TextureDesc& desc, const Subresou
             FailText("CreateTexture: depth textures take no initial data");
             return {};
         }
+        // M8: multisampled render-target / depth textures (render to texture with MSAA).
+        std::uint32_t samples = 1;
+        if (desc.sampleCount > 1) {
+            if (desc.mipLevels != 1 || levels != nullptr || (desc.usage & kTextureSampled) != 0 || info.compressed) {
+                FailText("CreateTexture: a multisampled texture needs one level, no data and no sampled usage");
+                return {};
+            }
+            samples = SupportedSampleCount(info.depth ? Format::BGRA8_UNorm : desc.format,
+                                           info.depth ? desc.format : Format::Unknown, desc.sampleCount);
+        }
         D3D11_TEXTURE2D_DESC td{};
         td.Width = desc.width;
         td.Height = desc.height;
         td.MipLevels = desc.mipLevels;
         td.ArraySize = 1;
         td.Format = f.resource;
-        td.SampleDesc.Count = 1;
+        td.SampleDesc.Count = samples;
+        td.SampleDesc.Quality = 0;
         td.Usage = D3D11_USAGE_DEFAULT;
         td.BindFlags = ((desc.usage & kTextureSampled) != 0 ? D3D11_BIND_SHADER_RESOURCE : 0u) |
                        ((desc.usage & kTextureRenderTarget) != 0 ? D3D11_BIND_RENDER_TARGET : 0u) |
@@ -1439,7 +1450,7 @@ TextureHandle D3D11Device::CreateTexture(const TextureDesc& desc, const Subresou
         if ((desc.usage & kTextureRenderTarget) != 0) {
             D3D11_RENDER_TARGET_VIEW_DESC rv{};
             rv.Format = f.rtv;
-            rv.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+            rv.ViewDimension = samples > 1 ? D3D11_RTV_DIMENSION_TEXTURE2DMS : D3D11_RTV_DIMENSION_TEXTURE2D;
             hr = device_->CreateRenderTargetView(rec.texture.Get(), &rv, &rec.rtv);
             if (FAILED(hr)) {
                 Fail("CreateRenderTargetView", hr);
@@ -1449,7 +1460,7 @@ TextureHandle D3D11Device::CreateTexture(const TextureDesc& desc, const Subresou
         if ((desc.usage & kTextureDepthStencil) != 0) {
             D3D11_DEPTH_STENCIL_VIEW_DESC dv{};
             dv.Format = f.dsv;
-            dv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+            dv.ViewDimension = samples > 1 ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
             hr = device_->CreateDepthStencilView(rec.texture.Get(), &dv, &rec.dsv);
             if (FAILED(hr)) {
                 Fail("CreateDepthStencilView", hr);
@@ -1461,18 +1472,35 @@ TextureHandle D3D11Device::CreateTexture(const TextureDesc& desc, const Subresou
         rec.mipLevels = desc.mipLevels;
         rec.format = desc.format;
         rec.usage = desc.usage;
-        rec.bytes = bytes;
+        rec.bytes = bytes * samples;
+        rec.samples = samples;
         const std::uint32_t id = textures_.Add(std::move(rec));
         if (id == 0) {
             FailText("CreateTexture: too many textures");
             return {};
         }
-        stats_.textureBytes += bytes;
+        stats_.textureBytes += bytes * samples;
         return TextureHandle{id};
     } catch (...) {
         FailText("CreateTexture: out of memory");
         return {};
     }
+}
+
+bool D3D11Device::ResolveTexture(TextureHandle destination, TextureHandle source) noexcept {
+    TextureRecord* dst = textures_.Get(destination.id);
+    TextureRecord* src = textures_.Get(source.id);
+    if (dst == nullptr || src == nullptr || dst == src || dst->samples != 1 || dst->width != src->width ||
+        dst->height != src->height || dst->format != src->format || GetFormatInfo(src->format).depth) {
+        return FailText("ResolveTexture: invalid textures (size, format or sample count)");
+    }
+    if (src->samples > 1) {
+        immediate_->ResolveSubresource(dst->texture.Get(), 0, src->texture.Get(), 0,
+                                       TextureFormatsOf(src->format, kTextureRenderTarget).rtv);
+    } else {
+        immediate_->CopySubresourceRegion(dst->texture.Get(), 0, 0, 0, 0, src->texture.Get(), 0, nullptr);
+    }
+    return true;
 }
 
 bool D3D11Device::UpdateTexture(TextureHandle texture, std::uint32_t level, const SubresourceData& data) noexcept {

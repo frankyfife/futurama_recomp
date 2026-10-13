@@ -24,6 +24,9 @@ namespace platform {
 // from any thread (initializes COM for itself).
 bool WritePngFile(const std::filesystem::path& path, const gfx::rhi::Image& image, std::string* error) noexcept;
 
+// G2 (texture dump): the same with the alpha channel kept (32-bit BGRA PNG). BGRA8_UNorm or RGBA8_UNorm only.
+bool WritePngFileRgba(const std::filesystem::path& path, const gfx::rhi::Image& image, std::string* error) noexcept;
+
 // <screenshot_dir>\frame_NNNNNN.png for a displayed-frame number.
 std::filesystem::path ScreenshotPath(const std::filesystem::path& directory, std::uint32_t frame);
 

@@ -11,6 +11,7 @@
 #include "gfx/freecam_math.h"
 #include "gfx/ni_guest_layouts.h"
 #include "gfx/nipc_renderer.h"
+#include "gfx/widescreen.h"
 #include "input/chord_filter.h"
 #include "input/input_system.h"
 #include "input/kbm_source.h"
@@ -354,6 +355,28 @@ std::uint32_t CallOriginal(guest::GuestAddr cam) noexcept {
     return core::CallGuestThiscall(t, cam, {});
 }
 
+// G3 widescreen ([render] aspect != original): Hor+ for a back-buffer scene camera outside the freecam - the frustum
+// widened (l, r x k) and the derived data recomputed for the Click, the game's values restored afterwards (gfx/
+// widescreen.h). Every other camera, and everything with aspect = original, runs the original Click unchanged.
+std::uint32_t CallMaybeWidened(guest::GuestAddr cam, guest::GuestAddr renderer, std::uint32_t target) noexcept {
+    const float k = renderer != 0 && target == 0 ? widescreen::FrustumFactor(cam) : 1.0f;
+    if (k == 1.0f) {
+        return CallOriginal(cam);
+    }
+    std::uint8_t savedDerived[kSaveDerivedEnd - kSaveDerivedBegin];
+    std::memcpy(savedDerived, guest::Ptr<const void>(cam + kSaveDerivedBegin), sizeof(savedDerived));
+    auto f = guest::Read<ni::NiFrustum>(cam + ni::kNiCameraFrustum);
+    widescreen::WidenFrustum(&f, k);
+    guest::Write(cam + ni::kNiCameraFrustum, f);
+    RecomputeDerived(cam);
+    widescreen::BeginWidened(cam, k);
+    const std::uint32_t result = CallOriginal(cam);
+    widescreen::EndWidened(cam);
+    std::memcpy(guest::Ptr<void>(cam + kSaveDerivedBegin), savedDerived, sizeof(savedDerived));
+    RecomputeDerived(cam);
+    return result;
+}
+
 std::uint32_t __fastcall ClickProbe(std::uint32_t cam, std::uint32_t /*edx*/) noexcept {
     State& s = S();
     std::unique_lock<std::recursive_mutex> lock(s.mutex);
@@ -362,7 +385,7 @@ std::uint32_t __fastcall ClickProbe(std::uint32_t cam, std::uint32_t /*edx*/) no
     NoteCamera(s, cam, target);
     if (!s.active || renderer == 0 || target != 0) {
         lock.unlock();
-        return CallOriginal(cam);
+        return CallMaybeWidened(cam, renderer, target);
     }
     // One camera per displayed frame: the first scene camera of the frame. The other back-buffer cameras (HUD,
     // avatar portrait, full-screen helpers) keep the game's view.
@@ -380,7 +403,7 @@ std::uint32_t __fastcall ClickProbe(std::uint32_t cam, std::uint32_t /*edx*/) no
     }
     if (s.frameCamera != cam) {
         lock.unlock();
-        return CallOriginal(cam);
+        return CallMaybeWidened(cam, renderer, target);
     }
     if (!s.started) {
         s.rig.Start(ReadGamePose(cam));
@@ -394,6 +417,7 @@ std::uint32_t __fastcall ClickProbe(std::uint32_t cam, std::uint32_t /*edx*/) no
     }
     const Pose p = s.rig.Current();
     const float fov = s.fovScale;
+    const float wide = widescreen::FrustumFactor(cam);  // G3: Hor+ on top of the freecam zoom (1 = original aspect)
     ++s.overrides;
     lock.unlock();
 
@@ -406,17 +430,24 @@ std::uint32_t __fastcall ClickProbe(std::uint32_t cam, std::uint32_t /*edx*/) no
     WriteVec(cam + kWorldRowUp, p.up);
     WriteVec(cam + kWorldRowRight, p.right);
     WriteVec(cam + kWorldTranslate, p.position);
-    if (fov != 1.0f) {
+    if (fov != 1.0f || wide != 1.0f) {
         auto f = guest::Read<ni::NiFrustum>(cam + ni::kNiCameraFrustum);
         f.left *= fov;
         f.right *= fov;
         f.top *= fov;
         f.bottom *= fov;
+        widescreen::WidenFrustum(&f, wide);
         guest::Write(cam + ni::kNiCameraFrustum, f);
     }
     RecomputeDerived(cam);
     g_sceneCamera.store(cam, std::memory_order_relaxed);
+    if (wide != 1.0f) {
+        widescreen::BeginWidened(cam, wide);
+    }
     const std::uint32_t result = CallOriginal(cam);
+    if (wide != 1.0f) {
+        widescreen::EndWidened(cam);
+    }
 
     std::memcpy(guest::Ptr<void>(cam + kSaveWorldBegin), savedWorld, sizeof(savedWorld));
     std::memcpy(guest::Ptr<void>(cam + kSaveDerivedBegin), savedDerived, sizeof(savedDerived));

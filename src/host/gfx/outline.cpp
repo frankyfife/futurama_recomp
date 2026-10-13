@@ -3,10 +3,12 @@
 
 #include "core/guest.h"
 #include "core/guest_call.h"
+#include "core/hooks.h"
 #include "core/log.h"
 #include "gfx/ni_guest_layouts.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <unordered_map>
@@ -154,7 +156,168 @@ bool RecolorRibbon(const OutlineSettings& settings, ni::ExtractArena& arena, ni:
     return true;
 }
 
+std::uint32_t RibbonTriangles(const float* positions, const float* colors, std::uint32_t vertexCount,
+                              std::uint16_t* indices, std::uint32_t* dropped) noexcept {
+    std::uint32_t count = 0, left = 0;
+    if (positions == nullptr || colors == nullptr || indices == nullptr || vertexCount < 3 ||
+        vertexCount > 0x10000u) {
+        if (dropped != nullptr) {
+            *dropped = 0;
+        }
+        return 0;
+    }
+    const auto alpha = [colors](std::uint32_t v) noexcept { return colors[v * 4u + 3u]; };
+    const auto padding = [&](std::uint32_t v) noexcept {
+        return alpha(v) == 0.0f && positions[v * 3u] == 0.0f && positions[v * 3u + 1u] == 0.0f &&
+               positions[v * 3u + 2u] == 0.0f;
+    };
+    for (std::uint32_t k = 0; k + 2 < vertexCount; ++k) {
+        const bool visible = alpha(k) != 0.0f || alpha(k + 1) != 0.0f || alpha(k + 2) != 0.0f;
+        if (alpha(k) == 0.0f || padding(k + 1) || padding(k + 2)) {
+            left += visible ? 1u : 0u;
+            continue;
+        }
+        // D3D strip order: even k (k, k+1, k+2), odd k (k, k+2, k+1) - same facing as the strip draw.
+        indices[count++] = static_cast<std::uint16_t>(k);
+        indices[count++] = static_cast<std::uint16_t>((k & 1u) != 0 ? k + 2u : k + 1u);
+        indices[count++] = static_cast<std::uint16_t>((k & 1u) != 0 ? k + 1u : k + 2u);
+    }
+    if (dropped != nullptr) {
+        *dropped = left;
+    }
+    return count;
+}
+
+bool PoolCloseZeroesTail(GuestPtr polygon, std::int32_t count, std::int32_t appendCount, std::int32_t mode) noexcept {
+    if (polygon == 0 || mode != 2 || count < 2 || count - 2 >= kRibbonPolygonVertices) {
+        return false;  // 0x13D3E0 / 0x13E37E (no polygon), 0x13D4C3 / 0x13E36B (mode), 0x13D4D4 / 0x13E399
+    }
+    return appendCount < 0 || count + appendCount > kRibbonPolygonVertices;  // FUN_0013E360 / 0x13D3FC
+}
+
 // ---- guest side ----------------------------------------------------------------------------------------------
+
+namespace {
+
+std::atomic<std::uint64_t> g_ribbonPolygons{0}, g_ribbonKept{0}, g_ribbonDropped{0}, g_tailsRestored{0};
+
+// The last vertex pair of the pool polygon, saved before a call that zero-fills it and written back afterwards
+// (header item 2). Only positions: the original already set the pair's colours to (0, 0, 0, 0) when it appended
+// the chain (0x13D43F..0x13D463), and the uvs are not touched by the zero fill.
+class TailGuard {
+public:
+    explicit TailGuard(std::int32_t appendCount) noexcept {
+        const GuestPtr polygon = R32(kRibbonPoolPolygonGlobal);
+        const auto count = static_cast<std::int32_t>(R32(kRibbonPoolCountGlobal));
+        const auto mode = static_cast<std::int32_t>(R32(kOutlineModeGlobal));
+        if (!Plausible(polygon) || !PoolCloseZeroesTail(polygon, count, appendCount, mode)) {
+            return;
+        }
+        const GuestPtr vertices = R32(polygon + offsetof(ni::NiScreenPolygon, vertices));
+        if (!Plausible(vertices)) {
+            return;
+        }
+        polygon_ = polygon;
+        vertices_ = vertices;
+        at_ = vertices + static_cast<GuestPtr>(count - 2) * 12u;
+        std::memcpy(saved_, guest::Ptr<const float>(at_), sizeof(saved_));
+    }
+    void Restore() noexcept {
+        if (polygon_ == 0 || R32(polygon_ + offsetof(ni::NiScreenPolygon, vertices)) != vertices_) {
+            return;
+        }
+        std::memcpy(guest::Ptr<float>(at_), saved_, sizeof(saved_));
+        g_tailsRestored.fetch_add(1, std::memory_order_relaxed);
+    }
+
+private:
+    GuestPtr polygon_ = 0, vertices_ = 0, at_ = 0;
+    float saved_[6] = {};
+};
+
+GuestPtr Trampoline(GuestPtr address) noexcept {
+    const GuestPtr t = core::HookTrampoline(address);
+    if (t == 0) {
+        core::Fatal("probe at 0x%08X runs without an installed trampoline", address);
+    }
+    return t;
+}
+
+// FUN_0013D3B0 (append a chain of `count` vertices with colour r, g, b to the pool polygon; out: position, uv and
+// colour pointers). Thiscall (ecx = NiOutline) with 7 stack args and ret 0x1C: declared __fastcall with an unused
+// edx (same layout and purge). Callers: FUN_00153E90 0x1551DB and itself after a full polygon (0x13D81E).
+std::uint32_t __fastcall RibbonAppendProbe(std::uint32_t self, std::uint32_t /*edx*/, std::uint32_t count,
+                                           std::uint32_t r, std::uint32_t g, std::uint32_t b,
+                                           std::uint32_t outPositions, std::uint32_t outUvs,
+                                           std::uint32_t outColors) noexcept {
+    TailGuard guard(static_cast<std::int32_t>(count));
+    const std::uint32_t eax = core::CallGuestThiscall(Trampoline(kRibbonAppend), self,
+                                                      {count, r, g, b, outPositions, outUvs, outColors});
+    guard.Restore();
+    return eax;
+}
+
+// FUN_0013E360 (close the pool polygon before NiCamera::Click draws its list): cdecl with one argument, the
+// NiCamera (0x13E3F6 mov ecx,[esp+0x24] -> FUN_00019460 thiscall), plain ret; only caller 0x100D48 (push esi).
+std::uint32_t __cdecl RibbonFlushProbe(std::uint32_t camera) noexcept {
+    TailGuard guard(-1);
+    const std::uint32_t eax = core::CallGuest(Trampoline(kRibbonFlush), {camera});
+    guard.Restore();
+    return eax;
+}
+
+}  // namespace
+
+bool SplitRibbonStrip(GuestPtr screenPolygon, ni::ExtractArena& arena, ni::GeometryDesc* geometry,
+                      std::uint32_t* triangles) noexcept {
+    if (geometry == nullptr || geometry->topology != ni::Topology::TriangleStrip || !Plausible(screenPolygon)) {
+        return false;
+    }
+    const auto* poly = guest::Ptr<const ni::NiScreenPolygon>(screenPolygon);
+    const std::uint32_t n = poly->vertexCount;
+    if (n < 3 || n != geometry->vertexCount || !Plausible(poly->vertices) || !Plausible(poly->colors)) {
+        return false;
+    }
+    auto* indices = arena.AllocateArray<std::uint16_t>(static_cast<std::size_t>(n - 2u) * 3u);
+    if (indices == nullptr) {
+        return false;
+    }
+    std::uint32_t dropped = 0;
+    const std::uint32_t count = RibbonTriangles(guest::Ptr<const float>(poly->vertices),
+                                                guest::Ptr<const float>(poly->colors), n, indices, &dropped);
+    geometry->topology = ni::Topology::TriangleList;
+    geometry->indices = indices;
+    geometry->indexCount = count;
+    geometry->primitiveCount = count / 3u;
+    if (triangles != nullptr) {
+        *triangles = count / 3u;
+    }
+    g_ribbonPolygons.fetch_add(1, std::memory_order_relaxed);
+    g_ribbonKept.fetch_add(count / 3u, std::memory_order_relaxed);
+    g_ribbonDropped.fetch_add(dropped, std::memory_order_relaxed);
+    return true;
+}
+
+RibbonStats GetRibbonStats() noexcept {
+    RibbonStats s;
+    s.polygons = g_ribbonPolygons.load();
+    s.trianglesKept = g_ribbonKept.load();
+    s.trianglesDropped = g_ribbonDropped.load();
+    s.tailsRestored = g_tailsRestored.load();
+    return s;
+}
+
+void LogRibbonStatistics() noexcept {
+    const RibbonStats s = GetRibbonStats();
+    if (s.polygons == 0 && s.tailsRestored == 0) {
+        return;
+    }
+    using ull = unsigned long long;
+    FUT_LOGI(Gfx, "outline ribbons: %llu strips drawn as chain lists (%llu triangles, %llu visible bridge/corner "
+             "triangles left out), %llu chain ends restored after the pool zero fill",
+             static_cast<ull>(s.polygons), static_cast<ull>(s.trianglesKept), static_cast<ull>(s.trianglesDropped),
+             static_cast<ull>(s.tailsRestored));
+}
 
 void ApplyGuestSettings(const OutlineSettings& settings) noexcept {
     if (settings.thickness == kDefaultOutlineThickness) {
@@ -402,3 +565,11 @@ void Outlines::LogStatistics() const noexcept {
 }
 
 }  // namespace gfx::outline
+
+// Avatar fix (header item 2). Stolen prologues: FUN_0013D3B0 push -1; push 0x17CD1E (SEH frame), FUN_0013E360
+// mov eax,[0x2D7AB8]. Capstone sweep of .text 0x11000..0x1A0000 (2026-10-13): no branch and no raw pointer into
+// 0x13D3B1..0x13D3B6 or 0x13E361..0x13E364; callers 0x1551DB, 0x13D81E and 0x100D48.
+FUT_PROBE(gfx::outline::kRibbonAppend, &gfx::outline::RibbonAppendProbe, Thiscall, "probe:NiOutline::AppendRibbon",
+          "6A FF 68 1E CD 17 00", 7);
+FUT_PROBE(gfx::outline::kRibbonFlush, &gfx::outline::RibbonFlushProbe, Cdecl, "probe:NiOutline::FlushRibbons",
+          "A1 B8 7A 2D 00", 5);

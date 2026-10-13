@@ -125,6 +125,7 @@ struct Resource {
     std::uint32_t parent;
     std::uint32_t serial = 0;
     std::uint32_t generation = 0;  // textures: content generation (NoteResourceWritten)
+    std::shared_ptr<const HostImage> hostImage;  // textures: M6b movie pack picture (SetHostImage)
 };
 
 std::recursive_mutex g_mutex;  // recursive: Release of a surface releases its parent
@@ -277,7 +278,7 @@ std::uint32_t __stdcall DeviceCreateTexture2(std::uint32_t width, std::uint32_t 
         {
             std::lock_guard<std::recursive_mutex> lock(g_mutex);
             g_resources[addr] = Resource{ResourceKind::Texture, width, height, levels, format, pitch, pages,
-                                         guest::Addr(pages), total, 0, g_nextSerial++, 0};
+                                         guest::Addr(pages), total, 0, g_nextSerial++, 0, {}};
             ++g_texturesCreated;
         }
         FUT_LOGI(Gfx, "D3DDevice_CreateTexture2(%u, %u, %u, %u, 0x%X, fmt 0x%02X%s, type %u) from %s -> 0x%08X "
@@ -326,7 +327,7 @@ std::uint32_t __stdcall TextureGetSurfaceLevel2(std::uint32_t texture, std::uint
     const std::uint32_t addr = guest::Addr(s);
     try {
         g_resources[addr] = Resource{ResourceKind::Surface, w, h, level, t.format, pitch, nullptr, t.pixels + offset,
-                                     LevelBytes(*f, w, h), texture, g_nextSerial++, 0};
+                                     LevelBytes(*f, w, h), texture, g_nextSerial++, 0, {}};
     } catch (...) {
         FreeGuestBlock(s);
         return 0;
@@ -434,6 +435,28 @@ std::uint32_t NoteResourceWritten(std::uint32_t header) noexcept {
         it->second.generation = 1;
     }
     return it->second.generation;
+}
+
+bool SetHostImage(std::uint32_t header, std::shared_ptr<const HostImage> image) noexcept {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    auto it = g_resources.find(header);
+    if (it != g_resources.end() && it->second.kind == ResourceKind::Surface) {
+        it = g_resources.find(it->second.parent);
+    }
+    if (it == g_resources.end()) {
+        return false;
+    }
+    it->second.hostImage = std::move(image);
+    return true;
+}
+
+std::shared_ptr<const HostImage> GetHostImage(std::uint32_t header) noexcept {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    auto it = g_resources.find(header);
+    if (it != g_resources.end() && it->second.kind == ResourceKind::Surface) {
+        it = g_resources.find(it->second.parent);
+    }
+    return it != g_resources.end() ? it->second.hostImage : nullptr;
 }
 
 std::uint32_t DummyDevice() noexcept {

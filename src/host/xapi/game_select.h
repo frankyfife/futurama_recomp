@@ -48,6 +48,12 @@ inline constexpr guest::GuestAddr kLevelPtr = 0x002DABC4;           // level obj
 inline constexpr std::uint32_t kLevelNameOffset = 0x0C;
 inline constexpr guest::GuestAddr kPendingStateVar = 0x002EA988;    // char* state text, +4 size
 inline constexpr guest::GuestAddr kCheckpointStateVar = 0x002EA990;  // char* copy for restarts, +4 size
+// FUN_000C26E0 Level::BuildStateText thiscall(level, char** out) ret 4: out == 0 -> the player's state (Health,
+// Ammo, Pickup/Equip, Lives, Age...) replaces DAT_002EA988 (level end, FsChangeLevel); out != 0 -> "Level=<CApp+0xAC>\n"
+// plus the pending text if one exists, else plus the player's state; *out = a FUN_000A4900 block (save game path).
+inline constexpr guest::GuestAddr kBuildStateText = 0x000C26E0;
+inline constexpr guest::GuestAddr kGuestFree = 0x000A3880;  // cdecl(void*) - the game's free (FUN_000A4900 blocks)
+inline constexpr std::uint32_t kLevelPlayerOffset = 0x94;   // [level+0x94] player object (0 while loading)
 
 enum class Character : std::uint8_t { None, Fry, Bender, Leela, Rodent };
 enum class PlayAs : std::uint8_t { Original, Fry, Bender, Leela };
@@ -83,6 +89,37 @@ inline bool IsPlayAsBlockedLevel(std::string_view levelName) noexcept {
 const char* MapPlayerDefName(std::string_view defName, std::string_view levelName, PlayAs playAs) noexcept;
 // The state text without its Pickup= and Equip= lines (weapons of Fry; other lines unchanged).
 std::string StripInventoryLines(std::string_view state);
+
+// The start level of a level name (case-insensitive), nullptr if it is not one of the 22.
+const StartLevel* FindStartLevel(std::string_view level) noexcept;
+// True if play_as replaces the player character `character` in level `levelName` (its weapons are then stripped).
+bool PlayAsReplacesCharacter(Character character, std::string_view levelName, PlayAs playAs) noexcept;
+
+// G7 level skip: the state text FsChangeLevel built from the player's inventory, completed with the weapons of the
+// target level's start state (table row): weapons the player has stay; table Pickup=/Equip= weapons that are missing
+// are added (names case-insensitive, no duplicates); the table's Equip= becomes Equip= only if the state has no
+// Equip= line (if the player owns that weapon unequipped, his line becomes Equip=), else Pickup=. New lines go after
+// the last weapon line, else before Lives=/AgeSeconds=/AgeHours=, else at the end. If a weapon was added, every
+// ammo slot gets at least the table's Ammo= value (FUN_000C5340 sets missing slots to 0, a pistol without ammo is no
+// weapon); the state's Ammo lines are then rewritten as "Ammo=<slot>|<value>" for the 5 slots.
+struct WeaponMerge {
+    std::string text;
+    std::string added;    // names of added weapons, comma separated ("" = none)
+    std::string equipped; // weapon the merge made the equipped one ("" = none)
+    bool ammoRaised = false;
+    bool Changed() const noexcept { return !added.empty() || !equipped.empty() || ammoRaised; }
+};
+WeaponMerge MergeStartWeapons(std::string_view state, std::string_view table);
+
+// Guest side (guest main thread). After the level skip's FsChangeLevel(nextLevel): merges the table weapons of
+// `nextLevel` into the pending state DAT_002EA988 (FUN_000C1D30) unless play_as replaces that level's character.
+void EnsureStartWeapons(std::string_view nextLevel) noexcept;
+// The player's current state as the game would save it (FUN_000C26E0 with an output buffer), "" without a player or
+// while a start state is still pending.
+std::string PlayerStateText();
+// Called once per logic tick (xapi::RunPendingGameActions): when the pending start state of a level was consumed by
+// FUN_000C5340, logs the player's resulting state once ("game: start state applied in <Level>: ...").
+void ObserveStartState() noexcept;
 
 // [game] start_level / play_as of the configuration (invalid values: a warning, then "original").
 const StartLevel* StartLevelFromConfig(const core::Config& config) noexcept;

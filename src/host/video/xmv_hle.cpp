@@ -21,6 +21,9 @@
 #include "gfx/d3d_shim.h"
 #include "video/movie_clock.h"
 #include "video/movie_core.h"
+#include "video/movie_pack.h"
+#include "video/movie_pack_reader.h"
+#include "video/xmv_test_mode.h"
 #include "video/yuv_pack.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -57,6 +60,9 @@ constexpr std::uint64_t kStartLeadMs = 600;          // audio demuxed before the
 constexpr std::uint64_t kAudioLeadMs = 1200;         // audio kept ahead of the clock (submitted + queued)
 constexpr std::uint32_t kMaxPacketsPerCall = 32;     // read-ahead bound per GetNextFrame
 constexpr std::int64_t kAudioStallMs = 1000;         // audio clock frozen this long -> wall clock
+constexpr std::uint32_t kPackFirstWaitMs = 2000;     // M6b: first pack frame (Media Foundation start-up, before
+                                                     // the audio starts)
+constexpr std::uint32_t kPackWaitMs = 250;           // M6b: later pack frames (normally decoded ahead already)
 
 // Guest-visible decoder handle; the game treats the pointer as opaque (only passed to XMV entries: 0xEE389,
 // 0xEE412, 0xEE424, 0xEDEDB, 0xEDFB7, 0xEE11F), so +0 is the trap vtable.
@@ -146,6 +152,16 @@ struct Movie {
     std::uint32_t maxLateMs = 0;
     std::uint32_t surfaceErrors = 0;
     I420Frame picture;
+    std::uint32_t videoIndex = 0;  // XMV frames taken from the queue so far (decode order = display order)
+    // M6b movie pack ([render] movie_pack): the upscaled picture of the frame shown, see AttachPackPicture.
+    std::unique_ptr<PackVideoReader> pack;
+    PackEntry packEntry;
+    std::uint32_t packTexture = 0;  // texture header the pack picture is attached to (cleared at Close)
+    std::uint32_t packFrames = 0;   // frames shown from the pack
+    std::uint32_t packMisses = 0;   // frames the reader had not decoded in time (XMV picture shown)
+    std::uint32_t xmvFirstPts = 0;
+    std::int64_t packFirstPts = 0;
+    bool packHaveFirst = false;
 };
 
 std::mutex g_mutex;  // the map only (never held across guest calls)
@@ -154,6 +170,136 @@ std::atomic<std::uint32_t> g_nextId{1};
 std::atomic<std::uint32_t> g_opened{0}, g_finished{0}, g_closedEarly{0}, g_failed{0}, g_framesShown{0},
     g_framesDropped{0}, g_maxLateMs{0}, g_audioPackets{0}, g_audioRejected{0};
 std::atomic<bool> g_loggedDecoderMissing{false};
+std::atomic<std::uint32_t> g_packMovies{0}, g_packFrames{0}, g_packMisses{0}, g_packFallbacks{0};
+
+// M6b: the movie pack index of [render] movie_pack, read at the first movie (and again when the setting changes).
+std::mutex g_packMutex;
+std::string g_packDir;  // folder the cached index belongs to
+bool g_packLoaded = false;
+std::vector<PackEntry> g_packEntries;
+
+// Entries of the configured movie pack (empty = no pack or unusable, logged once per folder).
+std::vector<PackEntry> PackEntries(std::filesystem::path& dir) {
+    try {
+        dir = core::GetConfig().GetPath("render", "movie_pack", {});
+    } catch (...) {
+        dir.clear();
+    }
+    if (dir.empty()) {
+        return {};
+    }
+    std::lock_guard<std::mutex> lock(g_packMutex);
+    const std::string key = dir.string();
+    if (!g_packLoaded || g_packDir != key) {
+        g_packLoaded = true;
+        g_packDir = key;
+        std::string error;
+        if (!LoadPackIndex(dir, g_packEntries, error)) {
+            FUT_LOGW(Vid, "XMV: [render] movie_pack = '%s': %s - original movie pictures", key.c_str(), error.c_str());
+        } else {
+            FUT_LOGI(Vid, "XMV: movie pack '%s': %u movies%s%s", key.c_str(),
+                     static_cast<std::uint32_t>(g_packEntries.size()), error.empty() ? "" : "; ", error.c_str());
+        }
+    }
+    return g_packEntries;
+}
+
+// Looks the movie up in the pack by the CRC-32 of the 0x1000-byte header the game read, and starts its reader.
+void OpenPack(Movie& m, const XmvFileHeader* header) {
+    std::filesystem::path dir;
+    const std::vector<PackEntry> entries = PackEntries(dir);
+    if (entries.empty() || header == nullptr || !guest::IsReadable(A(header), kPackHeaderBytes)) {
+        return;
+    }
+    const std::uint32_t crc = Crc32(header, kPackHeaderBytes);
+    const PackEntry* e = FindPackEntry(entries, crc, m.header.width, m.header.height);
+    if (e == nullptr) {
+        FUT_LOGI(Vid, "XMV: movie #%u: not in the movie pack (header CRC-32 %08X) - original picture", m.id, crc);
+        return;
+    }
+    auto reader = std::make_unique<PackVideoReader>();
+    std::string error;
+    if (!reader->Open(dir / e->file, e->width, e->height, error)) {
+        FUT_LOGW(Vid, "XMV: movie #%u: movie pack file '%s' (%s): %s - original picture", m.id, e->file.c_str(),
+                 e->name.c_str(), error.c_str());
+        g_packFallbacks.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    m.pack = std::move(reader);
+    m.packEntry = *e;
+    g_packMovies.fetch_add(1, std::memory_order_relaxed);
+    FUT_LOGI(Vid, "XMV: movie #%u = %s: picture from the movie pack '%s' (%ux%u, %u frames, header CRC-32 %08X)",
+             m.id, e->name.c_str(), e->file.c_str(), e->width, e->height, e->frames, crc);
+}
+
+// Stops using the pack for the rest of the movie: the XMV's own picture is shown from now on.
+void DropPack(Movie& m, std::uint32_t index, const std::string& why) {
+    FUT_LOGW(Vid, "XMV: movie #%u: movie pack off from frame %u: %s - original picture from here", m.id, index,
+             why.c_str());
+    if (m.packTexture != 0) {
+        gfx::d3d::SetHostImage(m.packTexture, nullptr);
+    }
+    m.pack->Close();
+    m.pack.reset();
+    g_packFallbacks.fetch_add(1, std::memory_order_relaxed);
+}
+
+// M6b: attaches the pack picture of XMV frame `index` (pts `pts`) to the game's movie texture before the frame is
+// written (WritePicture raises the generation, the renderer then uploads the pack picture instead of the guest
+// pixels). The XMV picture is still written into the surface: a frame the reader misses, or any pack error, shows
+// the original picture without a gap.
+void AttachPackPicture(Movie& m, void* surface, std::uint32_t index, std::uint32_t pts) {
+    if (m.pack == nullptr || surface == nullptr) {
+        return;
+    }
+    gfx::d3d::ResourceInfo info;
+    if (!gfx::d3d::LookupResource(A(surface), info)) {
+        return;
+    }
+    m.packTexture = info.kind == gfx::d3d::ResourceKind::Surface ? info.parent : info.header;
+    PackFrame frame;
+    std::string error;
+    const PackVideoReader::Result r =
+        m.pack->Get(index, m.packFrames == 0 && m.packMisses == 0 ? kPackFirstWaitMs : kPackWaitMs, frame, error);
+    if (r == PackVideoReader::Result::Ok) {
+        if (!m.packHaveFirst) {
+            m.packHaveFirst = true;
+            m.xmvFirstPts = pts;
+            m.packFirstPts = frame.ptsMs;
+            FUT_LOGI(Vid, "XMV: movie #%u: movie pack decoder: %s", m.id, m.pack->Description().c_str());
+        }
+        if (!PackPtsMatch(m.xmvFirstPts, pts, m.packFirstPts, frame.ptsMs)) {
+            DropPack(m, index,
+                     "pts " + std::to_string(frame.ptsMs - m.packFirstPts) + " ms in the pack, " +
+                         std::to_string(pts - m.xmvFirstPts) + " ms in the XMV");
+            return;
+        }
+        gfx::d3d::SetHostImage(m.packTexture, std::move(frame.image));
+        ++m.packFrames;
+        g_packFrames.fetch_add(1, std::memory_order_relaxed);
+    } else if (r == PackVideoReader::Result::Timeout) {
+        gfx::d3d::SetHostImage(m.packTexture, nullptr);  // this frame: the XMV picture
+        if (m.packMisses++ == 0) {
+            FUT_LOGW(Vid, "XMV: movie #%u: movie pack frame %u not decoded in time - original picture for it", m.id,
+                     index);
+        }
+        g_packMisses.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        DropPack(m, index, r == PackVideoReader::Result::End ? "the pack file has fewer frames than the XMV" : error);
+    }
+}
+
+void ClosePack(Movie& m) {
+    if (m.packTexture != 0) {
+        gfx::d3d::SetHostImage(m.packTexture, nullptr);  // the texture may outlive the decoder (player destructor)
+    }
+    if (m.pack != nullptr) {
+        FUT_LOGI(Vid, "XMV: movie #%u: %u of %u shown frames from the movie pack (%s), %u missed, pts checked", m.id,
+                 m.packFrames, m.framesShown, m.packEntry.file.c_str(), m.packMisses);
+        m.pack->Close();
+        m.pack.reset();
+    }
+}
 std::atomic<int> g_skipAll{-1};  // [debug] movies = skip (-1 = not read yet)
 
 // [debug] movies = skip: every movie ends at its first GetNextFrame without picture and sound (the M2-M5 stub
@@ -332,18 +478,20 @@ void WritePicture(Movie& m, void* surface) noexcept {
 }
 
 // Decodes every due frame (P-frames need their predecessors) and keeps the newest picture. Returns the number of
-// frames decoded; `pts` = pts of the newest.
-std::uint32_t DecodeDue(Movie& m, std::uint64_t nowMs, bool first, std::uint32_t& pts) {
+// frames decoded; `pts` = pts of the newest, `index` = its position in the file (M6b: the pack frame to show).
+std::uint32_t DecodeDue(Movie& m, std::uint64_t nowMs, bool first, std::uint32_t& pts, std::uint32_t& index) {
     std::uint32_t decoded = 0;
     while (!m.core.Video().empty() && (first ? decoded == 0 : m.core.Video().front().ptsMs <= nowMs)) {
         const xmv::VideoFrame f = std::move(m.core.Video().front());
         m.core.Video().pop_front();
+        const std::uint32_t frameIndex = m.videoIndex++;
         bool produced = false;
         if (!m.core.Decode(f, m.picture, produced) && m.core.Failed()) {
             return decoded;
         }
         if (produced) {
             pts = f.ptsMs;
+            index = frameIndex;
             ++decoded;
         }
         if (first) {
@@ -434,6 +582,10 @@ MovieStatistics GetMovieStatistics() noexcept {
     s.maxLateMs = g_maxLateMs.load();
     s.audioPackets = g_audioPackets.load();
     s.audioRejected = g_audioRejected.load();
+    s.packMovies = g_packMovies.load();
+    s.packFrames = g_packFrames.load();
+    s.packMisses = g_packMisses.load();
+    s.packFallbacks = g_packFallbacks.load();
     return s;
 }
 
@@ -444,6 +596,10 @@ void LogMovieSummary() noexcept {
              "%u dropped, max %u ms late; %u audio packets (%u rejected)",
              s.opened, s.finished, s.closedEarly, s.failed, s.framesShown, s.framesDropped, s.maxLateMs,
              s.audioPackets, s.audioRejected);
+    if (s.packMovies != 0 || s.packFallbacks != 0) {
+        FUT_LOGI(Vid, "XMV movie pack: %u movies, %u frames shown from the pack, %u missed, %u fallbacks to the "
+                 "original picture", s.packMovies, s.packFrames, s.packMisses, s.packFallbacks);
+    }
 }
 
 // XMV::XMVDecoder_CreateDecoderForPackets 0x264360 (name assumed, avi.md 3.1) - stdcall (DWORD dwFlags, const
@@ -491,6 +647,9 @@ std::int32_t __stdcall XMVDecoder_CreateDecoderForPacketsHle(std::uint32_t flags
                                                                A(releasePreviousPacket), parsed.maxPacketSize);
                 m->core.Open(m->source.get(), parsed.firstPacketSize, 0);
                 m->skipAll = SkipAllMovies();
+                if (!m->skipAll) {
+                    OpenPack(*m, header);  // M6b: [render] movie_pack
+                }
                 {
                     std::lock_guard<std::mutex> lock(g_mutex);
                     g_movies[A(handle)] = std::move(m);
@@ -557,6 +716,7 @@ void __stdcall XMVDecoder_CloseDecoderHle(void* decoder) noexcept {
             g_closedEarly.fetch_add(1);
             LogClose(*m, m->started ? "closed early (skipped)" : "closed before its first frame");
         }
+        ClosePack(*m);
         m->handle->magic = 0;
         xdk::FreeGuestObject(m->handle);
     }
@@ -694,11 +854,14 @@ std::int32_t __stdcall XMVDecoder_GetNextFrameHle(void* decoder, void* surface, 
         } else {
             snd::DirectSoundDoWorkHle();  // finished audio packets -> free slots (the original calls DoWork too)
             if (!m->started) {
+                if (m->pack != nullptr) {
+                    m->pack->WaitReady(kPackFirstWaitMs);  // M6b: decoder start-up before the audio starts
+                }
                 if (!StartPlayback(*m)) {
                     Fail(*m, &res, "start");
                 } else {
-                    std::uint32_t pts = 0;
-                    if (DecodeDue(*m, 0, true, pts) == 0) {
+                    std::uint32_t pts = 0, index = 0;
+                    if (DecodeDue(*m, 0, true, pts, index) == 0) {
                         if (m->core.Failed()) {
                             if (!g_loggedDecoderMissing.exchange(true)) {
                                 FUT_LOGE(Vid, "XMV: WMV2 decoder unavailable: %s", m->core.Error().c_str());
@@ -710,6 +873,7 @@ std::int32_t __stdcall XMVDecoder_GetNextFrameHle(void* decoder, void* surface, 
                             res = kXmvEndOfFile;
                         }
                     } else {
+                        AttachPackPicture(*m, surface, index, pts);
                         WritePicture(*m, surface);
                         Account(*m, pts, 0, 0);
                         res = kXmvNewFrame;
@@ -725,13 +889,14 @@ std::int32_t __stdcall XMVDecoder_GetNextFrameHle(void* decoder, void* surface, 
                 if (m->core.Failed()) {
                     Fail(*m, &res, "demux");
                 } else if (!m->core.Video().empty() && m->core.Video().front().ptsMs <= now) {
-                    std::uint32_t pts = 0;
-                    const std::uint32_t decoded = DecodeDue(*m, now, false, pts);
+                    std::uint32_t pts = 0, index = 0;
+                    const std::uint32_t decoded = DecodeDue(*m, now, false, pts, index);
                     if (decoded == 0 && m->core.Failed()) {
                         Fail(*m, &res, "decoder");
                     } else if (decoded == 0) {
                         res = kXmvNoFrame;  // rejected frames: keep the previous picture
                     } else {
+                        AttachPackPicture(*m, surface, index, pts);
                         WritePicture(*m, surface);
                         Account(*m, pts, now, decoded - 1);
                         res = kXmvNewFrame;

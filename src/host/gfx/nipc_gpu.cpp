@@ -6,8 +6,10 @@
 #include "core/log.h"
 #include "gfx/gfx_config.h"
 #include "gfx/interp_history.h"
+#include "gfx/movie_uv.h"
 #include "gfx/outline.h"
 #include "gfx/rhi/d3d11/d3d11_device.h"
+#include "gfx/widescreen.h"
 #include "platform/frame_pacer.h"
 #include "platform/screenshot.h"
 #include "platform/window.h"
@@ -57,6 +59,8 @@ const char* DrawKindName(ni::DrawKind kind) noexcept {
         return "ScreenPolygon";
     case ni::DrawKind::ScreenTexture:
         return "ScreenTexture";
+    case ni::DrawKind::Points:
+        return "Points";
     }
     return "?";
 }
@@ -172,9 +176,13 @@ std::string DescribeQuality(const RenderQuality& quality) {
 
 RenderSizes ComputeRenderSizes(std::uint32_t guestWidth, std::uint32_t guestHeight, std::uint32_t resolutionWidth,
                                std::uint32_t resolutionHeight, std::uint32_t viewWidth, std::uint32_t viewHeight,
-                               float renderScale) noexcept {
-    const std::uint32_t gw = guestWidth != 0 ? guestWidth : 640;
-    const std::uint32_t gh = guestHeight != 0 ? guestHeight : 480;
+                               float renderScale, std::uint32_t aspectW, std::uint32_t aspectH) noexcept {
+    std::uint32_t gw = guestWidth != 0 ? guestWidth : 640;
+    std::uint32_t gh = guestHeight != 0 ? guestHeight : 480;
+    if (aspectW != 0 && aspectH != 0) {  // G3: the display aspect (the fitted rectangle below uses gw x gh)
+        gw = aspectW;
+        gh = aspectH;
+    }
     std::uint32_t tw = resolutionWidth, th = resolutionHeight;
     if (tw == 0 || th == 0) {
         tw = viewWidth;
@@ -247,10 +255,52 @@ struct GpuRenderer::Impl {
     std::uint32_t backBufferWidth = 640, backBufferHeight = 480;
     std::uint32_t targetWidth = 640, targetHeight = 480;
     bool textureTarget = false;
+    // M8: render to texture. Size of the current target on the device (the back buffer: the internal size; a texture
+    // target: its guest size times the render-resolution factor, RenderTargetDimension).
+    std::uint32_t targetInternalWidth = 640, targetInternalHeight = 480;
+    struct RenderTarget {
+        ni::GuestPtr data = 0;                      // NiPCRenderedTextureData (key)
+        std::uint32_t guestWidth = 0, guestHeight = 0;
+        std::uint32_t width = 0, height = 0;        // on the device
+        std::uint32_t samples = 1;
+        rhi::TextureHandle color;                   // sampled (the resolve destination with MSAA)
+        rhi::TextureHandle msaa;                    // multisampled render target (samples > 1)
+        rhi::TextureHandle depth;                   // depth/stencil of the target (D24S8, same samples)
+        bool dirty = false;                         // drawn or cleared since the last resolve
+    };
+    std::vector<RenderTarget> renderTargets;
+    std::size_t currentTarget = SIZE_MAX;  // index into renderTargets while textureTarget
+    std::uint64_t rttCreated = 0, rttFailures = 0, rttResolves = 0, rttDraws = 0, rttClears = 0, rttSampled = 0;
+    bool loggedRttFailure = false;
+
+    void DestroyRenderTarget(RenderTarget& t) noexcept {
+        for (rhi::TextureHandle h : {t.color, t.msaa, t.depth}) {
+            if (h) {
+                device->Destroy(h);
+            }
+        }
+        t.color = t.msaa = t.depth = {};
+    }
+    // The render target of `data` at the current render resolution (created or recreated as needed); nullptr if the
+    // device cannot create it (logged once).
+    RenderTarget* GetRenderTarget(ni::GuestPtr data, std::uint32_t guestW, std::uint32_t guestH) noexcept;
+    // Leaves the current texture target: resolves its samples into the sampled texture.
+    void FinishTextureTarget() noexcept {
+        if (currentTarget < renderTargets.size()) {
+            RenderTarget& t = renderTargets[currentTarget];
+            if (t.dirty && t.msaa && device->ResolveTexture(t.color, t.msaa)) {
+                ++rttResolves;
+            }
+            t.dirty = false;
+        }
+        currentTarget = SIZE_MAX;
+    }
     bool leftRightSwap = false;
     ni::TextureResolver resolveTexture = nullptr;
     void* resolveUser = nullptr;
     rhi::TextureHandle defaultTexture, blackTexture;
+    rhi::TextureHandle clipTexture;  // M8: the pipeline's clipping texture (FUN_00163A40) for clipped shadows
+    std::uint64_t extraPassDraws = 0;  // M8: projected shadow passes drawn
 
     // Frame state: frames displayed so far, whether the current frame is traced / summarized.
     std::uint32_t framesDone = 0;
@@ -300,23 +350,91 @@ struct GpuRenderer::Impl {
     // G1: [render] outline_* (gfx/outline.h); nullptr at the defaults (no outline code runs).
     std::unique_ptr<outline::Outlines> outlines;
 
+    // G3 widescreen (gfx/widescreen.h): off (wide == false) = everything as before.
+    bool wide = false;
+    std::uint32_t aspectW = 0, aspectH = 0;
+    widescreen::Placement placed = widescreen::Placement::Center;  // placement of the viewport on the context
+    float cameraWiden = 1.0f;          // Hor+ factor of the current camera data (1 = not widened)
+    ni::CameraDesc unwidened;          // the current camera with the game's own frustum (cameraWiden != 1)
+    bool cameraPort = false;           // the camera's port does not span the width (avatar portrait)
+    bool hudCamera = false;            // off-axis camera (l >= 0, b >= 0): the HUD digit cameras
+    widescreen::GuestRect portRect;    // its viewport in guest pixels
+    bool barsCleared = false;          // the bars of this frame are decided (black or left to the scene)
+    std::uint64_t barFramesScene = 0;  // frames whose bars the stretched scene owns (not cleared black)
+
+    widescreen::Mapping WideMapping(widescreen::Placement p) const noexcept {
+        return widescreen::MappingOf(p, backBufferWidth, backBufferHeight, sizes.internalWidth, sizes.internalHeight);
+    }
+    // The pipeline's camera (+ the B19 half-pixel shift) for the guest viewport `v`.
+    void SetPipelineCamera(const ni::CameraDesc& desc, const rhi::Viewport& v) noexcept {
+        ni::CameraDesc c = desc;
+        c.viewport = v;
+        if (v.width > 0.0f && v.height > 0.0f) {
+            HalfPixelShift(&c.projection, v.width, v.height);  // design 8.3 B19
+            HalfPixelShift(&c.screenProjection, v.width, v.height);
+        }
+        ff.SetCamera(c, targetWidth, targetHeight);
+    }
+    // Black bars left and right of the centred 4:3 area, once per frame before its first draw or colour clear (the
+    // game never clears the whole back buffer; without this, centred pictures would keep old pixels beside them).
+    // `stretched`: the first draw/colour clear of the frame covers the whole width (Hor+ scene, full-screen clear):
+    // the sides then belong to the scene and are not cleared black - like the centre they keep the previous picture
+    // where the scene draws nothing. In a level the game clears no colour (only depth/stencil) and relies on the fog
+    // colour around the far plane; pixels beyond the far plane (Level1-2: the sewer's end, z > 150) keep what was
+    // there. A black clear at the sides made such holes visible as black shapes cut off at the 4:3 edge (user report
+    // 2026-10-13); centre and sides now behave alike.
+    void ClearBars(bool stretched = false) noexcept {
+        if (barsCleared) {
+            return;
+        }
+        barsCleared = true;
+        if (stretched) {
+            ++barFramesScene;
+            return;
+        }
+        const widescreen::Mapping m = WideMapping(widescreen::Placement::Center);
+        const auto left = static_cast<std::int32_t>(m.offsetX);
+        const auto right = static_cast<std::int32_t>(std::floor(m.offsetX + backBufferWidth * m.scaleX + 0.5));
+        static const float kBlack[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        rhi::Rect r;
+        r.top = 0;
+        r.bottom = static_cast<std::int32_t>(sizes.internalHeight);
+        if (left > 0) {
+            r.left = 0;
+            r.right = left;
+            Ctx().Clear(rhi::kClearColor, kBlack, 1.0f, 0, &r);
+        }
+        if (right < static_cast<std::int32_t>(sizes.internalWidth)) {
+            r.left = right;
+            r.right = static_cast<std::int32_t>(sizes.internalWidth);
+            Ctx().Clear(rhi::kClearColor, kBlack, 1.0f, 0, &r);
+        }
+    }
+    // Places the draw in `item` (widescreen_math.h Classify) and draws it.
+    ff::DrawResult DrawWide(ni::DrawKind kind, ni::GuestPtr object) noexcept;
+
     // M6: movie textures (the D3D shim's YUY2 textures written by the XMV HLE), converted to BGRA8 on upload.
     struct MovieTex {
         std::uint32_t header = 0, serial = 0, generation = 0;
-        std::uint32_t width = 0, height = 0;
+        std::uint32_t width = 0, height = 0;            // host texture (M6b: the pack picture's size)
+        std::uint32_t texelWidth = 0, texelHeight = 0;  // the game's texture = its texel coordinate range
         tex::Yuy2Mode mode = tex::Yuy2Mode::ConvertBt601;
         rhi::TextureHandle texture;
+        std::shared_ptr<const d3d::HostImage> image;    // M6b: uploaded movie pack picture (nullptr = guest pixels)
         std::uint32_t lastFrame = 0;
     };
     static constexpr std::size_t kMovieTextures = 4;
     MovieTex movies[kMovieTextures];
     std::vector<std::uint8_t> movieScratch;
     std::uint64_t movieUploads = 0, movieRawDraws = 0, movieFailures = 0, movieStageDraws = 0;
+    std::uint64_t moviePackUploads = 0;  // M6b: uploads from a movie pack picture (d3d::HostImage)
+    std::uint32_t moviePackMaxWidth = 0, moviePackMaxHeight = 0;
 
     // M6: Xbox linear (non-swizzled) textures - here the movie player's YUY2 texture - are addressed in texels on the
     // NV2A: the movie quad (Open 0xEE5A1..0xEE647) carries UVs 0..W x 0..H. A stage sampling such a texture gets
     // its coordinates scaled by 1/W, 1/H after the stage's own transform (TTFF COUNT2 with a scale if it had none),
-    // and clamped addressing.
+    // and clamped addressing. M6b: with a movie pack picture the host texture is larger than W x H; the game's
+    // texel UVs are scaled to it (gfx/movie_uv.h MovieTexelScale), so the picture covers the same screen area.
     void ApplyTexelAddressing() noexcept {
         for (std::uint32_t i = 0; i < ni::kMaxTextureStages; ++i) {
             ni::TextureStageDesc& st = item.state.stages[i];
@@ -327,7 +445,8 @@ struct GpuRenderer::Impl {
                 if (!m.texture || m.texture != st.texture || m.width == 0 || m.height == 0) {
                     continue;
                 }
-                const float sx = 1.0f / static_cast<float>(m.width), sy = 1.0f / static_cast<float>(m.height);
+                const TexelScale scale = MovieTexelScale(m.texelWidth, m.texelHeight, m.width, m.height);
+                const float sx = scale.sx, sy = scale.sy;
                 if ((st.transformFlags & 0xFFu) == FF_TTFF_DISABLE) {
                     st.transform = IdentityMatrix();
                     st.transformFlags = FF_TTFF_COUNT2;
@@ -364,16 +483,11 @@ struct GpuRenderer::Impl {
     // guest viewport (everything inside the viewport is resolution independent, nipc_gpu.h).
     void ApplyViewport(const rhi::Viewport& v) noexcept {
         viewport = v;
-        Ctx().SetViewport(textureTarget ? v
-                                        : ScaleViewport(v, backBufferWidth, backBufferHeight, sizes.internalWidth,
-                                                        sizes.internalHeight));
-        ni::CameraDesc c = camera;
-        c.viewport = v;
-        if (v.width > 0.0f && v.height > 0.0f) {
-            HalfPixelShift(&c.projection, v.width, v.height);  // design 8.3 B19
-            HalfPixelShift(&c.screenProjection, v.width, v.height);
-        }
-        ff.SetCamera(c, targetWidth, targetHeight);
+        // G3 placement only on the back buffer; texture targets (M8) keep their own scale (guest -> device size).
+        Ctx().SetViewport(wide && !textureTarget
+                              ? widescreen::PlaceViewport(v, WideMapping(placed))
+                              : ScaleViewport(v, targetWidth, targetHeight, targetInternalWidth, targetInternalHeight));
+        SetPipelineCamera(camera, v);
     }
 
     ni::ExtractContext Context() noexcept {
@@ -387,10 +501,46 @@ struct GpuRenderer::Impl {
         c.resolveTexture = resolveTexture;
         c.resolveUser = resolveUser;
         c.shadow = &shadow;
+        c.clipTexture = clipTexture;
         return c;
     }
 
     void Count(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome, bool haveItem) noexcept;
+    // M8: passes 2.. of the texture pipeline (projected shadows): the same geometry again with the pass's blend, alpha
+    // test and stages, fog off (FUN_00149AE0); the item's state is restored afterwards.
+    void DrawExtraPasses() noexcept {
+        const ni::RenderStateDesc first = item.state;
+        const std::uint32_t passes = std::min<std::uint32_t>(first.passCount, 1 + ni::kMaxExtraPasses);
+        for (std::uint32_t p = 1; p < passes; ++p) {
+            const ni::PassDesc& pass = first.extraPasses[p - 1];
+            ni::RenderStateDesc& st = item.state;
+            st.alphaBlendEnable = pass.alphaBlendEnable;
+            st.srcBlend = pass.srcBlend;
+            st.dstBlend = pass.dstBlend;
+            st.alphaTestEnable = pass.alphaTestEnable;
+            st.alphaFunc = pass.alphaFunc;
+            st.alphaRef = pass.alphaRef;
+            st.fogEnable = false;
+            st.stageCount = pass.stageCount;
+            for (std::uint32_t i = 0; i < ni::kMaxTextureStages; ++i) {
+                st.stages[i] = pass.stages[i];
+            }
+            st.textureFactor = pass.textureFactor;
+            if (ff.Draw(item) == ff::DrawResult::Drawn) {
+                ++extraPassDraws;
+            }
+        }
+        item.state = first;
+    }
+    // The item and, if it was drawn, its extra passes - with the viewport and pipeline camera in effect (on the back
+    // buffer with G3 widescreen: those DrawWide set for the item, so the shadow passes land on the same pixels).
+    ff::DrawResult DrawWithPasses() noexcept {
+        const ff::DrawResult result = ff.Draw(item);
+        if (result == ff::DrawResult::Drawn && item.state.passCount > 1) {
+            DrawExtraPasses();
+        }
+        return result;
+    }
     void Submit(ni::DrawKind kind, ni::GuestPtr object, ni::ExtractStatus status) noexcept;
     void TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome, bool haveItem) noexcept;
     // `repeated` (M3d F1): the frame presents the previous picture again.
@@ -462,6 +612,8 @@ bool GpuRenderer::Impl::Resize(const RenderSizes& wanted, const char* reason) no
     ++resizes;
     ApplyRenderOptions();
     if (!textureTarget) {
+        targetInternalWidth = sizes.internalWidth;
+        targetInternalHeight = sizes.internalHeight;
         ApplyViewport(viewport);
     }
     FUT_LOGI(Gfx, "render: %s - output %ux%u -> %ux%u, internal %ux%u -> %ux%u (render scale %.2f, %u sample%s%s)",
@@ -481,7 +633,8 @@ void GpuRenderer::Impl::FollowView() noexcept {
         pendingFrames = 0;  // minimized: keep the buffers
         return;
     }
-    const RenderSizes want = ComputeRenderSizes(backBufferWidth, backBufferHeight, 0, 0, w, h, quality.renderScale);
+    const RenderSizes want =
+        ComputeRenderSizes(backBufferWidth, backBufferHeight, 0, 0, w, h, quality.renderScale, aspectW, aspectH);
     if (want == sizes) {
         pendingFrames = 0;
         return;
@@ -571,7 +724,7 @@ void GpuRenderer::Impl::TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOu
         "%d, "
         "cull %u, fog %d, material diffuse (%.2f %.2f %.2f %.2f) ambient (%.2f %.2f %.2f) emissive (%.2f "
         "%.2f "
-        "%.2f), global ambient (%.2f %.2f %.2f)",
+        "%.2f), global ambient (%.2f %.2f %.2f), passes %u (pass 2: %u stages, NiTexture 0x%08X -> host %u, tci 0x%X)",
         frame, drawIndex, DrawKindName(kind), object, DrawOutcomeName(outcome), *note != 0 ? ": " : "", note,
         bounds ? "" : "(none) ", bx0, by0, bx1, by1, g.vertexCount, g.indexCount, g.primitiveCount,
         g.topology == ni::Topology::TriangleStrip ? "strip" : "list",
@@ -588,7 +741,9 @@ void GpuRenderer::Impl::TraceDraw(ni::DrawKind kind, ni::GuestPtr object, DrawOu
         s.zWriteEnable ? 1 : 0, static_cast<unsigned>(s.cullMode), s.fogEnable ? 1 : 0, s.material.diffuse.x,
         s.material.diffuse.y, s.material.diffuse.z, s.material.diffuse.w, s.material.ambient.x,
         s.material.ambient.y, s.material.ambient.z, s.material.emissive.x, s.material.emissive.y,
-        s.material.emissive.z, item.lights.ambient.x, item.lights.ambient.y, item.lights.ambient.z);
+        s.material.emissive.z, item.lights.ambient.x, item.lights.ambient.y, item.lights.ambient.z, s.passCount,
+        s.extraPasses[0].stageCount, s.extraPasses[0].stages[0].niTexture, s.extraPasses[0].stages[0].texture.id,
+        s.extraPasses[0].stages[0].texCoordIndex);
 }
 
 void GpuRenderer::Impl::Count(ni::DrawKind kind, ni::GuestPtr object, DrawOutcome outcome,
@@ -627,8 +782,67 @@ void GpuRenderer::Impl::Submit(ni::DrawKind kind, ni::GuestPtr object, ni::Extra
         return;
     }
     ApplyTexelAddressing();
-    const ff::DrawResult result = ff.Draw(item);
+    // G3 placement only on the back buffer; texture targets (M8) are drawn at their own scale.
+    const ff::DrawResult result = wide && !textureTarget ? DrawWide(kind, object) : DrawWithPasses();
+    if (textureTarget && result == ff::DrawResult::Drawn) {
+        renderTargets[currentTarget].dirty = true;  // M8: resolved when the target is left
+        ++rttDraws;
+    }
     Count(kind, object, OutcomeOf(result), true);
+}
+
+// G3: the facts of the draw in `item` -> placement (widescreen_math.h) -> the D3D viewport of that placement; a
+// full-screen quad of a Hor+ camera (the pause menu's dimming) is drawn with the game's own projection, stretched.
+ff::DrawResult GpuRenderer::Impl::DrawWide(ni::DrawKind kind, ni::GuestPtr object) noexcept {
+    namespace ws = widescreen;
+    ws::DrawFacts f;
+    f.source = kind == ni::DrawKind::ScreenPolygon   ? ws::DrawSource::ScreenPolygon
+               : kind == ni::DrawKind::ScreenTexture ? ws::DrawSource::ScreenTexture
+                                                     : ws::DrawSource::Geometry;
+    f.camera = cameraWiden != 1.0f ? ws::DrawFacts::Camera::Widened
+               : cameraPort        ? ws::DrawFacts::Camera::Port
+                                   : ws::DrawFacts::Camera::FullWidth;
+    f.hudCamera = hudCamera;
+    f.port = portRect;
+    f.ribbon = kind == ni::DrawKind::ScreenPolygon && outline::IsRibbonPolygon(object);
+    f.textured = item.state.stageCount > 0 && (item.state.stages[0].niTexture != 0 || item.state.stages[0].texture);
+    f.anchoring = ws::AnchoringAllowed(framesDone + 1);
+    bool unwidenedQuad = false;
+    ni::CameraDesc applied = camera;
+    applied.viewport = viewport;
+    if (f.camera == ws::DrawFacts::Camera::Widened && f.source == ws::DrawSource::Geometry) {
+        // quads: the only candidates for a full-screen overlay (not particles, M8: 3D billboards, stretched like the
+        // rest of the scene)
+        if (kind != ni::DrawKind::Points && item.geometry.vertexCount <= 8) {
+            ni::CameraDesc game = unwidened;
+            game.viewport = viewport;
+            ws::GuestRect b;
+            if (ScreenBounds(item, game, &b.x0, &b.y0, &b.x1, &b.y1) && ws::CoversScreen(b, 0.0f)) {
+                unwidenedQuad = true;
+                f.hasBounds = true;
+                f.bounds = b;
+            }
+        }
+    } else if (f.source != ws::DrawSource::Geometry ||
+               (f.camera == ws::DrawFacts::Camera::FullWidth && f.hudCamera)) {  // (the rules need no box otherwise)
+        f.hasBounds = ScreenBounds(item, applied, &f.bounds.x0, &f.bounds.y0, &f.bounds.x1, &f.bounds.y1);
+    }
+    const ws::Placement p = unwidenedQuad ? ws::Placement::Stretch : ws::Classify(f, ws::AnchorExceptions());
+    ClearBars(p == ws::Placement::Stretch);
+    ws::NoteDraw(f, p, object, framesDone + 1);
+    if (p != placed) {
+        placed = p;
+        Ctx().SetViewport(ws::PlaceViewport(viewport, WideMapping(p)));
+    }
+    // M8: the extra passes (projected shadows) with the same placement and camera as the item.
+    if (!unwidenedQuad) {
+        return DrawWithPasses();
+    }
+    ws::NoteUnwidenedQuad();
+    SetPipelineCamera(unwidened, viewport);
+    const ff::DrawResult result = DrawWithPasses();
+    SetPipelineCamera(camera, viewport);
+    return result;
 }
 
 void GpuRenderer::Impl::LogFrameSummary(std::uint32_t frame, const Picture& shown, bool repeated) noexcept {
@@ -687,6 +901,7 @@ void GpuRenderer::Impl::PrepareFrame(std::uint32_t frame) noexcept {
     drawIndex = 0;
     frameClears = 0;
     frameColorCleared = false;
+    barsCleared = false;  // G3
     std::memset(frameCounts, 0, sizeof(frameCounts));
     if (history != nullptr) {
         history->BeginFrame(frame, traceFrame);  // M3d: per-draw interpolation trace of the trace_frames frames
@@ -706,10 +921,16 @@ GpuRenderer::~GpuRenderer() {
         if (impl_->blackTexture) {
             impl_->device->Destroy(impl_->blackTexture);
         }
+        if (impl_->clipTexture) {
+            impl_->device->Destroy(impl_->clipTexture);
+        }
         for (Impl::MovieTex& m : impl_->movies) {
             if (m.texture) {
                 impl_->device->Destroy(m.texture);
             }
+        }
+        for (Impl::RenderTarget& t : impl_->renderTargets) {
+            impl_->DestroyRenderTarget(t);
         }
         impl_->ff.Shutdown();
     }
@@ -730,6 +951,9 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
     // M3c: back-buffer configuration from [render] resolution / render_scale / msaa and the view size.
     d.requested = params.quality;
     d.window = params.window;
+    d.wide = params.aspectWidth != 0 && params.aspectHeight != 0;  // G3
+    d.aspectW = d.wide ? params.aspectWidth : 0;
+    d.aspectH = d.wide ? params.aspectHeight : 0;
     std::uint32_t viewW = params.viewWidth, viewH = params.viewHeight;
     if (params.window != nullptr && (viewW == 0 || viewH == 0)) {
         platform::MainWindowClientSize(&viewW, &viewH);
@@ -743,7 +967,8 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
     for (std::uint32_t step = 0; step < ladder.count && d.device == nullptr; ++step) {
         d.quality = ladder.steps[step];
         d.sizes = ComputeRenderSizes(params.width, params.height, d.quality.resolutionWidth,
-                                     d.quality.resolutionHeight, viewW, viewH, d.quality.renderScale);
+                                     d.quality.resolutionHeight, viewW, viewH, d.quality.renderScale,
+                                     params.aspectWidth, params.aspectHeight);
         downsample = d.sizes.outputWidth != d.sizes.internalWidth || d.sizes.outputHeight != d.sizes.internalHeight;
         desc = rhi::DeviceDesc{};
         desc.backend = rhi::Backend::D3D11;
@@ -844,13 +1069,16 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
     }
     d.backBufferWidth = d.targetWidth = params.width;
     d.backBufferHeight = d.targetHeight = params.height;
+    d.targetInternalWidth = d.sizes.internalWidth;
+    d.targetInternalHeight = d.sizes.internalHeight;
     d.resolveTexture = params.resolveTexture;
     d.resolveUser = params.resolveUser;
     // Default texture of NiXBoxRenderer (FUN_0014AB50, created by the device setup FUN_0014C0F0).
     tex::HostImage image;
     tex::MakeDefaultTexture(&image);
     d.defaultTexture = r->CreateTexture(image, "NiPCRenderer default texture (FUN_0014AB50)");
-    // Black 1x1: movie textures (the shim's YUY2 surface, contents from M6) and rendered textures (P2).
+    // Black 1x1: movie textures (the shim's YUY2 surface, contents from M6) and rendered textures whose render target
+    // cannot be created (M8).
     static const std::uint8_t kBlack[4] = {0, 0, 0, 0xFF};
     rhi::TextureDesc black;
     black.width = 1;
@@ -864,6 +1092,17 @@ std::unique_ptr<GpuRenderer> GpuRenderer::Create(const CreateParams& params, std
     level.rowPitch = 4;
     level.slicePitch = 4;
     d.blackTexture = d.device->CreateTexture(black, &level);
+    // M8: clipping texture of the default pipeline (FUN_00163A40: NiPixelData 2 x 1 in the default format A8R8G8B8,
+    // texel 0 = 0x00000000, texel 1 = 0xFFFFFFFF).
+    static const std::uint8_t kClip[8] = {0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF};
+    rhi::TextureDesc clip = black;
+    clip.width = 2;
+    clip.debugName = "NiPCRenderer clipping texture (FUN_00163A40)";
+    rhi::SubresourceData clipLevel;
+    clipLevel.data = kClip;
+    clipLevel.rowPitch = 8;
+    clipLevel.slicePitch = 8;
+    d.clipTexture = d.device->CreateTexture(clip, &clipLevel);
     if (!d.defaultTexture || !d.blackTexture) {
         if (error != nullptr) {
             try {
@@ -929,8 +1168,8 @@ bool GpuRenderer::ResizeForView(std::uint32_t viewWidth, std::uint32_t viewHeigh
         return false;
     }
     // (a step down to 640x480 at Create set resolutionWidth: such a renderer no longer follows the view)
-    const RenderSizes want =
-        ComputeRenderSizes(d.backBufferWidth, d.backBufferHeight, 0, 0, viewWidth, viewHeight, d.quality.renderScale);
+    const RenderSizes want = ComputeRenderSizes(d.backBufferWidth, d.backBufferHeight, 0, 0, viewWidth, viewHeight,
+                                                d.quality.renderScale, d.aspectW, d.aspectH);
     return d.Resize(want, "view size");
 }
 
@@ -947,20 +1186,175 @@ std::string GpuRenderer::Describe() const {
 
 void GpuRenderer::SetBackBufferTarget() noexcept {
     Impl& d = *impl_;
+    d.FinishTextureTarget();
     d.textureTarget = false;
     d.targetWidth = d.backBufferWidth;
     d.targetHeight = d.backBufferHeight;
+    d.targetInternalWidth = d.sizes.internalWidth;
+    d.targetInternalHeight = d.sizes.internalHeight;
     d.Ctx().SetRenderTargets({}, {});
     d.ApplyViewport(d.FullViewport());  // D3D8 SetRenderTarget: viewport = the whole new target
 }
 
-void GpuRenderer::SetTextureTarget(std::uint32_t width, std::uint32_t height) noexcept {
+std::uint32_t RenderTargetDimension(std::uint32_t guest, std::uint32_t guestBackBuffer,
+                                    std::uint32_t internalBackBuffer) noexcept {
+    if (guest == 0 || guestBackBuffer == 0 || internalBackBuffer <= guestBackBuffer) {
+        return guest;
+    }
+    const double k = static_cast<double>(internalBackBuffer) / guestBackBuffer;
+    const auto v = static_cast<std::uint32_t>(std::floor(guest * k + 0.5));
+    return std::clamp<std::uint32_t>(v, guest, std::max(guest, kMaxRenderTargetDimension));
+}
+
+GpuRenderer::Impl::RenderTarget* GpuRenderer::Impl::GetRenderTarget(ni::GuestPtr data, std::uint32_t guestW,
+                                                                    std::uint32_t guestH) noexcept {
+    // M8: the factor of the back buffer (internal height / guest height) also for texture targets - the projected
+    // shadows get the configured resolution like the scene, with the same MSAA samples.
+    const std::uint32_t w = RenderTargetDimension(guestW, backBufferHeight, sizes.internalHeight);
+    const std::uint32_t h = RenderTargetDimension(guestH, backBufferHeight, sizes.internalHeight);
+    RenderTarget* t = nullptr;
+    for (RenderTarget& e : renderTargets) {
+        if (e.data == data) {
+            t = &e;
+            break;
+        }
+    }
+    if (t != nullptr && t->color && t->width == w && t->height == h && t->samples == samples) {
+        return t;
+    }
+    const ni::GuestPtr current = currentTarget < renderTargets.size() ? renderTargets[currentTarget].data : 0;
+    if (t == nullptr) {
+        try {
+            renderTargets.push_back(RenderTarget{});
+        } catch (...) {
+            return nullptr;
+        }
+        t = &renderTargets.back();
+        t->data = data;
+        // push_back may have moved the entries: find the current target again
+        for (std::size_t i = 0; i < renderTargets.size(); ++i) {
+            if (current != 0 && renderTargets[i].data == current) {
+                currentTarget = i;
+            }
+        }
+    } else {
+        DestroyRenderTarget(*t);  // the render resolution or the MSAA level changed
+    }
+    t->guestWidth = guestW;
+    t->guestHeight = guestH;
+    t->width = w;
+    t->height = h;
+    t->samples = samples;
+    t->dirty = false;
+    rhi::TextureDesc desc;
+    desc.width = w;
+    desc.height = h;
+    desc.mipLevels = 1;
+    desc.format = rhi::Format::BGRA8_UNorm;
+    desc.usage = static_cast<std::uint8_t>(rhi::kTextureSampled | (samples > 1 ? 0 : rhi::kTextureRenderTarget));
+    desc.debugName = "NiRenderedTexture";
+    t->color = device->CreateTexture(desc, nullptr);
+    if (samples > 1) {
+        desc.usage = rhi::kTextureRenderTarget;
+        desc.sampleCount = samples;
+        desc.debugName = "NiRenderedTexture (MSAA)";
+        t->msaa = device->CreateTexture(desc, nullptr);
+    }
+    desc.format = rhi::Format::D24_UNorm_S8_UInt;
+    desc.usage = rhi::kTextureDepthStencil;
+    desc.sampleCount = samples;
+    desc.debugName = "NiRenderedTexture depth";
+    t->depth = device->CreateTexture(desc, nullptr);
+    if (!t->color || !t->depth || (samples > 1 && !t->msaa)) {
+        ++rttFailures;
+        if (!loggedRttFailure) {
+            loggedRttFailure = true;
+            FUT_LOGE(Gfx, "d3d11: render target %ux%u (%u sample%s) for rendered texture data 0x%08X failed: %s", w, h,
+                     samples, samples == 1 ? "" : "s", data, device->LastError());
+        }
+        DestroyRenderTarget(*t);
+        return nullptr;
+    }
+    ++rttCreated;
+    FUT_LOGI(Gfx, "d3d11: render to texture 0x%08X: %ux%u -> %ux%u, %u sample%s", data, guestW, guestH, w, h, samples,
+             samples == 1 ? "" : "s");
+    // A new target starts black (Xbox: zeroed contiguous memory) with depth 1 until the game clears it.
+    Ctx().SetRenderTargets(t->msaa ? t->msaa : t->color, t->depth);
+    static constexpr float kZero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    Ctx().Clear(rhi::kClearColor | rhi::kClearDepth | rhi::kClearStencil, kZero, 1.0f, 0, nullptr);
+    if (t->msaa) {
+        device->ResolveTexture(t->color, t->msaa);
+    }
+    // Back to the target that was bound (the caller binds the new one when it renders into it).
+    if (currentTarget < renderTargets.size() && &renderTargets[currentTarget] != t) {
+        const RenderTarget& c = renderTargets[currentTarget];
+        Ctx().SetRenderTargets(c.msaa ? c.msaa : c.color, c.depth);
+    } else {
+        Ctx().SetRenderTargets({}, {});
+    }
+    ApplyViewport(viewport);
+    return t;
+}
+
+void GpuRenderer::SetTextureTarget(ni::GuestPtr data, std::uint32_t width, std::uint32_t height) noexcept {
     Impl& d = *impl_;
-    // P2 (GFX_CONTRACT.md 11): render to texture is not implemented; the back buffer stays bound and
-    // every draw/clear until the next SetRenderTarget(NULL) is counted as TextureTarget.
+    d.FinishTextureTarget();
+    // M8: render to texture (GFX_CONTRACT.md 11): the texture's own color target and depth buffer, at the guest size
+    // times the render-resolution factor with the back buffer's MSAA samples (resolved when the target is left).
     d.textureTarget = true;
     d.targetWidth = width;
     d.targetHeight = height;
+    Impl::RenderTarget* t = d.GetRenderTarget(data, width, height);
+    if (t == nullptr) {
+        // No device target: the draws go nowhere like before M8 (counted as TextureTarget).
+        d.targetInternalWidth = width;
+        d.targetInternalHeight = height;
+        return;
+    }
+    d.currentTarget = static_cast<std::size_t>(t - d.renderTargets.data());
+    d.targetInternalWidth = t->width;
+    d.targetInternalHeight = t->height;
+    d.Ctx().SetRenderTargets(t->msaa ? t->msaa : t->color, t->depth);
+    d.ApplyViewport(d.FullViewport());  // D3D8 SetRenderTarget: viewport = the whole new target
+}
+
+rhi::TextureHandle GpuRenderer::RenderedTexture(ni::GuestPtr data, std::uint32_t width, std::uint32_t height) noexcept {
+    Impl& d = *impl_;
+    Impl::RenderTarget* t = d.GetRenderTarget(data, width, height);
+    if (t == nullptr) {
+        return d.blackTexture;
+    }
+    const bool current = d.currentTarget < d.renderTargets.size() && &d.renderTargets[d.currentTarget] == t;
+    if (!current && t->dirty && t->msaa && d.device->ResolveTexture(t->color, t->msaa)) {
+        ++d.rttResolves;
+        t->dirty = false;
+    }
+    ++d.rttSampled;
+    return t->color;
+}
+
+void GpuRenderer::ForgetRenderedTexture(ni::GuestPtr data) noexcept {
+    Impl& d = *impl_;
+    for (std::size_t i = 0; i < d.renderTargets.size(); ++i) {
+        if (d.renderTargets[i].data != data) {
+            continue;
+        }
+        if (i == d.currentTarget) {
+            d.currentTarget = SIZE_MAX;
+            d.Ctx().SetRenderTargets({}, {});  // the guest cannot draw into a destroyed texture any more
+            d.textureTarget = false;
+            d.targetWidth = d.backBufferWidth;
+            d.targetHeight = d.backBufferHeight;
+            d.targetInternalWidth = d.sizes.internalWidth;
+            d.targetInternalHeight = d.sizes.internalHeight;
+        }
+        d.DestroyRenderTarget(d.renderTargets[i]);
+        if (d.currentTarget != SIZE_MAX && d.currentTarget > i) {
+            --d.currentTarget;
+        }
+        d.renderTargets.erase(d.renderTargets.begin() + static_cast<std::ptrdiff_t>(i));
+        return;
+    }
 }
 
 void GpuRenderer::SetLeftRightSwap(bool swap) noexcept {
@@ -972,8 +1366,8 @@ void GpuRenderer::ClearBuffer(const ni::NiRectF* rect, std::uint32_t mode, std::
     Impl& d = *impl_;
     ++d.clears;
     ++d.frameClears;
-    if (d.textureTarget) {
-        ++d.clearsSkipped;
+    if (d.textureTarget && d.currentTarget >= d.renderTargets.size()) {
+        ++d.clearsSkipped;  // M8: only when the device target could not be created
         return;
     }
     // 0x14659E..0x1465B9: viewport width/height (+0x41C/+0x420) = target size, X/Y keep their 0 from
@@ -1004,11 +1398,28 @@ void GpuRenderer::ClearBuffer(const ni::NiRectF* rect, std::uint32_t mode, std::
         ++d.emptyClearRects;  // D3DDevice_Clear with an empty rectangle clears nothing
         return;
     }
-    if (hasRect) {  // M3c: guest pixels -> internal pixels of the back buffer
-        r = ScaleRect(r, d.backBufferWidth, d.backBufferHeight, d.sizes.internalWidth, d.sizes.internalHeight);
+    if (hasRect && d.wide && !d.textureTarget) {  // G3: the rectangle gets a placement like a draw (full screen ->
+        widescreen::DrawFacts f;                      // the whole width); only on the back buffer
+        f.source = widescreen::DrawSource::Clear;
+        f.hasBounds = true;
+        f.bounds = {static_cast<float>(r.left), static_cast<float>(r.top), static_cast<float>(r.right),
+                    static_cast<float>(r.bottom)};
+        f.anchoring = widescreen::AnchoringAllowed(d.framesDone + 1);
+        const widescreen::Placement p = widescreen::Classify(f, widescreen::AnchorExceptions());
+        if ((flags & rhi::kClearColor) != 0) {
+            d.ClearBars(p == widescreen::Placement::Stretch);  // a depth/stencil clear leaves the bars to the draws
+        }
+        widescreen::NoteDraw(f, p, 0, d.framesDone + 1);
+        r = widescreen::PlaceRect(r, d.WideMapping(p));
+    } else if (hasRect) {  // M3c: guest pixels -> internal pixels of the target (M8: also texture targets)
+        r = ScaleRect(r, d.targetWidth, d.targetHeight, d.targetInternalWidth, d.targetInternalHeight);
     }
+
     d.Ctx().Clear(flags, color, depth, static_cast<std::uint8_t>(stencil & 0xFF), hasRect ? &r : nullptr);
-    if ((flags & rhi::kClearColor) != 0) {
+    if (d.textureTarget) {
+        d.renderTargets[d.currentTarget].dirty = true;
+        ++d.rttClears;
+    } else if ((flags & rhi::kClearColor) != 0) {
         d.frameColorCleared = true;
     }
 }
@@ -1029,19 +1440,42 @@ void GpuRenderer::SetCameraData(const ni::CameraInput& input) noexcept {
     in.targetHeight = d.targetHeight;
     in.leftRightSwap = d.leftRightSwap;
     d.camera = ni::ExtractCamera(in);
+    if (d.traceFrame && in.frustum != nullptr && in.port != nullptr) {  // G3: which camera the following draws use
+        FUT_LOGI(Gfx,
+                 "draw trace frame %u #%u: camera 0x%08X frustum l %.3f r %.3f t %.3f b %.3f n %.3f f %.1f port %.2f "
+                 "%.2f %.2f %.2f%s",
+                 d.framesDone + 1, d.drawIndex,
+                 input.location != nullptr ? guest::Addr(input.location) - ni::kNiCameraWorldLocation : 0u,
+                 in.frustum->left, in.frustum->right, in.frustum->top, in.frustum->bottom, in.frustum->nearPlane,
+                 in.frustum->farPlane, in.port->left, in.port->right, in.port->top, in.port->bottom,
+                 d.textureTarget ? " (texture target)" : "");
+    }
     rhi::Viewport v = d.camera.viewport;
     v.width = std::max(v.width, 0.0f);
     v.height = std::max(v.height, 0.0f);
-    if (d.textureTarget) {
-        d.camera.viewport = v;  // transforms kept for the draws (which are skipped on texture targets)
-        return;
+    if (d.wide && in.frustum != nullptr && in.port != nullptr) {
+        // G3: is this the data of a Hor+ camera (widened inside its Click), a port camera or a full-width one?
+        const std::uint32_t cameraObject =
+            input.location != nullptr ? guest::Addr(input.location) - ni::kNiCameraWorldLocation : 0u;
+        d.cameraWiden = widescreen::WidenedFactor(cameraObject);
+        if (d.cameraWiden != 1.0f) {
+            ni::NiFrustum game = *in.frustum;
+            game.left /= d.cameraWiden;
+            game.right /= d.cameraWiden;
+            ni::CameraInput original = in;
+            original.frustum = &game;
+            d.unwidened = ni::ExtractCamera(original);
+        }
+        d.cameraPort = in.port->left > 0.01f || in.port->right < 0.99f;
+        d.hudCamera = in.frustum->left >= 0.0f && in.frustum->bottom >= 0.0f;
+        d.portRect = {v.x, v.y, v.x + v.width, v.y + v.height};
     }
     d.ApplyViewport(v);
 }
 
 void GpuRenderer::DrawGeometry(ni::DrawKind kind, const ni::GeometryInput& input) noexcept {
     Impl& d = *impl_;
-    if (d.textureTarget) {
+    if (d.textureTarget && d.currentTarget >= d.renderTargets.size()) {
         d.Count(kind, input.data, DrawOutcome::TextureTarget, false);
         return;
     }
@@ -1098,15 +1532,34 @@ void GpuRenderer::DrawGeometry(ni::DrawKind kind, const ni::GeometryInput& input
     d.Submit(kind, input.data, status);
 }
 
+// M8: slot 52 RenderPoints - camera-facing quads (ni::ExtractPoints). The particles are not interpolated (M3d: they
+// stay on the 60-Hz grid of the logic; the camera of the frame orients them).
+void GpuRenderer::DrawPoints(const ni::GeometryInput& input) noexcept {
+    Impl& d = *impl_;
+    if (d.textureTarget && d.currentTarget >= d.renderTargets.size()) {
+        d.Count(ni::DrawKind::Points, input.data, DrawOutcome::TextureTarget, false);
+        return;
+    }
+    d.Submit(ni::DrawKind::Points, input.data, ni::ExtractPoints(d.Context(), input, &d.item));
+}
+
 void GpuRenderer::DrawScreenPolygon(ni::GuestPtr polygon) noexcept {
     Impl& d = *impl_;
-    if (d.textureTarget) {
+    if (d.textureTarget && d.currentTarget >= d.renderTargets.size()) {
         d.Count(ni::DrawKind::ScreenPolygon, polygon, DrawOutcome::TextureTarget, false);
         return;
     }
-    const ni::ExtractStatus status = ni::ExtractScreenPolygon(d.Context(), polygon, &d.item);
+    ni::ExtractStatus status = ni::ExtractScreenPolygon(d.Context(), polygon, &d.item);
+    const bool ribbon = outline::IsRibbonPolygon(polygon);
+    // NiOutline ribbons: one list of the chains instead of the original strip with its bridges (avatar fix,
+    // outline.h "Ribbon chains"; always, independent of the outline options).
+    std::uint32_t triangles = 0;
+    if (ribbon && status == ni::ExtractStatus::Ok &&
+        outline::SplitRibbonStrip(polygon, d.arena, &d.item.geometry, &triangles) && triangles == 0) {
+        status = ni::ExtractStatus::Empty;
+    }
     // G1: NiOutline ribbons (only with a non-default outline option).
-    if (d.outlines != nullptr && outline::IsRibbonPolygon(polygon)) {
+    if (d.outlines != nullptr && ribbon) {
         const bool recolored = status == ni::ExtractStatus::Ok &&
                                outline::RecolorRibbon(d.outlines->Settings(), d.arena, &d.item.geometry);
         d.outlines->NoteRibbon(recolored);
@@ -1116,7 +1569,7 @@ void GpuRenderer::DrawScreenPolygon(ni::GuestPtr polygon) noexcept {
 
 void GpuRenderer::DrawScreenTexture(ni::GuestPtr screenTexture) noexcept {
     Impl& d = *impl_;
-    if (d.textureTarget) {
+    if (d.textureTarget && d.currentTarget >= d.renderTargets.size()) {
         d.Count(ni::DrawKind::ScreenTexture, screenTexture, DrawOutcome::TextureTarget, false);
         return;
     }
@@ -1178,6 +1631,25 @@ void GpuRenderer::DisplayFrame(std::uint32_t frame) noexcept {
         platform::SaveScreenshot(*d.device, s.screenshotDir, frame,
                                  d.quality.screenshots == ScreenshotSize::Internal ? platform::ScreenshotSource::Internal
                                                                                    : platform::ScreenshotSource::Output);
+    }
+    if (d.traceFrame && !s.screenshotDir.empty()) {
+        // M8 (diagnostics): the render-to-texture targets of a [render] trace_frames frame as PNG next to the
+        // screenshots ("frame_NNNNNN_rtt_K.png", resolved, device size).
+        for (std::size_t i = 0; i < d.renderTargets.size(); ++i) {
+            Impl::RenderTarget& t = d.renderTargets[i];
+            if (t.msaa && t.dirty && d.device->ResolveTexture(t.color, t.msaa)) {
+                t.dirty = false;
+            }
+            rhi::Image image;
+            std::string error;
+            if (d.device->ReadTexture(t.color, 0, image)) {
+                char name[64];
+                std::snprintf(name, sizeof(name), "frame_%06u_rtt_%zu.png", frame, i);
+                if (!platform::WritePngFile(s.screenshotDir / name, image, &error)) {
+                    FUT_LOGW(Gfx, "render to texture dump %s: %s", name, error.c_str());
+                }
+            }
+        }
     }
     rhi::PresentDesc present;
     present.syncInterval = request.syncInterval;
@@ -1285,6 +1757,15 @@ rhi::TextureHandle GpuRenderer::MovieTexture(const d3d::ResourceInfo& info, bool
         FUT_LOGW(Gfx, "d3d11: YUY2 texture 0x%08X drawn without YuvEnable - raw components (R = Cr, G = Y, B = Cb), "
                  "logged once", info.header);
     }
+    // M6b: a movie pack picture attached by the XMV HLE replaces the guest pixels (any even size).
+    std::shared_ptr<const d3d::HostImage> image = d3d::GetHostImage(info.header);
+    if (image != nullptr && (image->width == 0 || image->height == 0 || (image->width & 1) != 0 ||
+                             image->pitch < 2u * image->width ||
+                             image->yuy2.size() < static_cast<std::size_t>(image->pitch) * image->height)) {
+        image = nullptr;
+    }
+    const std::uint32_t texW = image != nullptr ? image->width : info.width;
+    const std::uint32_t texH = image != nullptr ? image->height : info.height;
     Impl::MovieTex* slot = nullptr;
     for (Impl::MovieTex& m : d.movies) {
         if (m.texture && m.serial == info.serial) {
@@ -1303,49 +1784,64 @@ rhi::TextureHandle GpuRenderer::MovieTexture(const d3d::ResourceInfo& info, bool
                 slot = &m;
             }
         }
-        if (slot->texture && (slot->width != info.width || slot->height != info.height)) {
-            d.device->Destroy(slot->texture);
-            slot->texture = {};
-        }
-        if (!slot->texture) {
-            rhi::TextureDesc desc;
-            desc.width = info.width;
-            desc.height = info.height;
-            desc.mipLevels = 1;
-            desc.format = rhi::Format::BGRA8_UNorm;
-            desc.usage = rhi::kTextureSampled;
-            desc.debugName = "movie texture (YUY2)";
-            slot->texture = d.device->CreateTexture(desc, nullptr);
-            if (!slot->texture) {
-                ++d.movieFailures;
-                return {};
-            }
-            ++d.texturesCreated;
-        }
         slot->header = info.header;
         slot->serial = info.serial;
-        slot->width = info.width;
-        slot->height = info.height;
+        slot->image = nullptr;
         slot->generation = info.generation + 1;  // force the upload below
     }
+    if (slot->texture && (slot->width != texW || slot->height != texH)) {
+        d.device->Destroy(slot->texture);  // M6b: pack picture <-> guest pixels (fallback) change the size
+        slot->texture = {};
+    }
+    if (!slot->texture) {
+        rhi::TextureDesc desc;
+        desc.width = texW;
+        desc.height = texH;
+        desc.mipLevels = 1;
+        desc.format = rhi::Format::BGRA8_UNorm;
+        desc.usage = rhi::kTextureSampled;
+        desc.debugName = image != nullptr ? "movie texture (pack)" : "movie texture (YUY2)";
+        slot->texture = d.device->CreateTexture(desc, nullptr);
+        if (!slot->texture) {
+            ++d.movieFailures;
+            return {};
+        }
+        ++d.texturesCreated;
+        slot->width = texW;
+        slot->height = texH;
+        slot->generation = info.generation + 1;  // force the upload below
+    }
+    slot->texelWidth = info.width;
+    slot->texelHeight = info.height;
     slot->lastFrame = d.framesDone + 1;
-    if (slot->generation != info.generation || slot->mode != mode) {
+    if (slot->generation != info.generation || slot->mode != mode || slot->image != image) {
         try {
-            d.movieScratch.resize(static_cast<std::size_t>(info.width) * info.height * 4u);
+            d.movieScratch.resize(static_cast<std::size_t>(texW) * texH * 4u);
         } catch (...) {
             ++d.movieFailures;
             return slot->texture;
         }
-        tex::ConvertYuy2ToBgra(guest::Ptr<const std::uint8_t>(info.pixels), info.pitch, info.width, info.height,
-                               d.movieScratch.data(), info.width * 4u, mode);
+        if (image != nullptr) {
+            tex::ConvertYuy2ToBgra(image->yuy2.data(), image->pitch, texW, texH, d.movieScratch.data(), texW * 4u,
+                                   mode);
+        } else {
+            tex::ConvertYuy2ToBgra(guest::Ptr<const std::uint8_t>(info.pixels), info.pitch, texW, texH,
+                                   d.movieScratch.data(), texW * 4u, mode);
+        }
         rhi::SubresourceData level;
         level.data = d.movieScratch.data();
-        level.rowPitch = info.width * 4u;
-        level.slicePitch = level.rowPitch * info.height;
+        level.rowPitch = texW * 4u;
+        level.slicePitch = level.rowPitch * texH;
         if (d.device->UpdateTexture(slot->texture, 0, level)) {
             slot->generation = info.generation;
             slot->mode = mode;
+            slot->image = std::move(image);
             ++d.movieUploads;
+            if (slot->image != nullptr) {
+                ++d.moviePackUploads;
+                d.moviePackMaxWidth = std::max(d.moviePackMaxWidth, texW);
+                d.moviePackMaxHeight = std::max(d.moviePackMaxHeight, texH);
+            }
         } else {
             ++d.movieFailures;
         }
@@ -1398,11 +1894,26 @@ void GpuRenderer::LogStatistics() noexcept {
         static_cast<unsigned long long>(d.texturesCreated),
         static_cast<unsigned long long>(d.texturesDestroyed),
         static_cast<unsigned long long>(d.textureFailures), d.arenaPeak);
+    if (d.wide) {
+        FUT_LOGI(Gfx, "d3d11 widescreen bars: %llu frames with the sides left to the stretched scene (not cleared "
+                      "black), the other drawing frames with black bars",
+                 static_cast<unsigned long long>(d.barFramesScene));
+    }
+    FUT_LOGI(Gfx, "d3d11 render to texture (M8): %zu targets (%llu created, %llu failed), %llu draws, %llu clears, %llu "
+             "MSAA resolves, %llu texture stages sampling them; %llu projected shadow passes drawn",
+             d.renderTargets.size(), static_cast<unsigned long long>(d.rttCreated),
+             static_cast<unsigned long long>(d.rttFailures), static_cast<unsigned long long>(d.rttDraws),
+             static_cast<unsigned long long>(d.rttClears), static_cast<unsigned long long>(d.rttResolves),
+             static_cast<unsigned long long>(d.rttSampled), static_cast<unsigned long long>(d.extraPassDraws));
     if (d.movieUploads != 0 || d.movieFailures != 0 || d.movieRawDraws != 0) {
         FUT_LOGI(Gfx, "d3d11 movie textures (YUY2): %llu frame uploads, %llu texel-addressed stage draws, %llu draws "
                  "without YuvEnable, %llu failures",
                  static_cast<unsigned long long>(d.movieUploads), static_cast<unsigned long long>(d.movieStageDraws),
                  static_cast<unsigned long long>(d.movieRawDraws), static_cast<unsigned long long>(d.movieFailures));
+    }
+    if (d.moviePackUploads != 0) {
+        FUT_LOGI(Gfx, "d3d11 movie pack pictures (M6b): %llu frame uploads, up to %ux%u",
+                 static_cast<unsigned long long>(d.moviePackUploads), d.moviePackMaxWidth, d.moviePackMaxHeight);
     }
     const ff::PipelineStats f = d.ff.Stats();
     FUT_LOGI(
@@ -1435,14 +1946,16 @@ void GpuRenderer::LogStatistics() noexcept {
         Gfx,
         "ni_extract: %llu states, %llu multi-map approximated, %llu with texture effects, %llu light "
         "evaluations (%llu lights dropped, %llu unknown types), %llu skinned draws (%llu deforms, %llu cache "
-        "hits), %llu invalid map modes, %llu unresolved textures, %llu enabled lights purged (slot 60)",
+        "hits), %llu invalid map modes, %llu unresolved textures, %llu enabled lights purged (slot 60), %llu projected "
+        "shadow passes, %llu texture effects not reproduced",
         static_cast<unsigned long long>(e.states), static_cast<unsigned long long>(e.multiMapApproximated),
         static_cast<unsigned long long>(e.textureEffectDraws),
         static_cast<unsigned long long>(e.lightEvaluations), static_cast<unsigned long long>(e.lightsDropped),
         static_cast<unsigned long long>(e.unknownLightTypes), static_cast<unsigned long long>(e.skinnedDraws),
         static_cast<unsigned long long>(e.skinDeforms), static_cast<unsigned long long>(e.skinCacheHits),
         static_cast<unsigned long long>(e.invalidMapModes),
-        static_cast<unsigned long long>(e.unresolvedTextures), static_cast<unsigned long long>(e.lightsPurged));
+        static_cast<unsigned long long>(e.unresolvedTextures), static_cast<unsigned long long>(e.lightsPurged),
+        static_cast<unsigned long long>(e.shadowPasses), static_cast<unsigned long long>(e.shadowEffectsSkipped));
     const rhi::DeviceStats ds = d.device->Stats();
     FUT_LOGI(Gfx,
              "d3d11 device: %llu draws, %llu primitives, %llu presents, %llu MiB transient, %u pipelines, %u "
@@ -1462,6 +1975,7 @@ void GpuRenderer::LogStatistics() noexcept {
     if (d.outlines != nullptr) {
         d.outlines->LogStatistics();  // G1: "outlines: ..."
     }
+    outline::LogRibbonStatistics();  // avatar fix: "outline ribbons: ..."
 }
 
 }  // namespace gfx

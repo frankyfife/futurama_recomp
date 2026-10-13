@@ -620,15 +620,18 @@ bool Parse(std::string_view text, std::uint32_t tickRate, Program& out, std::str
             // (M7) debug actions on the game: `level_end <NextLevel>` ends the level like the level scripts
             // (native FsChangeLevel -> Breakdown screen with "Speichern").
             // (G5) `camera_trace on|off` logs the follow camera's yaw once per tick.
+            // `state` logs the player's state text (weapons, ammo, lives) at the next tick.
             ins.op = Op::Game;
             const std::string action = last >= 2 ? Lower(t[1].text) : std::string();
             if (action == "camera_trace" && last == 3 && (Lower(t[2].text) == "on" || Lower(t[2].text) == "off")) {
                 ins.text = "camera_trace " + Lower(t[2].text);
             } else if (action == "level_end" && last == 3 && !t[2].text.empty() && t[2].text.size() <= 8) {
                 ins.text = "level_end " + t[2].text;
+            } else if (action == "state" && last == 2) {
+                ins.text = "state";
             } else {
-                return fail("game takes one action: level_end <NextLevel> (a level name of 1..8 characters) or "
-                            "camera_trace on|off");
+                return fail("game takes one action: level_end <NextLevel> (a level name of 1..8 characters), "
+                            "camera_trace on|off or state");
             }
         } else if (cmd == "quit") {
             ins.op = Op::Quit;
@@ -1132,6 +1135,9 @@ public:
         if (action.rfind(kCameraTrace, 0) == 0) {
             xapi::camera::SetTrace(action.substr(kCameraTrace.size()) == "on");  // (G5)
             return true;
+        }
+        if (action == "state") {
+            return xapi::RequestStateDump();
         }
         return action.rfind(kLevelEnd, 0) == 0 && xapi::RequestLevelEnd(action.c_str() + kLevelEnd.size());
     }

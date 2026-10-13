@@ -67,6 +67,11 @@ private:
 // Level3-5 (unreachable) -> Level3-3.
 const char* NextLevel(std::string_view level) noexcept;
 
+// True if a cheat sequence may fire on `port` now (shared with the G8 cheat toggles, input/cheat_toggles.h): Ingame,
+// level loaded, character controllable (player input on, no cut scene, pause or save dialog), no statistics screen,
+// port not diverted (freecam). Otherwise `reason` names the first failed condition (for debug lines).
+bool InputCheatArmed(int port, const char*& reason) noexcept;
+
 // [game] level_skip_cheat (bool, default on).
 bool EnabledInConfig() noexcept;
 // Reads the option and logs it (input start). The filter does nothing while the option is off.

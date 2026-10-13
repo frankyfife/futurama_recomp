@@ -6,6 +6,10 @@ Contents:
   FuturamaLauncher.exe + Qt runtime      from the launcher build (build_launcher.cmd, x64, windeployqt
                                          output incl. the app-local MSVC runtime of Release builds)
   LIESMICH.txt                           short German readme for players
+  tools\\texture_upscale.py               G2: builds a texture pack from the player's own texture dump (needs Python with
+                                         numpy and Pillow on the player's PC; docs/g2_report.md)
+  tools\\movie_upscale.py, xdvdfs.py      M6b: builds a movie pack from the player's own disc (needs Python, FFmpeg and
+                                         Real-ESRGAN ncnn Vulkan installed by the player; docs/m6b_report.md)
   LICENSES\\Qt\\                           the GNU LGPL 3.0 and GPL 3.0 texts and a note on Qt and its source
                                          (LGPLv3 section 4; review M3c finding 14) - from launcher\\licenses\\
   portable.txt                           only with --portable (config and user data next to futurama.exe)
@@ -137,7 +141,24 @@ def readme_text(portable: bool) -> str:
         "  Ausgabe über das Windows-Standardgerät oder ein im Reiter „Audio“ gewähltes Gerät (Stereo oder\n"
         "  5.1), mit Gesamtlautstärke, Raumhall und einem Testton. Musik-, Effekt- und Sprachlautstärke stellt\n"
         "  man wie auf der Xbox im Spiel unter „Optionen“ ein. Ohne Ausgabegerät (z. B. Fernseher aus) läuft\n"
-        "  das Spiel stumm weiter und schaltet den Ton ein, sobald ein Gerät da ist. Filme fehlen noch.\n"
+        "  das Spiel stumm weiter und schaltet den Ton ein, sobald ein Gerät da ist.\n"
+        "\n"
+        "Texturpaket (optional)\n"
+        "  Launcher, Reiter „Grafik“: „Texturen abspeichern“ an, einmal spielen (die Texturen landen als PNG in\n"
+        "  <Benutzerdaten>\\texture_dump), dann mit Python (numpy, Pillow)\n"
+        "    python tools\\texture_upscale.py <Benutzerdaten>\\texture_dump <Benutzerdaten>\\texture_pack\n"
+        "  und im Launcher „Texturpaket“ auf diesen Ordner setzen. Pakete enthalten Spielgrafik: nicht weitergeben.\n"
+        "  Mit KI (empfohlen, wer waifu2x-ncnn-vulkan selbst installiert hat; das Werkzeug lädt nichts):\n"
+        "    python tools\\texture_upscale.py <Abzug> <Paket> --method waifu2x --w2x-exe <Pfad>\\waifu2x-ncnn-vulkan.exe\n"
+        "  Alpha (Lampen, Leuchten, Gitter) und die Schrift gehen dabei nicht durch die KI.\n"
+        "\n"
+        "Filmpaket (optional)\n"
+        "  Die Filme der eigenen Disc mit KI auf 1280 x 960 hochskalieren (Python, FFmpeg und Real-ESRGAN ncnn\n"
+        "  Vulkan selbst installieren; eine Nvidia-Grafikkarte für NVENC):\n"
+        "    python tools\\movie_upscale.py --iso <Disc-Abbild> --pack <Benutzerdaten>\\movie_pack\n"
+        "           --ai-exe <Pfad>\\realesrgan-ncnn-vulkan.exe\n"
+        "  und im Launcher „Filmpaket“ auf diesen Ordner setzen. Ton, Takt und Überspringen bleiben wie im\n"
+        "  Original. Pakete enthalten Spielgrafik: nicht weitergeben.\n"
         "\n"
         "Probleme?\n"
         "  Nach dem Spiel zeigt der Launcher den Rückgabecode mit Erklärung und die letzten 30 Zeilen des\n"
@@ -154,6 +175,8 @@ def readme_text(portable: bool) -> str:
         "                                  und dürfen ersetzt werden\n"
         "  LICENSES\\Qt\\                    Lizenztexte (GNU LGPL 3.0 und GPL 3.0) und Hinweis zum Qt-Quelltext\n"
         "  vcruntime140*.dll, msvcp140*.dll Microsoft Visual C++ Laufzeit\n"
+        "  tools\\texture_upscale.py        Werkzeug für Texturpakete (Python)\n"
+        "  tools\\movie_upscale.py          Werkzeug für Filmpakete (Python, mit tools\\xdvdfs.py)\n"
     )
 
 
@@ -245,6 +268,12 @@ def main() -> int:
         for pdb in ("futurama.pdb", "futurama_host.pdb"):
             if (game_bin / pdb).is_file():
                 shutil.copy2(game_bin / pdb, out / pdb)
+    # G2: the texture pack tool (pure Python; packs are made by the player from the own dump, never shipped).
+    (out / "tools").mkdir()
+    shutil.copy2(REPO / "tools" / "texture_upscale.py", out / "tools" / "texture_upscale.py")
+    # M6b: the movie pack tool and its disc reader (packs are made by the player from the own disc, never shipped).
+    for tool in ("movie_upscale.py", "xdvdfs.py"):
+        shutil.copy2(REPO / "tools" / tool, out / "tools" / tool)
     (out / "LIESMICH.txt").write_text(readme_text(args.portable), encoding="utf-8-sig", newline="\r\n")
     licenses = out / "LICENSES" / "Qt"
     licenses.mkdir(parents=True)

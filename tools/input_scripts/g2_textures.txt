@@ -1,0 +1,48 @@
+# g2_textures.txt - G2 texture packs: screenshots of the main menu and of fixed views in level 1-1 for before/after
+# comparisons ([render] texture_pack off/on) and the texture dump run ([render] texture_pack_dump = 1).
+# Same path as m4_newgame.txt (Intro -> Frontend -> "Neues Spiel" -> Level1-1). Format: README.md in this folder.
+
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 90t
+screenshot g2_menu
+
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+# Fade-in after the skipped cut scene; a little extra time for the pack loader.
+wait 120t
+screenshot g2_level_start
+# Turn the camera (right stick) to two more views, without walking (the views stay the same run to run).
+hold RX=1.0 40t
+wait 60t
+screenshot g2_level_turn1
+hold RX=1.0 40t
+wait 60t
+screenshot g2_level_turn2
+hold LY=1.0 90t
+wait 60t
+screenshot g2_level_walk
+# Freecam (M4b: LS+RS) for close-ups: fly back a little, zoom in (UP), hide the HUD (Y).
+press LS RS 3t
+wait 10t
+hold LY=-1.0 30t
+press Y 3t
+wait 10t
+screenshot g2_free
+press UP 20t
+wait 5t
+screenshot g2_free_zoom
+press LS RS 3t
+wait 10t
+quit 0

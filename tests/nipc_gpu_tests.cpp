@@ -94,7 +94,7 @@ TEST_CASE("nipc_gpu: the half-pixel shift moves transformed vertices +0.5 pixel 
     CHECK(std::memcmp(&same, &p, sizeof(p)) == 0);
 }
 
-TEST_CASE("nipc_gpu: ClearBuffer clears the whole target, NiRect rectangles (y up) and skips texture targets") {
+TEST_CASE("nipc_gpu: ClearBuffer clears the whole target, NiRect rectangles (y up) and texture targets") {
     GpuRenderer::CreateParams params;
     params.window = nullptr;  // headless back buffer
     params.width = 64;
@@ -135,15 +135,129 @@ TEST_CASE("nipc_gpu: ClearBuffer clears the whole target, NiRect rectangles (y u
     REQUIRE(device.CaptureBackBuffer(image));
     CHECK(Pixel(image, 16, 10) == 0xFF102030u);
 
-    // Texture targets (render to texture, P2): clears are counted no-ops until SetRenderTarget(NULL).
-    gpu->SetTextureTarget(32, 32);
+    // M8: texture targets (render to texture) get their own color target; the back buffer stays untouched.
+    constexpr ni::GuestPtr kData = 0x00123450;  // only a key here
+    gpu->SetTextureTarget(kData, 32, 32);
     gpu->ClearBuffer(nullptr, 1, 0xFF0000FFu, 1.0f, 0);
+    gpu->ClearBuffer(&topRight, 1, 0xFFFF0000u, 1.0f, 0);
     gpu->SetBackBufferTarget();
     REQUIRE(device.CaptureBackBuffer(image));
     CHECK(Pixel(image, 0, 47) == 0xFF102030u);
+    const rhi::TextureHandle rendered = gpu->RenderedTexture(kData, 32, 32);
+    REQUIRE(rendered);
+    CHECK(rendered != gpu->BlackTexture());
+    rhi::Image texture;
+    REQUIRE(device.ReadTexture(rendered, 0, texture));
+    CHECK(texture.width == 32);
+    CHECK(Pixel(texture, 0, 31) == 0xFF0000FFu);
+    CHECK(Pixel(texture, 16, 0) == 0xFFFF0000u);  // NiRect in the texture's own pixels
+    CHECK(Pixel(texture, 15, 0) == 0xFF0000FFu);
     gpu->ClearBuffer(nullptr, 1, 0xFF0000FFu, 1.0f, 0);
     REQUIRE(device.CaptureBackBuffer(image));
     CHECK(Pixel(image, 0, 47) == 0xFF0000FFu);
+    gpu->ForgetRenderedTexture(kData);
 
     CHECK(DebugErrors(device) == 0);
+}
+
+TEST_CASE("nipc_gpu: render to texture at the render resolution with MSAA is resolved before sampling") {
+    GpuRenderer::CreateParams params;
+    params.window = nullptr;
+    params.width = 64;
+    params.height = 48;
+    params.debugLayer = true;
+    params.softwareAdapter = true;
+    params.quality.resolutionWidth = 128;  // internal factor 2
+    params.quality.resolutionHeight = 96;
+    params.quality.msaa = 4;
+    std::string error;
+    std::unique_ptr<GpuRenderer> gpu = GpuRenderer::Create(params, &error);
+    if (gpu == nullptr) {
+        MESSAGE("GpuRenderer::Create failed (no WARP?): " << error);
+        return;
+    }
+    rhi::Device& device = gpu->Device();
+    constexpr ni::GuestPtr kData = 0x00123460;
+    gpu->SetTextureTarget(kData, 16, 16);
+    gpu->ClearBuffer(nullptr, 1 | 4, 0xFF00FF00u, 1.0f, 0);
+    const ni::NiRectF left{0.0f, 0.5f, 1.0f, 0.0f};
+    gpu->ClearBuffer(&left, 1, 0xFFFFFFFFu, 1.0f, 0);
+    gpu->SetBackBufferTarget();
+    const rhi::TextureHandle rendered = gpu->RenderedTexture(kData, 16, 16);
+    rhi::Image texture;
+    REQUIRE(device.ReadTexture(rendered, 0, texture));
+    CHECK(texture.width == 32);  // 16 guest pixels x 2
+    CHECK(texture.height == 32);
+    CHECK(Pixel(texture, 0, 0) == 0xFFFFFFFFu);
+    CHECK(Pixel(texture, 15, 31) == 0xFFFFFFFFu);
+    CHECK(Pixel(texture, 16, 0) == 0xFF00FF00u);
+    CHECK(Pixel(texture, 31, 31) == 0xFF00FF00u);
+    CHECK(DebugErrors(device) == 0);
+}
+
+TEST_CASE("nipc_gpu: render-to-texture size follows the render resolution") {
+    CHECK(RenderTargetDimension(128, 480, 480) == 128);
+    CHECK(RenderTargetDimension(128, 480, 960) == 256);
+    CHECK(RenderTargetDimension(128, 480, 2160) == 576);  // factor 4.5
+    CHECK(RenderTargetDimension(256, 480, 4320) == 2304);
+    CHECK(RenderTargetDimension(1024, 480, 4320) == kMaxRenderTargetDimension);
+    CHECK(RenderTargetDimension(128, 480, 240) == 128);   // never below the guest size
+    CHECK(RenderTargetDimension(0, 480, 960) == 0);
+}
+
+TEST_CASE("nipc_gpu: G3 bars - black only for centred frames, a depth clear or stretched content leaves the sides") {
+    // Fog fix (user report 2026-10-13, Level1-2): in a level the game clears only depth/stencil and the Hor+ scene
+    // covers the width; pixels the scene leaves empty (beyond the far plane) must keep the previous picture at the
+    // sides as in the centre instead of showing the black bar clear.
+    auto make = [](std::unique_ptr<GpuRenderer>& gpu) {
+        GpuRenderer::CreateParams params;
+        params.window = nullptr;
+        params.width = 640;  // the guest screen (widescreen::CoversScreen tests 640 x 480)
+        params.height = 480;
+        params.debugLayer = true;
+        params.softwareAdapter = true;
+        params.aspectWidth = 16;
+        params.aspectHeight = 9;
+        std::string error;
+        gpu = GpuRenderer::Create(params, &error);
+        if (gpu == nullptr) {
+            MESSAGE("GpuRenderer::Create failed (no WARP?): " << error);
+        }
+        return gpu != nullptr;
+    };
+    const ni::NiRectF full{0.0f, 1.0f, 1.0f, 0.0f};
+    const ni::NiRectF middle{0.25f, 0.75f, 0.75f, 0.25f};  // inside the centred 4:3 area, not covering
+    rhi::Image image;
+
+    std::unique_ptr<GpuRenderer> gpu;
+    if (!make(gpu)) {
+        return;
+    }
+    const std::uint32_t w = gpu->Sizes().internalWidth;
+    const std::uint32_t h = gpu->Sizes().internalHeight;
+    REQUIRE(w * 9 == h * 16);
+    gpu->ClearBuffer(nullptr, 1 | 2 | 4, 0xFF00FF00u, 1.0f, 0);  // whole target (no placement): the "old picture"
+    gpu->ClearBuffer(&full, 2 | 4, 0xFF000000u, 1.0f, 0);         // the level's depth/stencil clear
+    REQUIRE(gpu->Device().CaptureBackBuffer(image));
+    CHECK(Pixel(image, 0, h / 2) == 0xFF00FF00u);  // side kept
+    CHECK(Pixel(image, w - 1, h / 2) == 0xFF00FF00u);
+    gpu->ClearBuffer(&middle, 1, 0xFF0000FFu, 1.0f, 0);  // centred content: now the bars are black
+    REQUIRE(gpu->Device().CaptureBackBuffer(image));
+    CHECK(Pixel(image, 0, h / 2) == 0xFF000000u);
+    CHECK(Pixel(image, w - 1, h / 2) == 0xFF000000u);
+    CHECK(Pixel(image, w / 2, h / 2) == 0xFF0000FFu);
+    CHECK(DebugErrors(gpu->Device()) == 0);
+    gpu.reset();
+
+    // A full-screen colour clear is stretched over the width: it fills the sides itself, no black bars first and
+    // none after it in that frame.
+    if (!make(gpu)) {
+        return;
+    }
+    gpu->ClearBuffer(&full, 1 | 2 | 4, 0xFF217219u, 1.0f, 0);
+    gpu->ClearBuffer(&middle, 1, 0xFF0000FFu, 1.0f, 0);
+    REQUIRE(gpu->Device().CaptureBackBuffer(image));
+    CHECK(Pixel(image, 0, h / 2) == 0xFF217219u);
+    CHECK(Pixel(image, gpu->Sizes().internalWidth - 1, 0) == 0xFF217219u);
+    CHECK(DebugErrors(gpu->Device()) == 0);
 }

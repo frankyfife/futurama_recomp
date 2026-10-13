@@ -55,9 +55,9 @@ bool SetError(std::string* error, const std::string& text) noexcept {
     return false;
 }
 
-// Encodes `rows` (24-bit BGR, tightly packed) as PNG into `path`.
+// Encodes `rows` (24-bit BGR, or 32-bit BGRA with `alpha` (G2 texture dump), tightly packed) as PNG into `path`.
 HRESULT EncodePng(const std::filesystem::path& path, std::uint32_t width, std::uint32_t height,
-                  const std::vector<std::uint8_t>& rows, const char** step) {
+                  const std::vector<std::uint8_t>& rows, const char** step, bool alpha = false) {
     ComPtr<IWICImagingFactory> factory;
     *step = "CoCreateInstance(WICImagingFactory)";
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory));
@@ -93,17 +93,19 @@ HRESULT EncodePng(const std::filesystem::path& path, std::uint32_t width, std::u
         *step = "SetSize";
         hr = frame->SetSize(width, height);
     }
-    WICPixelFormatGUID format = GUID_WICPixelFormat24bppBGR;
+    const WICPixelFormatGUID wanted = alpha ? GUID_WICPixelFormat32bppBGRA : GUID_WICPixelFormat24bppBGR;
+    WICPixelFormatGUID format = wanted;
     if (SUCCEEDED(hr)) {
         *step = "SetPixelFormat";
         hr = frame->SetPixelFormat(&format);
-        if (SUCCEEDED(hr) && format != GUID_WICPixelFormat24bppBGR) {
-            hr = E_FAIL;  // the PNG encoder always takes 24bpp BGR
+        if (SUCCEEDED(hr) && format != wanted) {
+            hr = E_FAIL;  // the PNG encoder takes 24bpp BGR and 32bpp BGRA as they are
         }
     }
     if (SUCCEEDED(hr)) {
         *step = "WritePixels";
-        hr = frame->WritePixels(height, width * 3, static_cast<UINT>(rows.size()), const_cast<BYTE*>(rows.data()));
+        const UINT stride = width * (alpha ? 4u : 3u);
+        hr = frame->WritePixels(height, stride, static_cast<UINT>(rows.size()), const_cast<BYTE*>(rows.data()));
     }
     if (SUCCEEDED(hr)) {
         *step = "IWICBitmapFrameEncode::Commit";
@@ -152,6 +154,51 @@ bool WritePngFile(const std::filesystem::path& path, const gfx::rhi::Image& imag
         }
         const char* step = "";
         const HRESULT hr = EncodePng(path, image.width, image.height, rows, &step);
+        if (FAILED(hr)) {
+            std::filesystem::remove(path, ec);
+            return SetError(error, HrText(step, hr));
+        }
+        return true;
+    } catch (...) {
+        return SetError(error, "out of memory");
+    }
+}
+
+bool WritePngFileRgba(const std::filesystem::path& path, const gfx::rhi::Image& image, std::string* error) noexcept {
+    try {
+        using gfx::rhi::Format;
+        const bool rgba = image.format == Format::RGBA8_UNorm;
+        if (!rgba && image.format != Format::BGRA8_UNorm) {
+            return SetError(error, std::string("unsupported image format ") + gfx::rhi::GetFormatInfo(image.format).name);
+        }
+        if (image.width == 0 || image.height == 0 || image.rowPitch < image.width * 4 ||
+            image.pixels.size() < static_cast<std::size_t>(image.rowPitch) * image.height) {
+            return SetError(error, "invalid image size");
+        }
+        std::error_code ec;
+        if (path.has_parent_path()) {
+            std::filesystem::create_directories(path.parent_path(), ec);
+            if (ec) {
+                return SetError(error, "cannot create " + path.parent_path().string() + ": " + ec.message());
+            }
+        }
+        std::vector<std::uint8_t> rows(static_cast<std::size_t>(image.width) * 4 * image.height);
+        for (std::uint32_t y = 0; y < image.height; ++y) {
+            const std::uint8_t* src = image.pixels.data() + static_cast<std::size_t>(y) * image.rowPitch;
+            std::uint8_t* dst = rows.data() + static_cast<std::size_t>(y) * image.width * 4;
+            for (std::uint32_t x = 0; x < image.width; ++x, src += 4, dst += 4) {
+                dst[0] = rgba ? src[2] : src[0];  // B
+                dst[1] = src[1];                  // G
+                dst[2] = rgba ? src[0] : src[2];  // R
+                dst[3] = src[3];                  // A
+            }
+        }
+        ComScope com;
+        if (!com.Usable()) {
+            return SetError(error, "CoInitializeEx failed");
+        }
+        const char* step = "";
+        const HRESULT hr = EncodePng(path, image.width, image.height, rows, &step, true);
         if (FAILED(hr)) {
             std::filesystem::remove(path, ec);
             return SetError(error, HrText(step, hr));

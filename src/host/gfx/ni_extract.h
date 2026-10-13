@@ -155,6 +155,23 @@ enum class TexturePath : std::uint8_t {
     Screen,       // slot 55 pipeline (vtable 0x2ABDB0, vf2 FUN_00160270): exact
 };
 
+// M8: a further pass of the texture pipeline (pipeline vf3 0x1628B0 for pass index >= 1): FUN_00159270 with the pass's
+// NiAlphaProperty from the pipeline manager's table (+0x2E8 + 4 * type of the pass's first stage), the pass's texture
+// stages, fog off (FUN_00149AE0 switches D3DRS_FOGENABLE off from the second pass on). Everything else (z, stencil,
+// cull, lighting, material) is the first pass's state. Used for the projected shadows of NiTextureEffect.
+inline constexpr std::uint32_t kMaxExtraPasses = 8;  // the pipeline sets up at most 8 texture effects (+0x770 < 8)
+struct PassDesc {
+    bool alphaBlendEnable = false;
+    rhi::BlendFactor srcBlend = rhi::BlendFactor::One;
+    rhi::BlendFactor dstBlend = rhi::BlendFactor::Zero;
+    bool alphaTestEnable = false;
+    rhi::CompareFunc alphaFunc = rhi::CompareFunc::Always;
+    std::uint8_t alphaRef = 0;
+    std::uint32_t stageCount = 0;
+    TextureStageDesc stages[FF_MAX_STAGES];
+    Float4 textureFactor{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
 // The D3D8 state of one draw. Defaults = the state of the default NiPropertyState properties.
 struct RenderStateDesc {
     // NiAlphaProperty (FUN_00159270)
@@ -202,11 +219,12 @@ struct RenderStateDesc {
     std::uint32_t stageCount = 0;  // stages with colorOp != DISABLE (0..4)
     TextureStageDesc stages[kMaxTextureStages];
     Float4 textureFactor{1.0f, 1.0f, 1.0f, 1.0f};  // D3DRS_TEXTUREFACTOR
-    std::uint32_t passCount = 1;                   // multi-pass pipelines (P2): only pass 1 in M3
+    std::uint32_t passCount = 1;                   // 1 + extra passes (M8: projected shadows), <= 1 + kMaxExtraPasses
     // Added in phase 2 (extract agent):
     bool localViewer = true;  // D3DRS_LOCALVIEWER: REN never writes it, device
                               // default TRUE (DAT_00242748[104])
     TexturePath texturePath = TexturePath::SingleStage;
+    PassDesc extraPasses[kMaxExtraPasses];  // M8: passes 2..passCount
 };
 
 // D3DLIGHT8 as FUN_0015B6A0 fills it (world space).
@@ -234,8 +252,8 @@ struct LightSetDesc {
     std::uint32_t dropped = 0;  // enabled lights beyond kMaxLights (logged by the caller)
 };
 
-// NiTextureEffect slots of the NiDynamicEffectState (P2: projected lights/shadows, environment and fog
-// maps). Captured for diagnostics; M3 does not render them.
+// NiTextureEffect slots of the NiDynamicEffectState (projected lights/shadows, environment and fog maps). Captured for
+// diagnostics; M8 renders the projected shadows (RenderStateDesc::extraPasses), not the others.
 struct TextureEffectSlots {
     GuestPtr projectedLights[2] = {};
     GuestPtr projectedShadows[2] = {};
@@ -255,6 +273,7 @@ enum class DrawKind : std::uint8_t {
     TriStrips,      // slot 51 RenderTristrips(NiTriStripsData*, NiSkinInstance*, NiTransform*, NiBound*)
     ScreenPolygon,  // slot 54 RenderScreenPolygon(NiScreenPolygon*)
     ScreenTexture,  // slot 55 RenderScreenTexture(NiScreenTexture*)
+    Points,         // slot 52 RenderPoints(NiParticlesData*, NiTransform*, NiBound*) (M8: camera-facing quads)
 };
 
 struct VertexStreamView {
@@ -355,6 +374,9 @@ struct ExtractCounters {
     std::uint64_t invalidMapModes = 0;       // clamp > 3 or filter > 5 (out of REN's tables)
     std::uint64_t unresolvedTextures = 0;    // stage textures the resolver had no host texture for
     std::uint64_t lightsPurged = 0;          // PurgeLight removed an enabled light (slot 60, review M3 #4)
+    std::uint64_t shadowPasses = 0;          // M8: extra passes of projected shadows
+    std::uint64_t shadowEffectsSkipped = 0;  // M8: texture effects not reproduced (projected lights, environment and
+                                             // fog maps, other coordinate modes, a texture without host image)
 };
 
 // D3D8 state persistence between draws (GFX_CONTRACT.md 4.2, header comment above): REN's caches and the
@@ -454,6 +476,9 @@ struct ExtractContext {
     // false: never call guest code (unit tests): skinned draws return Unsupported, lights whose
     // GetEffectType is not a known implementation are skipped.
     bool allowGuestCalls = true;
+    // M8: the default pipeline's clipping texture (FUN_00163A40: 2 x 1 texels, transparent black and opaque white,
+    // pipeline +0xDEC) as a host texture; empty: clipped projected shadows are drawn without their plane.
+    rhi::TextureHandle clipTexture;
 };
 
 // Property/effect state -> RenderStateDesc + LightSetDesc + effect slots (FUN_00159CD0, FUN_0015BF80,
@@ -492,6 +517,29 @@ ExtractStatus ExtractTriangles(const ExtractContext& context, const GeometryInpu
                                DrawItem* out) noexcept;
 ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput& input,
                               DrawItem* out) noexcept;
+
+// M8: texture coordinate transforms of the default pipeline for a projected shadow (TCI CAMERASPACEPOSITION, TTFF
+// COUNT2, row vectors). `inverseView` = rows right, up, direction, location of the camera (pipeline manager
+// +0xB10..+0xB48, written by SetCameraData through FUN_00159E70). WORLD_PARALLEL handler 0x162C90: M = inverseView *
+// P + T with P = the effect's world projection rows (+0x120, 16-byte stride) and T its translation (+0x150).
+// Clipping plane stage FUN_00162BB0: column 0 = -(plane normal) in camera space, M[3][0] = -n.location + 0.5 + d
+// (u < 0.5 in front of the plane: the clip texture's black texel; behind it: white, which the stage's ADD saturates).
+Matrix4 ProjectedShadowTransform(const Float3 inverseView[4], const float projection[3][4],
+                                 const float translation[3]) noexcept;
+Matrix4 ShadowClipTransform(const Float3 inverseView[4], const Float3& planeNormal, float planeConstant) noexcept;
+
+// Slot 52 RenderPoints (0x148AE0, M8): one camera-facing quad per active particle like the original's CPU vertex
+// buffer - corners c - A, c - B, c + A, c + B with A = (right + up) * radius / scale * size, B = (right - up) * ...
+// (camera vectors of SetCameraData, NiTransform scale), UVs (0,0) (1,0) (1,1) (0,1), the particle's color (white
+// without a color array) and normal on every corner, indices 0 1 2 0 2 3 (FUN_0015CBF0), triangle list. State as for
+// the shapes with one UV set. Positions stay in model space (world = FUN_001489A0 of the transform). Empty without an
+// active particle.
+ExtractStatus ExtractPoints(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept;
+// Pure helpers of ExtractPoints (tests): the two quad axes (x87 order of 0x148C54..), the four corners of one
+// particle, and the D3DCOLOR rounding of a particle color (nullptr = white).
+void ParticleAxes(const Float3& right, const Float3& up, float radius, float scale, Float3* a, Float3* b) noexcept;
+void ParticleCorners(const Float3& center, float size, const Float3& a, const Float3& b, Float3 out[4]) noexcept;
+Float4 ParticleColor(const float* rgba) noexcept;
 
 // Slot 54: property state = polygon +0x08, no effect state; positions -> (d*x, d*y, d) in the arena,
 // fan -> triangle list (strip if +0x1E), useScreenCamera = true, world = identity.

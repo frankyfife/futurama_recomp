@@ -117,6 +117,7 @@ struct TextureRecord {
     Format format = Format::Unknown;
     std::uint8_t usage = 0;
     std::uint64_t bytes = 0;
+    std::uint32_t samples = 1;  // M8: multisampled render-target / depth textures
 };
 
 struct ShaderRecord {
@@ -294,6 +295,7 @@ public:
     bool ResizeBackBuffers(std::uint32_t width, std::uint32_t height, std::uint32_t sampleCount,
                            std::uint32_t outputWidth, std::uint32_t outputHeight) noexcept override;  // M3c
     bool ReadTexture(TextureHandle texture, std::uint32_t level, Image& out) noexcept override;
+    bool ResolveTexture(TextureHandle destination, TextureHandle source) noexcept override;  // M8
 
     DebugLayerInfo DebugLayer() const noexcept override { return debugLayer_; }
     std::size_t DrainDebugMessages(std::vector<DebugMessage>& out) noexcept override;

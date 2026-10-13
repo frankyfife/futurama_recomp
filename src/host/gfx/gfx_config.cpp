@@ -339,6 +339,10 @@ Settings SettingsFromConfig(const core::Config& cfg) {
                 &s.outline.hasOpacity, &s.outline.opacity);
     ParseOrWarn(cfg, "outline_thickness", "a number from 0 to 2.5",
                 [](const std::string& t, float* v) { return ParseOutlineThickness(t, v); }, &s.outline.thickness);
+    // G2: texture replacement pack and dump (gfx/texture_pack.h).
+    s.texturePack = cfg.GetPath("render", "texture_pack", {});
+    s.texturePackDump = cfg.GetBool("render", "texture_pack_dump", false);
+    s.texturePackDumpDir = cfg.userdata / "texture_dump";
     if (cfg.Has("render", "screenshot_size")) {
         const std::string size = Lower(cfg.GetString("render", "screenshot_size"));
         if (size == "internal") {

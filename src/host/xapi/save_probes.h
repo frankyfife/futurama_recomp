@@ -47,9 +47,14 @@ void LogSaveSummary() noexcept;
 // and opens the Breakdown screen, whose entry "Speichern" is the game's only save point (m7_saves.md 1.1).
 // Deferred: the call happens on the guest main thread at the next logic tick heartbeat
 // (RunPendingGameActions, called by the tick heartbeat probe). Returns false if no level runs (no level
-// object) or the name is not 1..8 characters.
-bool RequestLevelEnd(const char* nextLevel) noexcept;
-// Runs a pending RequestLevelEnd (guest main thread, outside every XPP/router lock).
+// object) or the name is not 1..8 characters. `guaranteeStartWeapons` (G7 level skip): afterwards the pending state
+// for the next level gets the weapons of that level's start state (xapi::select::EnsureStartWeapons).
+bool RequestLevelEnd(const char* nextLevel, bool guaranteeStartWeapons = false) noexcept;
+// Debug action (input script `game state`): logs the player's state text at the next tick heartbeat
+// ("save: debug action state: Level=...;Health=...;Ammo=...;Pickup=...;Equip=...;Lives=...").
+bool RequestStateDump() noexcept;
+// Runs pending debug actions (guest main thread, outside every XPP/router lock) and, every tick, the start state
+// observer xapi::select::ObserveStartState.
 void RunPendingGameActions() noexcept;
 
 }  // namespace xapi

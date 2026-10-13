@@ -8,10 +8,15 @@
 
 #include <intrin.h>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace xapi::select {
 namespace {
@@ -311,6 +316,315 @@ std::string StripInventoryLines(std::string_view state) {
         pos = end;
     }
     return out;
+}
+
+const StartLevel* FindStartLevel(std::string_view level) noexcept {
+    for (const StartLevel& l : kStartLevels) {
+        if (IEquals(level, l.level)) {
+            return &l;
+        }
+    }
+    return nullptr;
+}
+
+bool PlayAsReplacesCharacter(Character character, std::string_view levelName, PlayAs playAs) noexcept {
+    const char* def = character == Character::Fry      ? "fry"
+                      : character == Character::Bender ? "bender"
+                      : character == Character::Leela  ? "leela"
+                                                       : nullptr;
+    return def != nullptr && MapPlayerDefName(def, levelName, playAs) != nullptr;
+}
+
+namespace {
+
+constexpr int kAmmoSlots = 5;  // FUN_000C5340 / FUN_000C26E0: 5 ammo slots
+
+std::vector<std::string> SplitLines(std::string_view s) {
+    std::vector<std::string> lines;
+    std::size_t pos = 0;
+    while (pos < s.size()) {
+        std::size_t end = s.find('\n', pos);
+        if (end == std::string_view::npos) {
+            end = s.size();
+        }
+        if (end > pos) {
+            lines.emplace_back(s.substr(pos, end - pos));
+        }
+        pos = end + 1;
+    }
+    return lines;
+}
+
+bool StartsWith(std::string_view s, std::string_view prefix) noexcept {
+    return s.size() >= prefix.size() && s.substr(0, prefix.size()) == prefix;
+}
+
+// "Pickup=<name>" / "Equip=<name>" -> name, else empty. `equip` = Equip line.
+std::string_view WeaponOf(std::string_view line, bool& equip) noexcept {
+    equip = StartsWith(line, "Equip=");
+    if (equip) {
+        return line.substr(6);
+    }
+    return StartsWith(line, "Pickup=") ? line.substr(7) : std::string_view();
+}
+
+// Ammo lines as FUN_000C5340 reads them: "Ammo=<v>" sets all slots, "Ammo=<slot>|<v>" one slot (atol / atof+ftol).
+// Returns false if the text has no Ammo line.
+bool ParseAmmo(const std::vector<std::string>& lines, std::array<long, kAmmoSlots>& out) {
+    out.fill(0);
+    bool any = false;
+    for (const std::string& line : lines) {
+        if (!StartsWith(line, "Ammo=")) {
+            continue;
+        }
+        any = true;
+        const std::string value = line.substr(5);
+        const std::size_t bar = value.find('|');
+        if (bar == std::string::npos) {
+            out.fill(static_cast<long>(std::atof(value.c_str())));
+        } else {
+            const long slot = std::atol(value.substr(0, bar).c_str());
+            if (slot >= 0 && slot < kAmmoSlots) {
+                out[static_cast<std::size_t>(slot)] = static_cast<long>(std::atof(value.c_str() + bar + 1));
+            }
+        }
+    }
+    return any;
+}
+
+}  // namespace
+
+WeaponMerge MergeStartWeapons(std::string_view state, std::string_view table) {
+    WeaponMerge result;
+    std::vector<std::string> lines = SplitLines(state);
+    const std::vector<std::string> tableLines = SplitLines(table);
+
+    bool hasEquip = false;
+    for (const std::string& line : lines) {
+        bool equip = false;
+        if (!WeaponOf(line, equip).empty() && equip) {
+            hasEquip = true;
+        }
+    }
+    auto findWeapon = [&lines](std::string_view name) -> std::string* {
+        for (std::string& line : lines) {
+            bool equip = false;
+            const std::string_view w = WeaponOf(line, equip);
+            if (!w.empty() && IEquals(w, name)) {
+                return &line;
+            }
+        }
+        return nullptr;
+    };
+
+    std::vector<std::string> added;
+    for (const std::string& tline : tableLines) {
+        bool tableEquip = false;
+        const std::string_view name = WeaponOf(tline, tableEquip);
+        if (name.empty()) {
+            continue;
+        }
+        bool inAdded = false;
+        for (const std::string& a : added) {
+            bool e = false;
+            inAdded = inAdded || IEquals(WeaponOf(a, e), name);
+        }
+        if (inAdded) {
+            continue;
+        }
+        if (std::string* own = findWeapon(name)) {
+            if (tableEquip && !hasEquip) {
+                *own = "Equip=" + std::string(name);  // the player's own weapon becomes the equipped one
+                hasEquip = true;
+                result.equipped = std::string(name);
+            }
+            continue;
+        }
+        const bool equipIt = tableEquip && !hasEquip;
+        added.push_back((equipIt ? "Equip=" : "Pickup=") + std::string(name));
+        if (equipIt) {
+            hasEquip = true;
+            result.equipped = std::string(name);
+        }
+        result.added += (result.added.empty() ? "" : ",") + std::string(name);
+    }
+
+    if (!added.empty()) {
+        // After the last weapon line, else before the trailing counters, else at the end (FUN_000C26E0 order).
+        std::size_t at = lines.size();
+        bool afterWeapon = false;
+        for (std::size_t i = lines.size(); i-- > 0;) {
+            bool e = false;
+            if (!WeaponOf(lines[i], e).empty()) {
+                at = i + 1;
+                afterWeapon = true;
+                break;
+            }
+        }
+        if (!afterWeapon) {
+            for (std::size_t i = 0; i < lines.size(); ++i) {
+                if (StartsWith(lines[i], "Lives=") || StartsWith(lines[i], "AgeSeconds=") ||
+                    StartsWith(lines[i], "AgeHours=")) {
+                    at = i;
+                    break;
+                }
+            }
+        }
+        lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(at), added.begin(), added.end());
+
+        std::array<long, kAmmoSlots> have{};
+        std::array<long, kAmmoSlots> want{};
+        const bool stateAmmo = ParseAmmo(lines, have);
+        if (ParseAmmo(tableLines, want)) {
+            std::array<long, kAmmoSlots> merged = have;
+            for (std::size_t s = 0; s < merged.size(); ++s) {
+                if (want[s] > merged[s]) {
+                    merged[s] = want[s];
+                    result.ammoRaised = true;
+                }
+            }
+            if (result.ammoRaised) {
+                std::size_t ammoAt = lines.size();
+                for (std::size_t i = 0; i < lines.size(); ++i) {
+                    if (StartsWith(lines[i], "Ammo=")) {
+                        ammoAt = std::min(ammoAt, i);
+                    }
+                }
+                if (!stateAmmo) {
+                    // No Ammo line: before the first weapon line (FUN_000C26E0 writes Ammo before the weapons).
+                    for (std::size_t i = 0; i < lines.size(); ++i) {
+                        bool e = false;
+                        if (!WeaponOf(lines[i], e).empty()) {
+                            ammoAt = i;
+                            break;
+                        }
+                    }
+                }
+                std::erase_if(lines, [](const std::string& l) { return StartsWith(l, "Ammo="); });
+                ammoAt = std::min(ammoAt, lines.size());
+                std::vector<std::string> ammo;
+                for (int s = 0; s < kAmmoSlots; ++s) {
+                    char buf[48];
+                    std::snprintf(buf, sizeof buf, "Ammo=%d|%ld.000000", s, merged[static_cast<std::size_t>(s)]);
+                    ammo.emplace_back(buf);
+                }
+                lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(ammoAt), ammo.begin(), ammo.end());
+            }
+        }
+    }
+
+    if (!result.Changed()) {
+        result.text = std::string(state);
+        return result;
+    }
+    for (const std::string& line : lines) {
+        result.text += line;
+        result.text += '\n';
+    }
+    return result;
+}
+
+namespace {
+
+std::uint32_t SafeReadU32(guest::GuestAddr p) noexcept {
+    return (p >= 0x10000 && guest::IsReadable(p, 4)) ? guest::Read<std::uint32_t>(p) : 0;
+}
+
+std::string Flat(std::string text) {
+    while (!text.empty() && (text.back() == '\n' || text.back() == 0)) {
+        text.pop_back();
+    }
+    for (char& c : text) {
+        c = c == '\n' ? ';' : c;
+    }
+    return text;
+}
+
+constexpr guest::GuestAddr kBreakdownPtr = 0x002E8E4C;  // statistics screen "Breakdown"; byte +1 = open
+bool g_startStateArmed = false;  // a level existed while a start state was pending (guest main thread)
+
+}  // namespace
+
+void EnsureStartWeapons(std::string_view nextLevel) noexcept {
+    try {
+        ReadConfigOnce();
+        const StartLevel* target = FindStartLevel(nextLevel);
+        if (target == nullptr) {
+            return;
+        }
+        const std::string table = GuestString(SafeReadU32(kStartStateTable + 8 * target->row), 512);
+        if (StripInventoryLines(table).size() == table.size()) {
+            return;  // the level starts without weapons (Bender, Leela, Zoidberg levels, Level1-1)
+        }
+        const auto playAs = static_cast<PlayAs>(g_playAs.load(std::memory_order_relaxed));
+        if (PlayAsReplacesCharacter(target->character, target->level, playAs)) {
+            FUT_LOGI(Game, "cheat: level skip to %s: no start weapons added - play_as %s replaces %s", target->level,
+                     PlayAsName(playAs), CharacterName(target->character));
+            return;
+        }
+        const guest::GuestAddr text = SafeReadU32(kPendingStateVar);
+        const std::uint32_t size = SafeReadU32(kPendingStateVar + 4);
+        const std::string state = text != 0 ? GuestString(text, size != 0 ? size : 4096) : std::string();
+        const WeaponMerge merge = MergeStartWeapons(state, table);
+        if (!merge.Changed()) {
+            FUT_LOGI(Game, "cheat: level skip to %s: the player already has the start weapons of the level (%s)",
+                     target->level, Flat(state).c_str());
+            return;
+        }
+        // FUN_000C1D30 frees the old text and copies the new one (host memory is guest-addressable).
+        core::CallGuest(kSetPendingState,
+                        {guest::Addr(merge.text.c_str()), static_cast<std::uint32_t>(merge.text.size() + 1)});
+        FUT_LOGI(Game,
+                 "cheat: level skip to %s: start weapons of table row %u added [%s]%s%s%s - state now: %s",
+                 target->level, target->row, merge.added.c_str(), merge.equipped.empty() ? "" : ", equipped ",
+                 merge.equipped.c_str(), merge.ammoRaised ? ", ammo raised to the table value" : "",
+                 Flat(merge.text).c_str());
+    } catch (...) {
+    }
+}
+
+std::string PlayerStateText() {
+    const guest::GuestAddr level = SafeReadU32(kLevelPtr);
+    if (level == 0 || SafeReadU32(level + kLevelPlayerOffset) == 0 || SafeReadU32(kPendingStateVar) != 0) {
+        return {};  // with a pending text FUN_000C26E0 would return that text (not NUL-terminated)
+    }
+    std::uint32_t out = 0;
+    core::CallGuestThiscall(kBuildStateText, level, {guest::Addr(&out)});
+    if (out == 0) {
+        return {};
+    }
+    std::string text = GuestString(out, 4096);
+    core::CallGuest(kGuestFree, {out});
+    return text;
+}
+
+void ObserveStartState() noexcept {
+    try {
+        const guest::GuestAddr level = SafeReadU32(kLevelPtr);
+        if (level == 0) {
+            return;  // loading: keep the armed state
+        }
+        if (SafeReadU32(kPendingStateVar) != 0) {
+            g_startStateArmed = true;
+            return;
+        }
+        if (!g_startStateArmed) {
+            return;
+        }
+        const guest::GuestAddr breakdown = SafeReadU32(kBreakdownPtr);
+        if (breakdown != 0 && guest::IsReadable(breakdown + 1, 1) && guest::Read<std::uint8_t>(breakdown + 1) != 0) {
+            g_startStateArmed = false;  // dropped on the statistics screen (FUN_000C1200), not applied
+            return;
+        }
+        if (SafeReadU32(level + kLevelPlayerOffset) == 0) {
+            return;
+        }
+        // FUN_000C5340 applied (and freed) the start state once the player existed.
+        g_startStateArmed = false;
+        FUT_LOGI(Game, "game: start state applied in %s: %s", CurrentLevelName().c_str(),
+                 Flat(PlayerStateText()).c_str());
+    } catch (...) {
+    }
 }
 
 const StartLevel* StartLevelFromConfig(const core::Config& config) noexcept {

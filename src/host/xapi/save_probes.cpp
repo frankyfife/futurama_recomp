@@ -14,6 +14,8 @@
 #include "core/hooks.h"
 #include "core/host_main.h"
 #include "core/log.h"
+#include "xapi/cheats.h"
+#include "xapi/game_select.h"
 
 #include <intrin.h>
 
@@ -43,6 +45,8 @@ std::atomic<std::uint32_t> g_deleteFailures{0};
 std::atomic<std::uint32_t> g_saveMenuOpened{0};
 std::atomic<std::uint32_t> g_dialogs{0};
 std::atomic<bool> g_levelEndPending{false};
+std::atomic<bool> g_levelEndStartWeapons{false};  // (G7) complete the next level's start weapons afterwards
+std::atomic<bool> g_stateDumpPending{false};      // `game state`
 // Next level name for FsChangeLevel. The game copies it (FUN_000A2340: strncpy 8 into CApp+0xAC), so a host
 // buffer is fine (32-bit process: host addresses are valid guest pointers). Written before g_levelEndPending
 // is set.
@@ -410,17 +414,44 @@ void LogSaveSummary() noexcept {
         s.signaturesBad, s.deletes, s.deleteFailures, s.saveMenuOpened, s.dialogs);
 }
 
-bool RequestLevelEnd(const char* nextLevel) noexcept {
+bool RequestLevelEnd(const char* nextLevel, bool guaranteeStartWeapons) noexcept {
     const std::size_t n = nextLevel != nullptr ? std::strlen(nextLevel) : 0;
     if (n == 0 || n > 8 || g_levelEndPending.load() || ReadU32(guest::kGameLevelPtr) == 0) {
         return false;
     }
     std::memcpy(g_nextLevel, nextLevel, n + 1);
+    g_levelEndStartWeapons.store(guaranteeStartWeapons);
     g_levelEndPending.store(true);
     return true;
 }
 
+bool RequestStateDump() noexcept {
+    if (ReadU32(guest::kGameLevelPtr) == 0) {
+        return false;
+    }
+    g_stateDumpPending.store(true);
+    return true;
+}
+
 void RunPendingGameActions() noexcept {
+    select::ObserveStartState();  // (G7 fix) "game: start state applied in <Level>: ..." once per level start
+    cheats::OnTick();             // (G8) toggle flash, player health trace
+    if (g_stateDumpPending.exchange(false)) {
+        try {
+            const guest::GuestAddr pending = ReadU32(select::kPendingStateVar);
+            if (pending != 0) {
+                FUT_LOGI(Xapi, "save: debug action state: start state still pending (%u bytes)",
+                         ReadU32(select::kPendingStateVar + 4));
+            } else {
+                std::string text = select::PlayerStateText();
+                for (char& c : text) {
+                    c = c == '\n' ? ';' : c;
+                }
+                FUT_LOGI(Xapi, "save: debug action state: %s", text.empty() ? "(no player)" : text.c_str());
+            }
+        } catch (...) {
+        }
+    }
     if (!g_levelEndPending.exchange(false)) {
         return;
     }
@@ -433,6 +464,11 @@ void RunPendingGameActions() noexcept {
     FUT_LOGI(Xapi, "save: debug action: level end via the script native FsChangeLevel 0x%08X(\"%s\")",
              guest::kGameNativeFsChangeLevel, g_nextLevel);
     core::CallGuest(guest::kGameNativeFsChangeLevel, {guest::Addr(g_nextLevel)});
+    if (g_levelEndStartWeapons.load()) {
+        // FsChangeLevel built the next level's state from the current inventory (FUN_000C26E0); the level skip
+        // adds the weapons the next level's start state (table 0x2D60BC) gives (g5_g7_report.md 3.3).
+        select::EnsureStartWeapons(g_nextLevel);
+    }
 }
 
 }  // namespace xapi

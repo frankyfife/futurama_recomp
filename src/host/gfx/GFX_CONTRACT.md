@@ -249,6 +249,12 @@ point/spot/directional lights, attenuation, range, spot cone, specular with NORM
 texture stage combiner ops at least DISABLE, SELECTARG1/2, MODULATE/2X/4X, ADD, ADDSIGNED(2X), SUBTRACT,
 BLENDDIFFUSEALPHA/TEXTUREALPHA/FACTORALPHA/CURRENTALPHA with arg modifiers COMPLEMENT/ALPHAREPLICATE,
 alpha test, table fog (LINEAR/EXP/EXP2 on view depth), flat shading (`nointerpolation`).
+**Deviation (G2 fix 2026-10-13, `ff::DiscardsTransparentFragments`):** a draw with blending SRCALPHA/INVSRCALPHA or
+SRCALPHA/ONE, no alpha test and depth write on discards fragments with alpha < 0.5/255 (alpha test GREATER 0 in the
+draw constants). Their colour contribution is zero either way; under plain D3D8 rules they still wrote depth, so the
+transparent part of each glyph quad of the menu text hid the pulsing highlight of the selected item that the game
+draws afterwards (darker word rectangles, frames 843 vs 805 of the main menu, with and without texture pack). The
+xemu reference frames of the main menu show no such rectangles (`run\xemu_ref\t0075.0s.png` ff.).
 
 6.5 **Build**: `fut_add_shader(<name> <file> <entry> <profile> [DEFINES...])` in `src/host/CMakeLists.txt`
 runs fxc (`/WX`, Debug `/Od /Zi`, else `/O3`) into `<build>/src/host/gen_shaders/<name>.h` (`g_<name>`).
@@ -478,7 +484,8 @@ extract/ff failures).
   FUN_001572D0 in both backends; +0x14..+0x33 = table format of the chosen entry, default texture = entry 5;
   +0x50 = uploaded mip levels; +0x54 from FormatPrefs +0x18); GPU path: `ConvertPixelData` (BGRA8 / BC1-3,
   `keep16Bit` off) -> `CreateTexture`; host fields +0x64 handle id, +0x68 `tex::TextureSource` |
-  `kHostOwnsTexture` (0x100), +0x6C revision; data slot 0 destroys an owned texture. A slot-65 stack probe
+  `kHostOwnsTexture` (0x100), +0x6C revision; data slot 0 destroys an owned texture. G2: bits 0x200/0x400 (`texpack::kHostReplacementPending` / `kHostReplaced`) mark a texture-pack replacement
+  (gfx/texture_pack.h, INTERFACES 4.38). A slot-65 stack probe
   measures the loading-fiber stack use (log line `NiPCRenderer slot 65 stack: ...`).
 - **TextureResolver** = FUN_0015F930: data created on demand for an NiSourceTexture, FUN_0015E260 re-upload when a
   non-static texture's (+0x38 == 0) NiPixelData revision changed, rendered textures -> black texture; movie
@@ -579,6 +586,9 @@ Report deviations from this contract in your result instead of silently divergin
 - FormatPrefs color reduction (32 -> 16 bit) is not reproduced; textures may look better than on the Xbox.
 - Multi-pass texture pipelines, NiTextureEffect (projected lights/shadows, environment/fog maps), render to
   texture (slots 15/66), points/lines (52/53), batch slots and the screen-space offset option are P2.
+  **M8:** render to texture (own target per rendered texture, render resolution, MSAA resolved), the projected
+  shadow passes and slot 52 points (camera-facing quads) are done (`src\INTERFACES.md` 4.39, `docs\m8_report.md`);
+  projected lights, environment/fog maps, the other multi-map passes, lines (53) and batch slots stay open.
 - DAT_002F91D4 (spot angle scale) lies in BSS; ASSUMPTION pi until read at runtime.
 - NiPalette entry byte order and PAL alpha: ASSUMPTION until verified with game data.
 - The pipeline's base-map stage setup lives partly in Ghidra gap code (0x164360..0x1650F0).
@@ -629,7 +639,8 @@ D3D11 side grows (`gfx::RenderSizes`: output, internal = output x render_scale):
 - the 1/16-pixel snap stays a 1/16 GUEST pixel (internal size / 640 / 16 internal pixels): vertices keep the
   position the original rasterizer gave them; the high-resolution picture is a supersampled version of that
   geometry and box-downscaled matches the xemu captures (X1 of m3c_check);
-- render to texture (slot 15 with a texture, P2) keeps the texture's own size (scale 1); scissor is never enabled
+- render to texture (slot 15 with a texture; M8: rendered at the guest size times the back buffer's factor with its
+  MSAA samples, `RenderTargetDimension`) - the old P2 note "scale 1" is superseded; scissor is never enabled
   (a future one goes through `ScaleRect`); lines and points (slots 52/53, wireframe fill) are P2 and 1 internal
   pixel wide - they must be widened by the scale when they are implemented.
 
@@ -873,6 +884,19 @@ skin cache); schema rows `[render] outline_color/outline_opacity/outline_thickne
 - **Skin cache (both, also at the defaults):** `Skin()` bypasses its per-frame cache while `DAT_0030EB40 != 0`
   (NiOutline::vf33 forces a new deformation with skin +0x14 = 1, whose tail fills that buffer). No run so far
   had a cache hit, so the default draw list is unchanged.
+- **Ribbon chains (always, avatar fix 2026-10-13, g1_outlines.md section 12):** the original's ribbon strips
+  produce black spikes in the HUD portrait: (1) every 404-vertex strip holds many chains (last pair of each chain
+  alpha 0), so the strip also draws two "bridge" triangles from one chain's end to the next chain's start; (2)
+  closing a strip (`FUN_0013D3B0` when the next chain does not fit, `FUN_0013E360(camera)` in `NiCamera::Click`)
+  zero-fills from count - 2, so the last chain's end pair lies at (0, 0, 0) and its band runs to the port's lower
+  left corner. Port: `DrawScreenPolygon` draws every ribbon polygon (`IsRibbonPolygon`) as an arena triangle list
+  (`outline::SplitRibbonStrip` / `RibbonTriangles`: strip triangle k kept iff vertex k has alpha != 0 and no vertex
+  is padding = position (0, 0, 0) with alpha 0; odd k with D3D's swapped order); `0 triangles` -> `Empty`. The
+  probes `probe:NiOutline::AppendRibbon` (0x13D3B0, 7 stolen bytes) and `probe:NiOutline::FlushRibbons`
+  (0x13E360, 5) save the end pair's positions before such a close and write them back afterwards (colours stay
+  alpha 0 = the chain's fading end). Exit line `outline ribbons: N strips drawn as chain lists (T triangles, B
+  visible bridge/corner triangles left out), R chain ends restored after the pool zero fill`. The bands
+  themselves are unchanged (same vertices, same facing).
 - **Log:** with an active option `outlines: colour ..., opacity ..., thickness ...; shells N draws (skipped,
   recoloured, scaled, without body mesh; pairings, cached), ribbons M draws (recoloured)` at exit, plus one line
   for the guest globals.
@@ -909,3 +933,11 @@ full-screen NiScreenPolygon with it between `D3DDevice_SetRenderState_YuvEnable(
 - **Known difference**: at 2x internal resolution the top row and the left column of the picture are black (half a
   guest pixel), the same half-pixel rule as every pre-transformed draw (section 9 viewport rule); not compared with
   xemu.
+- **M6b movie packs** (`video\movie_pack.h`, `[render] movie_pack`): the XMV HLE may attach a host-side YUY2 picture
+  of any even size to the movie texture (`d3d::SetHostImage(texture or surface, shared_ptr<const HostImage>)`,
+  before `NoteResourceWritten`; removed at `CloseDecoder` and with the resource). `MovieTexture` then uploads that
+  picture instead of the guest pixels into a host texture of the picture's size (re-created when the size changes,
+  e.g. a fallback to the guest pixels mid-movie), same conversion. The guest texture keeps W x H, and the game's texel
+  UVs keep addressing it: `ApplyTexelAddressing` scales by `gfx::MovieTexelScale(W, H, hostW, hostH)`
+  (`gfx\movie_uv.h`; texel u -> host texel u * hostW / W -> / hostW), so a 1280x960 pack picture covers exactly the
+  screen area of the 640x480 frame. Exit line `d3d11 movie pack pictures (M6b): N frame uploads, up to WxH`.

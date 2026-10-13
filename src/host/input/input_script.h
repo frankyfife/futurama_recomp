@@ -29,6 +29,8 @@
 //                                           Breakdown screen with "Speichern"; xapi::RequestLevelEnd, next tick)
 //   game camera_trace on|off                (G5) one log line per tick with the follow camera's yaw
 //                                           (xapi::camera::TraceTick at the tick heartbeat)
+//   game state                              logs the player's state text ("save: debug action state: Level=...;
+//                                           Health=...;Ammo=...;Pickup=...;Equip=...") at the next tick
 //
 // Controls: A B X Y BLACK WHITE LT RT (analog 0..1, digital = 1), START BACK UP DOWN LEFT RIGHT (D-pad;
 // DPAD_UP.. too) LS RS (stick clicks; LSCLICK/RSCLICK too), axes LX LY RX RY (-1..1, +Y = up; raw value

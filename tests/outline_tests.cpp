@@ -1,11 +1,14 @@
 // Unit tests of the G1 outline options (gfx/outline.h, gfx/gfx_config.h; analysis/loader/g1_outlines.md 7.5):
 // option parsers and schema rows, shell <-> body pairing and scaling, shell colour override, ribbon colour copy,
-// the QDOutline parent-chain test, and that the defaults change nothing.
+// the QDOutline parent-chain test, and that the defaults change nothing. Avatar fix (2026-10-13): ribbon strips
+// as chain lists without bridges and zeroed tails, and when the pool zero fill hits a chain end.
 #include "doctest.h"
 
 #include "core/config_schema.h"
+#include "core/guest.h"
 #include "gfx/gfx_config.h"
 #include "gfx/guest_memory.h"
+#include "gfx/ni_guest_layouts.h"
 #include "gfx/outline.h"
 
 #include <cmath>
@@ -266,4 +269,146 @@ TEST_CASE("outline: QDOutline node in the parent chain") {
     Put32(body, outline::kAvParent, GuestHeap::Addr(root));
     CHECK(outline::FindOutlineNode(GuestHeap::Addr(body) + outline::kAvWorld) == 0);
     CHECK(outline::FindOutlineNode(0) == 0);
+}
+
+namespace {
+
+// Ribbon strip as FUN_00153E90 / FUN_0013D3B0 leave it: chain A (pairs 0-1, 2-3, 4-5), chain B (pairs 6-7, 8-9),
+// each with alpha 0 on its last pair, then zero padding (10, 11). Positions in port units, z = depth.
+struct Strip {
+    float pos[12][3];
+    float col[12][4];
+};
+Strip MakeStrip() {
+    Strip s{};
+    const float xy[10][2] = {{0.40f, 0.50f}, {0.41f, 0.50f}, {0.40f, 0.60f}, {0.41f, 0.60f}, {0.40f, 0.70f},
+                             {0.41f, 0.70f}, {0.70f, 0.20f}, {0.70f, 0.21f}, {0.80f, 0.20f}, {0.80f, 0.21f}};
+    for (int v = 0; v < 10; ++v) {
+        s.pos[v][0] = xy[v][0];
+        s.pos[v][1] = xy[v][1];
+        s.pos[v][2] = 0.02f;
+        s.col[v][3] = (v == 4 || v == 5 || v == 8 || v == 9) ? 0.0f : 1.0f;
+    }
+    return s;
+}
+
+}  // namespace
+
+TEST_CASE("outline: ribbon strip -> chain list without bridges (avatar fix)") {
+    Strip s = MakeStrip();
+    std::uint16_t idx[30] = {};
+    std::uint32_t dropped = 99;
+    const std::uint32_t n = outline::RibbonTriangles(&s.pos[0][0], &s.col[0][0], 12, idx, &dropped);
+    // A: strip triangles 0..3, B: 6..7; the bridges 4 (alpha 0,0,1) and 5 (0,1,1) are visible and dropped,
+    // 8 and 9 (end pair + padding, all alpha 0) are invisible.
+    REQUIRE(n == 18u);
+    CHECK(dropped == 2u);
+    const std::uint16_t expected[18] = {0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4, 6, 7, 8, 7, 9, 8};
+    for (int i = 0; i < 18; ++i) {
+        CAPTURE(i);
+        CHECK(idx[i] == expected[i]);
+    }
+    // The band triangles keep the strip's facing: odd strip triangles have D3D's swapped order.
+    const auto cross = [&](int t) {
+        const float* a = s.pos[idx[t * 3]];
+        const float* b = s.pos[idx[t * 3 + 1]];
+        const float* c = s.pos[idx[t * 3 + 2]];
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    };
+    for (int t = 1; t < 4; ++t) {
+        CHECK((cross(t) > 0.0f) == (cross(0) > 0.0f));
+    }
+
+    // Original zero fill from count - 2: chain B's end pair at (0, 0, 0) -> its last band triangles would reach the
+    // port corner; they are dropped (6: alpha 1,1,0 and 7: 1,0,0 are visible).
+    std::memset(s.pos[8], 0, sizeof(float) * 6);
+    CHECK(outline::RibbonTriangles(&s.pos[0][0], &s.col[0][0], 12, idx, &dropped) == 12u);
+    CHECK(dropped == 4u);
+    // ... unless the probe restored the pair: then B is complete again.
+    s = MakeStrip();
+    CHECK(outline::RibbonTriangles(&s.pos[0][0], &s.col[0][0], 12, idx, &dropped) == 18u);
+
+    // Degenerate input.
+    CHECK(outline::RibbonTriangles(&s.pos[0][0], &s.col[0][0], 2, idx, &dropped) == 0u);
+    CHECK(dropped == 0u);
+    CHECK(outline::RibbonTriangles(nullptr, &s.col[0][0], 12, idx, nullptr) == 0u);
+    // One chain only, no padding: every strip triangle that starts before the end pair.
+    CHECK(outline::RibbonTriangles(&s.pos[0][0], &s.col[0][0], 6, idx, &dropped) == 12u);
+    CHECK(dropped == 0u);
+}
+
+TEST_CASE("outline: which pool closes zero a chain end (FUN_0013D3B0 / FUN_0013E360)") {
+    const GuestPtr poly = 0x01000000;
+    // FUN_0013E360 (appendCount -1): every open polygon with a chain in mode 2.
+    CHECK(outline::PoolCloseZeroesTail(poly, 400, -1, 2));
+    CHECK(outline::PoolCloseZeroesTail(poly, 2, -1, 2));
+    CHECK_FALSE(outline::PoolCloseZeroesTail(0, 400, -1, 2));     // no polygon
+    CHECK_FALSE(outline::PoolCloseZeroesTail(poly, 400, -1, 0));  // NiOutline off (render to texture)
+    CHECK_FALSE(outline::PoolCloseZeroesTail(poly, 0, -1, 2));    // nothing appended
+    // FUN_0013D3B0: only if the new chain does not fit (count + n > 404).
+    CHECK(outline::PoolCloseZeroesTail(poly, 400, 6, 2));
+    CHECK(outline::PoolCloseZeroesTail(poly, 399, 6, 2));
+    CHECK_FALSE(outline::PoolCloseZeroesTail(poly, 398, 6, 2));  // 404: fits
+    CHECK_FALSE(outline::PoolCloseZeroesTail(poly, 100, 6, 2));
+    CHECK_FALSE(outline::PoolCloseZeroesTail(poly, 400, 6, 1));
+}
+
+TEST_CASE("outline: SplitRibbonStrip turns the extracted strip into the chain list") {
+    GuestHeap heap;
+    Strip s = MakeStrip();
+    auto* pos = heap.New(sizeof(s.pos));
+    auto* col = heap.New(sizeof(s.col));
+    std::memcpy(pos, s.pos, sizeof(s.pos));
+    std::memcpy(col, s.col, sizeof(s.col));
+    auto* poly = reinterpret_cast<ni::NiScreenPolygon*>(heap.New(sizeof(ni::NiScreenPolygon)));
+    std::memset(poly, 0, sizeof(ni::NiScreenPolygon));
+    poly->vertexCount = 12;
+    poly->vertices = GuestHeap::Addr(pos);
+    poly->colors = GuestHeap::Addr(col);
+    poly->isStrip = 1;
+
+    ni::ExtractArena arena;
+    ni::GeometryDesc g;
+    g.vertexCount = 12;
+    g.topology = ni::Topology::TriangleStrip;
+    g.primitiveCount = 10;
+    std::uint32_t triangles = 0;
+    const outline::RibbonStats before = outline::GetRibbonStats();
+    REQUIRE(outline::SplitRibbonStrip(GuestHeap::Addr(poly), arena, &g, &triangles));
+    CHECK(triangles == 6u);
+    CHECK(g.topology == ni::Topology::TriangleList);
+    CHECK(g.indexCount == 18u);
+    CHECK(g.primitiveCount == 6u);
+    REQUIRE(g.indices != nullptr);
+    CHECK(g.indices[12] == 6);
+    const outline::RibbonStats after = outline::GetRibbonStats();
+    CHECK(after.polygons == before.polygons + 1);
+    CHECK(after.trianglesDropped == before.trianglesDropped + 2);
+
+    // Not a strip (already split, or a fan) or a vertex count mismatch: unchanged.
+    CHECK_FALSE(outline::SplitRibbonStrip(GuestHeap::Addr(poly), arena, &g, &triangles));
+    ni::GeometryDesc other;
+    other.vertexCount = 11;
+    other.topology = ni::Topology::TriangleStrip;
+    CHECK_FALSE(outline::SplitRibbonStrip(GuestHeap::Addr(poly), arena, &other, &triangles));
+    CHECK(other.indices == nullptr);
+}
+
+TEST_CASE("outline: ribbon pool probe targets are function starts with room for their stolen bytes") {
+    struct Target {
+        GuestPtr address;
+        std::uint32_t stolen;
+        const char* name;
+    };
+    const Target targets[] = {{outline::kRibbonAppend, 7, "FUN_0013d3b0"}, {outline::kRibbonFlush, 5, "FUN_0013e360"}};
+    for (const Target& t : targets) {
+        CAPTURE(t.address);
+        const guest::FunctionInfo* f = guest::FindFunctionStart(t.address);
+        REQUIRE(f != nullptr);
+        CHECK(std::string(f->name) == t.name);
+        CHECK(f->size >= t.stolen);
+        for (const auto& site : guest::FsPatchSites()) {
+            CHECK_FALSE((site.address < t.address + t.stolen && t.address < site.address + site.length));
+        }
+    }
 }

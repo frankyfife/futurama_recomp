@@ -523,6 +523,47 @@ TEST_CASE("ff: draw constants (matrices, material, states)") {
     CHECK(c.fog.x == FF_FOG_NONE);
 }
 
+TEST_CASE("ff: alpha-blended draws discard fully transparent fragments (G2 menu text boxes)") {
+    ni::CameraDesc camera = IdentityCamera();
+    ni::DrawItem item = MakeTriangleItem();
+    item.state.alphaBlendEnable = true;
+    item.state.srcBlend = rhi::BlendFactor::SrcAlpha;
+    item.state.dstBlend = rhi::BlendFactor::InvSrcAlpha;
+    item.state.alphaTestEnable = false;
+    item.state.zWriteEnable = true;
+    CHECK(ff::DiscardsTransparentFragments(item.state));
+    ff::FFDrawConstants c;
+    ff::FillDrawConstants(item, camera, &c);
+    CHECK(c.alphaTest.x == 1);
+    CHECK(c.alphaTest.y == FF_CMP_GREATER);
+    CHECK(c.alphaTest.z == 0);
+    CHECK(c.alphaTest.w == 0);
+    item.state.dstBlend = rhi::BlendFactor::One;  // additive with source alpha: alpha 0 adds nothing either
+    CHECK(ff::DiscardsTransparentFragments(item.state));
+    // Not where an alpha-0 fragment can change the colour, where nothing writes depth or the game tests alpha.
+    item.state.srcBlend = rhi::BlendFactor::One;
+    CHECK_FALSE(ff::DiscardsTransparentFragments(item.state));
+    item.state.srcBlend = rhi::BlendFactor::SrcAlpha;
+    item.state.dstBlend = rhi::BlendFactor::SrcColor;
+    CHECK_FALSE(ff::DiscardsTransparentFragments(item.state));
+    item.state.dstBlend = rhi::BlendFactor::InvSrcAlpha;
+    item.state.zWriteEnable = false;
+    CHECK_FALSE(ff::DiscardsTransparentFragments(item.state));
+    ff::FillDrawConstants(item, camera, &c);
+    CHECK(c.alphaTest.x == 0);
+    item.state.zWriteEnable = true;
+    item.state.alphaBlendEnable = false;
+    CHECK_FALSE(ff::DiscardsTransparentFragments(item.state));
+    item.state.alphaBlendEnable = true;
+    item.state.alphaTestEnable = true;
+    item.state.alphaFunc = rhi::CompareFunc::GreaterEqual;
+    item.state.alphaRef = 0x40;
+    CHECK_FALSE(ff::DiscardsTransparentFragments(item.state));
+    ff::FillDrawConstants(item, camera, &c);
+    CHECK(c.alphaTest.y == FF_CMP_GREATEREQUAL);
+    CHECK(c.alphaTest.z == 0x40);
+}
+
 TEST_CASE("ff: lights are transformed to view space") {
     ni::CameraDesc camera = IdentityCamera();
     // View: 90 degrees about y (x -> -z, z -> x) and a translation.

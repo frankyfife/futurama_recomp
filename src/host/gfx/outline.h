@@ -16,6 +16,18 @@
 //   B  NiOutline (HUD head, a few menu/cockpit NIFs): CPU silhouette ribbons as 404-vertex NiScreenPolygon
 //      strips with the property set of FUN_0013CE60 (texturing 0x3044BC, alpha 0x3044E8). Colour/opacity:
 //      arena copy of the vertex colours. Thickness: DAT_002D7AB0 (0.003) * k, k = 0 -> DAT_002D7AB8 = 0 (off).
+//
+// Ribbon chains (always on, avatar fix 2026-10-13, g1_outlines.md section 12): FUN_00153E90 appends every
+// silhouette chain to the current 404-vertex strip (FUN_0013D3B0): colour (0, 0, 0, 1), the chain's last vertex
+// pair alpha 0. Two flaws of the original show as black spikes in the HUD portrait:
+//   1. One strip holds many chains, so the strip also draws the two triangles from the end of one chain to the
+//      start of the next ("bridges", alpha 0 -> 1, up to half the portrait long).
+//   2. Closing a strip (FUN_0013D3B0 when the next chain does not fit, FUN_0013E360 in NiCamera::Click) zero-fills
+//      from count - 2 instead of count: the last pair of the last chain becomes (0, 0, 0), and its band triangles
+//      run from the contour to the port's lower left corner.
+// The renderer draws ribbon polygons as triangle lists without bridges and padding (SplitRibbonStrip); two probes
+// on FUN_0013D3B0 / FUN_0013E360 put the overwritten positions of that last pair back (colours stay as the
+// original left them: alpha 0, the chain's fading end).
 #pragma once
 
 #include "gfx/gfx_config.h"
@@ -35,6 +47,11 @@ inline constexpr GuestPtr kOutlinePositionsGlobal = 0x0030EB40;  // world-positi
 inline constexpr GuestPtr kRibbonTexturingGlobal = 0x003044BC;   // NiTexturingProperty* of the ribbons
 inline constexpr GuestPtr kRibbonAlphaGlobal = 0x003044E8;       // NiAlphaProperty* of the ribbons
 inline constexpr float kOriginalRibbonWidth = 0.003f;
+inline constexpr GuestPtr kRibbonAppend = 0x0013D3B0;          // FUN_0013D3B0 (thiscall, 7 stack args, ret 0x1C)
+inline constexpr GuestPtr kRibbonFlush = 0x0013E360;           // FUN_0013E360 (cdecl, NiCamera*; from Click)
+inline constexpr GuestPtr kRibbonPoolPolygonGlobal = 0x002FA448;  // NiScreenPolygon* being filled (0 = none)
+inline constexpr GuestPtr kRibbonPoolCountGlobal = 0x002FA44C;    // vertices used in it
+inline constexpr std::int32_t kRibbonPolygonVertices = 0x194;     // 404 (ctor call 0x13D64C)
 inline constexpr GuestPtr kNiTriShapeVtable = 0x002A7CE0;
 inline constexpr GuestPtr kNiNodeRtti = 0x002F9190;
 inline constexpr std::uint32_t kAvParent = 0x14;      // NiAVObject parent NiNode*
@@ -68,6 +85,20 @@ void ApplyShellColor(const OutlineSettings& settings, ni::DrawItem* item) noexce
 // opacity). False if there is nothing to change or the arena is full.
 bool RecolorRibbon(const OutlineSettings& settings, ni::ExtractArena& arena, ni::GeometryDesc* geometry) noexcept;
 
+// Ribbon strip -> triangle list of its chains (guest float3 positions, NiColorA colours, both tightly packed).
+// Strip triangle k (vertices k, k + 1, k + 2; odd k with D3D's swapped winding) is kept if vertex k has alpha != 0
+// (vertex k is then not in the last pair of its chain, so all three vertices belong to that chain) and none of the
+// three vertices is padding (position (0, 0, 0) with alpha 0, see header item 2). Writes up to 3 * (n - 2)
+// indices and returns their number; `dropped` (optional) = strip triangles left out that had a vertex with
+// alpha != 0 (the visible bridges and corner spikes).
+std::uint32_t RibbonTriangles(const float* positions, const float* colors, std::uint32_t vertexCount,
+                              std::uint16_t* indices, std::uint32_t* dropped) noexcept;
+
+// True if closing the pool polygon zero-fills the last vertex pair of its last chain (header item 2):
+// FUN_0013D3B0 with `appendCount` new vertices that do not fit (count + appendCount > 404), or FUN_0013E360
+// (appendCount < 0); both only in mode 2 (DAT_002D7AB8) and with a polygon whose count - 2 lies in [0, 404).
+bool PoolCloseZeroesTail(GuestPtr polygon, std::int32_t count, std::int32_t appendCount, std::int32_t mode) noexcept;
+
 // ---- guest side (renderer thread = guest main thread) ----------------------------------------------------------
 
 // Writes DAT_002D7AB0 / DAT_002D7AB8 for the thickness option (nothing at the default). Called once by
@@ -79,6 +110,19 @@ GuestPtr FindOutlineNode(GuestPtr transform) noexcept;
 
 // True if the NiScreenPolygon property state is the ribbon property set of FUN_0013CE60.
 bool IsRibbonPolygon(GuestPtr screenPolygon) noexcept;
+
+// Ribbon polygon (extracted by ni::ExtractScreenPolygon as a strip): switches `geometry` to an arena triangle list
+// of RibbonTriangles over the guest vertices and colours. False (geometry unchanged) if it is no strip, the guest
+// arrays are missing or the arena is full. *triangles = triangles left (0: nothing to draw).
+bool SplitRibbonStrip(GuestPtr screenPolygon, ni::ExtractArena& arena, ni::GeometryDesc* geometry,
+                      std::uint32_t* triangles) noexcept;
+
+struct RibbonStats {
+    std::uint64_t polygons = 0, trianglesKept = 0, trianglesDropped = 0, tailsRestored = 0;
+};
+RibbonStats GetRibbonStats() noexcept;
+// "outline ribbons: ..." (GpuRenderer::LogStatistics; nothing if no ribbon was drawn).
+void LogRibbonStatistics() noexcept;
 
 struct Stats {
     std::uint64_t shellDraws = 0, shellsSkipped = 0, shellsRecolored = 0, shellsScaled = 0, shellsUnpaired = 0,

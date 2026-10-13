@@ -293,6 +293,9 @@ bool HostRouter::SampleGamePort(int port, PadState& out) noexcept {
     if (retarget) {
         ApplyRumbleLocked(port);
     }
+    if (pulseSamples_[port] > 0 && --pulseSamples_[port] == 0) {  // G8: pulse over
+        ApplyRumbleLocked(port);
+    }
     if (sampleFilter_ != nullptr) {
         sampleFilter_(port, merged);
     }
@@ -345,6 +348,26 @@ bool HostRouter::Diverted(int port) const noexcept {
     }
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     return consumer_[port] != nullptr;
+}
+
+void HostRouter::PulseRumble(int port, const RumbleState& strength, std::uint32_t samples) noexcept {
+    if (port < 0 || port >= kPortCount) {
+        return;
+    }
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    pulse_[port] = strength;
+    pulseSamples_[port] = samples;
+    FUT_LOGD(Inp, "input: feedback pulse port %d: left %u right %u for %u ticks (rumble %s)", port + 1, strength.left,
+             strength.right, samples, options_.rumble ? "on" : "off");
+    ApplyRumbleLocked(port);
+}
+
+bool HostRouter::PulseActive(int port) const noexcept {
+    if (port < 0 || port >= kPortCount) {
+        return false;
+    }
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return pulseSamples_[port] > 0;
 }
 
 void HostRouter::Divert(int port, InputConsumer* consumer) noexcept {
@@ -412,7 +435,12 @@ void HostRouter::SendLocked(InputSource* source, int port, const RumbleState& va
 
 void HostRouter::ApplyRumbleLocked(int port) noexcept {
     const bool muted = !options_.rumble || !FocusedLocked() || consumer_[port] != nullptr || forcedOff_[port];
-    const RumbleState scaled = muted ? RumbleState{} : Scale(requested_[port], options_.rumbleStrength);
+    RumbleState wanted = requested_[port];
+    if (pulseSamples_[port] > 0) {  // G8: host feedback pulse
+        wanted.left = std::max(wanted.left, pulse_[port].left);
+        wanted.right = std::max(wanted.right, pulse_[port].right);
+    }
+    const RumbleState scaled = muted ? RumbleState{} : Scale(wanted, options_.rumbleStrength);
     try {
         for (InputSource* s : SourcesLocked()) {
             if (PortOf(s) != port) {

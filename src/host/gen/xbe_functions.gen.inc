@@ -3,7 +3,7 @@
 // Sources:   analysis/retail_eu_export/functions.tsv, tools/gen/extra_function_starts.tsv
 //
 // Initializer rows for guest::FunctionInfo (core/guest.h), sorted by address.
-// 7016 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
+// 7021 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
 // { address, size, flags (0 ghidra, 1 extra start, 2 synthetic range), name },
 { 0x00011000u, 0x69u, 0, "FUN_00011000" },
 { 0x00011070u, 0x69u, 0, "FUN_00011070" },
@@ -924,6 +924,7 @@
 { 0x0005FDB0u, 0x9Au, 0, "FUN_0005fdb0" },
 { 0x0005FE50u, 0x18u, 0, "FUN_0005fe50" },
 { 0x0005FE70u, 0x12Au, 0, "FUN_0005fe70" },
+{ 0x00060080u, 0xDEu, 1, "Kamikaze_vfTakeDamage" },
 { 0x00060190u, 0xF3u, 0, "FUN_00060190" },
 { 0x00060290u, 0xB3u, 0, "FUN_00060290" },
 { 0x00060350u, 0x9Du, 0, "FUN_00060350" },
@@ -1332,6 +1333,7 @@
 { 0x0007FFD0u, 0x1Eu, 0, "FUN_0007ffd0" },
 { 0x0007FFF0u, 0x2C5u, 0, "FUN_0007fff0" },
 { 0x000802C0u, 0x3Bu, 0, "FUN_000802c0" },
+{ 0x00080300u, 0x13Fu, 1, "Aquafish_vfTakeDamage" },
 { 0x00080440u, 0x33u, 0, "FUN_00080440" },
 { 0x00080480u, 0x5Du, 0, "FUN_00080480" },
 { 0x00080500u, 0x1Eu, 0, "FUN_00080500" },
@@ -1384,6 +1386,7 @@
 { 0x000860E0u, 0x4Du, 0, "FUN_000860e0" },
 { 0x00086130u, 0x56u, 0, "FUN_00086130" },
 { 0x00086250u, 0x2C6u, 0, "FUN_00086250" },
+{ 0x00086520u, 0x198u, 1, "Goon_vfTakeDamage" },
 { 0x00086820u, 0xD0u, 0, "FUN_00086820" },
 { 0x000868F0u, 0x29Du, 0, "FUN_000868f0" },
 { 0x00086B90u, 0x1Eu, 0, "FUN_00086b90" },
@@ -1409,6 +1412,7 @@
 { 0x000881E0u, 0x5Du, 0, "FUN_000881e0" },
 { 0x00088240u, 0x96u, 0, "FUN_00088240" },
 { 0x00088300u, 0x1Eu, 0, "FUN_00088300" },
+{ 0x00088530u, 0x128u, 1, "Junkbot_vfTakeDamage" },
 { 0x00088660u, 0x73u, 0, "FUN_00088660" },
 { 0x000886E0u, 0x5Du, 0, "FUN_000886e0" },
 { 0x00088740u, 0xC3u, 0, "FUN_00088740" },
@@ -1489,6 +1493,7 @@
 { 0x00090380u, 0x5Du, 0, "FUN_00090380" },
 { 0x000904F0u, 0x52u, 0, "FUN_000904f0" },
 { 0x00090550u, 0x1Eu, 0, "FUN_00090550" },
+{ 0x00090570u, 0x13Fu, 1, "Stormtrooper_vfTakeDamage" },
 { 0x000906B0u, 0x76u, 0, "FUN_000906b0" },
 { 0x00090730u, 0x314u, 0, "FUN_00090730" },
 { 0x00090A50u, 0x44u, 0, "FUN_00090a50" },

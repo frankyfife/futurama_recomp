@@ -23,7 +23,9 @@ target_link_libraries(fut_host_obj PUBLIC
     # design 5.2 (used from M3/M4/M5 on; unused import libraries add no runtime dependency)
     d3d11.lib dxgi.lib xaudio2.lib xinput.lib
     # M6: CoTaskMemFree for the WMVideo Decoder DMO media types (video/wmv_decoder.cpp)
-    ole32.lib)
+    ole32.lib
+    # M6b: Media Foundation source reader for movie packs (video/movie_pack_reader.cpp; part of Windows)
+    mfplat.lib mfreadwrite.lib mfuuid.lib)
 
 # ---- gfx: HLSL shaders compiled at build time (M3, GFX_CONTRACT.md 6; owned by the shader agent) ----------
 # fxc comes with the Windows SDK (vcvars32 puts its x86 bin directory on PATH). Each fut_add_shader call

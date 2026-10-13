@@ -27,6 +27,7 @@ constexpr FormatInfo kFormats[] = {
     {"R8_UNorm", 1, 1, 1, false, false, false},
     {"D24_UNorm_S8_UInt", 1, 1, 4, false, true, false},
     {"D32_Float", 1, 1, 4, false, true, false},
+    {"BC7_UNorm", 4, 4, 16, true, false, true},
 };
 static_assert(std::size(kFormats) == static_cast<std::size_t>(Format::Count));
 

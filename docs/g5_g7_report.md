@@ -78,6 +78,30 @@ Skript: Neues Spiel → steuerbar → Folge → Statistik → RECHTS („Weiter�
 
 Beobachtet: Level 2-6 beginnt nach dem ersten steuerbaren Tick mit einer Szene ohne HUD (etwa 7 s, Figur nicht steuerbar). Drücke in dieser Zeit zählen nicht (Debug-Zeile `cheat: press … not counted for the level skip - character not controllable …`); das Skript wartet deshalb, bis die Figur steuerbar bleibt.
 
+### 3.3 Waffen beim Level-Skip (Nachtrag 2026-10-13)
+
+**Problem (Nutzer):** Nach dem Skip von 1-1 nach 1-2 hatte Fry keine Waffe. FsChangeLevel baut den Zustand für das Folgelevel aus dem aktuellen Inventar (`FUN_000C26E0`). Wer gleich am Anfang von 1-1 springt, hat noch nichts eingesammelt: `Ammo=0|0.000000` für alle 5 Plätze, keine `Pickup=`/`Equip=`-Zeile (Lauf `run\fix\skip11`, Zeile `save: debug action state: Level=Level1-1;Health=100.000000;Ammo=0|0.000000;…;Lives=5;…`).
+
+**Lösung:** Nach dem FsChangeLevel des Skips ergänzt der Port den anstehenden Zustand (`DAT_002EA988`) um die Waffen der Tabellenzeile des **Ziellevels** (0x2D60BC, dieselbe Quelle wie Startlevel und Cheatcodes) und setzt ihn mit `FUN_000C1D30` neu:
+
+* Was der Spieler hat, bleibt. Fehlende Waffen der Zeile kommen dazu, ohne Doppelte (Namen ohne Groß-/Kleinschreibung).
+* `Equip=` der Tabelle gilt nur, wenn nichts ausgerüstet ist. Besitzt der Spieler die Waffe schon unausgerüstet, wird seine Zeile zu `Equip=`. Sonst wird die Waffe als `Pickup=` ergänzt.
+* Kam eine Waffe dazu, bekommt jeder Munitionsplatz mindestens den `Ammo=`-Wert der Zeile (100). `FUN_000C5340` setzt fehlende Plätze auf 0; eine Pistole ohne Munition wäre keine Waffe. Mehr Munition als die Zeile bleibt.
+* `play_as`: Ersetzt die Einstellung die Figur des Ziellevels (z. B. `bender` in 1-2), werden keine Waffen ergänzt (sie würden beim Laden ohnehin entfernt). Protokoll `cheat: level skip to Level1-2: no start weapons added - play_as bender replaces Fry`.
+* Level ohne Waffen in der Tabelle (1-1, Bender-, Leela-, Zoidberg-Level) bleiben unverändert. Der Skriptbefehl `game level_end` (M7) ändert nichts.
+
+Die reine Logik ist `xapi::select::MergeStartWeapons` (`src\host\xapi\game_select.cpp`), Tests in `tests\game_select_tests.cpp` („G7 fix: …“, 4 Fälle).
+
+**Prüfung:** Lauf `run\fix\skip11` (16:9, Skript: Neues Spiel → Skip sofort in 1-1 → „Weiter“ → „Ja“ → 1-2):
+
+```
+cheat: level skip to Level1-2: start weapons of table row 1 added [Hammer,Pistol], equipped Pistol, ammo raised to the table value - state now: Health=100.000000;Ammo=0|100.000000;…;Power=0.000000;Pickup=Hammer;Equip=Pistol;Lives=5;…
+game: start state applied in Level1-2: Level=Level1-2;Health=100.000000;Ammo=0|100.000000;…;Pickup=Hammer;Equip=Pistol;Lives=5;…
+save: debug action state: Level=Level1-2;…;Pickup=Hammer;Equip=Pistol;…
+```
+
+Bild `run\fix\skip11\shots\frame_002524.png`: Fry hält in 1-2 die Pistole, Waffen-HUD oben rechts mit 100 Schuss.
+
 ## 4. Prüfung
 
 * Bauten: RelWithDebInfo `build\g5g7`, Debug `build\g5g7-werr` und clang-cl Debug `build\g5g7-clang` (beide `FUT_WERROR=ON`) ohne Warnungen. `fut_tests` in allen drei Bauten: 483/483 bestanden (1 übersprungen).

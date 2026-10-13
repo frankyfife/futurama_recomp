@@ -37,6 +37,8 @@ constexpr UINT_PTR kCloseTimer = 1;
 constexpr UINT kCloseFallbackMs = 3000;
 // UI thread only.
 bool g_fullscreen = false;
+std::uint32_t g_aspectW = kViewWidth;   // G3: aspect of the view (WindowOptions::aspectW/H)
+std::uint32_t g_aspectH = kViewHeight;
 RECT g_windowedRect{};
 // Display environment (window.h DisplayEnvironment; M3b pacing). Written by the UI thread.
 std::atomic<bool> g_displayOn{true};
@@ -101,7 +103,7 @@ void LayoutView(HWND frame) noexcept {
     RECT rc{};
     GetClientRect(frame, &rc);
     const ViewRect r = ViewLayout(static_cast<std::uint32_t>(rc.right - rc.left),
-                                  static_cast<std::uint32_t>(rc.bottom - rc.top), g_fullscreen);
+                                  static_cast<std::uint32_t>(rc.bottom - rc.top), g_fullscreen, g_aspectW, g_aspectH);
     MoveWindow(view, r.x, r.y, static_cast<int>(r.width), static_cast<int>(r.height), TRUE);
     g_viewWidth.store(r.width);
     g_viewHeight.store(r.height);
@@ -369,8 +371,17 @@ ViewRect FitAspectRect(std::uint32_t clientW, std::uint32_t clientH, std::uint32
 }
 
 ViewRect ViewLayout(std::uint32_t clientW, std::uint32_t clientH, bool fullscreen) noexcept {
+    return ViewLayout(clientW, clientH, fullscreen, kViewWidth, kViewHeight);
+}
+
+ViewRect ViewLayout(std::uint32_t clientW, std::uint32_t clientH, bool fullscreen, std::uint32_t aspectW,
+                    std::uint32_t aspectH) noexcept {
+    if (aspectW == 0 || aspectH == 0) {
+        aspectW = kViewWidth;
+        aspectH = kViewHeight;
+    }
     if (!fullscreen) {
-        return FitAspectRect(clientW, clientH, kViewWidth, kViewHeight);
+        return FitAspectRect(clientW, clientH, aspectW, aspectH);
     }
     ViewRect r;
     r.width = clientW;
@@ -405,7 +416,12 @@ bool CreateMainWindow(const WindowOptions& options, const char** error) noexcept
     const LONG workH = work.bottom - work.top;
     // window_scale is relative to the desktop scaling: 640x480 * scale at 100 %, * dpi / 96 otherwise.
     const std::uint32_t scale = options.scale < 1 ? 1 : options.scale > 8 ? 8 : options.scale;
-    LONG clientW = static_cast<LONG>(MulDiv(static_cast<int>(kViewWidth * scale), static_cast<int>(dpi), 96));
+    // G3: a widescreen view keeps the height of 480 * scale and gets the width of its aspect.
+    g_aspectW = options.aspectW != 0 && options.aspectH != 0 ? options.aspectW : kViewWidth;
+    g_aspectH = options.aspectW != 0 && options.aspectH != 0 ? options.aspectH : kViewHeight;
+    const std::uint32_t viewW = static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(kViewHeight) * g_aspectW + g_aspectH / 2) / g_aspectH);
+    LONG clientW = static_cast<LONG>(MulDiv(static_cast<int>(viewW * scale), static_cast<int>(dpi), 96));
     LONG clientH = static_cast<LONG>(MulDiv(static_cast<int>(kViewHeight * scale), static_cast<int>(dpi), 96));
     RECT wr{0, 0, clientW, clientH};
     AdjustWindowRectExForDpi(&wr, kWindowedStyle, FALSE, 0, dpi);
@@ -416,7 +432,7 @@ bool CreateMainWindow(const WindowOptions& options, const char** error) noexcept
         const LONG borderH = (wr.bottom - wr.top) - clientH;
         const ViewRect fit = FitAspectRect(static_cast<std::uint32_t>(workW > borderW ? workW - borderW : 1),
                                            static_cast<std::uint32_t>(workH > borderH ? workH - borderH : 1),
-                                           kViewWidth, kViewHeight);
+                                           g_aspectW, g_aspectH);
         clientW = static_cast<LONG>(fit.width);
         clientH = static_cast<LONG>(fit.height);
         wr = RECT{0, 0, clientW, clientH};

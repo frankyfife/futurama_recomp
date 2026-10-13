@@ -7,6 +7,7 @@
 #include "core/host_main.h"
 #include "core/log.h"
 #include "gfx/freecam.h"
+#include "input/cheat_toggles.h"
 #include "input/input_script.h"
 #include "input/kbm_window.h"
 #include "input/level_skip.h"
@@ -14,6 +15,7 @@
 #include "input/xpp_hle.h"
 #include "platform/window.h"
 #include "xapi/camera_response.h"
+#include "xapi/cheats.h"
 
 #include <atomic>
 #include <cstdio>
@@ -126,6 +128,9 @@ void StartInput() noexcept {
         router.SetSampleFilter(&gfx::freecam::SampleFilter);
         levelskip::Configure();  // G7: A A B B A A B B A A in a level -> regular level end
         router.AddSampleFilter(&levelskip::SampleFilter);
+        xapi::cheats::Configure();  // G8: [cheats] (hooks were installed by their conditions)
+        cheattoggles::Configure();  // G8: D-pad sequences toggle the cheats ([cheats] ingame_toggles)
+        router.AddSampleFilter(&cheattoggles::SampleFilter);
         // G5: [input] camera_response = precise - smaller dead zone of the controllers' right stick.
         xapi::camera::LogConfiguration();
         SetPadShaper(xapi::camera::ResponseFromConfig(core::GetConfig()) == xapi::camera::Response::Precise

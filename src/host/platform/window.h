@@ -37,6 +37,10 @@ struct WindowOptions {
     // --query-gpu` lists it ("\\.\DISPLAY2"); nullptr, "" or "primary" = the primary monitor. A name that is not
     // connected falls back to the primary monitor (Core warning). Window size and DPI follow that monitor.
     const char* monitor = nullptr;
+    // G3 widescreen ([render] aspect, gfx/widescreen.h): aspect of the view instead of the back buffer's 4:3
+    // (0 x 0 = 4:3). The window's client area at startup is (kViewHeight * aspectW / aspectH) x kViewHeight * scale.
+    std::uint32_t aspectW = 0;
+    std::uint32_t aspectH = 0;
 };
 
 // Monitor selection for [render] monitor (M3c). `name` as in WindowOptions::monitor (blanks around it are
@@ -116,5 +120,8 @@ ViewRect FitAspectRect(std::uint32_t clientW, std::uint32_t clientH, std::uint32
 // monitor - only a swap chain that covers the monitor can use independent flip (VRR, tearing); the present pass
 // draws the 4:3 picture with black bars itself (gfx/rhi PresentScaling, the renderer's 4:3 output size). Pure (tests).
 ViewRect ViewLayout(std::uint32_t clientW, std::uint32_t clientH, bool fullscreen) noexcept;
+// G3: the same for a view of aspect aspectW:aspectH (0 x 0 = kViewWidth:kViewHeight).
+ViewRect ViewLayout(std::uint32_t clientW, std::uint32_t clientH, bool fullscreen, std::uint32_t aspectW,
+                    std::uint32_t aspectH) noexcept;
 
 }  // namespace platform

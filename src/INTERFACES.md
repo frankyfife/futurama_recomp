@@ -1598,6 +1598,12 @@ ipc_renderer.h`);
   `FUN_000B0520(nextLevel)` = the level-script native FID 0xA1 (FsChangeLevel) -> the game's Breakdown screen with
   "Speichern". Refused (script fails) while no level object exists. FsGameSave (0xB0180) alone is not offered: after
   a successful save the dialog writes `[0x2E8E4C]+0x90` (Breakdown) and crashes without it.
+  Since 2026-10-13: `RequestLevelEnd(nextLevel, guaranteeStartWeapons = false)` - with `true` (G7 level skip) the
+  pending state FsChangeLevel built is completed afterwards by `xapi::select::EnsureStartWeapons(next)` (4.35).
+  `xapi::RequestStateDump()` = script command `game state`: logs `save: debug action state: Level=...;Health=...;
+  Ammo=...;Pickup=...;Equip=...;Lives=...` (`FUN_000C26E0` with an output buffer, freed with `FUN_000A3880`).
+  `RunPendingGameActions` also calls `xapi::select::ObserveStartState()` every tick: once the pending start state
+  `DAT_002EA988` of a level was consumed by `FUN_000C5340`, one line `game: start state applied in <Level>: ...`.
 - **VFS** (`vfs\host_dir_device.cpp`): a directory scan (`File::NextDirEntry`, NtQueryDirectoryFile) is a snapshot
   taken at the (re)start; writable host directories list their entries in creation order (ties: name), like FATX
   (the save lists are in enumeration order), read-only ones in the host's name order (XDVDFS). `vfs::
@@ -1644,7 +1650,12 @@ ipc_renderer.h`);
   level-script native FsChangeLevel `FUN_000B0520(next)`, `next` = the level's own successor
   (`inp::levelskip::NextLevel`, the opcode-0xA1 argument of `scripts\levelN-M.ful`; Level5-3 -> Level1-1 without the
   credits). Log `cheat: level skip (A A B B A A B B A A, port N) in <Level> - level end via the script native
-  FsChangeLevel("<Next>") ...`; presses that do not count are logged at debug level.
+  FsChangeLevel("<Next>") ...`; presses that do not count are logged at debug level. Since 2026-10-13 the skip
+  guarantees the target level's start weapons (`RequestLevelEnd(next, true)`): `xapi::select::MergeStartWeapons(state,
+  tableRow)` (pure) keeps the player's weapons, adds missing `Pickup=`/`Equip=` of row `0x2D60BC` (Equip only if none
+  is equipped), raises every ammo slot to the row's `Ammo=` when a weapon was added, and the result replaces the
+  pending text (`FUN_000C1D30`); not when play_as replaces the target level's character
+  (`PlayAsReplacesCharacter`). Log `cheat: level skip to <Level>: start weapons of table row N added [...]`.
 - **Router filter chain** (`input\host_router.h`, additive): `HostRouter::AddSampleFilter(fn)` - up to
   `kMaxChainedFilters` (4) further sample filters, called after the `SetSampleFilter` filter (freecam) in the order
   added, before the divert check; `HostRouter::Diverted(port)`. The input system adds `inp::levelskip::SampleFilter`.
@@ -1681,6 +1692,189 @@ ipc_renderer.h`);
   (`xapi::fp::LookDeflection(..., gameEncoded = true)`). G5 owns camera mode 0, G6 mode 3; no shared hook address.
 - **Tests**: `tests\first_person_tests.cpp`. Script `tools\input_scripts\g6_first_person.txt`. Report:
   `docs\g6_report.md`.
+
+### 4.37 G3 widescreen - `gfx\widescreen.h`, `gfx\widescreen_math.h`
+
+- **`[render] aspect = original|16:9|16:10|21:9|monitor`** (Graphics tab, "Bildformat (Breitbild)", default
+  `original`; `gfx::widescreen::ParseAspect`, `GetDisplay()` resolves it once). `21:9` = 64:27; `monitor` = the aspect of
+  `[render] resolution` when set, else of the monitor's physical pixels (`[render] monitor`). `original` (or an aspect
+  within 1 % of 4:3) changes nothing: no frustum patch, no placement, 4:3 back buffer, hook total unchanged (the Click
+  probe is the freecam's, always installed).
+- **Click side** (`gfx\freecam.cpp`, `probe:NiCamera::Click` 0x100C50): `widescreen::FrustumFactor(cam)` = Hor+ factor
+  k for a back-buffer camera that `WidenableCamera(frustum, port)` accepts (perspective, l < 0 < r, b < 0 < t, far >=
+  50 near, port over the whole width), 1 otherwise and in the context "Frontend" (the front end stays 4:3). The probe
+  widens l, r by k (vertical extent kept), recomputes the vf39 tail (planes 0xFEED0..0xFF290, view data 0xFF3A0), calls
+  the original Click between `BeginWidened(cam, k)` / `EndWidened(cam)`, restores the game's frustum and recomputes
+  again. With the freecam active its scene camera gets pose + zoom + k in one patch.
+- **Renderer** (`gfx\nipc_gpu.h`): `GpuRenderer::CreateParams::aspectWidth/aspectHeight` (0 x 0 = before),
+  `ComputeRenderSizes(..., aspectW = 0, aspectH = 0)` fits the display aspect instead of the guest's. Slot 47 asks
+  `WidenedFactor(location - 0xA0)`; for a widened camera the renderer keeps an unwidened `CameraDesc` too. Every
+  back-buffer draw gets a `widescreen::Placement` (Stretch / Center / Left / Right, `Classify(DrawFacts, exceptions)`;
+  guest pixels -> internal pixels by `MappingOf` + `PlaceViewport`/`PlaceRect`), clears with a rectangle likewise. The
+  rules: Hor+ geometry and outline ribbons stretched; port cameras (avatar portrait) by their port; 3D of other
+  non-HUD cameras centred; full-raster draws untextured stretched (fades), textured centred; slot-55 screen textures
+  centred; otherwise, only in the context "Ingame" (`AnchoringAllowed(frame)`), anchored by the third of the 640x480
+  raster the bounding box centre lies in (`AnchorOf`), after the exceptions table `AnchorExceptions()` (empty so far).
+  A quad (<= 8 vertices) of a Hor+ camera that covers the screen with the game's own projection (pause dimming) is
+  drawn with that projection, stretched. Bars outside the centred 4:3 area are cleared black once per frame before its
+  first draw/colour clear - only if that one is not stretched over the width (fix 2026-10-13: when the Hor+ scene or
+  a full-width colour clear comes first, the sides belong to the scene and keep the game's clear colour where the
+  scene leaves holes, e.g. beyond the far plane; a depth/stencil-only clear does not decide). Render-to-texture targets are never placed. `[render] trace_frames` logs every slot-47 camera
+  ("camera 0x... frustum ... port ...").
+- **Window** (`platform\window.h`, additive): `WindowOptions::aspectW/aspectH` (view aspect and initial client size,
+  0 x 0 = 4:3), `ViewLayout(clientW, clientH, fullscreen, aspectW, aspectH)` (the 3-argument form unchanged).
+  `platform::StageCreateWindow` passes `widescreen::GetDisplay()`.
+- **Logs**: "widescreen: [render] aspect = ..." at start, one line per first-seen screen-space draw ("widescreen: frame
+  N screen polygon 0x... (camera ..., ...) bounds (...) -> left", at most 64), exit reporter "widescreen" (placements,
+  widened clicks, unwidened quads).
+- **Tests**: `tests\widescreen_tests.cpp`. Report: `docs\g3_report.md`.
+
+### 4.38 G2 texture packs and texture dump - `gfx\texture_pack.h`, `tools\texture_upscale.py`
+
+- **Keys** (`gfx::Settings`, Graphics tab): **`[render] texture_pack`** (path_dir, default empty = off, widget `dir`,
+  `Settings::texturePack`) and **`[render] texture_pack_dump`** (bool, default 0, advanced, `Settings::texturePackDump`;
+  dump folder `Settings::texturePackDumpDir` = `<userdata>\texture_dump`). With both off nothing runs: no hash, no
+  thread, no log line (`texpack::Enabled()` false).
+- **Content hash "FTX1"** (`texpack::TextureHash`, `HashGuestPixelData`): XXH64 seed 0 over ten little-endian u32
+  (`0x31585446`, NiPixelFormat format, bpp, level-0 width, height, R/G/B/A masks, level-0 byte count), the stored
+  level-0 bytes, and for PAL/PALA the 1024 palette bytes + alpha flag. Mips are not hashed. Name = 16 lowercase hex
+  digits (`HashName`); pack files `<hash>[<non-hex suffix>].dds|.png`, sub-folders scanned, `.dds` wins
+  (`ParseHashName`, `Pack::Open`). Changing the scheme invalidates every pack (pinned by a unit test).
+- **What is replaced**: only static (`NiSourceTexture +0x38` != 0) source textures after a successful GPU upload in
+  `FillSourceTextureData` (`texpack::OnTextureUploaded`). Not: default 8x8 texture, movie (YUY2, texel UVs), rendered
+  textures, non-static textures, re-uploads. The guest keeps the original NiPCTextureData size/format/level fields.
+- **Renderer contract** (`nipc_renderer.cpp`): `NiPCTextureData::hostInfo` gets `texpack::kHostReplacementPending`
+  0x200 (file queued) and `texpack::kHostReplaced` 0x400 (hostTexture is the pack texture, owned). `ResolveTexture`
+  calls `texpack::ApplyPending` while 0x200 is set (swap on the guest render thread: create, destroy the original);
+  the data destructor calls `texpack::OnDataDestroyed` before destroying the host texture; the gfx exit reporter calls
+  `texpack::LogStatistics` (flushes the dump queue up to 5 s). `ff_pipeline.cpp` calls `texpack::AdjustSampler` after
+  `MakeSamplerDesc`: a replacement sampled with mip filter NONE gets MIP_LINEAR with `maxLod = ExtraLevels(...)`
+  (= log2 of the size ratio), i.e. it is never minified below the original resolution without mips.
+- **Formats** (`ParseDds`, `LoadReplacementFile`, `MakeMippedBgra`): DDS BC1/BC2/BC3 (FourCC), DX10 BC1/2/3/7,
+  B8G8R8A8/X8, R8G8B8A8 (also legacy masks), sRGB variants read as UNORM, stored mips (clamped); no cube/volume/array,
+  BCn level 0 divisible by 4. PNG (any WIC image) -> BGRA8 with a full alpha-weighted box mip chain.
+- **New RHI format** `rhi::Format::BC7_UNorm` (appended before `Count`; `DXGI_FORMAT_BC7_UNORM`; FL 11_0+, otherwise
+  `CreateTexture` fails and the original stays).
+- **Loader**: `texpack::Pack` = file index + one worker thread ("texture pack loader") + LRU cache of decoded images
+  (`kCacheBudgetBytes` 96 MiB). Dump: worker thread "texture dump writer", PNG via the new
+  `platform::WritePngFileRgba` (32-bit BGRA PNG, `platform\screenshot.h`), one line per texture in `index.tsv`
+  (`hash width height format mips alpha` with alpha none/binary/smooth).
+- **Log**: GFX/info at start (pack file count, dump folder) and exit (lookups, hits, replaced, failed, misses,
+  decode time, MiB); GFX/debug per hit/miss; GFX/warn per unusable file.
+- **Tool** `tools\texture_upscale.py <dump> <pack> [--scale 2|4] [--method cartoon|lanczos|external|ai|waifu2x|trace]
+  [--format dds|png]` (numpy + Pillow, offline; external/ai/waifu2x = an upscaler the user installed, `--external-exe`,
+  `--ai-exe`, `--w2x-exe`; recommended `--method waifu2x`, model cunet, noise 1). Alpha never goes through the AI
+  (Lanczos + back-projection, binary alpha thresholded), the original colour under transparent texels is kept
+  (additive blending), font atlas and text textures `--text-method conservative`. Output BC1/BC3 DDS, plain-box mips.
+- **Renderer** (G2 fix): `ff::DiscardsTransparentFragments` - alpha-blended draws (SRCALPHA/INVSRCALPHA or
+  SRCALPHA/ONE) without alpha test that write depth discard alpha-0 fragments (GFX_CONTRACT.md 6.4).
+- **Tests**: `tests\texture_pack_tests.cpp` (XXH64 vectors, FTX1 hash incl. guest memory, names, DDS, mips, sampler
+  extension, pack loader, schema). Script `tools\input_scripts\g2_textures.txt`. Report `docs\g2_report.md`.
+
+### 4.39 M8 renderer P2: render to texture, projected shadows, particles - `gfx\nipc_gpu.h`, `gfx\ni_extract.h`, `gfx\rhi\rhi.h`
+
+- **Render to texture** (slot 15 with an `NiRenderedTexture`): `GpuRenderer::SetTextureTarget(data, w, h)` (signature
+  change: `data` = the texture's `NiPCRenderedTextureData`, the head of `NiTexture +0x20`) binds an own color target and
+  D24S8 depth buffer per rendered texture, at `RenderTargetDimension(guest, 480, internal height)` (guest size times
+  the render-resolution factor, at least the guest size, at most `kMaxRenderTargetDimension` 4096) with the back
+  buffer's MSAA samples. Viewport and clear rectangles are scaled like on the back buffer (guest -> device pixels of
+  the current target). Leaving the target (`SetBackBufferTarget`, another texture target) resolves the samples.
+  `GpuRenderer::RenderedTexture(data, w, h)` returns the sampled texture for the texture resolver (created black if
+  never rendered; resolved first if needed), `ForgetRenderedTexture(data)` releases it (data destructor). Draws and
+  clears on texture targets are real now; `DrawOutcome::TextureTarget` only counts draws whose target could not be
+  created. Exit line `d3d11 render to texture (M8): ...`. Diagnostics: every `[render] trace_frames` frame writes the
+  targets as `frame_NNNNNN_rtt_K.png` into `[render] screenshot_dir`.
+- **RHI (add-only):** `TextureDesc::sampleCount` (default 1; > 1 for render-target/depth textures without data and
+  without `kTextureSampled`), `Device::ResolveTexture(destination, source)` (default false; D3D11 `ResolveSubresource`,
+  a copy for one sample).
+- **Projected shadows** (`NiTextureEffect` type 1): `ni::ExtractState` appends the shadow passes of the default texture
+  pipeline to `RenderStateDesc` (`passCount` > 1, `extraPasses[kMaxExtraPasses = 8]` of `ni::PassDesc`: blend, alpha
+  test, stages, texture factor). `ExtractContext::clipTexture` = the pipeline's 2 x 1 clipping texture (the GPU path
+  creates it). `GpuRenderer` draws each extra pass with the first pass's geometry, z, stencil, cull and lighting, fog
+  off. Pure helpers `ni::ProjectedShadowTransform`, `ni::ShadowClipTransform`. New counters
+  `ExtractCounters::shadowPasses`, `shadowEffectsSkipped` (projected lights, environment/fog maps, other coordinate
+  modes - not reproduced).
+- **Particles** (slot 52 RenderPoints): new `ni::DrawKind::Points` (`kDrawKindCount` 7), `ni::ExtractPoints` (camera-
+  facing quads, pure helpers `ni::ParticleAxes`, `ParticleCorners`, `ParticleColor`), `GpuRenderer::DrawPoints`,
+  layout `ni::NiParticlesData` (`ni_guest_layouts.h`). Not interpolated (M3d: the 60-Hz grid of the logic).
+- **With G3 widescreen (4.37):** placement (`DrawWide`, `ClearBars`, `PlaceViewport`/`PlaceRect`) applies to the back
+  buffer only; texture targets keep their own guest -> device scale (`targetInternalWidth/Height`). The extra passes
+  of a draw run inside its placement (same D3D viewport and pipeline camera, `DrawWithPasses`); particles are scene
+  geometry (stretched with Hor+, never the unwidened full-screen-quad case).
+- **Tests:** `tests\extract_m8_tests.cpp`, `tests\nipc_gpu_tests.cpp` (texture targets, MSAA resolve at factor 2,
+  `RenderTargetDimension`). Script `tools\input_scripts\m8_level.txt`. Report `docs\m8_report.md`,
+  `loader_design.md` 8.23.
+
+### 4.40 M6b movie packs (AI-upscaled movie pictures) - `video\movie_pack.h`, `video\movie_pack_reader.h`, `gfx\d3d_shim.h`, `gfx\movie_uv.h`
+
+- **Key**: **`[render] movie_pack`** (path_dir, default empty = off, Graphics tab order 115, widget `dir`; read by
+  `video\xmv_hle.cpp` at every movie open, index cached per folder). Empty: no M6b code runs (no thread, no log).
+- **Pack format** (`video\movie_pack.h`): folder with `index.tsv` (`# comments`; tab-separated `name header_crc32
+  xmv_bytes frames width height duration_ms file`) and one `.mp4` per movie (H.264 or HEVC, no B-frames, the XMV's
+  exact pts, ms time scale, no audio). `header_crc32` = zlib CRC-32 of the first 0x1000 bytes of the `.xmv` = the
+  header the game passes to `XMVDecoder_CreateDecoderForPackets`; lookup `FindPackEntry(entries, crc, W, H)` (same
+  aspect, not smaller). `ParsePackIndex` rejects odd/zero/>4096 sizes and file names with separators or `..`.
+- **Reader** (`vid::PackVideoReader`): Media Foundation source reader (`MFCreateSourceReaderFromURL`, YUY2 output,
+  retry with `MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING`) on a worker thread of its own (CoInitializeEx MTA +
+  MFStartup there, never on the guest thread), up to 6 frames ahead; `Get(index, timeoutMs)` -> Ok/Timeout/End/Error
+  (older frames discarded, `PackStepFor`). New link libraries `mfplat.lib mfreadwrite.lib mfuuid.lib`.
+- **XMV HLE** (`xmv_hle.cpp`): `Create` opens the reader for a pack entry; every shown XMV frame (index in decode
+  order, `Movie::videoIndex`) fetches the pack frame of the same index (first frame waits up to 2 s, later 250 ms),
+  checks `PackPtsMatch` (pts relative to the first frame, +-1 ms) and attaches it with `gfx::d3d::SetHostImage`
+  before `WritePicture`. The XMV is still demuxed and decoded as before (audio, clock, end, the 640x480 guest
+  picture): a timeout shows the original picture for that frame, a pts mismatch / missing frame / decoder error ends
+  the pack for the rest of the movie (WARN, original picture). `MovieStatistics` gained `packMovies`, `packFrames`,
+  `packMisses`, `packFallbacks` (additive).
+- **Shim** (`gfx\d3d_shim.h`, additive): `struct HostImage {width, height, pitch, yuy2}`, `SetHostImage`,
+  `GetHostImage` (surface -> its texture; dropped with the resource). Renderer: `MovieTexture` uses the host image
+  (host texture of its size), `ApplyTexelAddressing` scales the game's texel UVs with `gfx::MovieTexelScale`
+  (`gfx\movie_uv.h`, pure). GFX_CONTRACT.md 15.
+- **Logs** (VID): `XMV: movie pack '<dir>': N movies`, `XMV: movie #n = <name>: picture from the movie pack '<file>'
+  (WxH, F frames, header CRC-32 X)`, `... not in the movie pack (header CRC-32 X) - original picture`, `XMV: movie #n:
+  movie pack decoder: Media Foundation source reader, output YUY2 (decoder)`, `XMV: movie #n: S of T shown frames
+  from the movie pack (<file>), M missed, pts checked`, WARN `movie pack off from frame i: <why>`; exit summary
+  `XMV movie pack: ...`; GFX `d3d11 movie pack pictures (M6b): ...`.
+- **Tool** `tools\movie_upscale.py --iso <image> --pack <dir> --ai-exe <realesrgan-ncnn-vulkan.exe> [--ai-mix 0.75]
+  [--scale 2] [--gpu 0] [--codec h264|hevc] [--cq 18] [--gop 30] [--only ...] [--reference-json <decode-movies json>]`
+  (FFmpeg + Real-ESRGAN ncnn Vulkan installed by the user; nothing downloaded). Packaged by `tools\package.py`
+  together with `tools\xdvdfs.py`.
+- **Tests**: `tests\movie_pack_tests.cpp` (index, lookup, pts/queue/100-ns rules, texel scale, host image, schema;
+  optional real reader test on `run\moviepack_ai_x2`). Report `docs\m6b_report.md`, `loader_design.md` 8.24.
+
+### 4.41 G8 cheats - `xapi\cheats.h`, `input\cheat_toggles.h`, `input\host_router.h`
+
+- **`[cheats]`** (new section, Game tab, group "Cheats"; all bool, default `0`; `xapi::cheats::SettingsFromConfig`):
+  `invulnerable`, `one_hit_kill`, `enemies_ignore`, `ingame_toggles`. Hook conditions (`FUT_PROBE_IF`): a cheat's
+  probes are installed when it is on at start **or** `ingame_toggles = 1`; all off = no hook (`hooks: 184 installed`
+  as without G8; with toggles 194). Runtime switches `xapi::cheats::Active(Cheat)`, `Toggle(Cheat, port, text)`.
+- **Invulnerable**: `probe:Player::TakeDamage` 0x51AD0 (`55 8B EC 83 E4 F0`; vtable +0x7C of the five player
+  classes, thiscall `(float amount, Actor* attacker)` ret 8) skips the call (no health loss, no hit reaction) unless
+  the return address is 0x38C49 (instant-death floor, material flag 8 in `FUN_00038880` - passes like the game's own
+  god mode). `probe:Script::FsDeductLives` 0xC1240 (`FF 0D DC 67 2D 00`, cdecl; opcode 0x149) is skipped (lives
+  kept). Pure decision `BlockPlayerDamage(invulnerable, amount, returnAddress)`.
+- **One-hit kill**: `probe:Actor::TakeDamage` 0x354B0 (`64 A1 00 00 00 00`, catch-all) and the enemy classes'
+  +0x7C entries with a "killing blow" pre-check: `probe:Npc::TakeDamage` 0x47240, `Kamikaze` 0x60080, `Aquafish`
+  0x80300, `Goon` 0x86520, `Junkbot` 0x88530, `Stormtrooper` 0x90570 (the last five are extra function starts,
+  `tools\gen\extra_function_starts.tsv`). Pure decision `OneHitDamage(amount, health, maxHealth (+0x4FC),
+  attackerIsPlayer (vtable in kPlayerVtables), targetIsPlayer)`: lethal = current health; unchanged for health or
+  maximum 55555 and maximum >= 50000; bosses (maximum >= 1000) a quarter of the maximum per hit.
+- **Enemies ignore me**: `probe:AI::BrainUpdate` 0x2ECB0 (`55 8B EC 83 E4 F0`, thiscall, plain ret) sets the game's
+  hold-fire byte 0x2DBAA0 to 1 after every brain update (perception 0x2E2E0 finds no target, attack state 0x2F720
+  does not attack a player).
+- **Tick**: `xapi::RunPendingGameActions` calls `xapi::cheats::OnTick()` - the toggle flash (game's cheat
+  confirmation `FUN_00013130` on `[[0x2DABC4]+0x8C]`, green on / red off) and the health trace `cheat: player health
+  A -> B, lives L -> M` (only with cheat hooks; losses, gains >= 5, lives; 400 lines at most). Exit reporter "cheats"
+  (`cheats summary: ...`).
+- **In-game toggles** (`inp::cheattoggles`, router chain filter after the G7 filter): D-pad sequences of 8 presses
+  within 5 s (at most 1 s apart) while `inp::levelskip::InputCheatArmed(port, reason)` (new, shared with G7; the
+  former G7 `Armed` conditions): invulnerable `UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT`, one-hit kill `LEFT RIGHT LEFT
+  RIGHT UP DOWN UP DOWN`, enemies ignore `DOWN UP DOWN UP RIGHT LEFT RIGHT LEFT`. Pure `DpadSequenceDetector`.
+  Log `cheat: <key> ON|OFF (<label> "an|aus", <sequence>, port N)`.
+- **Router feedback pulse** (`input\host_router.h`, additive): `HostRouter::PulseRumble(port, strength, samples)`,
+  `PulseActive(port)` - motors at least `strength` for the next `samples` samples of the port, scaled and muted like
+  the game's rumble. Toggle on = 0.4 s, off = 0.15 s.
+- **Tests**: `tests\g8_cheats_tests.cpp` (6 cases). Script `tools\input_scripts\g8_cheat_toggles.txt`. Report:
+  `docs\g8_cheats_report.md`, analysis `analysis\loader\g8_cheats.md`.
 
 ## 5. Cross-module contracts
 
@@ -1899,3 +2093,12 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 | 2026-10-12 | M7 (save games) | new `tools\verify_save.py`, `tools\m7_check.py`, `tools\input_scripts\m7_*.txt` (5), `tests\save_tests.cpp`, `analysis\loader\m7_saves.md`, `docs\m7_report.md`; `docs\loader_design.md` (new section 8.18, R11/R16, M7), `docs\ROADMAP.md`, `README.md`, this file (4.33) | M7 tools, tests, analysis, report and documentation. |
 | 2026-10-12 | G5/G7 | new `xapi\camera_response.h/.cpp`, `input\level_skip.h/.cpp`, `tests\g5_g7_tests.cpp`, `analysis\loader\g5_camera.md`, `analysis\loader\scripts\g5_camera_trace.py`, `tools\input_scripts\g5_camera.txt`, `g7_level_skip.txt`, `docs\g5_g7_report.md`; `input\host_router.h/.cpp` (additive: `AddSampleFilter`, `Diverted`), `input\xinput_source.h/.cpp` (additive: `SetPadShaper`), `input\stick_curve.h` (additive: `PreciseStickOutput`, `PreciseStickToGameThumbs`), `input\input_system.cpp` (wiring), `input\input_script.h/.cpp` (additive: `GameControllable`, `game camera_trace on\|off`, the heartbeat calls `xapi::camera::TraceTick`), `core\config_schema.cpp` (2 rows + choice list), `tools\input_scripts\README.md` | `[input] camera_response = original\|precise` (2 conditional probes 0x15990/0x103020, pad right-stick shaper), `[game] level_skip_cheat` (A A B B A A B B A A -> FsChangeLevel with the level's successor). Section 4.35, `loader_design.md` 8.19. |
 | 2026-10-12 | G6 first person | new `xapi\first_person.h/.cpp`, `tests\first_person_tests.cpp`, `analysis\loader\g6_firstperson.md`, `analysis\loader\scripts\g6_firstperson_trace.py`, `tools\input_scripts\g6_first_person.txt`, `docs\g6_report.md`; `input\kbm_source.h/.cpp` (additive: `SetMouseMotionQuery`), `tools\gen\extra_function_starts.tsv` + regenerated `gen\xbe_functions.gen.inc` (0x50D10, 0x588B0), `core\config_schema.cpp` (2 rows + choice list), `tools\input_scripts\README.md` | `[input] first_person = off\|on` (6 conditional probes 0x54DA0/0x588B0/0x54AE0/0x536D0/0x50D10/0x18250, nothing with `off`), `[input] first_person_look_speed`. Section 4.36, `loader_design.md` 8.20. |
+| 2026-10-12 | G3 widescreen | new `gfx\widescreen.h/.cpp`, `gfx\widescreen_math.h`, `tests\widescreen_tests.cpp`, `docs\g3_report.md`; `gfx\freecam.cpp` (Click probe: Hor+ for scene cameras, combined with the freecam), `gfx\nipc_gpu.h/.cpp` (additive: `CreateParams::aspectWidth/Height`, `ComputeRenderSizes(..., aspectW, aspectH)` with defaults, placement of draws/clears, bar clear, camera line in the draw trace), `gfx\nipc_renderer.cpp` (passes the aspect), `platform\window.h/.cpp` (additive: `WindowOptions::aspectW/H`, 5-argument `ViewLayout`), `platform\platform.cpp`, `core\config_schema.cpp` (row `[render] aspect` + choice list, resolution help text) | `[render] aspect = original\|16:9\|16:10\|21:9\|monitor`: Hor+ 3D, HUD anchored at the edges in levels, menus/loading screens/movies centred 4:3 with bars. Section 4.37, `loader_design.md` 8.21. |
+| 2026-10-12 | G2 agent | `gfx\texture_pack.h/.cpp` (new), `gfx\nipc_renderer.cpp`, `gfx\ff_pipeline.cpp`, `gfx\gfx_config.h/.cpp`, `gfx\rhi\rhi.h/.cpp`, `gfx\rhi\d3d11\d3d11_convert.cpp`, `platform\screenshot.h/.cpp`, `core\config_schema.cpp` | 4.38: texture packs and dump (`[render] texture_pack`, `texture_pack_dump`), `NiPCTextureData::hostInfo` bits 0x200/0x400, `texpack::AdjustSampler` in the stage sampler setup, `rhi::Format::BC7_UNorm` (appended), `platform::WritePngFileRgba`. Tool `tools\texture_upscale.py`, tests `tests\texture_pack_tests.cpp`. |
+| 2026-10-13 | M6b movie packs | new `video\movie_pack.h/.cpp`, `video\movie_pack_reader.h/.cpp`, `gfx\movie_uv.h`, `tests\movie_pack_tests.cpp`, `tools\movie_upscale.py`, `docs\m6b_report.md`; `video\xmv_hle.h/.cpp` (additive `MovieStatistics` fields, pack frames), `gfx\d3d_shim.h/.cpp` (additive `HostImage`, `SetHostImage`, `GetHostImage`), `gfx\nipc_gpu.cpp` (`MovieTexture` with host image, texel scale), `core\config_schema.cpp` (row `[render] movie_pack`), `src\host\CMakeLists.txt` (mfplat/mfreadwrite/mfuuid), `tools\package.py`, `.gitignore`, `gfx\GFX_CONTRACT.md` 15 | `[render] movie_pack`: AI-upscaled movie pictures (1280x960) from a pack made with `tools\movie_upscale.py`, decoded with Media Foundation, frame-exact to the XMV's pts; audio, clock and skipping unchanged. Section 4.40, `loader_design.md` 8.24. |
+| 2026-10-12 | M8 (renderer P2) | `gfx\nipc_gpu.h/.cpp`, `gfx\nipc_renderer.cpp`, `gfx\ni_extract.h/.cpp`, `gfx\ni_guest_layouts.h`, `gfx\rhi\rhi.h`, `gfx\rhi\d3d11\d3d11_device.cpp`, `gfx\rhi\d3d11\d3d11_internal.h`, new `tests\extract_m8_tests.cpp`, `tests\nipc_gpu_tests.cpp`, new `tools\input_scripts\m8_level.txt` | Render to texture with MSAA and render resolution (`SetTextureTarget(data, w, h)` signature change, `RenderedTexture`, `ForgetRenderedTexture`, `RenderTargetDimension`), RHI add-only `TextureDesc::sampleCount` / `Device::ResolveTexture`, projected shadow passes (`RenderStateDesc::extraPasses`, `ExtractContext::clipTexture`), slot 52 particles (`DrawKind::Points`, `ExtractPoints`). Section 4.39, `loader_design.md` 8.23, `docs\m8_report.md`. |
+| 2026-10-13 | fix weapons/fog | `xapi\game_select.h/.cpp` (additive: `FindStartLevel`, `PlayAsReplacesCharacter`, `WeaponMerge`/`MergeStartWeapons`, `EnsureStartWeapons`, `PlayerStateText`, `ObserveStartState`, constants `kBuildStateText`/`kGuestFree`/`kLevelPlayerOffset`), `xapi\save_probes.h/.cpp` (`RequestLevelEnd(next, guaranteeStartWeapons = false)`, new `RequestStateDump`), `input\level_skip.cpp`, `input\input_script.h/.cpp` (`game state`), `gfx\nipc_gpu.cpp` (bar clear decided by the placement of the first draw/colour clear, exit line `d3d11 widescreen bars: ...`), `tests\game_select_tests.cpp`, `tests\nipc_gpu_tests.cpp`, `tools\input_scripts\README.md`, `docs\g4_report.md`, `docs\g5_g7_report.md`, `docs\g3_report.md` | G7 level skip gives the target level's start weapons (hammer + pistol for 1-2 etc.), start state observer line; G3: no black side bars under a stretched level scene (Level1-2: the sewer's far end beyond the far plane showed black outside the 4:3 area). Sections 4.33, 4.35, 4.37. |
+| 2026-10-13 | avatar fix (NiOutline ribbons) | `gfx\outline.h/.cpp` (additive: `RibbonTriangles`, `PoolCloseZeroesTail`, `SplitRibbonStrip`, `RibbonStats`/`GetRibbonStats`/`LogRibbonStatistics`, constants `kRibbonAppend`/`kRibbonFlush`/`kRibbonPoolPolygonGlobal`/`kRibbonPoolCountGlobal`/`kRibbonPolygonVertices`; probes `probe:NiOutline::AppendRibbon` 0x13D3B0 and `probe:NiOutline::FlushRibbons` 0x13E360), `gfx
+ipc_gpu.cpp` (`DrawScreenPolygon`, exit line), `tests\outline_tests.cpp` (4 cases), `gfx\GFX_CONTRACT.md` 14, `analysis\loader\g1_outlines.md` 12, `docs\m8_report.md` | HUD portrait without black spikes: ribbon strips drawn as triangle lists of their chains (no bridges between chains, no padding), and the chain end the original zero-fills when it closes a strip is restored. Always on, no option. |
+| 2026-10-13 | G2 alpha/font fix | `gfx\ff_pipeline.h/.cpp` (additive: `DiscardsTransparentFragments`, used by `FillDrawConstants`), `tests\ff_pipeline_tests.cpp` (1 case), `gfx\GFX_CONTRACT.md` 6.4, `tools\texture_upscale.py` v3 (`--method waifu2x`, separate alpha path, `--text-method`, `--text-overlay` default none), `tools\package.py`, `docs\g2_report.md` | 4.38: menu text without dark word rectangles (with and without pack); packs keep the original alpha and the colour under alpha 0 of lamps/glows; waifu2x pack recommended. |
+| 2026-10-13 | G8 cheats | new `xapi\cheats.h/.cpp`, `input\cheat_toggles.h/.cpp`, `tests\g8_cheats_tests.cpp`, `analysis\loader\g8_cheats.md`, `tools\input_scripts\g8_cheat_toggles.txt`, `docs\g8_cheats_report.md`; `input\host_router.h/.cpp` (additive: `PulseRumble`, `PulseActive`), `input\level_skip.h/.cpp` (additive: `InputCheatArmed`), `input\input_system.cpp` (wiring), `xapi\save_probes.cpp` (tick calls `cheats::OnTick`), `core\config_schema.cpp` (section `cheats`, 4 rows), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (5 starts), `tools\input_scripts\README.md` | `[cheats] invulnerable / one_hit_kill / enemies_ignore / ingame_toggles` (10 conditional probes, none by default), D-pad toggles. Section 4.41, `loader_design.md` 8.25. |

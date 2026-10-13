@@ -87,6 +87,16 @@ Diese Codes gibt es im Originalspiel; sie funktionieren im Port ohne Einstellung
 
 Beispiel 2-1: LT halten, `A, RT+X, RT+Y, A, RT+X, RT+Y, RT+X, RT+Y, B, Y`, BACK (im Port geprüft).
 
+## Nachtrag 2026-10-13: Waffen beim Startlevel
+
+Nutzerbericht: „Level skip oder level select gibt den Charakteren scheinbar ihre Waffen nicht mit (Fry in der Kanalisation)“.
+
+* **Startlevel (`start_level = Level1-2`, `play_as = original`):** nicht reproduzierbar. Der Zustand der Tabellenzeile (`Pickup=Hammer`, `Equip=Pistol`, `Ammo=100.0`) kommt an: Fry hält die Pistole, das Waffen-HUD zeigt die Pistole mit 100 Schuss (`run\fix\start12a\shots\frame_001385.png`, Arbeitsbaum `fix-gameplay`). Die neue Protokollzeile nach dem Anwenden lautet `game: start state applied in Level1-2: Level=Level1-2;Health=100.000000;Ammo=0|100.000000;…;Pickup=Hammer;Equip=Pistol;Lives=5;…` (`run\fix\fog169\logs\futurama.log`), also hat Fry auch den Hammer.
+* **Def-Namen:** Die `defs.nif` der Fry-Level enthalten `WeaponDef::Hammer` und `WeaponDef::Pistol` (1-1, 1-2), dazu `Shotgun` (ab 1-3) und `MachineGun` (1-5, 1-6, 1-7); die Namen sind längenpräfixiert. „HammerP“ in `g4_select.md` war ein Lesefehler (das Byte nach dem Namen). `FindDef` 0xC3E80 findet die Tabellennamen also.
+* **play_as:** Mit `original` ist kein Hook installiert, nichts wird entfernt. Mit `fry` bleibt der Def eines Fry-Levels (eigene Variante `fry-1-2`), es wird ebenfalls nichts entfernt. Nur `bender`/`leela` entfernen die Waffen in Fry-Leveln, wie oben beschrieben. Die Fry-Level enthalten keine Bender- oder Leela-Defs als Nebenfiguren (geprüft für alle `defs.nif`).
+* Das Bild des Nutzers (4 Leben, kein Waffen-HUD) passt zum **Level-Skip** aus 1-1: Dort baut das Spiel den Zustand aus dem Inventar, und am Anfang von 1-1 hat Fry nichts. Das behebt der Nachtrag in `g5_g7_report.md` 3.3.
+* **Neu zur Diagnose:** Nach jedem Levelstart mit Startzustand steht einmal `game: start state applied in <Level>: …` im Protokoll (Beobachter am Tick-Takt, kein Hook). Der Skriptbefehl `game state` schreibt den aktuellen Zustand (`save: debug action state: …`; `FUN_000C26E0` mit Ausgabepuffer).
+
 ## Offen
 
 * Ganze Level mit fremder Figur durchspielen (Rätsel, Tod, Neustart, Levelende) – nicht geprüft.

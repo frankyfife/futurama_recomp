@@ -1,0 +1,122 @@
+# g8_cheat_toggles.txt - G8 in-game cheat toggles ([cheats] ingame_toggles = 1) in the level of [game] start_level:
+# D-pad sequences invulnerable ON, enemies ignore ON, one-hit kill ON, invulnerable OFF (each waits for its log line
+# "cheat: <key> ON|OFF"), then a sequence broken by A that must not toggle; screenshots of the green/red flash.
+# About 35 s. Format: README.md in this folder.
+
+# G8 test: start level, walk a bit, then attack with lock-on for about 60 s; screenshots and state.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 60t
+log "G8: toggles"
+press UP 3t
+wait 6t
+press UP 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+wait log "cheat: invulnerable ON" timeout 5s
+wait 8t
+screenshot g8_inv_on
+wait 60t
+press DOWN 3t
+wait 6t
+press UP 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press UP 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+wait log "cheat: enemies_ignore ON" timeout 5s
+wait 60t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press UP 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press UP 3t
+wait 6t
+press DOWN 3t
+wait 6t
+wait log "cheat: one_hit_kill ON" timeout 5s
+wait 60t
+press UP 3t
+wait 6t
+press UP 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+wait log "cheat: invulnerable OFF" timeout 5s
+wait 8t
+screenshot g8_inv_off
+# a broken sequence (A in between) must not toggle
+press DOWN 3t
+wait 6t
+press UP 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press UP 3t
+wait 6t
+press A 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+wait 60t
+game state
+wait 30t
+quit 0

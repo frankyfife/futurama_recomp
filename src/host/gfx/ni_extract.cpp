@@ -11,6 +11,7 @@
 #include "gfx/guest_memory.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <new>
@@ -970,6 +971,10 @@ struct PipeStage {
     std::uint32_t textureFactor = 0xFFFFFFFFu;  // +0x8C
     bool notReplace = true;                     // +0x90 (applyMode != REPLACE)
     std::uint32_t type = kMapTypeDefault;       // +0x94
+    // M8: texture effect stages - a host texture without NiTexture (the clipping texture +0xDEC) and the
+    // D3DTS_TEXTUREn matrix +0x4C (FUN_00161F70 sets it when +0x48 TTFF != 0).
+    rhi::TextureHandle hostTexture;
+    Matrix4 transform = IdentityMatrix();
 };
 
 // FUN_00163D60: a stage for a map; no texture or no UV sets -> none.
@@ -1098,13 +1103,16 @@ void ApplyPass(const ExtractContext& context, StateShadow& s, const PassSetup& p
     for (; i < pass.count && i < kMaxTextureStages; ++i) {
         const PipeStage& st = pass.stages[i];
         // FUN_00162020: texture through the texture manager vf2 0x15F930.
-        if (st.texture == 0) {
+        if (st.texture == 0 && !st.hostTexture) {
             SetTexture(s, i, 0, {});
         } else {
-            const Resolved r = ResolveTexture(context, s, st.texture);
+            const Resolved r = st.hostTexture ? Resolved{true, st.hostTexture} : ResolveTexture(context, s, st.texture);
             SetTexture(s, i, r.ok ? st.texture : 0, r.handle);
             if (r.ok) {
                 // FUN_00161F70: TTFF (+ D3DTS_TEXTUREn if != 0), TEXCOORDINDEX.
+                if (st.ttff != 0) {
+                    s.textureTransform[i] = st.transform;
+                }
                 SetTss(s, i, tss::TEXTURETRANSFORMFLAGS, st.ttff);
                 SetTss(s, i, tss::TEXCOORDINDEX, st.texCoordIndex);
                 // FUN_00161E40(stage, renderer, hasMips, 1).
@@ -1113,7 +1121,7 @@ void ApplyPass(const ExtractContext& context, StateShadow& s, const PassSetup& p
                     ++s.counters.invalidMapModes;
                     f = 0;
                 }
-                if (QueryTexture(st.texture).mipLevels <= 1) {
+                if (st.hostTexture || QueryTexture(st.texture).mipLevels <= 1) {
                     if (f == 3 || f == 4) {
                         f = 0;
                     } else if (f == 5 || f == 2) {
@@ -1145,6 +1153,202 @@ void ApplyPass(const ExtractContext& context, StateShadow& s, const PassSetup& p
     for (; i < kMaxTextureStages; ++i) {
         SetTss(s, i, tss::TEXCOORDINDEX, i);
     }
+}
+
+// ---- M8: projected shadows (NiTextureEffect type 1) -----------------------------------------------------------
+//
+// The default pipeline (vtable 0x2AC104) turns every switched-on texture effect with a texture into a stage
+// (FUN_00164200 -> FUN_00163F10): the effect's texture, its clamp (+0x164, FUN_00159E00) and filter (+0x160,
+// FUN_00159E20), TEXCOORDINDEX = CAMERASPACEPOSITION and TTFF COUNT2 with the matrix of the coordinate-mode handler
+// (+0x774 + 4 * mode; WORLD_PARALLEL 0x162C90). An effect with the clipping flag (+0x170) gets a second stage that
+// samples the 2 x 1 clipping texture with the plane distance (FUN_00162BB0). vf2 then builds the passes of the
+// projected shadows (0x164A20..0x164CCD) - only for geometry whose NiAlphaProperty neither blends nor alpha-tests:
+//   - each clipped shadow: a new pass {shadow stage, clip stage}, then non-clipped shadows into its free stages;
+//   - the remaining non-clipped shadows: stages of further passes, four per pass.
+// Every pass blends with the table entry of its first stage's type (2: ZERO / SRCCOLOR - the frame buffer is
+// multiplied by the shadow texture, white = no shadow); stage 0 selects the texture (+0x90 = 0), later stages use
+// the second op table (clip: ADD, shadow: MODULATE).
+// Deviation: with no clipped shadow REN puts the non-clipped ones into the first pass when its first stage is a base
+// map and has room (FUN_00162670(2, 1, 1)); here they always get their own passes (same result for opaque maps). The
+// game's own shadow (FUN_00038070 / FUN_0003B960) is clipped. Projected lights, environment and fog maps and other
+// coordinate modes are not reproduced (counted).
+
+}  // namespace
+
+Matrix4 ProjectedShadowTransform(const Float3 inverseView[4], const float projection[3][4],
+                                 const float translation[3]) noexcept {
+    Matrix4 m{};
+    for (int r = 0; r < 4; ++r) {
+        const Float3& v = inverseView[r];
+        for (int c = 0; c < 3; ++c) {
+            // x87: products summed in extended precision, one float store (0x162CAC..0x162E4E)
+            const double sum = static_cast<double>(v.x) * projection[0][c] + static_cast<double>(v.y) * projection[1][c] +
+                               static_cast<double>(v.z) * projection[2][c];
+            m.m[r][c] = static_cast<float>(r == 3 ? sum + translation[c] : sum);
+        }
+        m.m[r][3] = 0.0f;  // stage ctor FUN_00161B20 zeroes +0x4C..+0x8B
+    }
+    return m;
+}
+
+Matrix4 ShadowClipTransform(const Float3 inverseView[4], const Float3& planeNormal, float planeConstant) noexcept {
+    Matrix4 m{};
+    const double nx = -planeNormal.x, ny = -planeNormal.y, nz = -planeNormal.z;
+    for (int r = 0; r < 4; ++r) {
+        const Float3& v = inverseView[r];
+        double sum = nx * v.x + ny * v.y + nz * v.z;
+        if (r == 3) {
+            sum = sum + 0.5 + static_cast<double>(planeConstant);  // (... + _DAT_00293A00) - (-d)
+        }
+        m.m[r][0] = static_cast<float>(sum);
+    }
+    return m;
+}
+
+namespace {
+
+// NiTextureEffect fields (FUN_00163F10, FUN_00162BB0, handler 0x162C90; FUN_0003B960 fills the model data).
+constexpr std::uint32_t kEffectOn = 0xC0;            // NiDynamicEffect switch
+constexpr std::uint32_t kEffectProjection = 0x120;   // world projection, 3 rows of 4 floats
+constexpr std::uint32_t kEffectTranslation = 0x150;  // world projection translation
+constexpr std::uint32_t kEffectTexture = 0x15C;      // NiTexture*
+constexpr std::uint32_t kEffectFilter = 0x160;
+constexpr std::uint32_t kEffectClamp = 0x164;
+constexpr std::uint32_t kEffectCoordMode = 0x16C;    // 0 WORLD_PARALLEL
+constexpr std::uint32_t kEffectWorldPlane = 0x184;   // normal (3 floats) + constant (+0x190)
+constexpr std::uint32_t kMaxEffectStages = 8;        // FUN_00163F10: pipeline +0x770 < 8
+constexpr std::uint32_t kTciCameraSpacePosition = 0x20000;
+void DeriveState(const StateShadow& s, TexturePath path, RenderStateDesc* out) noexcept;  // below
+constexpr GuestPtr kPassAlphaProperty = 1;  // stands for the pipeline's pass NiAlphaProperty (REN's object)
+// Pass NiAlphaProperty for a first stage of type 2 (FUN_0015A120: +0x2F0 flags 0x43 = blend, ZERO / SRCCOLOR).
+constexpr std::uint32_t kShadowPassAlphaFlags = 0x43;
+
+void ApplyPassAlpha(StateShadow& s) noexcept {
+    // FUN_001628B0 -> FUN_00159270(pass +0x38) for passes >= 1; the cache now holds the pipeline's property.
+    s.lastAlphaProperty = kPassAlphaProperty;
+    SetRs(s, rs::ALPHABLENDENABLE, 1);
+    SetRs(s, rs::SRCBLEND, kBlendTable[(kShadowPassAlphaFlags >> 1) & 0xFu]);
+    SetRs(s, rs::DESTBLEND, kBlendTable[(kShadowPassAlphaFlags >> 5) & 0xFu]);
+    SetRs(s, rs::ALPHATESTENABLE, 0);
+}
+
+void CopyPass(const RenderStateDesc& d, PassDesc* out) noexcept {
+    out->alphaBlendEnable = d.alphaBlendEnable;
+    out->srcBlend = d.srcBlend;
+    out->dstBlend = d.dstBlend;
+    out->alphaTestEnable = d.alphaTestEnable;
+    out->alphaFunc = d.alphaFunc;
+    out->alphaRef = d.alphaRef;
+    out->stageCount = d.stageCount;
+    for (std::uint32_t i = 0; i < kMaxTextureStages; ++i) {
+        out->stages[i] = d.stages[i];
+    }
+    out->textureFactor = d.textureFactor;
+}
+
+void AddShadowPasses(const ExtractContext& context, StateShadow& s, GuestPtr alphaProperty, GuestPtr effectState,
+                     const CameraDesc& camera, RenderStateDesc* state) noexcept {
+    if (!Plausible(effectState)) {
+        return;
+    }
+    const NiDynamicEffectState* es = G<NiDynamicEffectState>(effectState);
+    if (Plausible(es->projectedLights) || Plausible(es->environmentMap) || Plausible(es->fogMap)) {
+        ++s.counters.shadowEffectsSkipped;  // not reproduced (none seen in the levels so far)
+    }
+    if (!Plausible(es->projectedShadows)) {
+        return;
+    }
+    // 0x164A2B..0x164A49: no shadow pass on blended or alpha-tested geometry.
+    const std::uint32_t alpha = Plausible(alphaProperty) ? Flags(alphaProperty) : 0;
+    if ((alpha & 1u) != 0 || ((alpha >> 9) & 1u) != 0) {
+        return;
+    }
+    const Float3 inverseView[4] = {camera.right, camera.up, camera.direction, camera.location};
+    PipeStage clipped[kMaxEffectStages], clips[kMaxEffectStages], plain[kMaxEffectStages];
+    std::uint32_t clippedCount = 0, plainCount = 0, effects = 0;
+    int guard = 0;
+    for (GuestPtr node = es->projectedShadows; Plausible(node) && guard < 256 && effects < kMaxEffectStages; ++guard) {
+        const NiListNode* n = G<NiListNode>(node);
+        node = n->next;
+        const GuestPtr e = n->item;
+        if (!Plausible(e) || R8(e + kEffectOn) == 0 || !Plausible(R32(e + kEffectTexture))) {
+            continue;  // FUN_00163F10 returns false
+        }
+        if (R32(e + kEffectCoordMode) != 0) {
+            ++s.counters.shadowEffectsSkipped;
+            continue;
+        }
+        PipeStage st;
+        st.texture = R32(e + kEffectTexture);
+        std::uint32_t clamp = R32(e + kEffectClamp);
+        if (clamp > 3) {
+            ++s.counters.invalidMapModes;
+            clamp = 3;
+        }
+        st.addressU = kClampTable[clamp][0];
+        st.addressV = kClampTable[clamp][1];
+        st.filter = R32(e + kEffectFilter);
+        st.texCoordIndex = kTciCameraSpacePosition;
+        st.ttff = FF_TTFF_COUNT2;
+        float projection[3][4];
+        std::memcpy(projection, G<float>(e + kEffectProjection), sizeof(projection));
+        st.transform = ProjectedShadowTransform(inverseView, projection, G<float>(e + kEffectTranslation));
+        st.notReplace = false;  // FUN_00163F10 +0x90 = 0
+        st.type = 2;            // stage arrays +0x1AB4 / +0x2778: type 2 (FUN_001633F0)
+        ++effects;
+        if (R8(e + kNiTextureEffectClipped) == 0) {
+            plain[plainCount++] = st;
+            continue;
+        }
+        clipped[clippedCount] = st;
+        PipeStage& c = clips[clippedCount++];
+        c = PipeStage{};
+        c.hostTexture = context.clipTexture;  // +0xDEC; stages +0x2114: clamp, NEAREST, type 0 (FUN_00163A40)
+        c.addressU = 3;
+        c.addressV = 3;
+        c.filter = 0;
+        c.texCoordIndex = kTciCameraSpacePosition;
+        c.ttff = FF_TTFF_COUNT2;
+        const float* plane = G<float>(e + kEffectWorldPlane);
+        c.transform = ShadowClipTransform(inverseView, {plane[0], plane[1], plane[2]}, plane[3]);
+        c.type = 0;
+    }
+    // Passes: each clipped shadow with its clip stage, filled up with non-clipped shadows; then the rest, 4 per pass.
+    PassSetup passes[kMaxExtraPasses];
+    std::uint32_t passCount = 0, nextPlain = 0;
+    auto add = [](PassSetup& pass, const PipeStage& st) noexcept {
+        pass.stages[pass.count] = st;
+        SetupStageOps(&pass.stages[pass.count], pass.count);  // FUN_001629C0(stage, 0)
+        ++pass.count;
+    };
+    for (std::uint32_t i = 0; i < clippedCount && passCount < kMaxExtraPasses; ++i) {
+        PassSetup& pass = passes[passCount++];
+        add(pass, clipped[i]);
+        if (clips[i].hostTexture) {
+            add(pass, clips[i]);
+        }
+        while (nextPlain < plainCount && pass.count < kMaxTextureStages) {
+            add(pass, plain[nextPlain++]);
+        }
+    }
+    while (nextPlain < plainCount && passCount < kMaxExtraPasses) {
+        PassSetup& pass = passes[passCount++];
+        while (nextPlain < plainCount && pass.count < kMaxTextureStages) {
+            add(pass, plain[nextPlain++]);
+        }
+    }
+    for (std::uint32_t i = 0; i < passCount; ++i) {
+        passes[i].path = TexturePath::MultiMap;
+        ApplyPassAlpha(s);
+        ApplyPass(context, s, passes[i]);
+        if (state != nullptr) {
+            RenderStateDesc d;
+            DeriveState(s, TexturePath::MultiMap, &d);
+            CopyPass(d, &state->extraPasses[i]);
+            state->passCount = 2 + i;
+        }
+    }
+    s.counters.shadowPasses += passCount;
 }
 
 // ---- lights (FUN_0015BF80 / FUN_0015BA40 / FUN_0015B6A0)
@@ -1575,6 +1779,10 @@ ExtractStatus ExtractState(const ExtractContext& context, const StateInput& inpu
     if (state != nullptr) {
         DeriveState(s, pass.path, state);
     }
+    // M8: the projected shadow passes (vf2 0x164A20 ff.; vf3 for passes >= 1, FUN_00149AE0 loop).
+    if (!input.screenTexture) {
+        AddShadowPasses(context, s, p.alpha, input.effectState, camera, state);
+    }
     if (lights != nullptr) {
         *lights = s.lights;
         lights->ambient = UnpackArgb(DevRs(s, rs::AMBIENT));
@@ -1938,6 +2146,150 @@ ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput
         DrawKind::TriStrip, vertices, out);
     out->geometry.vertexCount = triangles + 2u;
     return st;
+}
+
+// ---- slot 52 RenderPoints (M8) -------------------------------------------------------------------------------
+
+void ParticleAxes(const Float3& right, const Float3& up, float radius, float scale, Float3* a, Float3* b) noexcept {
+    // 0x148C54..0x148CF5: k = radius / scale (x87, kept in st(0)); the sums/differences of the camera's right (+0x314)
+    // and up (+0x320) vectors are rounded to float before the multiplication, the products are stored as floats.
+    const double k = static_cast<double>(radius) / static_cast<double>(scale);
+    const float sx = right.x + up.x, sy = right.y + up.y, sz = right.z + up.z;
+    const float dx = right.x - up.x, dy = right.y - up.y, dz = right.z - up.z;
+    *a = {static_cast<float>(sx * k), static_cast<float>(sy * k), static_cast<float>(sz * k)};
+    *b = {static_cast<float>(dx * k), static_cast<float>(dy * k), static_cast<float>(dz * k)};
+}
+
+void ParticleCorners(const Float3& center, float size, const Float3& a, const Float3& b, Float3 out[4]) noexcept {
+    // FUN_000115C0 (v * size, float stores) for both axes, then c - A, c - B, c + A, c + B (0x148FB7..0x14910F).
+    const Float3 sa{size * a.x, size * a.y, size * a.z};
+    const Float3 sb{size * b.x, size * b.y, size * b.z};
+    out[0] = {center.x - sa.x, center.y - sa.y, center.z - sa.z};
+    out[1] = {center.x - sb.x, center.y - sb.y, center.z - sb.z};
+    out[2] = {center.x + sa.x, center.y + sa.y, center.z + sa.z};
+    out[3] = {center.x + sb.x, center.y + sb.y, center.z + sb.z};
+}
+
+Float4 ParticleColor(const float* rgba) noexcept {
+    if (rgba == nullptr) {
+        return {1.0f, 1.0f, 1.0f, 1.0f};  // 0xFFFFFFFF without a color array (0x148F88 `or ebp, -1`)
+    }
+    // 0x148D50..0x148DCA: fistp of c * 255 (round to nearest, the FPU default); the low byte of each value is
+    // packed into A8R8G8B8 (out-of-range values wrap like the original's shifts and ors).
+    Float4 c;
+    float* dst[4] = {&c.x, &c.y, &c.z, &c.w};
+    for (int i = 0; i < 4; ++i) {
+        const double v = std::nearbyint(static_cast<double>(rgba[i] * 255.0f));
+        const std::int32_t n = v > -2147483649.0 && v < 2147483648.0 ? static_cast<std::int32_t>(v)
+                                                                     : std::numeric_limits<std::int32_t>::min();
+        *dst[i] = static_cast<float>(static_cast<std::uint32_t>(n) & 0xFFu) / 255.0f;
+    }
+    return c;
+}
+
+ExtractStatus ExtractPoints(const ExtractContext& context, const GeometryInput& input, DrawItem* out) noexcept {
+    if (out == nullptr || context.arena == nullptr || !Plausible(input.data)) {
+        return ExtractStatus::Error;
+    }
+    // vf12 GetVertexCount (NiParticlesData has no triangle count: vf15 is not called here).
+    std::uint32_t vertices = 0;
+    const GuestPtr vf12 = Plausible(R32(input.data)) ? R32(R32(input.data) + kNiGeometryDataVfVertexCount) : 0;
+    if (vf12 == kVertexCountGeometryData) {
+        vertices = R16(input.data + offsetof(NiGeometryData, vertexCount));
+    } else if (context.allowGuestCalls && Plausible(vf12)) {
+        vertices = core::CallGuestThiscall(vf12, input.data, {}) & 0xFFFFu;
+    } else {
+        return ExtractStatus::Unsupported;
+    }
+    const NiParticlesData* pd = G<NiParticlesData>(input.data);
+    // 0x148B01..0x148B26: vf12() == 0 with a vertex array, or no active particle -> nothing.
+    if ((vertices == 0 && pd->base.vertices != 0) || pd->activeCount == 0) {
+        return ExtractStatus::Empty;
+    }
+    const std::uint32_t n = pd->activeCount;
+    if (!Plausible(pd->base.vertices) || !Plausible(pd->sizes) || !Plausible(input.transform) ||
+        n * 4u > 0xFFFFu) {
+        return ExtractStatus::Error;
+    }
+    *out = DrawItem{};
+    const NiTransform* t = G<NiTransform>(input.transform);
+    out->kind = DrawKind::Points;
+    out->guestObject = input.data;
+    out->world = NiTransformToWorld(&t->rotate[0][0], t->translate, t->scale);  // FUN_001489A0
+    out->worldScale = t->scale;
+    out->useScreenCamera = false;
+    const CameraDesc camera = context.camera != nullptr
+                                  ? *context.camera
+                                  : DefaultCamera(context.targetWidth, context.targetHeight);
+    Float3 a, b;
+    ParticleAxes(camera.right, camera.up, pd->radius, t->scale, &a, &b);
+    // FVF 0x142 (XYZ | DIFFUSE | TEX1) or with normals 0x152; here separate streams in the arena.
+    const bool normals = Plausible(pd->base.normals);
+    const bool colors = Plausible(pd->base.colors);
+    const std::size_t v = static_cast<std::size_t>(n) * 4u;
+    auto* pos = context.arena->AllocateArray<float>(v * 3u);
+    auto* col = context.arena->AllocateArray<float>(v * 4u);
+    auto* uv = context.arena->AllocateArray<float>(v * 2u);
+    auto* nrm = normals ? context.arena->AllocateArray<float>(v * 3u) : nullptr;
+    auto* idx = context.arena->AllocateArray<std::uint16_t>(static_cast<std::size_t>(n) * 6u);
+    if (pos == nullptr || col == nullptr || uv == nullptr || idx == nullptr || (normals && nrm == nullptr)) {
+        return ExtractStatus::Error;
+    }
+    static constexpr float kUv[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    const float* centers = G<float>(pd->base.vertices);
+    const float* sizes = G<float>(pd->sizes);
+    for (std::uint32_t i = 0; i < n; ++i) {
+        Float3 corners[4];
+        ParticleCorners({centers[i * 3], centers[i * 3 + 1], centers[i * 3 + 2]}, sizes[i], a, b, corners);
+        const Float4 c = ParticleColor(colors ? G<float>(pd->base.colors + i * 16u) : nullptr);
+        for (std::uint32_t k = 0; k < 4; ++k) {
+            const std::size_t j = static_cast<std::size_t>(i) * 4u + k;
+            pos[j * 3] = corners[k].x;
+            pos[j * 3 + 1] = corners[k].y;
+            pos[j * 3 + 2] = corners[k].z;
+            col[j * 4] = c.x;
+            col[j * 4 + 1] = c.y;
+            col[j * 4 + 2] = c.z;
+            col[j * 4 + 3] = c.w;
+            uv[j * 2] = kUv[k][0];
+            uv[j * 2 + 1] = kUv[k][1];
+            if (nrm != nullptr) {  // the particle's normal on all four corners
+                const float* src = G<float>(pd->base.normals + i * 12u);
+                nrm[j * 3] = src[0];
+                nrm[j * 3 + 1] = src[1];
+                nrm[j * 3 + 2] = src[2];
+            }
+        }
+        // FUN_0015CBF0: 0, 1, 2, 0, 2, 3 per quad (D3DPT_TRIANGLELIST, count * 6 indices).
+        const auto base = static_cast<std::uint16_t>(i * 4u);
+        std::uint16_t* q = idx + static_cast<std::size_t>(i) * 6u;
+        q[0] = base;
+        q[1] = static_cast<std::uint16_t>(base + 1);
+        q[2] = static_cast<std::uint16_t>(base + 2);
+        q[3] = base;
+        q[4] = static_cast<std::uint16_t>(base + 2);
+        q[5] = static_cast<std::uint16_t>(base + 3);
+    }
+    GeometryDesc& g = out->geometry;
+    g.vertexCount = static_cast<std::uint32_t>(v);
+    g.positions = {pos, 12};
+    g.normals = nrm != nullptr ? VertexStreamView{nrm, 12} : VertexStreamView{};
+    g.colors = {col, 16};
+    g.uvs[0] = {uv, 8};
+    g.uvSetCount = 1;
+    g.topology = Topology::TriangleList;
+    g.indices = idx;
+    g.indexCount = n * 6u;
+    g.primitiveCount = n * 2u;
+    g.guestData = input.data;
+    // FUN_00159CD0, pipeline vf2 with one UV set (0x148BD1 push 1), FUN_0015BF80, vf3.
+    StateInput si;
+    si.propertyState = input.propertyState;
+    si.effectState = input.effectState;
+    si.worldScale = t->scale;
+    si.hasNormals = normals;
+    si.uvSetCount = 1;
+    return ExtractState(context, si, &out->state, &out->lights, &out->effects);
 }
 
 ExtractStatus ExtractScreenPolygon(const ExtractContext& context, GuestPtr screenPolygon,

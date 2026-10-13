@@ -8,8 +8,8 @@
 //
 //   slot 15 SetRenderTarget(NULL)    SetBackBufferTarget: back buffer + depth, viewport = whole target
 //                                    (D3D8 SetRenderTarget resets the viewport); a texture target
-//                                    (render to texture, P2, not reached in M3) makes draws and clears
-//                                    no-ops that are counted (DrawOutcome::TextureTarget)
+//                                    (render to texture, M8) gets its own color/depth target at the render
+//                                    resolution with the back buffer's MSAA samples (SetTextureTarget)
 //   slot 17 ClearBuffer(rect, mode)  0x146490: viewport = whole target (0x14659E..0x1465B9, not
 //                                    restored), then D3DDevice_Clear with mode bit 1 color, 4 depth,
 //                                    2 stencil and the rect of ni::ClearRect (NULL = whole target)
@@ -85,11 +85,11 @@ enum class DrawOutcome : std::uint8_t {
     Unsupported,    // ni::ExtractStatus::Unsupported
     Error,          // ni::ExtractStatus::Error (inconsistent guest data)
     NotInScene,     // outside BeginScene/EndScene: the original returns at once (+0x500 == 0)
-    TextureTarget,  // a texture is the render target (render to texture is P2)
+    TextureTarget,  // a texture is the render target and its device target could not be created (M8)
     Count
 };
 const char* DrawOutcomeName(DrawOutcome outcome) noexcept;
-inline constexpr std::uint32_t kDrawKindCount = 6;  // ni::DrawKind
+inline constexpr std::uint32_t kDrawKindCount = 7;  // ni::DrawKind (M8: + Points)
 inline constexpr std::uint32_t kDrawOutcomeCount = static_cast<std::uint32_t>(DrawOutcome::Count);
 const char* DrawKindName(ni::DrawKind kind) noexcept;
 
@@ -139,9 +139,10 @@ struct RenderSizes {
 // Pure (tests): guest = Create size (640x480; its aspect is the game's 4:3), resolution 0 x 0 = auto = the view
 // (0 x 0 too: the guest size). Output = the largest guest-aspect rectangle inside the resolution/view
 // (platform::FitAspectRect, the same rounding as the view layout); internal = round(output x scale).
+// G3: aspectW x aspectH != 0 x 0 = the display aspect of [render] aspect (gfx/widescreen.h) instead of the guest's.
 RenderSizes ComputeRenderSizes(std::uint32_t guestWidth, std::uint32_t guestHeight, std::uint32_t resolutionWidth,
                                std::uint32_t resolutionHeight, std::uint32_t viewWidth, std::uint32_t viewHeight,
-                               float renderScale) noexcept;
+                               float renderScale, std::uint32_t aspectW = 0, std::uint32_t aspectH = 0) noexcept;
 // Guest pixels (of guestW x guestH) -> internal pixels (of internalW x internalH); identity at equal sizes.
 // Rectangles round each edge to the nearest internal pixel, so rectangles that tile the guest target tile the
 // internal one.
@@ -149,6 +150,12 @@ rhi::Viewport ScaleViewport(const rhi::Viewport& viewport, std::uint32_t guestW,
                             std::uint32_t internalW, std::uint32_t internalH) noexcept;
 rhi::Rect ScaleRect(const rhi::Rect& rect, std::uint32_t guestW, std::uint32_t guestH, std::uint32_t internalW,
                     std::uint32_t internalH) noexcept;
+// M8: device size of a render-to-texture target - the guest size times the back buffer's factor (internal / guest
+// size, here of the height: the factor is the same in both directions), rounded, at least the guest size and at most
+// kMaxRenderTargetDimension (unless the guest size is larger). Pure (tests).
+inline constexpr std::uint32_t kMaxRenderTargetDimension = 4096;
+std::uint32_t RenderTargetDimension(std::uint32_t guest, std::uint32_t guestBackBuffer,
+                                    std::uint32_t internalBackBuffer) noexcept;
 // Frames a changed view size must stay before the back buffers follow it ([render] resolution = auto).
 inline constexpr std::uint32_t kResizeSettleFrames = 12;
 
@@ -166,6 +173,11 @@ public:
         RenderQuality quality;                // M3c (default: classic)
         std::uint32_t viewWidth = 0;          // M3c: view size for resolution auto; 0 x 0 = platform::
         std::uint32_t viewHeight = 0;         // MainWindowClientSize with a window, else the Create size
+        // G3 widescreen: display aspect ([render] aspect, gfx/widescreen.h GetDisplay); 0 x 0 = the guest's 4:3 (the
+        // renderer behaves exactly as before). Otherwise the back buffers get this aspect and every draw and clear is
+        // placed into them (widescreen_math.h: Hor+ 3D stretched, HUD anchored, the rest centred with black bars).
+        std::uint32_t aspectWidth = 0;
+        std::uint32_t aspectHeight = 0;
     };
     // Device + swap chain + fixed-function pipeline + the 8x8 default texture (FUN_0014AB50) + a black
     // texture. Steps down the quality (QualityFallbacks) while the back buffers cannot be created. nullptr and the
@@ -192,13 +204,16 @@ public:
     // ---- slots
     // ----------------------------------------------------------------------------------------------
     void SetBackBufferTarget() noexcept;                                        // slot 15 (NULL)
-    void SetTextureTarget(std::uint32_t width, std::uint32_t height) noexcept;  // slot 15 (texture, P2)
+    // slot 15 (texture, M8): the render target of the rendered texture data `data` (NiPCRenderedTextureData, guest
+    // size width x height; device size RenderTargetDimension, the back buffer's MSAA samples, own depth buffer).
+    void SetTextureTarget(ni::GuestPtr data, std::uint32_t width, std::uint32_t height) noexcept;
     void SetLeftRightSwap(bool swap) noexcept;                                  // slot 19
     void ClearBuffer(const ni::NiRectF* rect, std::uint32_t mode, std::uint32_t argb, float depth,
                      std::uint32_t stencil) noexcept;           // slot 17
     void BeginScene() noexcept;                                 // slot 45
     void SetCameraData(const ni::CameraInput& input) noexcept;  // slot 47 (target size/swap filled here)
     void DrawGeometry(ni::DrawKind kind, const ni::GeometryInput& input) noexcept;  // slots 48-51
+    void DrawPoints(const ni::GeometryInput& input) noexcept;                       // slot 52 (M8)
     void DrawScreenPolygon(ni::GuestPtr polygon) noexcept;                          // slot 54
     void DrawScreenTexture(ni::GuestPtr screenTexture) noexcept;                    // slot 55
     // A draw slot called outside a scene (the original returns before touching anything).
@@ -215,7 +230,11 @@ public:
     rhi::TextureHandle CreateTexture(const tex::HostImage& image, const char* debugName) noexcept;
     void DestroyTexture(rhi::TextureHandle texture) noexcept;
     rhi::TextureHandle DefaultTexture() const noexcept;  // FUN_0014AB50 8x8 test pattern
-    rhi::TextureHandle BlackTexture() const noexcept;    // rendered textures (P2)
+    rhi::TextureHandle BlackTexture() const noexcept;    // a rendered texture whose target cannot be created
+    // M8: the sampled texture of a rendered texture (resolved if its MSAA samples changed since the last resolve;
+    // created black if the game never rendered into it) / its targets released (renderer data destroyed).
+    rhi::TextureHandle RenderedTexture(ni::GuestPtr data, std::uint32_t width, std::uint32_t height) noexcept;
+    void ForgetRenderedTexture(ni::GuestPtr data) noexcept;
     // M6: host texture of a YUY2 shim texture (the movie player's, written by the XMV HLE): BGRA8, re-uploaded when
     // the shim generation changed; `yuvEnable` = D3DRS_YUVENABLE at the draw (BT.601 conversion, else raw components,
     // tex::Yuy2Mode). Empty handle for anything but a valid YUY2 resource.

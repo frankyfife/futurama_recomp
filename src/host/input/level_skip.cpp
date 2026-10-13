@@ -92,16 +92,7 @@ std::uint32_t g_triggers = 0;
 
 bool Armed(int port) noexcept {
     const char* reason = nullptr;
-    if (GlobalRouter().Diverted(port)) {
-        reason = "port diverted (freecam)";
-    } else if (ReadU32(kLevelPtr) == 0) {
-        reason = "no level";
-    } else if (BreakdownOpen()) {
-        reason = "statistics screen open";
-    } else if (!script::GameControllable()) {
-        reason = "character not controllable (menu, cut scene, pause, loading)";
-    }
-    if (reason != nullptr) {
+    if (!InputCheatArmed(port, reason)) {
         FUT_LOGD(Game, "cheat: press on port %d not counted for the level skip - %s", port + 1, reason);
         return false;
     }
@@ -117,7 +108,7 @@ void Trigger(int port) noexcept {
                      port + 1, level.c_str());
             return;
         }
-        if (!xapi::RequestLevelEnd(next)) {
+        if (!xapi::RequestLevelEnd(next, /*guaranteeStartWeapons=*/true)) {
             FUT_LOGW(Game, "cheat: level skip in %s not possible now (a level end is already pending)", level.c_str());
             return;
         }
@@ -212,6 +203,20 @@ int SequenceDetector::Progress() const noexcept {
         }
     }
     return 0;
+}
+
+bool InputCheatArmed(int port, const char*& reason) noexcept {
+    reason = nullptr;
+    if (GlobalRouter().Diverted(port)) {
+        reason = "port diverted (freecam)";
+    } else if (ReadU32(kLevelPtr) == 0) {
+        reason = "no level";
+    } else if (BreakdownOpen()) {
+        reason = "statistics screen open";
+    } else if (!script::GameControllable()) {
+        reason = "character not controllable (menu, cut scene, pause, loading)";
+    }
+    return reason == nullptr;
 }
 
 const char* NextLevel(std::string_view level) noexcept {

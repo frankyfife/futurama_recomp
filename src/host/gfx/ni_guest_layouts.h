@@ -124,6 +124,19 @@ struct NiTriShapeData {
 };
 static_assert(sizeof(NiTriShapeData) == 0x4C && offsetof(NiTriShapeData, triList) == 0x3C);
 
+// NiParticlesData (M8, slot 52 RenderPoints 0x148AE0 reads it at 0x148B64..0x148B77): +0x34 radius, +0x38 active
+// particle count (u16, the loop count), +0x3C float size per particle (always read). Positions/normals/colors are the
+// NiGeometryData arrays (one entry per particle).
+struct NiParticlesData {
+    NiGeometryData base;          // +0x00
+    float radius;                 // +0x34
+    std::uint16_t activeCount;    // +0x38
+    std::uint16_t pad3A;
+    GuestPtr sizes;               // +0x3C float[activeCount]
+};
+static_assert(offsetof(NiParticlesData, radius) == 0x34 && offsetof(NiParticlesData, activeCount) == 0x38 &&
+              offsetof(NiParticlesData, sizes) == 0x3C);
+
 // NiTriShapeDynamicData (0x50, vtable 0x2A86E0) - phase 2: overrides vf12 0x11B0F0 = active vertex count
 // (u16 +0x4C) and vf15 0x11B100 = active triangle count (u16 +0x4E). REN takes both counts from these
 // virtuals (FUN_00146F20 / FUN_00157C00: VB vertex count = vf12, index count = 3 * vf15).
