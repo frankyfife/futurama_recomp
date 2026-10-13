@@ -230,7 +230,11 @@ const char* NextLevel(std::string_view level) noexcept {
 
 bool EnabledInConfig() noexcept {
     try {
-        return core::GetConfig().GetBool("game", "level_skip_cheat", true);
+        const core::Config& cfg = core::GetConfig();
+        if (!cfg.Has("cheats", "level_skip") && cfg.Has("game", "level_skip_cheat")) {
+            return cfg.GetBool("game", "level_skip_cheat", true);  // before G8: [game] level_skip_cheat
+        }
+        return cfg.GetBool("cheats", "level_skip", true);
     } catch (...) {
         return true;
     }

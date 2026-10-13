@@ -72,7 +72,7 @@ const char* NextLevel(std::string_view level) noexcept;
 // port not diverted (freecam). Otherwise `reason` names the first failed condition (for debug lines).
 bool InputCheatArmed(int port, const char*& reason) noexcept;
 
-// [game] level_skip_cheat (bool, default on).
+// [cheats] level_skip (bool, default on; before G8 [game] level_skip_cheat, still read).
 bool EnabledInConfig() noexcept;
 // Reads the option and logs it (input start). The filter does nothing while the option is off.
 void Configure() noexcept;

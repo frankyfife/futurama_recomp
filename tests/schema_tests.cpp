@@ -284,6 +284,10 @@ TEST_CASE("schema: the configuration accepts exactly the schema keys") {
     std::string error;
     CHECK_FALSE(LoadWith(L" --set=render.msaa_level=4", cfg, error));
     CHECK(error.find("unknown config key 'msaa_level'") != std::string::npos);
+    // G8 moved [game] level_skip_cheat to [cheats] level_skip: the old line still loads (warning, no error).
+    core::Config legacy;
+    CHECK_MESSAGE(LoadWith(L" --set=game.level_skip_cheat=0", legacy, error), error);
+    CHECK_FALSE(legacy.GetBool("game", "level_skip_cheat", true));
     CHECK_FALSE(core::IsKnownConfigKey("render", "display_index"));
     CHECK(core::IsKnownConfigKey("render", "monitor"));  // M3c integration
     CHECK(core::ConfigKeyDefault("render", "monitor") == "primary");
@@ -318,6 +322,9 @@ TEST_CASE("schema: every key the host sources read has a row, and every row is r
         allSources += text;
         for (std::sregex_iterator it(text.begin(), text.end(), pair), end; it != end; ++it) {
             const std::string key = (*it)[1].str() + "." + (*it)[2].str();
+            if (key == "game.level_skip_cheat") {
+                continue;  // G8: old name of [cheats] level_skip, still read as an alias (config.cpp ValidateKeys)
+            }
             CAPTURE(p.string());
             CAPTURE(key);
             CHECK_MESSAGE(core::FindConfigKey((*it)[1].str(), (*it)[2].str()) != nullptr,

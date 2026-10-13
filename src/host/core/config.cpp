@@ -114,6 +114,11 @@ bool ValidateKeys(const std::map<std::string, std::string, std::less<>>& values,
             continue;
         }
         const ConfigKeyDef* known = FindConfigKey(section, key);
+        if (known == nullptr && section == "game" && key == "level_skip_cheat") {
+            // Moved to [cheats] level_skip with G8; old player configurations keep working (input/level_skip.cpp).
+            warnings.push_back("[game] level_skip_cheat is now [cheats] level_skip - the old line is still read");
+            known = FindConfigKey("cheats", "level_skip");
+        }
         if (known == nullptr) {
             // Review M3c finding 16 (h): the launcher shows this line to the player - no source reference.
             error = section.empty() ? "unknown config key '" + std::string(key) + "' outside any section"

@@ -19,7 +19,7 @@
 //              (audio/capture_session.cpp, tooling agent); M5 speakers, reverb (audio/audio_engine.cpp) and
 //              positional, trim_3d (audio/spatial_x3d.cpp, codec/3D/reverb agent)
 //   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos);
-//              G4 xapi/game_select.cpp (start_level, play_as), G7 input/level_skip.cpp (level_skip_cheat)
+//              G4 xapi/game_select.cpp (start_level, play_as), G7 input/level_skip.cpp ([cheats] level_skip)
 //   [cheats]   G8 xapi/cheats.cpp (invulnerable, one_hit_kill, enemies_ignore, ingame_toggles; the toggles' D-pad
 //              sequences in input/cheat_toggles.cpp)
 //   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26);
@@ -403,22 +403,23 @@ constexpr ConfigKeyDef kKeys[] = {
               "level can be finished this way is not tested. Levels 1-7 (Chicken Walker), 2-6 (cannon), 4-1 (rat) "
               "and 5-3 (railgun) always keep their character."},
      .tab = Tab::Game, .order = 50, .widget = W::Combo},
-    {.section = "game", .name = "level_skip_cheat", .type = T::Bool, .defaultValue = "1",
+
+    // [cheats] - G8 (xapi/cheats.cpp, input/cheat_toggles.cpp). All off = no hooks.
+    {.section = "cheats", .name = "level_skip", .type = T::Bool, .defaultValue = "1",
      .label = {"Level-Skip-Cheat (A A B B A A B B A A)", "Level skip cheat (A A B B A A B B A A)"},
      .help = {"Im Level die Tasten A A B B A A B B A A zügig nacheinander drücken (innerhalb von 4 Sekunden, "
               "höchstens 1 Sekunde Pause): Das Level gilt als geschafft und endet regulär mit dem "
               "Statistikbildschirm (Speichern, Weiter zum nächsten Level). Wirkt nur, solange die Spielfigur "
               "steuerbar ist (nicht in Menüs, Zwischensequenzen oder der Pause). Die Tastendrücke erreichen auch "
-              "das Spiel (Springen/Angreifen).",
+              "das Spiel (Springen/Angreifen). Früher [game] level_skip_cheat.",
               "In a level press A A B B A A B B A A in quick succession (within 4 seconds, at most 1 second "
               "between presses): the level counts as finished and ends the regular way with the statistics screen "
               "(save, continue to the next level). Only works while the character is controllable (not in menus, "
-              "cut scenes or the pause). The presses also reach the game (jump/attack)."},
-     .tab = Tab::Game, .order = 60, .widget = W::Check},
-
-    // [cheats] - G8 (xapi/cheats.cpp, input/cheat_toggles.cpp). All off = no hooks.
+              "cut scenes or the pause). The presses also reach the game (jump/attack). Formerly [game] "
+              "level_skip_cheat."},
+     .tab = Tab::Game, .order = 69, .widget = W::Check},
     {.section = "cheats", .name = "invulnerable", .type = T::Bool, .defaultValue = "0",
-     .label = {"Unverwundbar", "Invulnerable"},
+     .label = {"Unverwundbar (↑ ↑ ↓ ↓ ← → ← →)", "Invulnerable (↑ ↑ ↓ ↓ ← → ← →)"},
      .help = {"Die Spielfigur nimmt keinen Schaden: Gegner, Geschosse, Explosionen, Fallen und schädliche Böden "
               "ziehen keine Gesundheit mehr ab, und es geht kein Leben verloren. Wie beim eingebauten Gott-Modus des "
               "Spiels töten nur die Todeszonen (Abgründe, tödliches Wasser oder Lava) weiterhin – die Figur beginnt "
@@ -429,7 +430,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "checkpoint without losing a life."},
      .tab = Tab::Game, .order = 70, .widget = W::Check},
     {.section = "cheats", .name = "one_hit_kill", .type = T::Bool, .defaultValue = "0",
-     .label = {"Gegner sterben mit einem Treffer", "Enemies die with one hit"},
+     .label = {"Gegner sterben mit einem Treffer (← → ← → ↑ ↓ ↑ ↓)", "Enemies die with one hit (← → ← → ↑ ↓ ↑ ↓)"},
      .help = {"Jeder Treffer der Spielfigur tötet einen Gegner. Bosse (Panzer, Chickenwalker, Destructor) verlieren "
               "pro Treffer ein Viertel ihrer Gesundheit, damit ihre Kampfphasen erhalten bleiben. Figuren, die das "
               "Spiel selbst unverwundbar macht (z. B. Pflanzen, Krokodil, Sonnengott), bleiben es.",
@@ -438,7 +439,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "invulnerable (e.g. plants, crocodile, sun god) stay invulnerable."},
      .tab = Tab::Game, .order = 71, .widget = W::Check},
     {.section = "cheats", .name = "enemies_ignore", .type = T::Bool, .defaultValue = "0",
-     .label = {"Feinde ignorieren mich", "Enemies ignore me"},
+     .label = {"Feinde ignorieren mich (↓ ↑ ↓ ↑ → ← → ←)", "Enemies ignore me (↓ ↑ ↓ ↑ → ← → ←)"},
      .help = {"Gegner bemerken die Spielfigur nicht und greifen nicht an – so wie während der Zwischensequenzen. "
               "Wer angegriffen wird, dreht sich zur Figur um, greift aber nicht an. Bosse kämpfen weiter; Geschosse, "
               "die schon fliegen, und Fallen treffen weiterhin.",
@@ -449,14 +450,12 @@ constexpr ConfigKeyDef kKeys[] = {
     {.section = "cheats", .name = "ingame_toggles", .type = T::Bool, .defaultValue = "0",
      .label = {"Cheats im Spiel per Steuerkreuz umschalten", "Toggle cheats in game with the D-pad"},
      .help = {"Im Level schaltet je eine Folge auf dem Steuerkreuz (Tastatur: Pfeiltasten) einen Cheat an oder aus, "
-              "zügig gedrückt (8 Drücke in höchstens 5 Sekunden): Unverwundbar = hoch hoch runter runter links rechts "
-              "links rechts; Ein Treffer = links rechts links rechts hoch runter hoch runter; Feinde ignorieren mich "
-              "= runter hoch runter hoch rechts links rechts links. Bestätigung: grünes (an) bzw. rotes (aus) "
+              "zügig gedrückt (8 Drücke in höchstens 5 Sekunden): Unverwundbar = ↑ ↑ ↓ ↓ ← → ← →; Ein Treffer = "
+              "← → ← → ↑ ↓ ↑ ↓; Feinde ignorieren mich = ↓ ↑ ↓ ↑ → ← → ←. Bestätigung: grünes (an) bzw. rotes (aus) "
               "Aufblitzen und ein kurzes Vibrieren.",
               "In a level one D-pad sequence (keyboard: arrow keys) each switches a cheat on or off, pressed quickly "
-              "(8 presses within 5 seconds): invulnerable = up up down down left right left right; one hit = left "
-              "right left right up down up down; enemies ignore me = down up down up right left right left. "
-              "Confirmation: a green (on) or red (off) flash and a short rumble."},
+              "(8 presses within 5 seconds): invulnerable = ↑ ↑ ↓ ↓ ← → ← →; one hit = ← → ← → ↑ ↓ ↑ ↓; enemies ignore "
+              "me = ↓ ↑ ↓ ↑ → ← → ←. Confirmation: a green (on) or red (off) flash and a short rumble."},
      .tab = Tab::Game, .order = 73, .widget = W::Check},
 
     // [render] - window and output (M3, gfx/gfx_config.h)

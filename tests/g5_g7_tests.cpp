@@ -1,6 +1,6 @@
 // Unit tests of G5 (xapi/camera_response.h: [input] camera_response, the precise turn filter, the original filter
 // model, the right-stick curve, the guest code the probes rely on - retail XBE %FUT_TEST_XBE% or
-// orig\retail_eu\default.xbe, skipped without it) and G7 (input/level_skip.h: [game] level_skip_cheat, the sequence
+// orig\retail_eu\default.xbe, skipped without it) and G7 (input/level_skip.h: [cheats] level_skip, the sequence
 // detector, the successor table; the router's filter chain).
 #include "doctest.h"
 
@@ -293,12 +293,13 @@ TEST_CASE("G5: input script command game camera_trace on|off") {
 
 // ---- G7 ---------------------------------------------------------------------------------------------------------
 
-TEST_CASE("G7: [game] level_skip_cheat schema row") {
-    CHECK(core::ConfigKeyDefault("game", "level_skip_cheat") == "1");
-    const core::ConfigKeyDef* key = core::FindConfigKey("game", "level_skip_cheat");
+TEST_CASE("G7: [cheats] level_skip schema row (formerly [game] level_skip_cheat)") {
+    CHECK(core::ConfigKeyDefault("cheats", "level_skip") == "1");
+    const core::ConfigKeyDef* key = core::FindConfigKey("cheats", "level_skip");
     REQUIRE(key != nullptr);
     CHECK(key->type == core::ConfigKeyType::Bool);
     CHECK(key->tab == core::ConfigUiTab::Game);
+    CHECK(core::FindConfigKey("game", "level_skip_cheat") == nullptr);  // old name: only an accepted alias
 }
 
 TEST_CASE("G7: successor table = FsChangeLevel arguments of the level scripts, one chain through all levels") {
