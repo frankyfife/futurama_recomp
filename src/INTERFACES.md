@@ -1846,12 +1846,30 @@ ipc_renderer.h`);
 - **`[cheats]`** (new section, Game tab, group "Cheats"; all bool, default `0`; `xapi::cheats::SettingsFromConfig`):
   `invulnerable`, `one_hit_kill`, `enemies_ignore`, `ingame_toggles`. Hook conditions (`FUT_PROBE_IF`): a cheat's
   probes are installed when it is on at start **or** `ingame_toggles = 1`; all off = no hook (`hooks: 184 installed`
-  as without G8; with toggles 194). Runtime switches `xapi::cheats::Active(Cheat)`, `Toggle(Cheat, port, text)`.
+  as without G8; with toggles 196 since the tentacle fix). Runtime switches `xapi::cheats::Active(Cheat)`,
+  `Toggle(Cheat, port, text)`.
 - **Invulnerable**: `probe:Player::TakeDamage` 0x51AD0 (`55 8B EC 83 E4 F0`; vtable +0x7C of the five player
   classes, thiscall `(float amount, Actor* attacker)` ret 8) skips the call (no health loss, no hit reaction) unless
   the return address is 0x38C49 (instant-death floor, material flag 8 in `FUN_00038880` - passes like the game's own
   god mode). `probe:Script::FsDeductLives` 0xC1240 (`FF 0D DC 67 2D 00`, cdecl; opcode 0x149) is skipped (lives
-  kept). Pure decision `BlockPlayerDamage(invulnerable, amount, returnAddress)`.
+  kept). Pure decision `BlockPlayerDamage(invulnerable, amount, returnAddress)`; since the tentacle fix it also
+  passes the sewer tentacle's pull-through kill (return `kTentacleKillReturn` 0x8C6FC, `call [eax+0x7C]` at
+  0x8C6F9) like the instant-death floor.
+- **Invulnerable safety net** (tentacle fix): `LethalBlockWatch::OnBlockedLethal(attacker, nowSeconds)` - lethal
+  hits (`IsLethalHit(amount, health)`: amount >= positive health) by the same attacker (0 = script damage) that are
+  blocked without a pause longer than `kLethalBlockGapSeconds` (1 s) for more than **`kLethalBlockLimitSeconds`
+  (10 s, user decision 2026-10-13)** are let through once (death, respawn at the checkpoint, life kept by
+  FsDeductLives). Log `cheat: invulnerable - safety net: ...`, summary `N safety-net deaths`.
+- **Sewer tentacle** (`tentacle_dude`, vtable `kTentacleVtable` 0x29F790, no AI brain): `probe:Tentacle::Update`
+  0x8C4F0 (slot +0x5C, `55 8B EC 83 E4 F0`, thiscall `(arg)` ret 4; condition = enemies ignore me or toggles) keeps
+  the detection cooldown +0x8C4 at `TentacleHoldCooldown(c)` >= 0.5 s while enemies ignore me is on (no attack);
+  `probe:Tentacle::AnimEvent` 0x8CAD0 (slot +0xE8, same prologue, thiscall `(arg, const char* event)` ret 8;
+  condition `TentacleHooksWanted` = invulnerable, enemies ignore me or toggles) turns `morph:grab` into the game's
+  own miss (+0x8C0 = 1, retract) when `SkipTentacleGrab(invulnerable, enemiesIgnore, event)` (case-insensitive).
+  Logs `cheat: enemies ignore me - <tentacle> does not look for the player`, `cheat: <cheat> - <tentacle> grab
+  skipped`, `cheat: tentacle <name> event morph:grab|release|pull_through_pipe (...)`; with `[debug] trace = game`
+  `tentacle trace: <name> pos ... player ... dist ...` (every 31st update) and at debug level `cheat: player damage
+  ... passes`, `cheat: tentacle <name> event <event>`.
 - **One-hit kill**: `probe:Actor::TakeDamage` 0x354B0 (`64 A1 00 00 00 00`, catch-all) and the enemy classes'
   +0x7C entries with a "killing blow" pre-check: `probe:Npc::TakeDamage` 0x47240, `Kamikaze` 0x60080, `Aquafish`
   0x80300, `Goon` 0x86520, `Junkbot` 0x88530, `Stormtrooper` 0x90570 (the last five are extra function starts,
@@ -1873,7 +1891,7 @@ ipc_renderer.h`);
 - **Router feedback pulse** (`input\host_router.h`, additive): `HostRouter::PulseRumble(port, strength, samples)`,
   `PulseActive(port)` - motors at least `strength` for the next `samples` samples of the port, scaled and muted like
   the game's rumble. Toggle on = 0.4 s, off = 0.15 s.
-- **Tests**: `tests\g8_cheats_tests.cpp` (6 cases). Script `tools\input_scripts\g8_cheat_toggles.txt`. Report:
+- **Tests**: `tests\g8_cheats_tests.cpp` (8 cases since the tentacle fix). Script `tools\input_scripts\g8_cheat_toggles.txt`. Report:
   `docs\g8_cheats_report.md`, analysis `analysis\loader\g8_cheats.md`.
 
 ## 5. Cross-module contracts
@@ -2102,3 +2120,4 @@ Every change to a shared file is listed here: date, agent, file, what was added.
 ipc_gpu.cpp` (`DrawScreenPolygon`, exit line), `tests\outline_tests.cpp` (4 cases), `gfx\GFX_CONTRACT.md` 14, `analysis\loader\g1_outlines.md` 12, `docs\m8_report.md` | HUD portrait without black spikes: ribbon strips drawn as triangle lists of their chains (no bridges between chains, no padding), and the chain end the original zero-fills when it closes a strip is restored. Always on, no option. |
 | 2026-10-13 | G2 alpha/font fix | `gfx\ff_pipeline.h/.cpp` (additive: `DiscardsTransparentFragments`, used by `FillDrawConstants`), `tests\ff_pipeline_tests.cpp` (1 case), `gfx\GFX_CONTRACT.md` 6.4, `tools\texture_upscale.py` v3 (`--method waifu2x`, separate alpha path, `--text-method`, `--text-overlay` default none), `tools\package.py`, `docs\g2_report.md` | 4.38: menu text without dark word rectangles (with and without pack); packs keep the original alpha and the colour under alpha 0 of lamps/glows; waifu2x pack recommended. |
 | 2026-10-13 | G8 cheats | new `xapi\cheats.h/.cpp`, `input\cheat_toggles.h/.cpp`, `tests\g8_cheats_tests.cpp`, `analysis\loader\g8_cheats.md`, `tools\input_scripts\g8_cheat_toggles.txt`, `docs\g8_cheats_report.md`; `input\host_router.h/.cpp` (additive: `PulseRumble`, `PulseActive`), `input\level_skip.h/.cpp` (additive: `InputCheatArmed`), `input\input_system.cpp` (wiring), `xapi\save_probes.cpp` (tick calls `cheats::OnTick`), `core\config_schema.cpp` (section `cheats`, 4 rows), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (5 starts), `tools\input_scripts\README.md` | `[cheats] invulnerable / one_hit_kill / enemies_ignore / ingame_toggles` (10 conditional probes, none by default), D-pad toggles. Section 4.41, `loader_design.md` 8.25. |
+| 2026-10-13 | G8 tentacle softlock fix | `xapi\cheats.h/.cpp` (additive: `kTentacle*`, `kPlayerGrabber`, `kActorGetPosition`, `TentacleHooksWanted`, `IsLethalHit`, `SkipTentacleGrab`, `TentacleHoldCooldown`, `kLethalBlockLimitSeconds` = 10 s, `kLethalBlockGapSeconds`, `LethalBlockWatch`, 4 `Stats` fields; `BlockPlayerDamage` also passes return 0x8C6FC), `tests\g8_cheats_tests.cpp` (+2 cases), `docs\g8_cheats_report.md`, `analysis\loader\g8_cheats.md` | Sewer tentacle (1-2) softlock with invulnerable: 2 conditional probes `probe:Tentacle::Update` 0x8C4F0, `probe:Tentacle::AnimEvent` 0x8CAD0 (enemies ignore me: no detection; invulnerable/enemies ignore me: no grab), pull-through kill passes, safety net for lethal damage blocked > 10 s. Section 4.41. |

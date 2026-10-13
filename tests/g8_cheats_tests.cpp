@@ -13,6 +13,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -200,6 +201,127 @@ TEST_CASE("G8: invulnerable - every player damage is blocked except the instant-
     CHECK_FALSE(ch::BlockPlayerDamage(false, 10.0f, 0x00047300));
 }
 
+TEST_CASE("G8: sewer tentacle - pull-through kill passes, grab skipped, detection held") {
+    // The pull-through kill (every update until death) passes like the instant-death floor.
+    CHECK_FALSE(ch::BlockPlayerDamage(true, 100.0f, ch::kTentacleKillReturn));
+    CHECK(ch::BlockPlayerDamage(true, 2.0f, 0x0008D0DE));  // punch/hit_head while held: blocked
+    CHECK(ch::TentacleHooksWanted([] {
+        core::Config c;
+        c.values["cheats.invulnerable"] = "1";
+        return c;
+    }()));
+    CHECK(ch::TentacleHooksWanted([] {
+        core::Config c;
+        c.values["cheats.enemies_ignore"] = "1";
+        return c;
+    }()));
+    CHECK_FALSE(ch::TentacleHooksWanted([] {
+        core::Config c;
+        c.values["cheats.one_hit_kill"] = "1";
+        return c;
+    }()));
+    CHECK_FALSE(ch::TentacleHooksWanted(core::Config{}));
+
+    CHECK(ch::SkipTentacleGrab(true, false, "morph:grab"));
+    CHECK(ch::SkipTentacleGrab(false, true, "morph:grab"));
+    CHECK(ch::SkipTentacleGrab(true, true, "MORPH:Grab"));  // _stricmp in the game
+    CHECK_FALSE(ch::SkipTentacleGrab(false, false, "morph:grab"));
+    for (const char* other : {"morph:hit", "morph:punch", "morph:hit_head", "morph:release",
+                              "morph:pull_through_pipe", "morph:grab2", "morph:gra", ""}) {
+        CHECK_FALSE(ch::SkipTentacleGrab(true, true, other));
+    }
+
+    CHECK(ch::TentacleHoldCooldown(0.0f) == doctest::Approx(ch::kTentacleHoldCooldown));
+    CHECK(ch::TentacleHoldCooldown(-0.3f) == doctest::Approx(ch::kTentacleHoldCooldown));
+    CHECK(ch::TentacleHoldCooldown(0.49f) == doctest::Approx(ch::kTentacleHoldCooldown));
+    CHECK(ch::TentacleHoldCooldown(1.0f) == doctest::Approx(1.0f));  // after an attack: unchanged
+    CHECK(ch::TentacleHoldCooldown(std::nanf("")) == doctest::Approx(ch::kTentacleHoldCooldown));
+}
+
+TEST_CASE("G8: invulnerable safety net - lethal damage blocked for more than 10 s is let through once") {
+    CHECK(ch::kLethalBlockLimitSeconds == doctest::Approx(10.0));  // user decision 2026-10-13
+    CHECK(ch::IsLethalHit(100.0f, 100.0f));
+    CHECK(ch::IsLethalHit(1000000.0f, 100.0f));
+    CHECK_FALSE(ch::IsLethalHit(99.0f, 100.0f));
+    CHECK_FALSE(ch::IsLethalHit(100.0f, 0.0f));  // already dead
+
+    constexpr std::uint32_t kTentacle = 0x8312345;
+    constexpr std::uint32_t kOther = 0x8400000;
+    constexpr double kTick = 1.0 / 60.0;
+    // Every tick from t = 5 s on (the tentacle's pull-through kill): through after 10 s, not before.
+    {
+        ch::LethalBlockWatch w;
+        int firstThrough = -1;
+        for (int i = 0; i <= 11 * 60; ++i) {
+            if (w.OnBlockedLethal(kTentacle, 5.0 + i * kTick) && firstThrough < 0) {
+                firstThrough = i;
+            }
+        }
+        REQUIRE(firstThrough > 0);
+        CHECK(firstThrough * kTick > ch::kLethalBlockLimitSeconds);
+        CHECK(firstThrough * kTick < ch::kLethalBlockLimitSeconds + 2 * kTick);
+    }
+    // 9.9 s: still blocked; a series is reported.
+    {
+        ch::LethalBlockWatch w;
+        bool through = false;
+        for (int i = 0; i * kTick < 9.9; ++i) {
+            through = through || w.OnBlockedLethal(kTentacle, i * kTick);
+        }
+        CHECK_FALSE(through);
+        CHECK(w.Active());
+        CHECK(w.SeriesSeconds() > 9.8);
+        CHECK(w.Attacker() == kTentacle);
+    }
+    // After letting through, the watch starts over (the next series needs another 10 s).
+    {
+        ch::LethalBlockWatch w;
+        double t = 0.0;
+        while (!w.OnBlockedLethal(kTentacle, t)) {
+            t += kTick;
+        }
+        CHECK_FALSE(w.Active());
+        CHECK_FALSE(w.OnBlockedLethal(kTentacle, t + kTick));
+        CHECK_FALSE(w.OnBlockedLethal(kTentacle, t + 5.0 * kTick));
+    }
+    // A pause longer than the gap or another attacker starts a new series.
+    {
+        ch::LethalBlockWatch w;
+        bool through = false;
+        for (int i = 0; i < 8 * 60; ++i) {
+            through = through || w.OnBlockedLethal(kTentacle, i * kTick);
+        }
+        through = through || w.OnBlockedLethal(kTentacle, 8.0 + ch::kLethalBlockGapSeconds + 0.1);  // gap
+        for (int i = 1; i < 8 * 60; ++i) {
+            through = through || w.OnBlockedLethal(kTentacle, 9.2 + i * kTick);
+        }
+        CHECK_FALSE(through);  // two series of 8 s each
+        ch::LethalBlockWatch v;
+        for (int i = 0; i < 12 * 60; ++i) {
+            // alternating attackers: each hit starts over
+            through = through || v.OnBlockedLethal(i % 2 == 0 ? kTentacle : kOther, i * kTick);
+        }
+        CHECK_FALSE(through);
+        // Script damage (attacker 0) every 0.5 s counts as one continuous series.
+        ch::LethalBlockWatch s;
+        int hits = 0;
+        bool scriptThrough = false;
+        for (double t = 0.0; t < 12.0 && !scriptThrough; t += 0.5) {
+            scriptThrough = s.OnBlockedLethal(0, t);
+            ++hits;
+        }
+        CHECK(scriptThrough);
+        CHECK(hits == 22);  // t = 10.5 s
+    }
+    // Clock going backwards (should not happen) starts over instead of firing.
+    {
+        ch::LethalBlockWatch w;
+        CHECK_FALSE(w.OnBlockedLethal(kTentacle, 100.0));
+        CHECK_FALSE(w.OnBlockedLethal(kTentacle, 50.0));
+        CHECK(w.SeriesSeconds() == doctest::Approx(0.0));
+    }
+}
+
 TEST_CASE("G8: one-hit kill - lethal hits, protected characters, bosses") {
     using K = ch::HitKind;
     // Normal enemy (stormtrooper 200): one hit kills.
@@ -366,6 +488,21 @@ TEST_CASE("G8: probe sites and data agree with the retail XBE") {
     const auto frame = Hex({0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF0});
     CHECK(xbe->At(ch::kPlayerTakeDamage, 6) == frame);
     CHECK(xbe->At(ch::kAiBrainUpdate, 6) == frame);
+    // Sewer tentacle: update/animation-event slots, the pull-through kill call and the detection cooldown test.
+    CHECK(xbe->At(ch::kTentacleUpdate, 6) == frame);
+    CHECK(xbe->At(ch::kTentacleAnimEvent, 6) == frame);
+    CHECK(xbe->U32(ch::kTentacleVtable + 0x5C) == ch::kTentacleUpdate);
+    CHECK(xbe->U32(ch::kTentacleVtable + 0xE8) == ch::kTentacleAnimEvent);
+    CHECK(xbe->U32(ch::kTentacleVtable + 0x7C) == ch::kNpcTakeDamage);
+    CHECK(xbe->At(ch::kTentacleKillReturn - 3, 3) == Hex({0xFF, 0x50, 0x7C}));             // call [eax+0x7C]
+    CHECK(xbe->At(0x0008C6EA, 6) == Hex({0xD9, 0x87, 0xFC, 0x04, 0x00, 0x00}));            // fld [edi+0x4FC]
+    CHECK(xbe->At(0x0008C675, 6) == Hex({0xD9, 0x86, 0xC4, 0x08, 0x00, 0x00}));            // fld [esi+0x8C4]
+    CHECK(xbe->At(0x0008C688, 7) == Hex({0xC6, 0x86, 0x08, 0x05, 0x00, 0x00, 0x01}));      // attack flag
+    CHECK(xbe->At(0x0008CCF5, 7) == Hex({0xC6, 0x86, 0xC0, 0x08, 0x00, 0x00, 0x01}));      // grab miss
+    CHECK(xbe->At(0x0008CAE2, 5) == Hex({0x68, 0xF4, 0xF8, 0x29, 0x00}));                  // push "morph:grab"
+    CHECK(xbe->At(0x0029F8F4, 11) == Hex({'m', 'o', 'r', 'p', 'h', ':', 'g', 'r', 'a', 'b', 0}));
+    CHECK(xbe->At(0x0008CCF0, 3) == Hex({0xC2, 0x08, 0x00}));                              // ret 8
+    CHECK(xbe->At(0x0008C9EF, 3) == Hex({0xC2, 0x04, 0x00}));                              // ret 4
     CHECK(xbe->At(ch::kActorTakeDamage, 6) == Hex({0x64, 0xA1, 0x00, 0x00, 0x00, 0x00}));
     CHECK(xbe->At(ch::kDeductLives, 6) == Hex({0xFF, 0x0D, 0xDC, 0x67, 0x2D, 0x00}));  // dec [0x2D67DC]
     const auto fldSub = Hex({0xD9, 0x44, 0x24, 0x04, 0x83, 0xEC, 0x0C});

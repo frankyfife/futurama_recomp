@@ -10,6 +10,7 @@ Adressen sind VAs der Retail-EU-XBE. „Vermutung“ kennzeichnet Deutungen ohne
 * **Spieler:** Alle fünf Spielerklassen teilen `FUN_00051AD0` (Treffer-Reaktion, Rumble `FUN_0005EF70`, dann `0x354B0`). Zwei globale Sperren stehen davor: `0x2DD5F4` (gesetzt, solange die Figur keine Eingaben annimmt, `FUN_00037010`) und `0x2DD5F5` (nie geschrieben – Entwickler-Schalter ohne Code).
 * **Leben:** nur das Skript-Native **FsDeductLives** (Opcode 0x149 → `FUN_000C1240`: `dec [0x2D67DC]`, bei < 0 Kontext „Death“). Die Levelskripte erkennen den Tod selbst (FsCharIsDead = Opcode 0x9D → vf+0xA8 = Gesundheit ≤ 0), ziehen ein Leben ab und setzen die Figur an den Kontrollpunkt (gemeinsame Skriptroutine, Zeile 233 in allen 23 Skripten).
 * **Todeszonen:** `FUN_00038880` (Material-Kollision je Tick) – Materialflag 4 = Schaden alle 2 s (Aufruf 0x38ACE), Flag 8 = sofortiger Tod: `vf+0x7C(health)` (Spielerzweig 0x38C46, Rückkehr **0x38C49**), Todesart +0x778 (Lava, Wasser …).
+* **Kanalisations-Tentakel (Nachtrag 2026-10-13, Abschnitt 8):** kein Gehirn, eigene Erkennung; nach dem Durchziehen tödlicher Schaden jedes Update bis zum Tod – mit „Unverwundbar“ ein Softlock. Behoben: kein Packen bei „Unverwundbar“/„Feinde ignorieren mich“, keine Erkennung bei „Feinde ignorieren mich“, Durchzieh-Tod läuft durch, Sicherheitsnetz nach 10 s geblocktem tödlichem Schaden.
 * **Gegner-KI:** Jeder Gegner hat ein „Gehirn“ (`+0x58`, Update **`FUN_0002ECB0`**). Das Gehirn der Spielfigur schreibt jeden Tick **`0x2DBAA0` = (Spieler +0x630 == 0)** – „Feuer einstellen“, solange die Figur nicht steuerbar ist (Zwischensequenzen). Die Wahrnehmung `FUN_0002E2E0` liefert dann kein Ziel (Lesestelle 0x2E300), der Angriffszustand `FUN_0002F720` greift keinen Spieler an (0x2FA84).
 
 ## 2. Spielerschaden
@@ -76,6 +77,8 @@ vtables mit dem Actor-Layout (Slot +0x1C = 0x353B0, +0x20 = 0x35400; Slot +0x7C 
 | `probe:Junkbot::TakeDamage` | 0x88530 | `D9 44 24 04 83 EC 0C` | dto. (ergänzt) |
 | `probe:Stormtrooper::TakeDamage` | 0x90570 | `83 EC 0C 56 8B F1` | dto. (ergänzt) |
 | `probe:AI::BrainUpdate` | 0x2ECB0 | `55 8B EC 83 E4 F0` | enemies_ignore oder ingame_toggles |
+| `probe:Tentacle::Update` | 0x8C4F0 | `55 8B EC 83 E4 F0` | enemies_ignore oder ingame_toggles (Abschnitt 8) |
+| `probe:Tentacle::AnimEvent` | 0x8CAD0 | `55 8B EC 83 E4 F0` | invulnerable, enemies_ignore oder ingame_toggles (Abschnitt 8) |
 
 Die fünf von Ghidra nicht erkannten Funktionen stehen in `tools\gen\extra_function_starts.tsv` (Größe bis zum letzten `ret 8`, nach dem alle Sprünge enden).
 
@@ -87,4 +90,60 @@ Der eingebaute Cheat-Handler `FUN_0002C530` bestätigt mit `FUN_00013130` (thisc
 
 * Ereignis `FUN_000C2EE0`/`C2D50`/`C2E90` an `[Level+0x44]` vf+0x20(Position, Typ): Vermutung Beute bzw. Statistik.
 * Bosskämpfe (Panzer 2-5, Destructor 5-x, Chickenwalker-Gegner) mit „Ein Treffer“ und „Feinde ignorieren mich“ nicht gespielt.
-* Gegner ohne Gehirn-Angriff (Geschütze, Pflanzen, Statuenköpfe) – ob sie `0x2DBAA0` beachten, ist nicht geprüft.
+* ~~Gegner ohne Gehirn-Angriff (Geschütze, Pflanzen, Statuenköpfe) – ob sie `0x2DBAA0` beachten, ist nicht geprüft.~~ Geklärt in Abschnitt 8.3: Nur der Kanalisations-Tentakel greift ohne Gehirn an.
+
+## 8. Kanalisations-Tentakel (Softlock in 1-2) und andere Griff-/Quetschtode
+
+Nutzermeldung 2026-10-13: In 1-2 („Kanalisation“) mit `invulnerable`, `one_hit_kill` und `enemies_ignore` packen Tentakel Fry, ziehen ihn in ein Rohr, und das Spiel hängt. Protokoll des Nutzers (nur gelesen): erst zweimal `2.0 damage … attacker Tentacle_dude/TSewA_1 … call from 0x0008D0D9`, dann ab 56,4 s jeden Tick `100.0 damage to fry-1-2/PLAYER blocked (… attacker Tentacle_dude/TSewA_1 vt 0x0029F790, call from 0x0008C6F7 …)`, 1583-mal in 26 s. („call from“ ist Rücksprung − 5; der echte Aufruf ist das 3-Byte-`call [eax+0x7C]` bei 0x8C6F9, Rücksprung 0x8C6FC.)
+
+### 8.1 Ablauf im Spiel
+
+`tentacle_dude` (Fabrik 0x4A89A → Konstruktor `FUN_0008C2B0`, vtable **0x29F790**, Basis NPC `FUN_00047B80`, `maxhealth` 55000) hat **kein KI-Gehirn**: Sein Update `FUN_0008C4F0` (Slot +0x5C) endet in `FUN_0003B5E0` statt in der NPC-Basis `FUN_00048190`, und es findet die Spielfigur selbst über `[[0x2DABC4]+0x94]`:
+
+| Stelle | Inhalt |
+|---|---|
+| 0x8C594–0x8C699 | Erkennung: Spielfigur lebt (vf+0xA8), wird von niemandem gehalten (`FUN_000503B0(0)`), Abstand < 12 und (Blickrichtungs-Skalarprodukt > 0,5 bzw. < −0,5 oder Abstand < 5,217) und Abklingzeit **+0x8C4 ≤ 0** (0x8C675) → Angriffsflag **+0x508 = 1**, Abklingzeit 1 s. Danach +0x8C4 −= dt |
+| 0x8C754 ff. | +0x508 → Angriffsanimation 0x2F/0x30/0x31 (Zufall 1:6:3), Ton; „verfehlt“ (+0x8C0, am Ende jedes Updates gelöscht) → Rückzug 0xF2/0xF3 |
+| 0x8C6C2–0x8C70D | **+0x8C1 gesetzt** (nach „durchs Rohr gezogen“) und die Spielfigur hängt an diesem Tentakel (`FUN_000503B0(this)`, Spieler +0x7A0 == this): `player->vf+0x7C(maxhealth +0x4FC, this)` – **jedes Update**, Todesart +0x778 = 2. +0x8C1 wird nur im Konstruktor gelöscht |
+| `FUN_0008CAD0` (Slot +0xE8, Animationsereignisse, `ret 8`) | `morph:grab` (0x29F8F4): Abstand/Richtung erneut geprüft, dann **`FUN_00055370(player, this, Knoten)`** (Spieler packen) – sonst +0x8C0 = 1 („verfehlt“, 0x8CCF5). `morph:hit` (0x297408): Rückstoß. `morph:punch` (0x29F8E0) und `morph:hit_head` (0x29F8D0): 2,0 Schaden, nur wenn gehalten (0x8D08C, 0x8D0DB). `morph:release` (0x29F8C0): `FUN_00055860` (loslassen). `morph:pull_through_pipe` (0x29F8A8): +0x8C1 = 1 |
+
+`FUN_00055370` (Spieler packen) setzt Spieler +0x7A0 = Greifer und hängt die Figur an den Knoten; frühe Rücksprünge (+0xB8C/+0xB8D/+0xB8E, Greifer tot) zeigen, dass das Spiel ein nicht zustande gekommenes Packen verträgt. `FUN_00055860` lässt los (+0x7A0 = 0). `FUN_000503B0(x)`: x = 0 → „wird gehalten“, sonst „wird von x gehalten“.
+
+**Ursache des Softlocks:** Nach `morph:pull_through_pipe` endet der Griff im Original nur durch den Tod (das Levelskript setzt die Figur an den Kontrollpunkt, damit ist +0x7A0 wieder 0). „Unverwundbar“ blockte den tödlichen Schaden in jedem Update, die Figur starb nie, der Tentakel ließ nie los. „Feinde ignorieren mich“ wirkte nicht, weil der Tentakel das Haltefeuer-Flag 0x2DBAA0 nicht liest (kein Gehirn).
+
+### 8.2 Entscheidungen
+
+* **Feinde ignorieren mich** – `probe:Tentacle::Update` 0x8C4F0 (`55 8B EC 83 E4 F0`, thiscall `(arg)` `ret 4`): vor jedem Update Abklingzeit +0x8C4 = max(+0x8C4, 0,5 s) (`TentacleHoldCooldown`). Die Erkennung (≤ 0) feuert nie, +0x508 bleibt 0, keine Angriffsanimation. Nach dem Ausschalten läuft der Rest (≤ 0,5 s) normal ab. Eine Datenänderung statt eines Code-Patches; nur vtable 0x29F790 benutzt die Funktion (ein Datenverweis 0x29F7EC).
+* **Unverwundbar oder Feinde ignorieren mich** – `probe:Tentacle::AnimEvent` 0x8CAD0 (gleicher Prolog, thiscall `(arg, const char* event)` `ret 8`): `morph:grab` (ohne Groß-/Kleinschreibung wie `_stricmp`) nimmt den eigenen „verfehlt“-Weg des Spiels (+0x8C0 = 1, Rückkehr ohne Packen; `SkipTentacleGrab`). Der Tentakel zieht sich zurück und greift nach Ablauf der Abklingzeit erneut an – das Packen kommt nie zustande. Gewählt statt „Loslassen nach dem Packen“: `FUN_00055860` setzt die Figur relativ zum Knoten ab, nach `pull_through_pipe` säße sie im Rohr bzw. in der Wand.
+* **Unverwundbar, Griff läuft schon** (z. B. per Steuerkreuz während des Griffs eingeschaltet): Der Durchzieh-Tod (Rücksprung **0x8C6FC**, `kTentacleKillReturn`) läuft durch wie die Todeszone (0x38C49) – Tod, Levelskript setzt an den Kontrollpunkt, FsDeductLives wird übersprungen (Leben bleibt). `morph:punch`/`hit_head` (2,0) bleiben geblockt.
+* **Sicherheitsnetz** (`LethalBlockWatch`, unit-getestet): Ein tödlicher Treffer (Betrag ≥ Restgesundheit > 0), der geblockt würde, zählt zu einer Serie desselben Angreifers (0 = Skript); eine Pause > **1 s** (`kLethalBlockGapSeconds`) oder ein anderer Angreifer beginnt eine neue Serie. Dauert die Serie länger als **10 s** (`kLethalBlockLimitSeconds`, Nutzervorgabe 2026-10-13), läuft dieser Treffer einmal durch (Tod, Kontrollpunkt, Leben bleibt), die Serie beginnt von vorn. Ein durchgelassener Treffer desselben Angreifers beendet die Serie. Uhr: `steady_clock` des Hosts (Pause/Ladezeiten unterbrechen die Serie über die Lückenregel). Protokoll `cheat: invulnerable - safety net: …`.
+
+### 8.3 Andere Gegner ohne Gehirn-Angriff (statisch)
+
+Die Angriffsflags +0x506/+0x507/+0x508 der NPCs schreiben (Capstone-Suche nach `mov byte ptr [reg+0x506..0x508], 1/al`): das Gehirn (`FUN_0002CB10`, `FUN_0002ECB0` – dort nur die Boss-Zweige 0x2EFBE/0x2F192 –, `FUN_0002F720`), die Angriffsmethoden der Spielerklassen (vtable-Slots +0x114/+0x118 von 0x29A1E8/0x29D8E0/0x29F0C0/0x2A0DB0), igner_boss +0x114 (`FUN_00087940`, Boss) – und als einziger Gegner **der Tentakel selbst** (0x8C688). Damit:
+
+| Gegner | Angriff | „Feinde ignorieren mich“ |
+|---|---|---|
+| tentacle_dude (1-2) | eigene Erkennung im Update, Packen, Durchziehen | bisher nicht – **behoben** (8.2) |
+| gunturret (vtable 0x29E8C0, Update `FUN_00086DD0`) | zielt immer auf `[Session+0x94]` (nur Drehung), feuert bei +0x506 | +0x506 kommt vom Gehirn – wirkt (Vermutung, nicht im Lauf geprüft) |
+| statuehead (0x29FF78, Update `FUN_0008FC40`) | Laser bei +0x506 | dto. |
+| carnivorous_plant (0x29DAD8, Update 0x817F0, Ereignisse 0x81830: `morph:chomp` packt Bender über `FUN_00055370`, `switch_to_small` → `FUN_00050390`, `switch_to_normal` lässt los) | Angriff über +0x508 vom Gehirn | dto. |
+| turdman (0x2A06B8, Ereignisse `FUN_00091A60`: `morph:move_begin` packt, `morph:shake` 1,78 Schaden, `morph:putdown` lässt los) | +0x508 vom Gehirn | dto.; im Lauf griffen Turdmen bei „Feinde ignorieren mich“ nicht an |
+| eyestalk, rockmonster, Goons, Junkbots, Stormtrooper, Aquafish, Spinbot, Warthog … | Ereignis-Handler `FUN_00085ED0` (Nahkampftreffer) nach Angriff vom Gehirn | wirkt |
+| Destructor, Sonnengott, igner_boss | eigene Boss-Logik | wirkt nicht (wie in Abschnitt 4) |
+
+### 8.4 Schaden „über Zeit“ und Griff-/Quetschtode (Aufrufstellen von vf+0x7C am Spieler)
+
+| Stelle | Art | Mit „Unverwundbar“ |
+|---|---|---|
+| Tentakel 0x8C6F9 (Rücksprung 0x8C6FC) | Durchziehen: Maximum der Gesundheit **jedes Update**, bis die Figur tot ist | Packen wird verhindert; läuft der Griff schon: Tod wie Todeszone, Leben bleibt |
+| Tentakel 0x8D08C / 0x8D0DB | `morph:punch`/`hit_head`: 2,0 je Ereignis, nur gehalten | geblockt |
+| turdman 0x91D7D | `morph:shake`: 1,78 je Schütteln, `putdown` lässt los | geblockt; kein Softlock (lässt von selbst los) |
+| carnivorous_plant 0x81963/0x81977 | Packen (Bender, 2-x); Schaden nicht in diesem Handler | Packen läuft wie bisher; endet über `switch_to_normal`. Falls eine Pflanze tödlich festhält: Sicherheitsnetz |
+| Material 0x38ACE (Rücksprung 0x38AD1) | schädlicher Boden (Flag 4): 10 je 2 s, Angreifer = Spielfigur selbst | geblockt (nicht tödlich) |
+| Material 0x38C46 (Rücksprung 0x38C49) | Todeszone (Flag 8): einmal die volle Gesundheit | läuft durch (Abschnitt 2) |
+| Material 0x38D8D | Todeszone für Nicht-Spieler (`ebx` = Figur, Betrag = eigene Gesundheit) | – |
+| Skript FsDamageCharacter (0x70 → `FUN_00036F90`, Angreifer 0) | 2-6 rollender Stein `(PLAYER, 1e6)` innerhalb `g_fBoulderCertainDeathRadius` (Skriptvariable), 1-5/1-7 `(PLAYER, 100)` nach einer Falle | geblockt; wiederholt das Skript den Schaden länger als 10 s ohne Pause > 1 s, greift das Sicherheitsnetz (Vermutung: der Stein rollt weiter, die Serie endet von selbst) |
+| `FUN_00061A70` 0x621AE | Strahl: 100 × dt je Tick auf ein getroffenes Ziel, Angreifer 0 (Aufruf 0x94497 aus einer Spielerwaffe, Vermutung) | geblockt, falls er die Figur trifft; Sicherheitsnetz nur bei tödlichem Betrag |
+| `FUN_000639C0` 0x63B30 / 0x63D2C (vtable 0x29BA08) | Explosion mit Abstandsabfall bzw. 20,0 | einmalig, geblockt |
+| Gegner-Nahkampf 0x46CC9 (Rücksprung 0x46CCE) | turdman 20, eyestalk 15 usw. | geblockt |

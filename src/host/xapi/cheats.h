@@ -29,6 +29,21 @@
 //   (FUN_0002DEC0) but do not attack; the bosses' own attack code (Destructor +0x774 == 0xE, sun god 0xC) does not
 //   read the flag and keeps fighting.
 //
+// Sewer tentacle (tentacle_dude, vtable 0x29F790; 1-2, user report 2026-10-13): it has no AI brain, its update
+//   FUN_0008C4F0 (slot +0x5C) finds the player itself (distance < 12, detection cooldown +0x8C4 <= 0 -> attack flag
+//   +0x508, attack animations 0x2F..0x31). The animation event "morph:grab" (handler FUN_0008CAD0, slot +0xE8) grabs
+//   him (Player::Grab FUN_00055370, player +0x7A0 = grabber), "morph:pull_through_pipe" sets +0x8C1, and from then on
+//   every update deals the player's maximum health (call 0x8C6F9, return kTentacleKillReturn) until he is dead - the
+//   death/respawn is the only way out. Blocked by "invulnerable" this was a softlock (1583 blocked hits in 26 s).
+//   - probe:Tentacle::Update (enemies ignore me): keeps the detection cooldown above zero - no attack at all.
+//   - probe:Tentacle::AnimEvent (invulnerable or enemies ignore me): "morph:grab" takes the game's own miss path
+//     (+0x8C0 = 1, the tentacle retracts) - the grab never starts.
+//   - The pull-through kill (return kTentacleKillReturn) passes like the instant-death floor (respawn, life kept), for
+//     a grab that was already running when the cheat was switched on.
+//   - Safety net (LethalBlockWatch): lethal damage (amount >= health) by the same attacker that is blocked
+//     continuously for more than kLethalBlockLimitSeconds is let through once (death, respawn, life kept) - covers
+//     other scripted grab/crush kills that repeat their damage until the player is dead.
+//
 // In-game toggles ([cheats] ingame_toggles): the D-pad sequences of input/cheat_toggles.h flip the three switches at
 // run time (Toggle); with the option on, all hooks are installed (each passes through while its switch is off).
 // Feedback: the game's own cheat confirmation (camera colour flash FUN_00013130 on [[0x2DABC4]+0x8C], green = on,
@@ -57,6 +72,16 @@ inline constexpr guest::GuestAddr kStormtrooperTakeDamage = 0x00090570;
 inline constexpr guest::GuestAddr kDeductLives = 0x000C1240;       // FsDeductLives, cdecl no args (opcode 0x149)
 inline constexpr guest::GuestAddr kAiBrainUpdate = 0x0002ECB0;     // thiscall(brain) -> al, plain ret
 inline constexpr guest::GuestAddr kKillFloorReturn = 0x00038C49;   // FUN_00038880: player on a material with flag 8
+// Sewer tentacle (tentacle_dude, vtable kTentacleVtable).
+inline constexpr guest::GuestAddr kTentacleVtable = 0x0029F790;
+inline constexpr guest::GuestAddr kTentacleUpdate = 0x0008C4F0;     // slot +0x5C, thiscall(this, arg) ret 4
+inline constexpr guest::GuestAddr kTentacleAnimEvent = 0x0008CAD0;  // slot +0xE8, thiscall(this, arg, char*) ret 8
+inline constexpr guest::GuestAddr kTentacleKillReturn = 0x0008C6FC;  // call [eax+0x7C] at 0x8C6F9: pull-through kill
+inline constexpr std::uint32_t kTentacleGrabMissed = 0x8C0;         // u8: "grab missed" -> retract (cleared per update)
+inline constexpr std::uint32_t kTentacleKilling = 0x8C1;            // u8: pull-through done, kill every update
+inline constexpr std::uint32_t kTentacleCooldown = 0x8C4;           // float: detection only at <= 0 (1 s after attack)
+inline constexpr float kTentacleHoldCooldown = 0.5f;                // enemies ignore me: kept at least this high
+inline constexpr std::uint32_t kPlayerGrabber = 0x7A0;              // Actor*: grabbed by (FUN_000503B0/55370/55860)
 inline constexpr guest::GuestAddr kAiHoldFireVar = 0x002DBAA0;     // u8, read by 0x2E2E0 (0x2E300) and 0x2F720 (0x2FA84)
 inline constexpr guest::GuestAddr kLivesVar = 0x002D67DC;          // s32 (FUN_000C1220/1230)
 inline constexpr guest::GuestAddr kCameraFlash = 0x00013130;       // thiscall(camera, r, g, b, a, in, hold, out) ret 0x1C
@@ -69,6 +94,7 @@ inline constexpr std::uint32_t kActorHealth = 0x4F4;               // float
 inline constexpr std::uint32_t kActorMaxHealth = 0x4FC;            // float (def "maxhealth")
 inline constexpr std::uint32_t kActorName = 0x34;                  // char* instance name
 inline constexpr std::uint32_t kActorDef = 0x10;                   // def; +0x10 char* def name
+inline constexpr std::uint32_t kActorGetPosition = 0x34;           // vtable slot: thiscall(this, float out[3]) ret 4
 
 // Player classes (g4_select.md 3.2): their +0x7C is kPlayerTakeDamage.
 inline constexpr guest::GuestAddr kPlayerVtables[] = {0x0029A1E8, 0x0029E1E8, 0x0029D8E0, 0x0029F0C0, 0x002A0DB0};
@@ -98,11 +124,45 @@ Settings SettingsFromConfig(const core::Config& config) noexcept;
 bool InvulnerableHooksWanted(const core::Config& config) noexcept;
 bool OneHitKillHooksWanted(const core::Config& config) noexcept;
 bool EnemiesIgnoreHooksWanted(const core::Config& config) noexcept;
+// Tentacle event probe: invulnerable, enemies ignore me or in-game toggles.
+bool TentacleHooksWanted(const core::Config& config) noexcept;
 
 // ---- pure decisions (unit-tested) -------------------------------------------------------------------------------
 // Player::TakeDamage while invulnerable: true = skip the call (the damage is lost). Only the instant-death floor
-// (return address kKillFloorReturn) and non-positive amounts pass.
+// (return address kKillFloorReturn), the tentacle's pull-through kill (kTentacleKillReturn) and non-positive amounts
+// pass.
 bool BlockPlayerDamage(bool invulnerable, float amount, guest::GuestAddr returnAddress) noexcept;
+// A lethal hit: the amount takes all of the (positive) current health.
+bool IsLethalHit(float amount, float health) noexcept;
+
+// Tentacle animation event: true = "morph:grab" (case-insensitive, like the game's _stricmp) while invulnerable or
+// enemies ignore me is on -> take the miss path instead of grabbing.
+bool SkipTentacleGrab(bool invulnerable, bool enemiesIgnore, std::string_view event) noexcept;
+// Enemies ignore me: the tentacle's detection cooldown before its update (at least kTentacleHoldCooldown).
+float TentacleHoldCooldown(float cooldown) noexcept;
+
+// Safety net for "invulnerable": lethal damage by the same attacker that keeps being blocked for longer than this is
+// let through once as an instant death (the life is kept, FsDeductLives is skipped). User decision 2026-10-13: 10 s.
+inline constexpr double kLethalBlockLimitSeconds = 10.0;
+// A pause between two blocked lethal hits longer than this ends the series (the next hit starts a new one).
+inline constexpr double kLethalBlockGapSeconds = 1.0;
+
+class LethalBlockWatch {
+public:
+    // A blocked lethal hit by `attacker` (0 = none, e.g. script damage) at `now` seconds. True = let this hit through
+    // (the series has lasted longer than kLethalBlockLimitSeconds); the watch then starts over.
+    bool OnBlockedLethal(std::uint32_t attacker, double now) noexcept;
+    void Reset() noexcept { active_ = false; }
+    bool Active() const noexcept { return active_; }
+    std::uint32_t Attacker() const noexcept { return attacker_; }
+    double SeriesSeconds() const noexcept { return active_ ? last_ - first_ : 0.0; }
+
+private:
+    bool active_ = false;
+    std::uint32_t attacker_ = 0;
+    double first_ = 0.0;
+    double last_ = 0.0;
+};
 
 enum class HitKind : std::uint8_t { Unchanged, Lethal, Boss };
 struct HitDecision {
@@ -131,6 +191,10 @@ struct Stats {
     std::uint32_t blockedHits = 0;      // player damage skipped
     double blockedDamage = 0.0;
     std::uint32_t killFloorDeaths = 0;  // instant-death floor passed through while invulnerable
+    std::uint32_t grabKills = 0;        // tentacle pull-through kill passed through while invulnerable
+    std::uint32_t safetyNetKills = 0;   // lethal series blocked > kLethalBlockLimitSeconds, let through
+    std::uint32_t grabsPrevented = 0;   // tentacle "morph:grab" turned into a miss
+    std::uint32_t tentacleHolds = 0;    // enemies ignore me: tentacle detection cooldown raised from <= 0
     std::uint32_t livesKept = 0;        // FsDeductLives skipped
     std::uint32_t lethalHits = 0;       // one-hit kill: hit made lethal
     std::uint32_t bossHits = 0;         // one-hit kill: boss hit raised

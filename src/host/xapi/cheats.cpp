@@ -12,6 +12,9 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
+#include <chrono>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -84,6 +87,15 @@ std::atomic<int> g_pendingFlash{0};  // 0 none, 1 green (on), 2 red (off)
 std::mutex g_statsLock;
 Stats g_stats;
 
+std::mutex g_watchLock;
+LethalBlockWatch g_lethalWatch;  // invulnerable safety net (player damage probe)
+
+double NowSeconds() noexcept {
+    using Clock = std::chrono::steady_clock;
+    static const Clock::time_point start = Clock::now();
+    return std::chrono::duration<double>(Clock::now() - start).count();
+}
+
 // OnTick (guest main thread only).
 guest::GuestAddr g_tracePlayer = 0;
 float g_traceHealth = 0.0f;
@@ -107,7 +119,36 @@ std::uint32_t __fastcall PlayerTakeDamageProbe(std::uint32_t player, std::uint32
     EnsureConfigured();
     const guest::GuestAddr from = guest::Addr(_ReturnAddress());
     const bool invulnerable = Active(Cheat::Invulnerable);
-    if (BlockPlayerDamage(invulnerable, amount, from)) {
+    bool block = BlockPlayerDamage(invulnerable, amount, from);
+    if (block) {
+        // Safety net: a lethal hit that keeps coming (scripted grab/crush kills wait for the death).
+        const float health = ReadF32(player + kActorHealth);
+        if (IsLethalHit(amount, health)) {
+            bool letThrough = false;
+            {
+                std::lock_guard<std::mutex> lock(g_watchLock);
+                letThrough = g_lethalWatch.OnBlockedLethal(attacker, NowSeconds());
+            }
+            if (letThrough) {
+                block = false;
+                std::uint32_t n = 0;
+                {
+                    std::lock_guard<std::mutex> lock(g_statsLock);
+                    n = ++g_stats.safetyNetKills;
+                }
+                try {
+                    FUT_LOGI(Game,
+                             "cheat: invulnerable - safety net: lethal damage by %s vt 0x%08X blocked for more than "
+                             "%.0f s (%.1f damage, health %.1f, call from 0x%08X): let through as an instant death; the "
+                             "level script respawns the player at the checkpoint, no life is lost (%u.)",
+                             ActorName(attacker).c_str(), ReadU32(attacker), kLethalBlockLimitSeconds,
+                             static_cast<double>(amount), static_cast<double>(health), from - 5, n);
+                } catch (...) {
+                }
+            }
+        }
+    }
+    if (block) {
         std::uint32_t n = 0;
         {
             std::lock_guard<std::mutex> lock(g_statsLock);
@@ -138,7 +179,169 @@ std::uint32_t __fastcall PlayerTakeDamageProbe(std::uint32_t player, std::uint32
                  "the game's god mode; the level script respawns the player at the checkpoint, no life is lost (%u.)",
                  static_cast<double>(amount), n);
     }
+    if (invulnerable && from == kTentacleKillReturn) {
+        std::uint32_t n = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_statsLock);
+            n = ++g_stats.grabKills;
+        }
+        if (Detail(n)) {
+            try {
+                FUT_LOGI(Game,
+                         "cheat: invulnerable - %s pulls the player through the pipe (grab kill, %.1f damage every "
+                         "tick until death): passes like an instant-death floor; respawn at the checkpoint, no life "
+                         "is lost (%u.)",
+                         ActorName(attacker).c_str(), static_cast<double>(amount), n);
+            } catch (...) {
+            }
+        }
+    }
+    if (amount > 0.0f) {
+        {
+            std::lock_guard<std::mutex> lock(g_watchLock);
+            if (g_lethalWatch.Active() && g_lethalWatch.Attacker() == attacker) {
+                g_lethalWatch.Reset();  // the series ends with the damage that passes
+            }
+        }
+        if (core::LogEnabled(core::Channel::Game, core::Level::Debug)) {
+            try {
+                FUT_LOGD(Game, "cheat: player damage %.1f to %s passes (health %.1f; attacker %s vt 0x%08X, return 0x%08X)",
+                         static_cast<double>(amount), ActorName(player).c_str(),
+                         static_cast<double>(ReadF32(player + kActorHealth)), ActorName(attacker).c_str(),
+                         ReadU32(attacker), from);
+            } catch (...) {
+            }
+        }
+    }
     return core::CallGuestThiscall(core::HookTrampoline(kPlayerTakeDamage), player, {FloatBits(amount), attacker});
+}
+
+// Tentacle update FUN_0008C4F0 (vtable 0x29F790 +0x5C), thiscall(tentacle, arg) ret 4. Enemies ignore me: the
+// detection (distance < 12 and cooldown +0x8C4 <= 0, 0x8C675) never fires while the cooldown stays above zero.
+std::uint32_t __fastcall TentacleUpdateProbe(std::uint32_t tentacle, std::uint32_t /*edx*/,
+                                             std::uint32_t arg) noexcept {
+    if (tentacle != 0 && Active(Cheat::EnemiesIgnore)) {
+        const guest::GuestAddr p = tentacle + kTentacleCooldown;
+        if (guest::IsReadable(p, 4)) {
+            const float cooldown = guest::Read<float>(p);
+            const float hold = TentacleHoldCooldown(cooldown);
+            if (FloatBits(hold) != FloatBits(cooldown)) {
+                guest::Write<float>(p, hold);
+                if (!(cooldown > 0.0f)) {
+                    std::uint32_t n = 0;
+                    {
+                        std::lock_guard<std::mutex> lock(g_statsLock);
+                        n = ++g_stats.tentacleHolds;
+                    }
+                    if (Detail(n)) {
+                        try {
+                            FUT_LOGI(Game,
+                                     "cheat: enemies ignore me - %s does not look for the player (detection cooldown "
+                                     "held at %.1f s; %u.)",
+                                     ActorName(tentacle).c_str(), static_cast<double>(hold), n);
+                        } catch (...) {
+                        }
+                    }
+                }
+            }
+        }
+    }
+    const std::uint32_t r = core::CallGuestThiscall(core::HookTrampoline(kTentacleUpdate), tentacle, {arg});
+    // [debug] trace = game: positions for test runs (every 31st tentacle update - rotates over the tentacles of the
+    // level, about two lines per second).
+    static std::atomic<std::uint32_t> calls{0};
+    if (tentacle != 0 && core::LogEnabled(core::Channel::Game, core::Level::Trace) && calls++ % 31 == 0) {
+        try {
+            const guest::GuestAddr session = ReadU32(kSessionPtr);
+            const guest::GuestAddr player = session != 0 ? ReadU32(session + kSessionPlayer) : 0;
+            alignas(4) float tp[3] = {};
+            alignas(4) float pp[3] = {};
+            core::CallGuestThiscall(ReadU32(ReadU32(tentacle) + kActorGetPosition), tentacle, {guest::Addr(tp)});
+            if (player != 0) {
+                core::CallGuestThiscall(ReadU32(ReadU32(player) + kActorGetPosition), player, {guest::Addr(pp)});
+            }
+            const float dx = pp[0] - tp[0];
+            const float dy = pp[1] - tp[1];
+            const float dz = pp[2] - tp[2];
+            FUT_LOGT(Game,
+                     "tentacle trace: %s pos %.2f %.2f %.2f player %.2f %.2f %.2f dist %.2f cooldown %.2f attack %u "
+                     "missed %u killing %u grabber 0x%08X",
+                     ActorName(tentacle).c_str(), static_cast<double>(tp[0]), static_cast<double>(tp[1]),
+                     static_cast<double>(tp[2]), static_cast<double>(pp[0]), static_cast<double>(pp[1]),
+                     static_cast<double>(pp[2]), std::sqrt(static_cast<double>(dx * dx + dy * dy + dz * dz)),
+                     static_cast<double>(ReadF32(tentacle + kTentacleCooldown)),
+                     guest::Read<std::uint8_t>(tentacle + 0x508), guest::Read<std::uint8_t>(tentacle + kTentacleGrabMissed),
+                     guest::Read<std::uint8_t>(tentacle + kTentacleKilling),
+                     player != 0 ? ReadU32(player + kPlayerGrabber) : 0u);
+        } catch (...) {
+        }
+    }
+    return r;
+}
+
+// Tentacle animation events FUN_0008CAD0 (vtable 0x29F790 +0xE8), thiscall(tentacle, arg, const char* event) ret 8.
+// "morph:grab" with invulnerable or enemies ignore me: the game's own miss path (+0x8C0 = 1 -> retract animation).
+std::uint32_t __fastcall TentacleAnimEventProbe(std::uint32_t tentacle, std::uint32_t /*edx*/, std::uint32_t arg,
+                                                std::uint32_t event) noexcept {
+    const bool invulnerable = Active(Cheat::Invulnerable);
+    const bool ignore = Active(Cheat::EnemiesIgnore);
+    std::string name;
+    try {
+        name = GuestString(event, 32);
+        for (char& c : name) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));  // the game compares with _stricmp
+        }
+    } catch (...) {
+    }
+    if (tentacle != 0 && (invulnerable || ignore)) {
+        const bool skip = SkipTentacleGrab(invulnerable, ignore, name);
+        if (skip) {
+            guest::Write<std::uint8_t>(tentacle + kTentacleGrabMissed, 1);
+            std::uint32_t n = 0;
+            {
+                std::lock_guard<std::mutex> lock(g_statsLock);
+                n = ++g_stats.grabsPrevented;
+            }
+            if (Detail(n)) {
+                try {
+                    const guest::GuestAddr session = ReadU32(kSessionPtr);
+                    const guest::GuestAddr player = session != 0 ? ReadU32(session + kSessionPlayer) : 0;
+                    FUT_LOGI(Game,
+                             "cheat: %s - %s grab skipped (morph:grab -> miss, the tentacle retracts; player %s "
+                             "grabbed by 0x%08X; %u.)",
+                             ignore ? "enemies ignore me" : "invulnerable", ActorName(tentacle).c_str(),
+                             ActorName(player).c_str(), player != 0 ? ReadU32(player + kPlayerGrabber) : 0u, n);
+                } catch (...) {
+                }
+            }
+            return 0;
+        }
+    }
+    const std::uint32_t r = core::CallGuestThiscall(core::HookTrampoline(kTentacleAnimEvent), tentacle, {arg, event});
+    // Evidence: the grab sequence as the game runs it (only with cheat hooks; a few lines per attack).
+    if (tentacle != 0 && core::LogEnabled(core::Channel::Game, core::Level::Debug)) {
+        try {
+            FUT_LOGD(Game, "cheat: tentacle %s event %s", ActorName(tentacle).c_str(), name.c_str());
+        } catch (...) {
+        }
+    }
+    if (tentacle != 0 && (name == "morph:grab" || name == "morph:release" || name == "morph:pull_through_pipe")) {
+        static std::atomic<std::uint32_t> events{0};
+        const std::uint32_t n = ++events;
+        if (Detail(n)) {
+            try {
+                const guest::GuestAddr session = ReadU32(kSessionPtr);
+                const guest::GuestAddr player = session != 0 ? ReadU32(session + kSessionPlayer) : 0;
+                FUT_LOGI(Game, "cheat: tentacle %s event %s (player grabbed by %s, missed %u, killing %u; %u.)",
+                         ActorName(tentacle).c_str(), name.c_str(),
+                         ActorName(player != 0 ? ReadU32(player + kPlayerGrabber) : 0u).c_str(),
+                         guest::Read<std::uint8_t>(tentacle + kTentacleGrabMissed),
+                         guest::Read<std::uint8_t>(tentacle + kTentacleKilling), n);
+            } catch (...) {
+            }
+        }
+    }
+    return r;
 }
 
 // Script native FsDeductLives FUN_000C1240 (opcode 0x149, the level scripts' respawn routine), cdecl, no args.
@@ -314,8 +517,48 @@ bool EnemiesIgnoreHooksWanted(const core::Config& config) noexcept {
 
 // ---- pure decisions ---------------------------------------------------------------------------------------------
 
+bool TentacleHooksWanted(const core::Config& config) noexcept {
+    const Settings s = SettingsFromConfig(config);
+    return s.invulnerable || s.enemiesIgnore || s.ingameToggles;
+}
+
 bool BlockPlayerDamage(bool invulnerable, float amount, guest::GuestAddr returnAddress) noexcept {
-    return invulnerable && amount > 0.0f && returnAddress != kKillFloorReturn;
+    return invulnerable && amount > 0.0f && returnAddress != kKillFloorReturn && returnAddress != kTentacleKillReturn;
+}
+
+bool IsLethalHit(float amount, float health) noexcept {
+    return health > 0.0f && amount >= health;
+}
+
+bool SkipTentacleGrab(bool invulnerable, bool enemiesIgnore, std::string_view event) noexcept {
+    constexpr std::string_view kGrab = "morph:grab";
+    if (!(invulnerable || enemiesIgnore) || event.size() != kGrab.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < kGrab.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(event[i])) != kGrab[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+float TentacleHoldCooldown(float cooldown) noexcept {
+    return cooldown >= kTentacleHoldCooldown ? cooldown : kTentacleHoldCooldown;  // NaN -> the hold value
+}
+
+bool LethalBlockWatch::OnBlockedLethal(std::uint32_t attacker, double now) noexcept {
+    if (!active_ || attacker != attacker_ || now < last_ || now - last_ > kLethalBlockGapSeconds) {
+        active_ = true;
+        attacker_ = attacker;
+        first_ = now;
+    }
+    last_ = now;
+    if (now - first_ > kLethalBlockLimitSeconds) {
+        active_ = false;
+        return true;
+    }
+    return false;
 }
 
 HitDecision OneHitDamage(float amount, float health, float maxHealth, bool attackerIsPlayer,
@@ -468,12 +711,14 @@ Stats GetStats() noexcept {
 void LogSummary() noexcept {
     const Stats s = GetStats();
     FUT_LOGI(Game,
-             "cheats summary: invulnerable %s (%u hits blocked, %.1f damage, %u instant-death floors, %u lives kept), "
-             "one-hit kill %s (%u lethal hits, %u boss hits, %u protected), enemies ignore me %s (hold fire forced "
-             "%u times), %u in-game toggles",
-             OnOff(Active(Cheat::Invulnerable)), s.blockedHits, s.blockedDamage, s.killFloorDeaths, s.livesKept,
-             OnOff(Active(Cheat::OneHitKill)), s.lethalHits, s.bossHits, s.protectedHits,
-             OnOff(Active(Cheat::EnemiesIgnore)), s.holdFireTicks, s.toggles);
+             "cheats summary: invulnerable %s (%u hits blocked, %.1f damage, %u instant-death floors, %u grab kills, "
+             "%u safety-net deaths, %u lives kept), one-hit kill %s (%u lethal hits, %u boss hits, %u protected), "
+             "enemies ignore me %s (hold fire forced %u times, %u tentacle holds), %u tentacle grabs skipped, %u "
+             "in-game toggles",
+             OnOff(Active(Cheat::Invulnerable)), s.blockedHits, s.blockedDamage, s.killFloorDeaths, s.grabKills,
+             s.safetyNetKills, s.livesKept, OnOff(Active(Cheat::OneHitKill)), s.lethalHits, s.bossHits,
+             s.protectedHits, OnOff(Active(Cheat::EnemiesIgnore)), s.holdFireTicks, s.tentacleHolds, s.grabsPrevented,
+             s.toggles);
 }
 
 }  // namespace xapi::cheats
@@ -504,3 +749,7 @@ FUT_PROBE_IF(xapi::cheats::kStormtrooperTakeDamage,
              "probe:Stormtrooper::TakeDamage", "83 EC 0C 56 8B F1", 6, &xapi::cheats::OneHitKillHooksWanted);
 FUT_PROBE_IF(xapi::cheats::kAiBrainUpdate, &xapi::cheats::BrainUpdateProbe, Thiscall, "probe:AI::BrainUpdate",
              "55 8B EC 83 E4 F0", 6, &xapi::cheats::EnemiesIgnoreHooksWanted);
+FUT_PROBE_IF(xapi::cheats::kTentacleUpdate, &xapi::cheats::TentacleUpdateProbe, Thiscall, "probe:Tentacle::Update",
+             "55 8B EC 83 E4 F0", 6, &xapi::cheats::EnemiesIgnoreHooksWanted);
+FUT_PROBE_IF(xapi::cheats::kTentacleAnimEvent, &xapi::cheats::TentacleAnimEventProbe, Thiscall,
+             "probe:Tentacle::AnimEvent", "55 8B EC 83 E4 F0", 6, &xapi::cheats::TentacleHooksWanted);
