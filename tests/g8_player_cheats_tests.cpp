@@ -237,7 +237,7 @@ TEST_CASE("G8 player cheats: [cheats] schema rows, settings and hook conditions"
     CHECK(std::string(ch::CheatKey(ch::Cheat::MoonJump)) == "moon_jump");
     CHECK(std::string(ch::CheatKey(ch::Cheat::InfiniteAmmo)) == "infinite_ammo");
     CHECK(std::string(ch::CheatLabelDe(ch::Cheat::MoonJump)) == "Mondsprung");
-    CHECK(ch::kCheatCount == 6);
+    CHECK(ch::kCheatCount == 7);  // 2026-10-14: + freeze_timer (g8_timer_cheat_tests.cpp)
 }
 
 TEST_CASE("G8 player cheats: moon jump speed and the scale") {

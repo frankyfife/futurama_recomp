@@ -1602,6 +1602,7 @@ ipc_renderer.h`);
   pending state FsChangeLevel built is completed afterwards by `xapi::select::EnsureStartWeapons(next)` (4.35).
   `xapi::RequestStateDump()` = script command `game state`: logs `save: debug action state: Level=...;Health=...;
   Ammo=...;Pickup=...;Equip=...;Lives=...` (`FUN_000C26E0` with an output buffer, freed with `FUN_000A3880`).
+  Since 2026-10-14: `xapi::RequestSnapToNode(node)` = script command `game snap_to_node <node>` (4.41).
   `RunPendingGameActions` also calls `xapi::select::ObserveStartState()` every tick: once the pending start state
   `DAT_002EA988` of a level was consumed by `FUN_000C5340`, one line `game: start state applied in <Level>: ...`.
 - **VFS** (`vfs\host_dir_device.cpp`): a directory scan (`File::NextDirEntry`, NtQueryDirectoryFile) is a snapshot
@@ -1849,17 +1850,40 @@ ipc_renderer.h`);
 - **Tests**: `tests\movie_pack_tests.cpp` (index, lookup, pts/queue/100-ns rules, texel scale, host image, schema;
   optional real reader test on `run\moviepack_ai_x2`). Report `docs\m6b_report.md`, `loader_design.md` 8.24.
 
-### 4.41 G8 cheats - `xapi\cheats.h`, `xapi\cheats_player.h`, `input\cheat_toggles.h`, `input\host_router.h`
+### 4.41 G8 cheats - `xapi\cheats.h`, `xapi\cheats_player.h`, `xapi\cheats_timer.h`, `input\cheat_toggles.h`, `input\host_router.h`
 
 - **`[cheats]`** (new section, Game tab, group "Cheats"; all bool, default `0`; `xapi::cheats::SettingsFromConfig`):
   `invulnerable`, `one_hit_kill`, `enemies_ignore`, `ingame_toggles`; since 2026-10-14 also `teleport_freecam`,
   `moon_jump`, `infinite_ammo` (bool) and `jump_distance` (float metres 0.0..2.0, step 0.1, DSpin, unit "m";
-  `Settings::jumpDistanceMetres`, `JumpDistanceFromConfig` clamps). Hook conditions (`FUT_PROBE_IF`): a cheat's
+  `Settings::jumpDistanceMetres`, `JumpDistanceFromConfig` clamps); since 2026-10-14 (later) `freeze_timer` (bool,
+  `Settings::freezeTimer`, row before `ingame_toggles`). Hook conditions (`FUT_PROBE_IF`): a cheat's
   probes are installed when it is on at start **or** `ingame_toggles = 1`; all off = no hook (`hooks: 184 installed`
-  as without G8; with toggles 198 since the player cheats). Runtime switches `xapi::cheats::Active(Cheat)`,
-  `Toggle(Cheat, port, text)`; `enum class Cheat` = Invulnerable, OneHitKill, EnemiesIgnore, TeleportFreecam,
-  MoonJump, InfiniteAmmo (`kCheatCount` 6; index = D-pad sequence index). `QueueFlash(on)`, `CountPlayerCheat(&Stats::
-  field)` (additive).
+  as without G8; with toggles 198 since the player cheats, 200 since freeze_timer; freeze_timer alone 186). Runtime
+  switches `xapi::cheats::Active(Cheat)`, `Toggle(Cheat, port, text)`; `enum class Cheat` = Invulnerable,
+  OneHitKill, EnemiesIgnore, TeleportFreecam, MoonJump, InfiniteAmmo, FreezeTimer (`kCheatCount` 7; index = D-pad
+  sequence index). `QueueFlash(on)`, `CountPlayerCheat(&Stats::field)` (additive).
+- **Freeze timer** (2026-10-14, `xapi\cheats_timer.h`; analysis `g8_cheats.md` 10; condition `TimerHooksWanted` =
+  freeze_timer or toggles, two probes):
+  - `probe:HudTimer::Update` 0xEC6D0 (HUD element "timer", vtable `kHudTimerVtable` 0x2A55F8 +0x4, `8A 41 2C 84 C0`,
+    thiscall plain ret; extra function start `HudTimer_vfUpdate`): while the cheat is on and the timer counts
+    (`HudTimerCounting(running +0x2C, paused +0x2D)`) the update is skipped - seconds +0x28 and the display stay, the
+    expired flag +0x2F (4-1 swamp variant +0x2E; script native 0x184) is never set. Script commands of native 0x17C
+    ("set"/"add"/"play"/"pause"/"stop", handler 0xEC720) still apply.
+  - `probe:Script::RunThreads` 0xBA060 (script scheduler, thiscall `(float dt)` ret 4, `51 57 8B F9 8B 0D 18 A2 2E
+    00`, 10 bytes): threads of the session's level (`[0x2DABC4]+0xC`) waiting at a site of `kScriptCountdowns`
+    (`FindCountdownSite(level, code pointer +0x34 - script image [script+0x14], three words before it)`; 2-4
+    `@@action@@aEnablePowerConsole` Wait(60), 3-5 `RunNibbler` Wait(1), 5-1/5-2/5-3 `Start` Wait(m_Timeout)) get
+    `HeldWaitBeforeStep(wait +0x20, dt)` = wait + dt before the scheduler and their exact wait back afterwards.
+  - Pure helpers `FormatHudTime(seconds, out)` ("%d:%02d" truncated like the game), `LogTimerSummary()` (exit
+    line `cheats summary (timer): ...`). Logs `cheat: freeze timer - HUD timer held at m:ss ...`, `... runs again
+    from ...`, `cheat: freeze timer - <level> (<folder>, <function>): <what> held with N s left ...`, `... script
+    countdown(s) run again`; with `[debug] trace = game` one `timer trace: ...` line per second for the counting
+    HUD timer and each countdown thread (also while the cheat is off). 3 `Stats` fields (`countdownsHeld`,
+    `hudTimerTicksHeld`, `scriptWaitTicksHeld`).
+  - Debug action for test runs (`xapi\save_probes.h`, additive): `RequestSnapToNode(node)` = input script command
+    `game snap_to_node <node>` - at the next tick the level-script native FsPlayerSnapToNode
+    `kGameNativeSnapToNode` 0xB0A60 (cdecl `(const char* node, float units)`, `kSnapToNodeUnits` 3.0) puts the
+    player in front of a named node (e.g. `nPowerConsole` in 2-4).
 - **Player cheats** (2026-10-14, `xapi\cheats_player.h`; analysis `g8_cheats.md` 9):
   - `probe:Physics::Step` 0xAE7E0 (physics world vtable 0x2A1ECC +0xC, `83 EC 64 53 56`, thiscall plain ret; condition
     `PhysicsHooksWanted` = moon_jump, jump_distance > 0 or toggles). **Moon jump**: while `SetMoonJumpHeld(port, true)`
@@ -1926,7 +1950,8 @@ ipc_renderer.h`);
   former G7 `Armed` conditions): invulnerable `UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT`, one-hit kill `LEFT RIGHT LEFT
   RIGHT UP DOWN UP DOWN`, enemies ignore `DOWN UP DOWN UP RIGHT LEFT RIGHT LEFT`; since 2026-10-14 teleport
   `RIGHT RIGHT LEFT LEFT UP UP DOWN DOWN`, moon jump `UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT`, infinite ammo `DOWN DOWN
-  UP UP LEFT LEFT RIGHT RIGHT` (`kSequences` has 6 entries). Pure `DpadSequenceDetector`.
+  UP UP LEFT LEFT RIGHT RIGHT`, freeze timer `UP LEFT DOWN RIGHT UP LEFT DOWN RIGHT` (`kSequences` has 7 entries;
+  the freeze sequence overlaps no other by more than one press at either end). Pure `DpadSequenceDetector`.
   Log `cheat: <key> ON|OFF (<label> "an|aus", <sequence>, port N)`.
 - **Moon jump buttons** (`inp::cheattoggles`, additive; second chain filter `MoonJumpFilter`, registered at input
   start after `SampleFilter`, `ConfigureMoonJump`): LB (WHITE) + B held on a port that is not diverted ->
@@ -1937,7 +1962,9 @@ ipc_renderer.h`);
   `PulseActive(port)` - motors at least `strength` for the next `samples` samples of the port, scaled and muted like
   the game's rumble. Toggle on = 0.4 s, off = 0.15 s.
 - **Tests**: `tests\g8_cheats_tests.cpp` (8 cases since the tentacle fix), `tests\g8_player_cheats_tests.cpp` (7
-  cases). Scripts `tools\input_scripts\g8_cheat_toggles.txt`, `g8_player_cheats.txt`. Report:
+  cases), `tests\g8_timer_cheat_tests.cpp` (5 cases; the script sites optionally against the extracted level scripts,
+  `%FUT_TEST_SCRIPTS%`). Scripts `tools\input_scripts\g8_cheat_toggles.txt`, `g8_player_cheats.txt`,
+  `g8_freeze_timer.txt`. Report:
   `docs\g8_cheats_report.md`, analysis `analysis\loader\g8_cheats.md`.
 
 ## 5. Cross-module contracts
@@ -2170,3 +2197,4 @@ ipc_gpu.cpp` (`DrawScreenPolygon`, exit line), `tests\outline_tests.cpp` (4 case
 | 2026-10-14 | acid seam fix (M8 render to texture) | `gfx\nipc_gpu.h/.cpp` (additive: `TargetPixelCenter`; `HalfPixelShift` gains `shiftX`/`shiftY` with default 0.5; `SetPipelineCamera` passes the texture target's shift), `gfx\ff_pipeline.h/.cpp` (`FillFrameConstants`/`SetCamera` gain `pixelCenterX/Y` with default 0.5), `gfx\shaders\ff_shared.h` (`FFFrameConstants::pixelCenter`, 336 bytes), `gfx\shaders\ff_ubershader.hlsl` (pre-transformed path and 1/16-pixel snap use it), `tests\nipc_gpu_tests.cpp` (+1 case, +1 check block), `tests\ff_pipeline_tests.cpp` (offsets, frame constants), `tests\ff_render_tests.cpp` (+1 case), `gfx\GFX_CONTRACT.md` 12.2, `docs\m8_report.md` (Nachtrag 2026-10-14), `docs\loader_design.md` 8.23 P2-9 | 4.39: no dark line across the Level1-2 acid at render resolutions above 640x480 or with MSAA. The acid texture is a 128x128 render target the game fills with NiScreenPolygons 0..128; the guest-pixel half-pixel shift left its first device row/column black, and the wrapped texture showed it as a line. Texture targets now get no shift when upscaled or multisampled; classic 640x480 without MSAA and the back buffer are unchanged. No option. |
 | 2026-10-14 | G8 player cheats | new `xapi\cheats_player.h/.cpp`, `tests\g8_player_cheats_tests.cpp`, `tools\input_scripts\g8_player_cheats.txt`; `xapi\cheats.h/.cpp` (additive: `Cheat::TeleportFreecam/MoonJump/InfiniteAmmo`, `Settings` fields, 9 `Stats` fields, `CountPlayerCheat`, `QueueFlash`; `OnTick` calls `PlayerCheatsTick`), `input\cheat_toggles.h/.cpp` (additive: 3 sequences, `MoonJumpButtons`, `ConfigureMoonJump`, `MoonJumpFilter`), `input\input_system.cpp` (wiring), `gfx\freecam.cpp` (RB / T -> `RequestTeleport`), `core\config_schema.cpp` (4 rows, `ingame_toggles` order 78), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (2 starts), `docs\g8_cheats_report.md` 8, `analysis\loader\g8_cheats.md` 9, `tools\input_scripts\README.md` | `[cheats] teleport_freecam / moon_jump / infinite_ammo / jump_distance` (2 conditional probes `probe:Physics::Step` 0xAE7E0, `probe:Player::UseAmmo` 0x50560; none by default), 3 more D-pad sequences. Section 4.41. |
 | 2026-10-14 | launcher: Cheats tab | `core\config_schema.h/.cpp` (additive: `ConfigUiTab::Cheats`, name "cheats"; the `[cheats]` rows use it), `launcher\src\core\config_schema.h/.cpp` (`UiTab::Cheats` after Controls, section fallback), `launcher\src\ui\main_window.cpp`, `automation.cpp`, `core\l10n_table.cpp` ("tab.cheats"), tests | Schema JSON `ui.tab` may be "cheats"; an older launcher shows those keys on its section fallback tab with a warning. The `[cheats]` keys moved from the Spiel tab to their own Cheats tab. |
+| 2026-10-14 | G8 freeze timer | new `xapi\cheats_timer.h/.cpp`, `tests\g8_timer_cheat_tests.cpp`, `tools\input_scripts\g8_freeze_timer.txt`; `xapi\cheats.h/.cpp` (additive: `Cheat::FreezeTimer`, `Settings::freezeTimer`, 3 `Stats` fields; summary calls `LogTimerSummary`), `input\cheat_toggles.h/.cpp` (`kFreezeTimerSequence`, `kSequences` 7 entries, `SequenceText(6)`), `core\config_schema.cpp` (row `[cheats] freeze_timer`, order 78; `ingame_toggles` order 79 and help with the new sequence), `xapi\save_probes.h/.cpp` (additive: `RequestSnapToNode`, `kGameNativeSnapToNode`, `kSnapToNodeUnits`), `input\input_script.cpp` (`game snap_to_node <node>`), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (`HudTimer_vfUpdate` 0xEC6D0), `tests\g8_player_cheats_tests.cpp` (`kCheatCount` 7), `tools\input_scripts\README.md` | `[cheats] freeze_timer`: 2 conditional probes `probe:HudTimer::Update` 0xEC6D0, `probe:Script::RunThreads` 0xBA060 (none by default); D-pad `UP LEFT DOWN RIGHT UP LEFT DOWN RIGHT`. Section 4.41, `loader_design.md` 8.25, `g8_cheats.md` 10. |

@@ -1,6 +1,6 @@
 // G8: in-game cheat toggles ([cheats] ingame_toggles, default off; docs/g8_cheats_report.md).
 //
-// Six D-pad sequences of eight presses switch the cheats of xapi/cheats.h on and off while the character is
+// Seven D-pad sequences of eight presses switch the cheats of xapi/cheats.h on and off while the character is
 // controllable (same conditions as the G7 level skip, inp::levelskip::InputCheatArmed):
 //   invulnerable     UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT
 //   one-hit kill     LEFT RIGHT LEFT RIGHT UP DOWN UP DOWN
@@ -8,6 +8,8 @@
 //   teleport_freecam RIGHT RIGHT LEFT LEFT UP UP DOWN DOWN   (2026-10-14, xapi/cheats_player.h)
 //   moon_jump        UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT   (two clockwise circles)
 //   infinite_ammo    DOWN DOWN UP UP LEFT LEFT RIGHT RIGHT
+//   freeze_timer     UP LEFT DOWN RIGHT UP LEFT DOWN RIGHT   (2026-10-14, xapi/cheats_timer.h; two
+//                                                             counter-clockwise circles - the clock turned back)
 // In a level the D-pad only walks (it is added to the left stick, m4_input.md 5), so a sequence costs a few steps;
 // none of them occurs in the G7 sequence (A/B) or in the game's own cheat codes (LT held + face buttons). A press is a
 // rising edge of one D-pad direction; two directions pressed in the same tick (diagonal), any other button or analog
@@ -38,10 +40,13 @@ inline constexpr Sequence kMoonJumpSequence = {Dir::Up, Dir::Right, Dir::Down, D
                                                Dir::Up, Dir::Right, Dir::Down, Dir::Left};
 inline constexpr Sequence kInfiniteAmmoSequence = {Dir::Down, Dir::Down, Dir::Up,    Dir::Up,
                                                    Dir::Left, Dir::Left, Dir::Right, Dir::Right};
+inline constexpr Sequence kFreezeTimerSequence = {Dir::Up, Dir::Left, Dir::Down, Dir::Right,
+                                                  Dir::Up, Dir::Left, Dir::Down, Dir::Right};
 // Index = xapi::cheats::Cheat.
-inline constexpr std::array<Sequence, 6> kSequences = {kInvulnerableSequence,  kOneHitKillSequence,
+inline constexpr std::array<Sequence, 7> kSequences = {kInvulnerableSequence,  kOneHitKillSequence,
                                                        kEnemiesIgnoreSequence, kTeleportFreecamSequence,
-                                                       kMoonJumpSequence,      kInfiniteAmmoSequence};
+                                                       kMoonJumpSequence,      kInfiniteAmmoSequence,
+                                                       kFreezeTimerSequence};
 inline constexpr float kWindowSeconds = 5.0f;  // first to last press
 inline constexpr float kGapSeconds = 1.0f;     // between two presses
 
@@ -56,7 +61,7 @@ public:
     // is armed).
     bool HasPressEdge(const PadState& state) const noexcept;
     // One tick with the pad state the game gets. `armed` = a sequence may fire now (only evaluated on presses; false
-    // clears the presses so far). Returns the index of the completed sequence (0..5, the history is cleared) or -1.
+    // clears the presses so far). Returns the index of the completed sequence (0..6, the history is cleared) or -1.
     int Feed(const PadState& state, bool armed) noexcept;
     void Reset() noexcept;
 

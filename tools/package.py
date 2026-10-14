@@ -12,7 +12,10 @@ Contents:
                                          Real-ESRGAN ncnn Vulkan installed by the player; docs/m6b_report.md)
   LICENSES\\Qt\\                           the GNU LGPL 3.0 and GPL 3.0 texts and a note on Qt and its source
                                          (LGPLv3 section 4; review M3c finding 14) - from launcher\\licenses\\
-  portable.txt                           only with --portable (config and user data next to futurama.exe)
+  LICENSES\\FuturamaPC\\                   FuturamaPC's own license (GPL-3.0-or-later): LICENSE.txt, NOTICE.txt (author,
+                                         section 7(b) attribution), THIRD_PARTY_NOTICES.md and SOURCE.txt (repository
+                                         and commit of this build, GPL-3.0 section 6(d))
+  portable.txt                          only with --portable (config and user data next to futurama.exe)
 
 Usage:
   python tools\\package.py --game-build build\\x86-relwithdebinfo --launcher-build build\\launcher-rel
@@ -55,6 +58,7 @@ LAUNCHER_PLUGIN_DIRS = ("platforms", "styles")
 # Review M3c finding 14: Qt 6 is used under the LGPL 3.0, which requires the texts of the GNU LGPL and GPL with the
 # library. The official FSF texts live in launcher\licenses\ (copied verbatim).
 LICENSE_SOURCE = REPO / "launcher" / "licenses"
+SOURCE_URL = "https://github.com/frankyfife/futurama_recomp"
 LICENSE_FILES = ("LGPL-3.0.txt", "GPL-3.0.txt")
 QT_VERSION = "6.8.3"
 
@@ -95,6 +99,29 @@ def git_description() -> str:
         return rev + (" (mit lokalen Änderungen)" if dirty else "")
     except (OSError, subprocess.CalledProcessError):
         return "unbekannt"
+
+
+def source_notice() -> str:
+    """Where the Corresponding Source of this package is (GPL-3.0 section 6(d)): repository and commit."""
+    commit = "unknown"
+    try:
+        commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True,
+                                check=True).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        if dirty:
+            commit += " (plus local changes not yet committed)"
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return (
+        "FuturamaPC - source code\n"
+        "\n"
+        "The complete source code of this program (GNU GPL 3.0 or later, see LICENSE.txt and NOTICE.txt) is\n"
+        "available at no charge from:\n"
+        "\n"
+        "  " + SOURCE_URL + "\n"
+        "  commit: " + commit + "\n"
+    )
 
 
 def readme_text(portable: bool) -> str:
@@ -174,6 +201,8 @@ def readme_text(portable: bool) -> str:
         "  Qt6*.dll, platforms\\, styles\\  Qt 6 (LGPL-3.0); die Qt-Bibliotheken sind dynamisch eingebunden\n"
         "                                  und dürfen ersetzt werden\n"
         "  LICENSES\\Qt\\                    Lizenztexte (GNU LGPL 3.0 und GPL 3.0) und Hinweis zum Qt-Quelltext\n"
+        "  LICENSES\\FuturamaPC\\            Lizenz von FuturamaPC (GNU GPL 3.0 oder neuer), Autor, Drittanbieter\n"
+        "                                  und Quelltext (github.com/frankyfife/futurama_recomp)\n"
         "  vcruntime140*.dll, msvcp140*.dll Microsoft Visual C++ Laufzeit\n"
         "  tools\\texture_upscale.py        Werkzeug für Texturpakete (Python)\n"
         "  tools\\movie_upscale.py          Werkzeug für Filmpakete (Python, mit tools\\xdvdfs.py)\n"
@@ -285,6 +314,18 @@ def main() -> int:
         text = source.read_text(encoding="utf-8").replace("\r\n", "\n")
         (licenses / name).write_text(text, encoding="utf-8", newline="\r\n")
     (licenses / "README.txt").write_text(qt_notice(), encoding="utf-8-sig", newline="\r\n")
+    # FuturamaPC's own license (GPL-3.0-or-later) with the author attribution and where the source is.
+    own = out / "LICENSES" / "FuturamaPC"
+    own.mkdir(parents=True)
+    for source_name, target_name in (("LICENSE", "LICENSE.txt"), ("NOTICE", "NOTICE.txt"),
+                                     ("THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md")):
+        source = REPO / source_name
+        if not source.is_file():
+            print(f"package: missing {source}")
+            return 1
+        text = source.read_text(encoding="utf-8").replace("\r\n", "\n")
+        (own / target_name).write_text(text, encoding="utf-8", newline="\r\n")
+    (own / "SOURCE.txt").write_text(source_notice(), encoding="utf-8", newline="\r\n")
     if args.portable:
         (out / "portable.txt").write_text("", encoding="utf-8")
 

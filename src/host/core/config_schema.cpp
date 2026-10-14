@@ -21,8 +21,8 @@
 //   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos);
 //              G4 xapi/game_select.cpp (start_level, play_as), G7 input/level_skip.cpp ([cheats] level_skip)
 //   [cheats]   G8 xapi/cheats.cpp (invulnerable, one_hit_kill, enemies_ignore, ingame_toggles),
-//              xapi/cheats_player.cpp (teleport_freecam, moon_jump, jump_distance, infinite_ammo); the toggles'
-//              D-pad sequences in input/cheat_toggles.cpp
+//              xapi/cheats_player.cpp (teleport_freecam, moon_jump, jump_distance, infinite_ammo),
+//              xapi/cheats_timer.cpp (freeze_timer); the toggles' D-pad sequences in input/cheat_toggles.cpp
 //   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26);
 //              G5 xapi/camera_response.cpp (camera_response); G6 xapi/first_person.cpp (first_person,
 //              first_person_look_speed)
@@ -494,18 +494,34 @@ constexpr ConfigKeyDef kKeys[] = {
               "refilled. The Chicken Walker (1-7) always has full laser energy and loses no rockets, the cannon "
               "(2-6) no shots. Bender and Leela use no charge for their special attacks."},
      .tab = Tab::Cheats, .order = 77, .widget = W::Check},
+    // G8 2026-10-14 (xapi/cheats_timer.cpp).
+    {.section = "cheats", .name = "freeze_timer", .type = T::Bool, .defaultValue = "0",
+     .label = {"Timer einfrieren (↑ ← ↓ → ↑ ← ↓ →)", "Freeze timer (↑ ← ↓ → ↑ ← ↓ →)"},
+     .help = {"Hält alle Countdowns des Spiels an: die Sumpf-Uhr in 4-1 (Zoidberg auf der Ratte, 2:00 bis zum "
+              "nächsten Kontrollpunkt), die 1:00 am Stromkasten in 2-4 (danach schließt das Tor), die 0:55 in "
+              "Raum 9 von 3-5 (danach wird eine Tür verriegelt) und die zehn Zeitlampen der Rätsel in 5-1, 5-2 und "
+              "5-3 (danach öffnet sich die Falltür). Die Anzeige bleibt stehen, die Zeit läuft nicht ab. "
+              "Ausgeschaltet läuft sie vom angehaltenen Wert aus weiter.",
+              "Stops all countdowns of the game: the swamp clock in 4-1 (Zoidberg on the rat, 2:00 to the next "
+              "checkpoint), the 1:00 at the power console in 2-4 (then the gate closes), the 0:55 in room 9 of 3-5 "
+              "(then a door is locked) and the ten time lamps of the puzzles in 5-1, 5-2 and 5-3 (then the trap "
+              "door opens). The display stands still, the time does not run out. Switched off, it continues from "
+              "the frozen value."},
+     .tab = Tab::Cheats, .order = 78, .widget = W::Check},
     {.section = "cheats", .name = "ingame_toggles", .type = T::Bool, .defaultValue = "0",
      .label = {"Cheats im Spiel per Steuerkreuz umschalten", "Toggle cheats in game with the D-pad"},
      .help = {"Im Level schaltet je eine Folge auf dem Steuerkreuz (Tastatur: Pfeiltasten) einen Cheat an oder aus, "
               "zügig gedrückt (8 Drücke in höchstens 5 Sekunden): Unverwundbar = ↑ ↑ ↓ ↓ ← → ← →; Ein Treffer = "
               "← → ← → ↑ ↓ ↑ ↓; Feinde ignorieren mich = ↓ ↑ ↓ ↑ → ← → ←; Zur Freecam teleportieren = "
-              "→ → ← ← ↑ ↑ ↓ ↓; Mondsprung = ↑ → ↓ ← ↑ → ↓ ←; Unendlich Munition = ↓ ↓ ↑ ↑ ← ← → →. Bestätigung: "
-              "grünes (an) bzw. rotes (aus) Aufblitzen und ein kurzes Vibrieren.",
+              "→ → ← ← ↑ ↑ ↓ ↓; Mondsprung = ↑ → ↓ ← ↑ → ↓ ←; Unendlich Munition = ↓ ↓ ↑ ↑ ← ← → →; Timer "
+              "einfrieren = ↑ ← ↓ → ↑ ← ↓ →. Bestätigung: grünes (an) bzw. rotes (aus) Aufblitzen und ein kurzes "
+              "Vibrieren.",
               "In a level one D-pad sequence (keyboard: arrow keys) each switches a cheat on or off, pressed quickly "
               "(8 presses within 5 seconds): invulnerable = ↑ ↑ ↓ ↓ ← → ← →; one hit = ← → ← → ↑ ↓ ↑ ↓; enemies ignore "
               "me = ↓ ↑ ↓ ↑ → ← → ←; teleport to the freecam = → → ← ← ↑ ↑ ↓ ↓; moon jump = ↑ → ↓ ← ↑ → ↓ ←; infinite "
-              "ammo = ↓ ↓ ↑ ↑ ← ← → →. Confirmation: a green (on) or red (off) flash and a short rumble."},
-     .tab = Tab::Cheats, .order = 78, .widget = W::Check},
+              "ammo = ↓ ↓ ↑ ↑ ← ← → →; freeze timer = ↑ ← ↓ → ↑ ← ↓ →. Confirmation: a green (on) or red (off) flash "
+              "and a short rumble."},
+     .tab = Tab::Cheats, .order = 79, .widget = W::Check},
 
     // [render] - window and output (M3, gfx/gfx_config.h)
     // M3c (integration): monitor selection, platform/window.h WindowOptions::monitor. Type string: the values are

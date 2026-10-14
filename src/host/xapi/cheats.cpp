@@ -2,6 +2,7 @@
 #include "xapi/cheats.h"
 
 #include "xapi/cheats_player.h"
+#include "xapi/cheats_timer.h"
 
 #include "core/config_schema.h"
 #include "core/guest_call.h"
@@ -463,6 +464,8 @@ const char* CheatKey(Cheat c) noexcept {
             return "moon_jump";
         case Cheat::InfiniteAmmo:
             return "infinite_ammo";
+        case Cheat::FreezeTimer:
+            return "freeze_timer";
         default:
             return "?";
     }
@@ -482,6 +485,8 @@ const char* CheatLabelDe(Cheat c) noexcept {
             return "Mondsprung";
         case Cheat::InfiniteAmmo:
             return "Unendlich Munition";
+        case Cheat::FreezeTimer:
+            return "Timer einfrieren";
         default:
             return "?";
     }
@@ -501,6 +506,8 @@ bool Settings::Enabled(Cheat c) const noexcept {
             return moonJump;
         case Cheat::InfiniteAmmo:
             return infiniteAmmo;
+        case Cheat::FreezeTimer:
+            return freezeTimer;
         default:
             return false;
     }
@@ -521,6 +528,7 @@ Settings SettingsFromConfig(const core::Config& config) noexcept {
     s.teleportFreecam = get("teleport_freecam");
     s.moonJump = get("moon_jump");
     s.infiniteAmmo = get("infinite_ammo");
+    s.freezeTimer = get("freeze_timer");
     s.jumpDistanceMetres = JumpDistanceFromConfig(config);
     s.ingameToggles = get("ingame_toggles");
     return s;
@@ -630,16 +638,17 @@ void Configure() noexcept {
         }
         FUT_LOGI(Game,
                  "cheats: invulnerable %s, one-hit kill %s, enemies ignore me %s, teleport to the freecam %s, moon "
-                 "jump %s, jump distance +%.1f m, infinite ammo %s; in-game toggles %s%s",
+                 "jump %s, jump distance +%.1f m, infinite ammo %s, freeze timer %s; in-game toggles %s%s",
                  OnOff(g_settings.invulnerable), OnOff(g_settings.oneHitKill), OnOff(g_settings.enemiesIgnore),
                  OnOff(g_settings.teleportFreecam), OnOff(g_settings.moonJump),
                  static_cast<double>(g_settings.jumpDistanceMetres), OnOff(g_settings.infiniteAmmo),
-                 OnOff(g_settings.ingameToggles),
+                 OnOff(g_settings.freezeTimer), OnOff(g_settings.ingameToggles),
                  g_settings.ingameToggles ? " (D-pad: invulnerable UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT, one-hit "
                                             "kill LEFT RIGHT LEFT RIGHT UP DOWN UP DOWN, enemies ignore DOWN UP DOWN "
                                             "UP RIGHT LEFT RIGHT LEFT, teleport RIGHT RIGHT LEFT LEFT UP UP DOWN DOWN, "
                                             "moon jump UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT, infinite ammo DOWN DOWN "
-                                            "UP UP LEFT LEFT RIGHT RIGHT)"
+                                            "UP UP LEFT LEFT RIGHT RIGHT, freeze timer UP LEFT DOWN RIGHT "
+                                            "UP LEFT DOWN RIGHT)"
                                           : "");
         core::AddExitReporter("cheats", &LogSummary);
     });
@@ -759,6 +768,7 @@ void LogSummary() noexcept {
              s.protectedHits, OnOff(Active(Cheat::EnemiesIgnore)), s.holdFireTicks, s.tentacleHolds, s.grabsPrevented,
              s.toggles);
     LogPlayerCheatsSummary();
+    LogTimerSummary();
 }
 
 }  // namespace xapi::cheats

@@ -621,6 +621,8 @@ bool Parse(std::string_view text, std::uint32_t tickRate, Program& out, std::str
             // (native FsChangeLevel -> Breakdown screen with "Speichern").
             // (G5) `camera_trace on|off` logs the follow camera's yaw once per tick.
             // `state` logs the player's state text (weapons, ammo, lives) at the next tick.
+            // (G8 freeze timer) `snap_to_node <node>` puts the player in front of a level node like the level
+            // scripts' FsPlayerSnapToNode (test runs: reach a countdown without playing the level up to it).
             ins.op = Op::Game;
             const std::string action = last >= 2 ? Lower(t[1].text) : std::string();
             if (action == "camera_trace" && last == 3 && (Lower(t[2].text) == "on" || Lower(t[2].text) == "off")) {
@@ -629,9 +631,12 @@ bool Parse(std::string_view text, std::uint32_t tickRate, Program& out, std::str
                 ins.text = "level_end " + t[2].text;
             } else if (action == "state" && last == 2) {
                 ins.text = "state";
+            } else if (action == "snap_to_node" && last == 3 && !t[2].text.empty() &&
+                       t[2].text.size() <= 31) {
+                ins.text = "snap_to_node " + t[2].text;
             } else {
                 return fail("game takes one action: level_end <NextLevel> (a level name of 1..8 characters), "
-                            "camera_trace on|off or state");
+                            "camera_trace on|off, state or snap_to_node <node> (1..31 characters)");
             }
         } else if (cmd == "quit") {
             ins.op = Op::Quit;
@@ -1132,12 +1137,16 @@ public:
     bool GameAction(const std::string& action) noexcept override {
         static constexpr std::string_view kLevelEnd = "level_end ";
         static constexpr std::string_view kCameraTrace = "camera_trace ";
+        static constexpr std::string_view kSnapToNode = "snap_to_node ";
         if (action.rfind(kCameraTrace, 0) == 0) {
             xapi::camera::SetTrace(action.substr(kCameraTrace.size()) == "on");  // (G5)
             return true;
         }
         if (action == "state") {
             return xapi::RequestStateDump();
+        }
+        if (action.rfind(kSnapToNode, 0) == 0) {
+            return xapi::RequestSnapToNode(action.c_str() + kSnapToNode.size());  // (G8 freeze timer)
         }
         return action.rfind(kLevelEnd, 0) == 0 && xapi::RequestLevelEnd(action.c_str() + kLevelEnd.size());
     }

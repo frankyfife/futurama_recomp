@@ -75,6 +75,7 @@ play with its D-pad sequence (green flash = on, red = off).
 | Moon jump | Hold LB + B to rise (keyboard: Space + 1); works on Zoidberg's rat in 4-1 | ↑ → ↓ ← ↑ → ↓ ← |
 | Longer jumps | Adds 0.0–2.0 m to running jumps, in 0.1 m steps | – |
 | Infinite ammo | Weapons, Chicken Walker, cannon, Bender's and Leela's charge | ↓ ↓ ↑ ↑ ← ← → → |
+| Freeze timer | Stops every countdown: the swamp clock in 4-1, the power console in 2-4, room 9 in 3-5, the time lamps in 5-1 to 5-3 | ↑ ← ↓ → ↑ ← ↓ → |
 
 Details and limits: [`docs/g8_cheats_report.md`](docs/g8_cheats_report.md).
 
@@ -174,7 +175,19 @@ python tools/futimg.py ls <file.img>           # list an .img archive
 python tools/xbeinfo.py   <default.xbe>        # header, libraries, sections
 ```
 
-## Legal
+## License
 
-This project contains no game code, data or artwork from the disc. It loads everything at run time from an image of a
-disc you own. Futurama is a trademark of its respective owners; this is an unofficial fan project.
+Copyright (C) 2026 frankyfife - <https://github.com/frankyfife/futurama_recomp>
+
+FuturamaPC is free software under the **GNU General Public License version 3 or later** ([`LICENSE`](LICENSE)).
+You may use, study, change and share it; anyone who distributes it, changed or not, must do so under the same
+license with the complete source code. As an additional term under section 7(b) of the GPL-3.0
+([`NOTICE`](NOTICE)), every copy and every work based on it must keep this attribution unchanged:
+
+> Based on FuturamaPC by frankyfife - https://github.com/frankyfife/futurama_recomp
+
+Third-party components keep their own licenses: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+This project contains no game code, data or artwork from the disc and grants no rights to them. It loads everything
+at run time from an image of a disc you own. Futurama is a trademark of its respective owners; this is an unofficial
+fan project.

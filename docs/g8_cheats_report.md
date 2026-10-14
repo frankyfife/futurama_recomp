@@ -2,6 +2,8 @@
 
 Stand: 2026-10-13. Nutzerwunsch: „Ich brauche noch Cheats – erstens Unverwundbarkeit, zweitens One-Hit-Kill, drittens Feinde ignorieren mich.“ Analyse: [`analysis/loader/g8_cheats.md`](../analysis/loader/g8_cheats.md). Abweichungen vom Entwurf: [`loader_design.md`](loader_design.md) 8.25. Schnittstellen: `src\INTERFACES.md` 4.41.
 
+**Nachtrag 2026-10-14 (Nutzerwunsch: Timer einfrieren):** Ein Schalter **„Timer einfrieren“** hält alle Countdowns des Spiels an – die Sumpf-Uhr in 4-1, das Stromkasten-Tor in 2-4, Raum 9 in 3-5 und die Zeitlampen der Rätsel in 5-1/5-2/5-3 – Abschnitt 9.
+
 **Nachtrag 2026-10-14 (Nutzerwunsch: weitere Cheats):** Zur Freecam teleportieren, Mondsprung (vor allem für Zoidberg auf der Ratte in 4-1), Sprungweite um x Meter erhöhen und Unendlich Munition – Abschnitt 8.
 
 **Nachtrag 2026-10-13 (Fehlermeldung: Softlock mit den Tentakeln in 1-2):** behoben, siehe Abschnitt 7. Kurz: Mit „Feinde ignorieren mich“ bemerken die Kanalisations-Tentakel Fry nicht mehr, mit „Unverwundbar“ können sie ihn nicht mehr packen, und ein tödlicher Schaden, der länger als **10 s** ununterbrochen geblockt wird, läuft als Tod mit Neustart am Kontrollpunkt durch (kein Leben verloren).
@@ -16,7 +18,8 @@ Neuer Abschnitt `[cheats]`, im Launcher Reiter **„Spiel“**, Gruppe **„Chea
 | **Gegner sterben mit einem Treffer** (`one_hit_kill`) | Jeder Treffer der Spielfigur tötet einen Gegner. **Bosse** (Panzer 1000, Chickenwalker-Gegner 2000, Destructor 10000 Gesundheit) verlieren ein Viertel ihrer Gesundheit je Treffer (vier Treffer), damit ihre Kampfphasen der Reihe nach laufen. Figuren, die das Spiel selbst unverwundbar macht (Gesundheit 55555: Pflanzen, Kaktusmonster, Krokodil, Sonnengott, Igner-Boss, Statuenkopf; Tentakel 55000; per Skript geschützte Figuren), bleiben es | Proben am Eingang der Schadensfunktionen der Gegnerklassen (0x47240 NPC-Basis, 0x60080, 0x80300, 0x86520, 0x88530, 0x90570) und auf `Actor::TakeDamage` 0x354B0: Treffer eines Spielers → Betrag = Restgesundheit. So läuft auch das „Todesstoß“-Ereignis des Spiels (Beute/Statistik, Vermutung) wie bei einem normalen letzten Treffer |
 | **Feinde ignorieren mich** (`enemies_ignore`) | Gegner bemerken die Figur nicht und greifen nicht an – wie in einer Zwischensequenz. Ein getroffener Gegner dreht sich zur Figur, greift aber nicht an. Bosse mit eigener Angriffslogik (Destructor, Sonnengott), schon fliegende Geschosse und Fallen treffen weiter. Gegner lassen sich weiter besiegen | Die KI des Spiels hat ein Flag „Feuer einstellen“ (0x2DBAA0), das das Gehirn der Spielfigur jeden Tick auf „Figur nicht steuerbar“ setzt. Probe auf das Gehirn-Update 0x2ECB0 setzt es danach auf 1: Wahrnehmung (0x2E2E0) findet kein Ziel, Angriff (0x2F720) unterbleibt |
 | **Zur Freecam teleportieren**, **Mondsprung**, **Sprungweite um x Meter erhöhen**, **Unendlich Munition** (2026-10-14) | siehe Abschnitt 8 | Abschnitt 8.3 |
-| **Cheats im Spiel per Steuerkreuz umschalten** (`ingame_toggles`) | Sechs Tastenfolgen (seit 2026-10-14; vorher drei) auf dem Steuerkreuz schalten die Cheats im Level an und aus (Abschnitt 2) | Filter in der Eingabekette (nach Freecam und G7), alle Hooks installiert |
+| **Timer einfrieren** (`freeze_timer`, 2026-10-14) | siehe Abschnitt 9 | Abschnitt 9.3 |
+| **Cheats im Spiel per Steuerkreuz umschalten** (`ingame_toggles`) | Sieben Tastenfolgen (seit 2026-10-14; vorher drei) auf dem Steuerkreuz schalten die Cheats im Level an und aus (Abschnitt 2) | Filter in der Eingabekette (nach Freecam und G7), alle Hooks installiert |
 
 ## 2. Tastenfolgen im Spiel (`ingame_toggles = 1`)
 
@@ -30,6 +33,7 @@ Im Level, solange die Figur steuerbar ist (nicht in Menüs, Pause, Zwischenseque
 | Zur Freecam teleportieren (2026-10-14) | → → ← ← ↑ ↑ ↓ ↓ |
 | Mondsprung (2026-10-14) | ↑ → ↓ ← ↑ → ↓ ← (zwei Kreise im Uhrzeigersinn) |
 | Unendlich Munition (2026-10-14) | ↓ ↓ ↑ ↑ ← ← → → |
+| Timer einfrieren (2026-10-14) | ↑ ← ↓ → ↑ ← ↓ → (zwei Kreise gegen den Uhrzeigersinn – die Uhr zurückgedreht) |
 
 * Jede Folge schaltet um (an ↔ aus). Bestätigung: Das Bild blitzt **grün** (an) bzw. **rot** (aus) auf – derselbe Effekt wie bei den eingebauten Cheatcodes des Spiels – und der Controller vibriert kurz (an 0,4 s, aus 0,15 s; nur mit `[input] rumble = 1`, Stärke nach `rumble_strength`). Im Protokoll: `cheat: invulnerable ON (Unverwundbar "an", UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT, port 1)`.
 * Ein anderer Knopf zwischendurch (A, B, X, Y, Schultertasten, START …) oder zwei Richtungen gleichzeitig (diagonal) beginnen von vorn; der Stick stört nicht. Das Steuerkreuz bewegt die Figur dabei ein paar Schritte (im Spiel läuft man auch mit dem Steuerkreuz) – sonst passiert nichts.
@@ -204,3 +208,66 @@ Abweichung der Weiten vom Sollwert: bis etwa 15 % (Fry Hinsprung +0,87 statt +1,
 * **Mondsprung**: Unter einer Decke oder einem Hindernis steigt die Figur nicht (im Lauf `tp` auf dem Tisch unter der Lampe: weder der normale Sprung noch der Mondsprung hoben ab). Im Chickenwalker und an der Kanone aus. Die Ratte läuft während des Mondsprungs ihre Strecke weiter ab (Sumpf und Abgründe schaden wie im Original). Die Fallschaden-Freiheit gilt bis zur nächsten Landung.
 * **Sprungweite**: nur waagerecht, in Laufrichtung beim Absprung; Höhe und Flugzeit unverändert. Bei Sprungpassagen (schmale Plattformen, Lücken mit genauer Weite) kann man über das Ziel hinausspringen – ein Opt-in-Cheat, bewusst so. Die Länge der Sprunganimation wird je Figur bei jedem Sprung aus dem Lauf nachgemessen; der erste Sprung nutzt die Messwerte von 2026-10-14. Bender und Leela: je ein Sprung gemessen; Doppel- oder Spezialsprünge mit anderer Animation nicht geprüft.
 * **Unendlich Munition**: Railgun (5-3) und Kanone (2-6) nicht im Lauf geprüft (die Railgun nutzt dieselbe UseAmmo-Funktion; die Kanone verwaltet ihre Schüsse mit dem Levelskript, das sie auch nachlädt – senkt das Skript den Zähler selbst, bleibt das so). Walker-Raketen und Aufladung werden einen Tick nach dem Verbrauch zurückgesetzt (die Anzeige kann einen Tick lang zucken). Bender/Leela-Aufladung nicht im Lauf geprüft (Levelstart mit Aufladung 0).
+
+## 9. Nachtrag 2026-10-14: Timer einfrieren
+
+Nutzerwunsch (2026-10-14): In Zoidbergs Level (4-1, Bogad-Sumpf, Ratte) läuft ein Countdown. Gibt es weitere, soll ein Cheat sie einfrieren – je einer oder einer für alle. Analyse: [`analysis/loader/g8_cheats.md`](../analysis/loader/g8_cheats.md) Abschnitt 10. Schnittstelle `src\INTERFACES.md` 4.41.
+
+### 9.1 Kurzfassung
+
+Alle 23 Levelskripte und die HUD-Anzeige wurden durchsucht. Das Spiel hat **fünf Countdowns** an vier Stellen:
+
+| Level | Countdown | Was beim Ablauf passiert |
+|---|---|---|
+| **4-1 Bogad-Sumpf** | Sumpf-Uhr **2:00** je Abschnitt (an den Kontrollpunkt-Strahlen wieder 2:00) | Abblenden, Film, das Level beginnt von vorn |
+| **2-4 Schrottplatz 1** | Stromkasten: Tor **1:00** offen (Anzeige 1:00, Ticken) | Das Tor schließt wieder |
+| **3-5 Innerer Tempel** | Raum 9 (Lichtschalter-Rätsel): **0:55** | Eine Tür wird verriegelt, sobald Leela im Raum steht (im Spiel nicht nachgespielt) |
+| **5-1, 5-2, 5-3 Moms Hauptquartier** | Rätsel mit **zehn Zeitlampen** (je 4,5 s, Uhrticken) | „Zeit abgelaufen“-Ton, die Falltür öffnet sich |
+
+Ein Schalter für alle: **„Timer einfrieren (↑ ← ↓ → ↑ ← ↓ →)“** (`[cheats] freeze_timer`, Standard aus, Launcher Reiter „Spiel“, Gruppe „Cheats“, vor „Cheats im Spiel per Steuerkreuz umschalten“). Die Anzeige bleibt stehen, die Zeit läuft nicht ab. Im Spiel per Steuerkreuz ausgeschaltet läuft sie vom angehaltenen Wert weiter. Was das Skript selbst tut, bleibt: Am Kontrollpunkt in 4-1 steht die Uhr wieder auf 2:00, beim Tod hält das Spiel sie ohnehin an.
+
+Ohne den Schalter (und ohne `ingame_toggles`): kein Hook (`hooks: 184 installed`). Nur „Timer einfrieren“: 186. Mit `ingame_toggles`: 200.
+
+### 9.2 Tastenfolge
+
+↑ ← ↓ → ↑ ← ↓ → (zwei Kreise gegen den Uhrzeigersinn, das Gegenstück zum Mondsprung). Sie ist von allen anderen sechs Folgen verschieden. Anfang und Ende überlappen mit keiner anderen Folge um mehr als einen Druck (Unit-Test). Ein Rest einer anderen Folge davor löst also nichts Drittes aus. Rückmeldung wie bei den anderen Folgen: grünes bzw. rotes Aufblitzen, kurzes Vibrieren, Protokoll `cheat: freeze_timer ON|OFF (Timer einfrieren "an|aus", …)`.
+
+### 9.3 Umsetzung
+
+| Teil | Wie (Spielcode, Retail-EU-XBE) |
+|---|---|
+| HUD-Anzeige „timer“ | Klasse vtable 0x2A55F8. Ihr Update `FUN_000EC6D0` zählt die Sekunden +0x28 mit dem Tick-dt herunter. Bei 0 setzt es in 4-1 das Ablauf-Flag +0x2F, das das Skript über Native 0x184 abfragt. **`probe:HudTimer::Update`** (0xEC6D0, `8A 41 2C 84 C0`): Cheat an und Anzeige läuft → Update übersprungen. „set“/„add“/„pause“ der Skripte (Native 0x17C) wirken weiter |
+| Skript-Countdowns (2-4, 3-5, 5-x) | Der Skript-Thread wartet (Opcode 0x18, Thread +0x20 Sekunden) und macht danach den „Zeit um“-Teil. Der Scheduler `FUN_000BA060` zieht jedem Thread pro Tick dt ab. **`probe:Script::RunThreads`** (0xBA060, `51 57 8B F9 8B 0D 18 A2 2E 00`): Cheat an → Threads des laufenden Levels, die an einer der fünf Wartestellen stehen, bekommen vorher dt dazu und nachher den genauen alten Wert zurück. Erkennung (`kScriptCountdowns`): Levelname, Position im geladenen Skript und die drei Bytecode-Wörter davor als Signatur. Der Rest des Skripts läuft normal |
+| Prüfhilfe | Eingabeskript-Befehl `game snap_to_node <Knoten>` (Native FsPlayerSnapToNode `FUN_000B0A60`): setzt die Figur vor einen Knoten des Levels, z. B. `nPowerConsole` in 2-4 |
+
+Dateien: `src\host\xapi\cheats_timer.h/.cpp` (neu), `xapi\cheats.h/.cpp` (Schalter, Statistik, Zusammenfassung), `input\cheat_toggles.h/.cpp` (siebte Folge), `core\config_schema.cpp` (Zeile `freeze_timer`, Hilfetext von `ingame_toggles`), `xapi\save_probes.h/.cpp` und `input\input_script.cpp` (`game snap_to_node`), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (`HudTimer_vfUpdate`), `tests\g8_timer_cheat_tests.cpp` (neu, 5 Fälle), `tools\input_scripts\g8_freeze_timer.txt`.
+
+Protokoll (Kanal GAME): `cheat: freeze timer - HUD timer held at 1:53 (113.63 s, 4-1 swamp clock, cannot run out; …)`, `cheat: freeze timer - 2-4 (Level2-3, @@action@@aEnablePowerConsole): power console gate (…) held with 51.15 s left …`, `… runs again from …`, am Ende `cheats summary (timer): …`. Mit `[debug] trace = game` einmal je Sekunde `timer trace: HUD timer m:ss (…, counting|frozen)` und `timer trace: <Level> <Funktion> - wait … s (counting|frozen)`.
+
+### 9.4 Prüfung
+
+Bauten: MSVC RelWithDebInfo `build\ft` (`FUT_WERROR=ON`) und clang-cl Debug `build\ft-clang` (`fut_tests`, `FUT_WERROR=ON`) ohne Warnungen; `fut_tests` je **549/549** (1 übersprungen; vorher 544). Neue Fälle: Schema/Hook-Bedingungen (Standard kein Hook, andere Cheats ziehen die Timer-Hooks nicht nach), Tastenfolge (eindeutig, Überlappung ≤ 1, Erkenner nach jeder anderen Folge), reine Entscheidungen (Anzeige läuft, Countdown-Stellen inkl. Groß-/Kleinschreibung und falscher Signatur, gehaltene Wartezeit, „m:ss“), Retail-XBE (beide Prologe, kein Sprung in die gestohlenen Bytes, vtable-Slots, Felder +0x28/+0x2C/+0x2D/+0x2E/+0x2F, Befehle „play/pause/set/add/stop“, Native 0x184, Scheduler-Felder, Aufruf 0xC8DD5) und die Signaturen gegen die Levelskripte (optional, `%FUT_TEST_SCRIPTS%`).
+
+Läufe (RelWithDebInfo, Lautstärke 0, Rumble 0, Filme übersprungen, nacheinander; `run\timer\<name>\` des Arbeitsbaums):
+
+| Lauf | Level, Schalter | Ergebnis | Bilder (angesehen) |
+|---|---|---|---|
+| `rat` | 4-1, `ingame_toggles` + Unverwundbar | Uhr zählt 2:00 → 1:53. ↑←↓→↑←↓→: `HUD timer held at 1:53 (113.63 s …)`, 16 s lang je Sekunde `113.63 s, frozen`. Dieselbe Folge: `runs again from 1:53`, danach 113.55 → 108.55 in 5 s | `frame_002004.png` (1:53 eingefroren), `frame_003528.png` (1:47 nach dem Weiterlaufen); `frame_002846.png` ist schwarz (Abblende beim Neustart nach einem Sturz in den Sumpf) |
+| `rat_on` | 4-1, nur `freeze_timer` | `hooks: 186 installed`; Uhr 38 s lang bei 2:00 (20 Spurzeilen `120.00 s, frozen`) | `frame_003185.png` (2:00) |
+| `gate` | 2-4, `ingame_toggles` + Unverwundbar + Feinde ignorieren | `game snap_to_node nPowerConsole`, Y: Anzeige 1:00, Skript wartet 60 s. Nach 9 s die Folge: Anzeige **und** wartender Skript-Thread `held with 51.15 s left`, 16 s lang unverändert. Folge erneut: beide laufen weiter (50.77 / 50.40 s …) | `frame_002502.png` und `frame_003344.png` (0:51, 14 s später), `frame_004026.png` (0:40) |
+| `gate_on` | 2-4, `freeze_timer` + Unverwundbar | 75 s nach dem Einschalten des Kastens (länger als die 60 s des Spiels): Anzeige 1:00, Skript-Wartezeit 60.00 s, das Tor bleibt offen | `frame_006401.png` (1:00 nach 75 s) |
+| `default` | 4-1, ohne `[cheats]` | `hooks: 184 installed`, `cheats: all off (no hooks)` | – |
+
+### 9.5 Checkliste für den Nutzer
+
+1. Launcher → **Spiel** → **Cheats**: **Timer einfrieren** anhaken, Startlevel **4-1**. Die Sumpf-Uhr bleibt auf 2:00 stehen.
+2. Mit **Cheats im Spiel per Steuerkreuz umschalten**: ohne Haken starten, die Uhr läuft. ↑ ← ↓ → ↑ ← ↓ → zügig drücken – grünes Aufblitzen, die Uhr steht. Dieselbe Folge noch einmal – rotes Aufblitzen, sie läuft vom selben Wert weiter.
+3. Wer möchte: 2-4 (Stromkasten, Tor bleibt offen), 3-5 (Raum 9), 5-x (Zeitlampen der Rätsel) – bitte melden, falls dort etwas weiterläuft oder hängen bleibt.
+4. Gegenprobe: Schalter aus → die Countdowns laufen wie im Original.
+
+### 9.6 Grenzen
+
+* 3-5 Raum 9 und die Rätsel in 5-1/5-2/5-3 nicht im Lauf erreicht. Die Mechanik ist dieselbe wie in 2-4, die Stellen sind gegen die Skriptdateien geprüft. Was in 3-5 nach dem Ablauf genau passiert (Tür, „NibblerB1“), ist nur aus dem Skript gelesen.
+* Der natürliche Ablauf in 4-1 (Film, Neustart) ist nur aus dem Skript belegt, nicht im Lauf. Ohne Steuerung stürzt die Ratte alle 8–10 s in den Sumpf, und jeder Tod hält die Uhr an.
+* Wer während eines eingefrorenen Skript-Countdowns (2-4, 3-5, 5-x) ausschaltet, hat die volle Restzeit. Ein Countdown, der beim Einschalten schon bei 0 war, ist abgelaufen.
+* Andere lange Wartezeiten in den Skripten (Dialoge, Kamerafahrten, zeitgesteuerte Plattformen und Türen) sind keine Countdowns und bleiben unverändert.

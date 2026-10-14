@@ -1,0 +1,47 @@
+FuturamaPC
+Copyright (C) 2026 frankyfife
+https://github.com/frankyfife/futurama_recomp
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
+Public License as published by the Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+for more details.
+
+You should have received a copy of the GNU General Public License along with this program (the file
+LICENSE). If not, see <https://www.gnu.org/licenses/>.
+
+
+Additional term under section 7(b) of the GNU GPL version 3
+-----------------------------------------------------------
+
+As permitted by section 7(b) of the GNU General Public License version 3, the following additional term
+applies to this program and to every covered work based on it:
+
+  Anyone who conveys this program or a work based on it, in source or object form, modified or not, must
+  preserve the following author attribution unchanged, both in the material itself (for example in this
+  NOTICE file or in the README) and in the Appropriate Legal Notices displayed by the work, if it displays
+  any:
+
+      Based on FuturamaPC by frankyfife - https://github.com/frankyfife/futurama_recomp
+
+  This does not restrict adding your own copyright notices or attributions for your own changes. As
+  required by section 5(a) of the license, a modified version must also carry prominent notices stating
+  that you modified it and giving a relevant date.
+
+
+Scope
+-----
+
+This license covers the source code, build scripts, tools, tests and documentation in this repository that
+were written for FuturamaPC. It does not cover, and grants no rights to, the game "Futurama" (Xbox, 2003) or
+any of its program code, data, artwork, audio, video, names or trademarks. They belong to their respective
+owners and are not part of this repository; the program loads them at run time from an image of a disc the
+user owns. Addresses, byte patterns and short excerpts of the game's binary that appear in the analysis
+notes and the code serve interoperability only.
+
+Third-party components and their licenses are listed in THIRD_PARTY_NOTICES.md.
+
+Source code: https://github.com/frankyfife/futurama_recomp

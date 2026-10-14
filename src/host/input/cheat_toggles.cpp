@@ -64,6 +64,8 @@ const char* SequenceText(int index) noexcept {
             return "UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT";
         case 5:
             return "DOWN DOWN UP UP LEFT LEFT RIGHT RIGHT";
+        case 6:
+            return "UP LEFT DOWN RIGHT UP LEFT DOWN RIGHT";
         default:
             return "?";
     }

@@ -19,6 +19,8 @@
 // Beenden).
 #pragma once
 
+#include "core/guest.h"
+
 #include <cstdint>
 
 namespace xapi {
@@ -53,6 +55,13 @@ bool RequestLevelEnd(const char* nextLevel, bool guaranteeStartWeapons = false) 
 // Debug action (input script `game state`): logs the player's state text at the next tick heartbeat
 // ("save: debug action state: Level=...;Health=...;Ammo=...;Pickup=...;Equip=...;Lives=...").
 bool RequestStateDump() noexcept;
+// Debug action (input script `game snap_to_node nPowerConsole`, G8 freeze timer test runs): at the next
+// tick heartbeat the level-script native FsPlayerSnapToNode (opcode 0x52, cdecl FUN_000B0A60(const char*
+// node, float units)) puts the player kSnapToNodeUnits in front of the named node, facing it. False if no
+// level runs or the name is not 1..31 characters; an unknown node is ignored by the game (debug print only).
+inline constexpr guest::GuestAddr kGameNativeSnapToNode = 0x000B0A60;
+inline constexpr float kSnapToNodeUnits = 3.0f;  // like the level scripts' FsPlayerSnapToNode wrapper
+bool RequestSnapToNode(const char* node) noexcept;
 // Runs pending debug actions (guest main thread, outside every XPP/router lock) and, every tick, the start state
 // observer xapi::select::ObserveStartState.
 void RunPendingGameActions() noexcept;

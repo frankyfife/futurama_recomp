@@ -1,0 +1,82 @@
+# G8 freeze timer (2026-10-14), 2-4 Junkyard 1: [game] start_level = Level2-3, [cheats] ingame_toggles = 1 (with
+# invulnerable/enemies_ignore the enemies do not interfere), [debug] trace = game for the timer trace lines.
+# Bender is put in front of the power console (game snap_to_node), Y switches it on (gate open, 1:00 countdown,
+# script Wait(60)); after about 10 s the D-pad sequence UP LEFT DOWN RIGHT UP LEFT DOWN RIGHT freezes the countdown
+# (15 s), the same sequence resumes it (10 s). About 70 s.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 30t
+log "X: start"
+screenshot g0_start
+game snap_to_node nPowerConsole
+wait 30t
+screenshot g1_console
+press Y 3t
+wait 30t
+press Y 3t
+wait log "aEnablePowerConsole - wait" timeout 40s
+log "X: countdown runs"
+wait 120t
+loop timeout 30s until controllable
+  wait 30t
+end
+wait 300t
+screenshot g2_counting
+log "X: freeze on"
+press UP 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press UP 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+wait log "cheat: freeze_timer ON" timeout 5s
+wait 60t
+screenshot g3_frozen
+wait 840t
+screenshot g4_frozen_15s
+log "X: freeze off"
+press UP 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press UP 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+wait log "cheat: freeze_timer OFF" timeout 5s
+wait 600t
+screenshot g5_resumed_10s
+log "X: end"
+quit 0

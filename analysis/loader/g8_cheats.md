@@ -1,6 +1,6 @@
 # G8: Cheats – Schaden, Leben, Gegner-KI, Physik, Munition
 
-Stand: 2026-10-13, Nachtrag 2026-10-14 (Abschnitt 9: Physikkörper, Sprünge, Fallschaden, Munition, Teleport; `src\host\xapi\cheats_player.*`). Basis: Retail-EU-XBE (`orig\retail_eu\default.xbe`, Capstone), Ghidra-Export `analysis\retail_eu_export`, Levelskripte `scripts\levelN-M.ful/.dbg` (FutPAL01, nur gelesen) und `chars\*.ucf` (FutPAL00, Eigenschaft `maxhealth`), dazu Läufe des Ports unter `run\cheats\` des Arbeitsbaums (git-ignoriert). Umsetzung: `src\host\xapi\cheats.*`, `src\host\input\cheat_toggles.*`; Bericht [`docs\g8_cheats_report.md`](../../docs/g8_cheats_report.md).
+Stand: 2026-10-13, Nachträge 2026-10-14 (Abschnitt 10: Countdowns, `src\host\xapi\cheats_timer.*`; Abschnitt 9: Physikkörper, Sprünge, Fallschaden, Munition, Teleport; `src\host\xapi\cheats_player.*`). Basis: Retail-EU-XBE (`orig\retail_eu\default.xbe`, Capstone), Ghidra-Export `analysis\retail_eu_export`, Levelskripte `scripts\levelN-M.ful/.dbg` (FutPAL01, nur gelesen) und `chars\*.ucf` (FutPAL00, Eigenschaft `maxhealth`), dazu Läufe des Ports unter `run\cheats\` des Arbeitsbaums (git-ignoriert). Umsetzung: `src\host\xapi\cheats.*`, `src\host\input\cheat_toggles.*`; Bericht [`docs\g8_cheats_report.md`](../../docs/g8_cheats_report.md).
 
 Adressen sind VAs der Retail-EU-XBE. „Vermutung“ kennzeichnet Deutungen ohne direkten Beleg.
 
@@ -217,3 +217,58 @@ Beide Funktionen kannte Ghidra nicht als Funktionen (`tools\gen\extra_function_s
 * Kollisionsobjekt +0xB8 („festgehalten“) und die Decke über dem Tisch in 1-1: nicht untersucht.
 * Kanone und Railgun mit unendlich Munition nicht im Lauf; Bender/Leela-Aufladung nicht im Lauf (Start mit 0).
 * Doppel- oder Spezialsprünge (andere Animationen) mit der Sprungweite nicht gemessen.
+
+## 10. Nachtrag 2026-10-14: Countdowns („Timer einfrieren“)
+
+Nutzerwunsch: In Zoidbergs Level (4-1, Bogad-Sumpf, Ratte) läuft ein Countdown; gibt es weitere, soll ein Cheat sie einfrieren – je einer oder einer für alle. Umsetzung `src\host\xapi\cheats_timer.*` (ein Schalter `[cheats] freeze_timer`), Bericht [`docs\g8_cheats_report.md`](../../docs/g8_cheats_report.md) Abschnitt 9. Läufe `run\timer\` des Arbeitsbaums.
+
+Vorgehen: Strings und Bytecode aller 23 Levelskripte (`scripts\levelN-M.ful/.dbg`, FutPAL01, nur gelesen; lineare Disassemblierung nach dem Interpreter `FUN_000B97D0`, Funktionsnamen aus der `.dbg`), dazu HUD-Klassen und Skript-Natives der Retail-XBE (Capstone, Ghidra-Dekompilat, nur lesend). `.dbg`-Funktionssätze: Name (0x80 Byte), Quelldatei (0x80), dann der Code-Offset; `.ful`-Offset = Code-Offset + 0x28 (Kopf „L2iM“). Skript-VM: `timing60.md` 4.3 (Opcode 0x14 = Thread starten, Ziel = Befehl + 16 + rel).
+
+### 10.1 Die Countdowns
+
+**HUD-Zeitanzeige** „timer“ (Klasse vtable **0x2A55F8**, 0x54 Byte; für jedes Level in `FUN_000C1260` angelegt, 4-1 mit `FUN_000ECB70(1)` = Sumpf-Variante: Balken `HUD\swamp_bar.nif`, Uhr `swamp_cl.nif`, Fähnchen `swamp_fl.nif`, sonst `FUN_000ECB70(0)` = nur Text; ein/aus über vf+0x14 `FUN_000ECB30`, Natives 0x183/0x181):
+
+| Stelle | Inhalt |
+|---|---|
+| +0x28 float | Sekunden; Anzeige `FUN_000EC870`: „%d:%02d“ (0x2A5614) der abgeschnittenen Sekunden |
+| +0x2C / +0x2D / +0x2E / +0x2F u8 | läuft („play“) / angehalten („pause“) / Sumpf-Variante / **abgelaufen** |
+| vf+0x4 **`FUN_000EC6D0`** (Update, thiscall, `ret`) | läuft und nicht angehalten: +0x28 −= dt `[0x2D6748]`; bei ≤ 0: +0x28 = 0 und – nur Sumpf-Variante – +0x2F = 1 |
+| vf+0x10 `FUN_000EC720` (thiscall `(char* cmd, float arg)` `ret 8`, `strncmp` 4) | „play“ (+0x2C = 1, +0x2D = 0), „pause“ (+0x2C = +0x2D = 1), „set“ (+0x28 = arg, bei arg > 0 +0x2F = 0), „add“ (+0x28 += arg), „stop“ (+0x2C = +0x2D = 0) |
+| Native **0x17C** (`FUN_000E5B30(element, befehl, arg)`) | Skripte: `("timer", "set"/"play"/…, wert)` |
+| Native **0x184** `FUN_000B09E0` | Element „timer“ des HUD (Session +0x118, `FUN_000E5890`) → +0x2F |
+
+**Skript-Scheduler** `FUN_000BA060` (thiscall `(float dt)` `ret 4`; Levelskript = Session +0xA8, Aufruf 0xC8DD5 mit dt `[0x2D6748]`, in Zwischensequenzen 0xC8E77/0xC90F8 mit 0): je lebendem Thread (Liste +0x10, Glied +0x3C, beendet +0x25, Fehler +0x24) Wartezeit **+0x20** −= dt und Skript-Timer +0x1C −= dt; Wartezeit ≤ 0 → Thread läuft. Opcode 0x18 setzt die Wartezeit und gibt ab; der Code-Zeiger +0x34 zeigt danach hinter das Wait-Wort. Geladenes Skript: Skriptobjekt +0x14 (Dateibild, Kopf „L2iM“).
+
+| Level (Ordner) | Countdown | Skript | Ablauf |
+|---|---|---|---|
+| **4-1 Bogad-Sumpf** (Level4-1) | Sumpf-Uhr **2:00** je Abschnitt | `@@action@@aStartTimer` (0xF804): pause, set 120, Wait 2, play; `@@action@@actGetTime` (0x8368, 0xB434) an den Kontrollpunkt-Strahlen: set 120; `@@action@@aDeath`: pause beim Tod, play nach dem Neustart | `@@action@@aRestart` (0x5C8) fragt Native 0x184 ab; abgelaufen: Abblenden, Film `4-2-01.avi`, Native 0xA0 (Neustart) |
+| **2-4 Schrottplatz 1** (Level2-3) | Stromkasten „nPowerConsole“: Tor offen für **1:00** (Anzeige, Ton „Timer_ticks_loop“) | `@@action@@aEnablePowerConsole` (0xF870): set 60, pause, Kamerafahrt, Tor auf, play, **Wait(60)** (Wort 0xFFF4) | stop, Tor schließt (`WallGateOpen` rückwärts), Kasten wieder benutzbar |
+| **3-5 Innerer Tempel** (Level3-4) | Raum 9 (Lichtschalter-Rätsel): **0:55** | `RunNibbler` (0xF198, gestartet von `Run` 0xF774): AiEnable „NibblerB1“, i = 55, set i, play, `while i > 0 { i--; Wait(1); Wait(0) }` (Wort 0xF2DC) | stop; sobald Leela im Raumauslöser steht: Tür verriegeln (`Lock`), AiDisable „NibblerB1“ (im Spiel nicht nachgespielt) |
+| **5-1, 5-2, 5-3 Moms Hauptquartier** (Level5-x) | Rätsel mit **zehn Zeitlampen** „time_light_*1..10“, Uhrticken | `Start` des Rätsel-Zeitgebers (5-1 0x12EFC): je Lampe `Wait(m_Timeout)` (this+0x28, Standard 4,5 s, `SetTimeout`), Lampe an, Tick; Abbruch bei gelöst (+0x24) | „Puzzle_TimedOut“, dann (5-1 0x12D28) Falltür-Ton und -Animation: die Falltür öffnet sich |
+
+In 2-4 und 3-5 laufen Anzeige und Skript-Countdown unabhängig nebeneinander. In 5-x wird „timer“ nur gestoppt (Tod), nie gestartet.
+
+### 10.2 Durchsucht, keine Countdowns
+
+* Alle Wartezeiten und Skript-Timer ≥ 8 s mit Direktwert: 1-2 `@@action@@aDialogue` (Dialog nach 20 s), 1-3 `OnActivateMask12` und 1-4 `@@action@@aLeverPuzzle` (10 s Kamera **nach** dem gelösten Rätsel; das Hebelrätsel hat keine Zeit), 1-5 `aAlienShow`, 2-2 `aMonkey`, 5-1 `aStartCam`, die Lüfter in 5-x (`Timer` 0x14D00, 40-s-Takt) – Abläufe ohne „zu spät“.
+* Wartezeiten mit Variable: Kamera-, Klang-, Animations- und Dampf-Helfer, zeitgesteuerte Plattformen/Türen (`SetStartTime`/`SetOpenTime`, wiederholbar), `WaitGiveCollectible`; einzig `Start` der 5-x-Rätsel ist ein Countdown.
+* Klänge „Bomb Tick“ (2-1, 2-3: Sprengstab-Lunte als Spielmechanik), „Ticking“ (3-3), `m_PuzzleTick` (5-x = die Zeitlampen).
+* Native 0x184 fragt nur 4-1 ab; „timer“ steht nur in 2-3, 3-4, 4-1 und 5-x.
+
+### 10.3 Entscheidung und Proben
+
+Ein Schalter für alle. Einfrieren = die Zeit steht, der Ablauf löst nicht aus; ausgeschaltet läuft sie vom angehaltenen Wert weiter. Befehle der Skripte („set“ am Kontrollpunkt, „pause“ beim Tod) gelten weiter.
+
+| Probe | Adresse | Prolog | Wirkung |
+|---|---|---|---|
+| `probe:HudTimer::Update` | 0xEC6D0 (vtable 0x2A55F8 +0x4; neu in `extra_function_starts.tsv`: `HudTimer_vfUpdate`, 0x41 Byte) | `8A 41 2C 84 C0` (5) | Cheat an und Anzeige läuft: Update übersprungen |
+| `probe:Script::RunThreads` | 0xBA060 | `51 57 8B F9 8B 0D 18 A2 2E 00` (10) | Cheat an: Threads des laufenden Levels an einer Countdown-Stelle bekommen vor dem Scheduler dt auf +0x20, danach den genauen alten Wert zurück |
+
+Bedingung beider: `freeze_timer` oder `ingame_toggles`. Rohscan E8/E9/EB/7x/0F 8x über `.text`: kein Sprung in die gestohlenen Bytes (auch im Unit-Test). Countdown-Stellen (`kScriptCountdowns`): Level (Session +0xC, ohne Groß-/Kleinschreibung), `.ful`-Offset des Code-Zeigers hinter dem Wait und die drei Wörter davor (push mit Zeilennummer, Operand, Wait) als Signatur – 2-4 0xFFF8 (`push 60.0`), 3-5 0xF2E0 (`push 1.0`), 5-1 0x12FB8, 5-2 0xE5B4, 5-3 0x15F90 (je `push_var this+0x28`).
+
+Für Prüfläufe: Debug-Aktion `game snap_to_node <Knoten>` = Native 0x52 FsPlayerSnapToNode `FUN_000B0A60(name, 3.0)` (cdecl): Figur 3 Einheiten vor den Knoten, mit Blick darauf.
+
+### 10.4 Offen / Vermutungen
+
+* 3-5 Raum 9 und die Rätsel in 5-1/5-2/5-3 nicht im Lauf erreicht (gleiche Mechanik wie 2-4; Signaturen gegen die Skripte geprüft). Bedeutung des Ablaufs in 3-5 (Tür, „NibblerB1“) nicht gespielt.
+* Der natürliche Ablauf in 4-1 (Film, Neustart) ist nur aus dem Skript belegt (ohne Steuerung stirbt die Ratte alle 8–10 s, jeder Tod hält die Uhr an).

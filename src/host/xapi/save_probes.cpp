@@ -51,6 +51,8 @@ std::atomic<bool> g_stateDumpPending{false};      // `game state`
 // buffer is fine (32-bit process: host addresses are valid guest pointers). Written before g_levelEndPending
 // is set.
 char g_nextLevel[16] = {};
+std::atomic<bool> g_snapPending{false};  // (G8) `game snap_to_node <node>`
+char g_snapNode[32] = {};  // node name for the native (FUN_000DAF10 lookup), written before g_snapPending
 
 // Path of the last container ReadContainer read (VerifySignature has only the buffer). Guest main thread
 // only; the lock covers the exit reporter.
@@ -425,6 +427,16 @@ bool RequestLevelEnd(const char* nextLevel, bool guaranteeStartWeapons) noexcept
     return true;
 }
 
+bool RequestSnapToNode(const char* node) noexcept {
+    const std::size_t n = node != nullptr ? std::strlen(node) : 0;
+    if (n == 0 || n >= sizeof(g_snapNode) || g_snapPending.load() || ReadU32(guest::kGameLevelPtr) == 0) {
+        return false;
+    }
+    std::memcpy(g_snapNode, node, n + 1);
+    g_snapPending.store(true);
+    return true;
+}
+
 bool RequestStateDump() noexcept {
     if (ReadU32(guest::kGameLevelPtr) == 0) {
         return false;
@@ -436,6 +448,19 @@ bool RequestStateDump() noexcept {
 void RunPendingGameActions() noexcept {
     select::ObserveStartState();  // (G7 fix) "game: start state applied in <Level>: ..." once per level start
     cheats::OnTick();             // (G8) toggle flash, player health trace
+    if (g_snapPending.exchange(false)) {
+        if (ReadU32(guest::kGameLevelPtr) == 0) {
+            FUT_LOGW(Xapi, "game: debug action snap_to_node dropped: no level is running");
+        } else {
+            // The level-script native FsPlayerSnapToNode (CID 0, FID 0x52, FUN_000B0A60; scripts pass 3.0).
+            FUT_LOGI(Xapi, "game: debug action: FsPlayerSnapToNode 0x%08X(\"%s\", %.1f)",
+                     kGameNativeSnapToNode, g_snapNode, static_cast<double>(kSnapToNodeUnits));
+            const float units = kSnapToNodeUnits;
+            std::uint32_t bits = 0;
+            std::memcpy(&bits, &units, sizeof(bits));
+            core::CallGuest(kGameNativeSnapToNode, {guest::Addr(g_snapNode), bits});
+        }
+    }
     if (g_stateDumpPending.exchange(false)) {
         try {
             const guest::GuestAddr pending = ReadU32(select::kPendingStateVar);

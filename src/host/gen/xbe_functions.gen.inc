@@ -3,7 +3,7 @@
 // Sources:   analysis/retail_eu_export/functions.tsv, tools/gen/extra_function_starts.tsv
 //
 // Initializer rows for guest::FunctionInfo (core/guest.h), sorted by address.
-// 7023 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
+// 7024 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
 // { address, size, flags (0 ghidra, 1 extra start, 2 synthetic range), name },
 { 0x00011000u, 0x69u, 0, "FUN_00011000" },
 { 0x00011070u, 0x69u, 0, "FUN_00011070" },
@@ -2976,6 +2976,7 @@
 { 0x000EC470u, 0x57u, 0, "FUN_000ec470" },
 { 0x000EC4D0u, 0xA9u, 0, "FUN_000ec4d0" },
 { 0x000EC6B0u, 0x1Eu, 0, "FUN_000ec6b0" },
+{ 0x000EC6D0u, 0x41u, 1, "HudTimer_vfUpdate" },
 { 0x000EC7E0u, 0x8Du, 0, "FUN_000ec7e0" },
 { 0x000EC870u, 0x84u, 0, "FUN_000ec870" },
 { 0x000EC900u, 0x1Eu, 0, "FUN_000ec900" },

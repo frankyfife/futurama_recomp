@@ -13,3 +13,4 @@ address	size	name	evidence
 0x00090570	0x13F	Stormtrooper_vfTakeDamage	g8_cheats.md 3 (vtables 0x2A00B0 stormtrooper_mk2 / 0x2A01F0 stormtrooper slot +0x7C; prologue sub esp,0xC; ret 8 at 0x906AC, next function 0x906B0)
 0x00050560	0x1F	Player_vfUseAmmo	g8_cheats.md 9.5 (player vtables 0x29A1E8/0x29D8E0/0x29E1E8/0x29F0C0/0x2A0DB0 slot +0x90; prologue mov eax,[esp+4]; mov edx,[esp+8]; ret 8 at 0x5057C, next function 0x50580)
 0x000AE7E0	0x54	PhysicsWorld_vfStep	g8_cheats.md 9.1 (physics world vtable 0x2A1ECC slot +0xC; prologue sub esp,0x64; push ebx; push esi; ret at 0xAE833, next code 0xAE840)
+0x000EC6D0	0x41	HudTimer_vfUpdate	g8_cheats.md 10.1 (HUD timer vtable 0x2A55F8 slot +0x4; prologue mov al,[ecx+0x2C]; test al,al; ret at 0xEC710, next function 0xEC720)

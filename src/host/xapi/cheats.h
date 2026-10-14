@@ -1,7 +1,8 @@
 // G8: cheats - [cheats] invulnerable, one_hit_kill, enemies_ignore, ingame_toggles (analysis/loader/g8_cheats.md,
 // docs/g8_cheats_report.md). Default: all off, no hook installed (FUT_PROBE_IF, core::HookDesc::condition).
 // The player cheats teleport_freecam, moon_jump, jump_distance and infinite_ammo (2026-10-14) live in
-// xapi/cheats_player.h; their switches share Settings, Active and Toggle below.
+// xapi/cheats_player.h, freeze_timer (2026-10-14) in xapi/cheats_timer.h; their switches share Settings, Active
+// and Toggle below.
 //
 // Invulnerable (probe:Player::TakeDamage 0x51AD0, probe:Script::FsDeductLives 0xC1240):
 //   Every character's damage goes through its vtable slot +0x7C, thiscall(this, float amount, Actor* attacker)
@@ -109,7 +110,7 @@ inline constexpr float kBossHitFraction = 0.25f;        // bosses: a quarter of 
 
 // ---- options ----------------------------------------------------------------------------------------------------
 // G8 part 2 (2026-10-14, xapi/cheats_player.h): TeleportFreecam, MoonJump, InfiniteAmmo. [cheats] jump_distance is a
-// number, not a switch (Settings::jumpDistanceMetres).
+// number, not a switch (Settings::jumpDistanceMetres). FreezeTimer (2026-10-14): xapi/cheats_timer.h.
 enum class Cheat : std::uint8_t {
     Invulnerable,
     OneHitKill,
@@ -117,10 +118,12 @@ enum class Cheat : std::uint8_t {
     TeleportFreecam,
     MoonJump,
     InfiniteAmmo,
+    FreezeTimer,
     Count
 };
 inline constexpr int kCheatCount = static_cast<int>(Cheat::Count);
-// INI key: invulnerable | one_hit_kill | enemies_ignore | teleport_freecam | moon_jump | infinite_ammo
+// INI key: invulnerable | one_hit_kill | enemies_ignore | teleport_freecam | moon_jump | infinite_ammo |
+// freeze_timer
 const char* CheatKey(Cheat c) noexcept;
 const char* CheatLabelDe(Cheat c) noexcept;  // "Unverwundbar" ...
 
@@ -131,12 +134,13 @@ struct Settings {
     bool teleportFreecam = false;
     bool moonJump = false;
     bool infiniteAmmo = false;
+    bool freezeTimer = false;
     float jumpDistanceMetres = 0.0f;  // 0 = off
     bool ingameToggles = false;
     bool Enabled(Cheat c) const noexcept;
     bool AnyHook() const noexcept {
         return invulnerable || oneHitKill || enemiesIgnore || teleportFreecam || moonJump || infiniteAmmo ||
-               jumpDistanceMetres > 0.0f || ingameToggles;
+               freezeTimer || jumpDistanceMetres > 0.0f || ingameToggles;
     }
 };
 Settings SettingsFromConfig(const core::Config& config) noexcept;
@@ -233,8 +237,13 @@ struct Stats {
     std::uint32_t ammoKept = 0;           // UseAmmo calls skipped
     std::uint32_t ammoRefills = 0;        // empty slot of the equipped weapon refilled
     std::uint32_t countersKept = 0;       // walker/cannon/power counters put back
+    // Freeze timer (cheats_timer.cpp).
+    std::uint32_t countdownsHeld = 0;       // holds started (HUD timer, script countdown threads)
+    std::uint32_t hudTimerTicksHeld = 0;    // HUD timer updates skipped
+    std::uint32_t scriptWaitTicksHeld = 0;  // scheduler passes with a countdown thread's wait held
 };
-// The player cheats count into the same statistics (cheats_player.cpp). Returns the new count.
+// The player and timer cheats count into the same statistics (cheats_player.cpp, cheats_timer.cpp). Returns
+// the new count.
 std::uint32_t CountPlayerCheat(std::uint32_t Stats::*field) noexcept;
 Stats GetStats() noexcept;
 
