@@ -38,8 +38,8 @@ Stand: 2026-10-12. Abweichungen vom Entwurf: [`loader_design.md`](loader_design.
 
 ## Bekannte Grenzen
 
-* Projizierte Lichter, Umgebungs- und Nebel-Maps werden weiter nicht gezeichnet (im Lauf 31 520 Draws mit solchen Effekten, gezählt). Die übrigen Maps des Mehrpass-Pfads (Dark, Detail, Glow, Decal, Bump) bleiben bei der Basis-Map wie seit M3.
-* Nicht geclippte Schatten bekommen immer eigene Pässe (REN legt sie in bestimmten Fällen in den ersten Pass; gleiches Bild bei deckenden Maps). Das Spiel nutzt nur geclippte Schatten.
+* Projizierte Lichter, Umgebungs- und Nebel-Maps werden weiter nicht gezeichnet (im Lauf 31 520 Draws mit solchen Effekten, gezählt). Die übrigen Maps des Mehrpass-Pfads (Dark, Detail, Glow, Decal, Bump) bleiben bei der Basis-Map wie seit M3. **Erledigt 2026-10-14 (M3e-Rest, [`m8b_report.md`](m8b_report.md)):** die ganze Pipeline ist nachgebildet; die 31 520 Draws waren die Umgebungs-Map (Toon-Rampe) der Figuren.
+* Nicht geclippte Schatten bekommen immer eigene Pässe (REN legt sie in bestimmten Fällen in den ersten Pass; gleiches Bild bei deckenden Maps). Das Spiel nutzt nur geclippte Schatten. (Seit M3e-Rest wie in REN.)
 * Partikel und Schattenbild werden nicht interpoliert (60-Hz-Raster); bei 120 fps folgt die Kamera, die Partikel bewegen sich je Tick.
 * Linien (Slot 53) werden vom Spiel nicht aufgerufen und sind weiter nicht umgesetzt.
 

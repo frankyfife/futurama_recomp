@@ -50,6 +50,8 @@
 
 namespace gfx::ni {
 
+class MultiMapCensus;  // gfx/multimap_census.h
+
 inline constexpr std::uint32_t kMaxLights = FF_MAX_LIGHTS;
 inline constexpr std::uint32_t kMaxTextureStages = FF_MAX_STAGES;
 inline constexpr std::uint32_t kMaxUvSets = FF_MAX_UV_SETS;
@@ -150,15 +152,16 @@ struct TextureStageDesc {
 // Which branch of the texture pipeline produced the stages (diagnostics, statistics).
 enum class TexturePath : std::uint8_t {
     SingleStage,  // default pipeline vf2, base map only (0x16440C..0x16444E): exact
-    MultiMap,     // other maps or clipped texture effects (vf2 0x164453 ff.): only the base map stage is
-                  // reproduced in M3 (P2), the other maps/effects are ignored
+    MultiMap,     // other maps or texture effects (vf2 0x164453 ff.): all passes and stages (M3e-Rest; before:
+                  // the base map only, plus the projected shadows of M8)
     Screen,       // slot 55 pipeline (vtable 0x2ABDB0, vf2 FUN_00160270): exact
 };
 
 // M8: a further pass of the texture pipeline (pipeline vf3 0x1628B0 for pass index >= 1): FUN_00159270 with the pass's
 // NiAlphaProperty from the pipeline manager's table (+0x2E8 + 4 * type of the pass's first stage), the pass's texture
 // stages, fog off (FUN_00149AE0 switches D3DRS_FOGENABLE off from the second pass on). Everything else (z, stencil,
-// cull, lighting, material) is the first pass's state. Used for the projected shadows of NiTextureEffect.
+// cull, lighting, material) is the first pass's state. M8: projected shadows; M3e-Rest: every pass of vf2 (decal maps,
+// projected lights, the base pass after them, environment, glow and fog maps).
 inline constexpr std::uint32_t kMaxExtraPasses = 8;  // the pipeline sets up at most 8 texture effects (+0x770 < 8)
 struct PassDesc {
     bool alphaBlendEnable = false;
@@ -252,8 +255,53 @@ struct LightSetDesc {
     std::uint32_t dropped = 0;  // enabled lights beyond kMaxLights (logged by the caller)
 };
 
+// ---- texture pipeline objects (M3e-Rest)
+// ------------------------------------------------------------------------------
+
+// The default texture pipeline's 0xCC-byte stage object (ctor FUN_00161B20) - the fields that reach D3D. ni_extract
+// builds the passes of a draw from such stages (pipeline vf2 0x164360, docs/m8b_report.md); the texture effect stages
+// live in StateShadow::effects like in the pipeline object, the map stages are per draw.
+struct PipelineStage {
+    GuestPtr texture = 0;                       // +0x0C NiTexture (0: none, or the clipping texture of a clip stage)
+    std::uint32_t passIndex = 0;                // +0x08 position in its pass (FUN_00160070 / FUN_001600E0)
+    std::uint32_t ops[6] = {2, 2, 0, 2, 2, 0};  // +0x10..+0x24 Xbox COLOROP, COLORARG1, COLORARG2, ALPHAOP, ALPHAARG1,
+                                                // ALPHAARG2 (FUN_001629C0 from the manager's tables)
+    std::uint32_t texCoordIndex = 0;            // +0x28 D3DTSS_TEXCOORDINDEX (TCI | UV set)
+    std::uint32_t addressU = 3;                 // +0x2C D3DTADDRESS (FUN_00159E00)
+    std::uint32_t addressV = 3;                 // +0x30
+    std::uint32_t filter = 0;                   // +0x38 NI filter mode (FUN_00159E20, table DAT_0030FEF8)
+    std::uint32_t ttff = 0;                     // +0x48 D3DTSS_TEXTURETRANSFORMFLAGS
+    std::uint32_t textureFactor = 0xFFFFFFFFu;  // +0x8C D3DRS_TEXTUREFACTOR
+    bool notReplace = true;                     // +0x90 (stage 0 of a pass: false = SELECTARG1 TEXTURE)
+    std::uint32_t type = 9;                     // +0x94 map type: 0 glow / projected light, 1 decal / fog map, 2 base,
+                                                // dark, gloss, environment map, shadow, 3 detail, 8 bump, 9 default
+    bool bump = false;                          // +0x98 bump environment matrix set (FUN_00162910)
+    bool clip = false;                          // a clip stage: samples ExtractContext::clipTexture (+0xDEC)
+    GuestPtr effect = 0;                        // +0xB4 NiTextureEffect of an effect stage
+    rhi::TextureHandle hostTexture;             // the clip texture while the stage is applied
+    Matrix4 transform = IdentityMatrix();       // +0x4C D3DTS_TEXTUREn (FUN_00161F70 sets it when TTFF != 0)
+};
+
+// The texture effect stages of the default pipeline (FUN_00164200 -> FUN_00163F10 with the coordinate handlers
+// +0x774 + 4 * mode, clip stages FUN_00162AD0 / FUN_00162BB0). They are rebuilt only when the draw's effect state
+// differs from the cached one (manager +0xB08; BeginScene clears it, FUN_00159EF0), with the camera current then.
+inline constexpr std::uint32_t kMaxEffectStages = 8;  // FUN_00163F10: pipeline +0x770 < 8 (clip stages count too)
+struct EffectStageCache {
+    GuestPtr effectState = 0;              // manager +0xB08
+    std::uint32_t stageCount = 0;          // pipeline +0x770: effect and clip stages (> 0: the multi-map path of vf2)
+    std::uint32_t lightCount = 0;          // +0xDE8, stages +0x788 (projected lights without plane, type 0)
+    std::uint32_t lightClippedCount = 0;   // +0x1AB0, stages +0xDF0 (type 0) and clip stages +0x1450 (type 2)
+    std::uint32_t shadowClippedCount = 0;  // +0x2774, stages +0x1AB4 (type 2) and clip stages +0x2114 (type 0)
+    std::uint32_t shadowCount = 0;         // +0x2DD8, stages +0x2778 (type 2)
+    bool envOn = false;                    // +0x2EA8, stage +0x2DDC (type 2)
+    bool fogOn = false;                    // +0x2F78, stage +0x2EAC (type 1)
+    PipelineStage lights[kMaxEffectStages], lightsClipped[kMaxEffectStages], lightClips[kMaxEffectStages];
+    PipelineStage shadowsClipped[kMaxEffectStages], shadowClips[kMaxEffectStages], shadows[kMaxEffectStages];
+    PipelineStage env, fog;
+};
+
 // NiTextureEffect slots of the NiDynamicEffectState (projected lights/shadows, environment and fog maps). Captured for
-// diagnostics; M8 renders the projected shadows (RenderStateDesc::extraPasses), not the others.
+// diagnostics; the passes themselves are in RenderStateDesc (first pass) and RenderStateDesc::extraPasses.
 struct TextureEffectSlots {
     GuestPtr projectedLights[2] = {};
     GuestPtr projectedShadows[2] = {};
@@ -363,7 +411,8 @@ std::uint8_t TextureOpFromXbox(std::uint32_t xboxOp) noexcept;
 // Counters of things the caller may want to log (statistics of the M3 run; reset with the shadow).
 struct ExtractCounters {
     std::uint64_t states = 0;                // ExtractState calls that produced a state
-    std::uint64_t multiMapApproximated = 0;  // TexturePath::MultiMap draws (other maps/effects ignored)
+    std::uint64_t multiMapApproximated = 0;  // M3e-Rest: multi-map draws the port does not reproduce exactly (a bump
+                                             // map stage: BUMPENVMAP perturbation is not emulated; pass overflow)
     std::uint64_t textureEffectDraws = 0;    // draws whose effect state carries NiTextureEffects (P2)
     std::uint64_t lightEvaluations = 0;      // FUN_0015BA40 runs
     std::uint64_t lightsDropped = 0;         // enabled D3D lights beyond kMaxLights
@@ -374,9 +423,14 @@ struct ExtractCounters {
     std::uint64_t invalidMapModes = 0;       // clamp > 3 or filter > 5 (out of REN's tables)
     std::uint64_t unresolvedTextures = 0;    // stage textures the resolver had no host texture for
     std::uint64_t lightsPurged = 0;          // PurgeLight removed an enabled light (slot 60, review M3 #4)
-    std::uint64_t shadowPasses = 0;          // M8: extra passes of projected shadows
-    std::uint64_t shadowEffectsSkipped = 0;  // M8: texture effects not reproduced (projected lights, environment and
-                                             // fog maps, other coordinate modes, a texture without host image)
+    std::uint64_t shadowPasses = 0;          // M8: extra passes that start with a projected shadow stage
+    std::uint64_t shadowEffectsSkipped = 0;  // texture effects not reproduced (M3e-Rest: a coordinate mode beyond REN's
+                                             // five handlers or a texture the texture manager cannot prepare - REN
+                                             // drops those too)
+    // Added in M3e-Rest (docs/m8b_report.md):
+    std::uint64_t multiMapDraws = 0;  // draws through the multi-map/effect path of pipeline vf2 (0x164453 ff.)
+    std::uint64_t extraPasses = 0;    // passes 2.. of all draws (maps and effects)
+    std::uint64_t passOverflows = 0;  // draws that needed more than 1 + kMaxExtraPasses passes or 4 stages per pass
 };
 
 // D3D8 state persistence between draws (GFX_CONTRACT.md 4.2, header comment above): REN's caches and the
@@ -435,6 +489,10 @@ struct StateShadow {
     SkinEntry skinCache[kSkinCacheSize];
     std::uint32_t skinCacheNext = 0;
     ExtractCounters counters;
+    // M3e-Rest: the default pipeline's texture effect stages and the number of passes its vf3 applied for the previous
+    // draw (pipeline +0x08 when vf2 runs; vf2 0x16500B opens a new pass for the fog map when it is not 0).
+    EffectStageCache effects;
+    std::uint32_t pipelinePassesDrawn = 0;
 
     StateShadow() noexcept { Reset(); }
     void Reset() noexcept;  // implemented in ni_extract.cpp
@@ -479,6 +537,8 @@ struct ExtractContext {
     // M8: the default pipeline's clipping texture (FUN_00163A40: 2 x 1 texels, transparent black and opaque white,
     // pipeline +0xDEC) as a host texture; empty: clipped projected shadows are drawn without their plane.
     rhi::TextureHandle clipTexture;
+    // M3e-Rest: records the multi-map/effect inputs of every 3D draw (diagnostics); nullptr = off.
+    MultiMapCensus* census = nullptr;
 };
 
 // Property/effect state -> RenderStateDesc + LightSetDesc + effect slots (FUN_00159CD0, FUN_0015BF80,
@@ -527,6 +587,14 @@ ExtractStatus ExtractTriStrip(const ExtractContext& context, const GeometryInput
 Matrix4 ProjectedShadowTransform(const Float3 inverseView[4], const float projection[3][4],
                                  const float translation[3]) noexcept;
 Matrix4 ShadowClipTransform(const Float3 inverseView[4], const Float3& planeNormal, float planeConstant) noexcept;
+// M3e-Rest: the other coordinate handlers. WORLD_PERSPECTIVE 0x162E60 = ProjectedShadowTransform with TTFF COUNT3 |
+// PROJECTED; SPHERE_MAP 0x163040 (TCI CAMERASPACENORMAL, COUNT2) and the cube map handlers 0x163160 / 0x163280
+// (CAMERASPACEREFLECTIONVECTOR / CAMERASPACENORMAL, COUNT3): rows 0..2 as above, row 3 = T alone. Clip stage of a
+// projected light FUN_00162AD0: column 0 = +(plane normal) in camera space, M[3][0] = n.location + 0.5 - d (lit side
+// u >= 0.5: the clip texture's white texel, which the stage's MODULATE keeps).
+Matrix4 SphereMapTransform(const Float3 inverseView[4], const float projection[3][4],
+                           const float translation[3]) noexcept;
+Matrix4 LightClipTransform(const Float3 inverseView[4], const Float3& planeNormal, float planeConstant) noexcept;
 
 // Slot 52 RenderPoints (0x148AE0, M8): one camera-facing quad per active particle like the original's CPU vertex
 // buffer - corners c - A, c - B, c + A, c + B with A = (right + up) * radius / scale * size, B = (right - up) * ...

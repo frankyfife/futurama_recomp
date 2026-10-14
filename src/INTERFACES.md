@@ -1967,6 +1967,34 @@ ipc_renderer.h`);
   `g8_freeze_timer.txt`. Report:
   `docs\g8_cheats_report.md`, analysis `analysis\loader\g8_cheats.md`.
 
+### 4.42 M3e-Rest: the whole default texture pipeline (multi-map and texture effect passes) - `gfx\ni_extract.h`, `gfx\multimap_census.h`, `gfx\texture_pack.h`
+
+- **Pipeline** (`ni::ExtractState`, behaviour change, no signature change): the default pipeline's vf2 0x164360 is
+  reproduced completely (GFX_CONTRACT 16): dark, detail, glow, gloss, bump and decal maps, projected lights (clipped
+  and plain), projected shadows, environment and fog maps go into the passes and stages the original builds, with its
+  op tables and pass alpha properties. Pass 0 = `RenderStateDesc` (not always the base map: with projected lights it is
+  the light pass), passes 1.. = `extraPasses` (unchanged `PassDesc`, drawn by `GpuRenderer` as in 4.39).
+  `TexturePath::MultiMap` now means "reproduced"; before it meant "base map only".
+- **New types (add-only):** `ni::PipelineStage` (the pipeline's 0xCC-byte stage object: texture, ops, TCI, address,
+  filter, TTFF, transform, type, flags), `ni::EffectStageCache` + `kMaxEffectStages` (the texture effect stages,
+  rebuilt only when the effect state changes; `StateShadow::effects`), `StateShadow::pipelinePassesDrawn` (pipeline
+  +0x08). `BeginScene` also clears the effect stage cache (FUN_00159EF0). Pure helpers `ni::SphereMapTransform`
+  (SPHERE_MAP and cube map handlers) and `ni::LightClipTransform` (FUN_00162AD0).
+- **Counters (add-only):** `ExtractCounters::multiMapDraws`, `extraPasses`, `passOverflows`. Changed meaning:
+  `multiMapApproximated` = multi-map draws not reproduced exactly (bump map stage, pass overflow; before: every
+  multi-map draw), `shadowPasses` = extra passes that start with a projected shadow, `shadowEffectsSkipped` = texture
+  effects REN drops too (coordinate mode > 4, texture without renderer data). Exit line `ni_extract: ... multi-map
+  draws (N approximated, M pass overflows) ... E extra passes (S projected shadow passes), K texture effects not
+  reproduced`.
+- **Census (new, diagnostics):** `ni::MultiMapCensus` (`gfx\multimap_census.h`), `ExtractContext::census` (nullptr =
+  off; `GpuRenderer` passes its own): per 3D draw the roles (maps 1.., projected lights/shadows with/without plane,
+  environment/fog map), combinations and textures with mode and G2 content hash; exit lines `multi-map census: ...`.
+  `texpack::UploadedHash(niTexture, &hash)` (add-only, `gfx\texture_pack.h`): the hash of the image last uploaded for a
+  static source texture while a pack or the dump is on.
+- **Tests:** new `tests\extract_multimap_tests.cpp` (9 cases), `tests\ff_render_tests.cpp` (+1 WARP case: the toon ramp
+  as stage and as ZERO/SRCCOLOR pass), `tests\extract_tests.cpp` (counter expectation). Static scan
+  `analysis\loader\scripts\m8b_multimap_scan.py`. Report `docs\m8b_report.md`, `loader_design.md` 8.23 P2-10..P2-12.
+
 ## 5. Cross-module contracts
 
 | Contract | Provider -> user |
@@ -2198,3 +2226,4 @@ ipc_gpu.cpp` (`DrawScreenPolygon`, exit line), `tests\outline_tests.cpp` (4 case
 | 2026-10-14 | G8 player cheats | new `xapi\cheats_player.h/.cpp`, `tests\g8_player_cheats_tests.cpp`, `tools\input_scripts\g8_player_cheats.txt`; `xapi\cheats.h/.cpp` (additive: `Cheat::TeleportFreecam/MoonJump/InfiniteAmmo`, `Settings` fields, 9 `Stats` fields, `CountPlayerCheat`, `QueueFlash`; `OnTick` calls `PlayerCheatsTick`), `input\cheat_toggles.h/.cpp` (additive: 3 sequences, `MoonJumpButtons`, `ConfigureMoonJump`, `MoonJumpFilter`), `input\input_system.cpp` (wiring), `gfx\freecam.cpp` (RB / T -> `RequestTeleport`), `core\config_schema.cpp` (4 rows, `ingame_toggles` order 78), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (2 starts), `docs\g8_cheats_report.md` 8, `analysis\loader\g8_cheats.md` 9, `tools\input_scripts\README.md` | `[cheats] teleport_freecam / moon_jump / infinite_ammo / jump_distance` (2 conditional probes `probe:Physics::Step` 0xAE7E0, `probe:Player::UseAmmo` 0x50560; none by default), 3 more D-pad sequences. Section 4.41. |
 | 2026-10-14 | launcher: Cheats tab | `core\config_schema.h/.cpp` (additive: `ConfigUiTab::Cheats`, name "cheats"; the `[cheats]` rows use it), `launcher\src\core\config_schema.h/.cpp` (`UiTab::Cheats` after Controls, section fallback), `launcher\src\ui\main_window.cpp`, `automation.cpp`, `core\l10n_table.cpp` ("tab.cheats"), tests | Schema JSON `ui.tab` may be "cheats"; an older launcher shows those keys on its section fallback tab with a warning. The `[cheats]` keys moved from the Spiel tab to their own Cheats tab. |
 | 2026-10-14 | G8 freeze timer | new `xapi\cheats_timer.h/.cpp`, `tests\g8_timer_cheat_tests.cpp`, `tools\input_scripts\g8_freeze_timer.txt`; `xapi\cheats.h/.cpp` (additive: `Cheat::FreezeTimer`, `Settings::freezeTimer`, 3 `Stats` fields; summary calls `LogTimerSummary`), `input\cheat_toggles.h/.cpp` (`kFreezeTimerSequence`, `kSequences` 7 entries, `SequenceText(6)`), `core\config_schema.cpp` (row `[cheats] freeze_timer`, order 78; `ingame_toggles` order 79 and help with the new sequence), `xapi\save_probes.h/.cpp` (additive: `RequestSnapToNode`, `kGameNativeSnapToNode`, `kSnapToNodeUnits`), `input\input_script.cpp` (`game snap_to_node <node>`), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (`HudTimer_vfUpdate` 0xEC6D0), `tests\g8_player_cheats_tests.cpp` (`kCheatCount` 7), `tools\input_scripts\README.md` | `[cheats] freeze_timer`: 2 conditional probes `probe:HudTimer::Update` 0xEC6D0, `probe:Script::RunThreads` 0xBA060 (none by default); D-pad `UP LEFT DOWN RIGHT UP LEFT DOWN RIGHT`. Section 4.41, `loader_design.md` 8.25, `g8_cheats.md` 10. |
+| 2026-10-14 | M3e-Rest (multi-map/effect passes) | `gfx\ni_extract.h/.cpp`, new `gfx\multimap_census.h/.cpp`, `gfx\nipc_gpu.cpp`, `gfx\texture_pack.h/.cpp`, `gfx\GFX_CONTRACT.md` 16, new `tests\extract_multimap_tests.cpp`, `tests\ff_render_tests.cpp`, `tests\extract_tests.cpp`, new `analysis\loader\scripts\m8b_multimap_scan.py`, new `docs\m8b_report.md` | 4.42: the default texture pipeline vf2 0x164360 complete (all maps and texture effects in REN's passes and stages; visible: the toon ramp environment map on characters and props in every level, glow maps of the 3-2 lava lamps). Add-only types `PipelineStage`, `EffectStageCache`, `StateShadow::effects/pipelinePassesDrawn`, `SphereMapTransform`, `LightClipTransform`, counters `multiMapDraws/extraPasses/passOverflows`, `ExtractContext::census`, `texpack::UploadedHash`; `multiMapApproximated` and `shadowEffectsSkipped` now count only what is not reproduced. No option. |

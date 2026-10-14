@@ -40,7 +40,7 @@ Reihenfolge laut Nutzer (2026-10-12, nach dem Hörtest von M5: „Ton klingt gut
 
 | Meilenstein | Inhalt |
 |---|---|
-| M3e-Rest | Nach M3e (erledigt, [`m8_report.md`](m8_report.md)): projizierte Lichter, Umgebungs- und Nebel-Maps sowie die übrigen Maps des Mehrpass-Pfads (Dark, Detail, Glow, Decal, Bump) nachbilden; Schatten und Partikel mit xemu vergleichen. Die schwarze Schiffsunterseite ist laut Nutzer original und bleibt |
+| M3e-Rest | **Mehrpass-Pipeline erledigt** (2026-10-14, [`m8b_report.md`](m8b_report.md)): die Standard-Pipeline des Originals (vf2 0x164360) ganz nachgebildet – alle Maps und Textureffekte in den Pässen und Stufen von REN. Das Spiel nutzt davon (Scan aller NIFs + Zensus aller 22 Level): die Umgebungs-Map als Toon-Rampe auf Figuren und Requisiten in jedem Level, projizierte Schatten (M8), Glow-Maps (3-2 Lavalampen), Dark-Maps (1-6, 4-1) und Detail-Maps (4-1); keine projizierten Lichter, Nebel-, Gloss-, Bump- oder Decal-Maps. Offen: Sichtprüfung der Dark-/Detail-Maps im Spiel, Schatten und Partikel mit xemu vergleichen. Die schwarze Schiffsunterseite ist laut Nutzer original und bleibt |
 | – | Takt bei 120 Hz: In der M5-Endprüfung (Fernseher an) bestanden `m3_check` inkl. M3b-7 und die 60-Hz-Varianten von `m3d_check`, aber D1 (120 Hz: nur 43 % der Bilder genau ein Refresh) und L1 scheiterten – mit dem M4-Bau genauso, also Anzeige-Umgebung, nicht M5 ([`m5_report.md`](m5_report.md) 7, 10). Fernseher-Modus/VRR und Treiber prüfen, dann `m3d_check` ohne `--display-optional` wiederholen. Mit echtem Controller sind Controller, Vibration und Bild bestätigt (Nutzertest 2026-10-12). |
 
 ### M3c – Launcher (Qt) und Anzeige-Optionen (erledigt, Plan zur Referenz)

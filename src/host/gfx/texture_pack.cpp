@@ -846,6 +846,9 @@ struct Manager {
     std::unordered_map<std::uint32_t, std::uint8_t> replaced;  // host texture id -> ExtraLevels
     std::atomic<std::uint32_t> replacedCount{0};
 
+    std::mutex hashMutex;
+    std::unordered_map<std::uint32_t, std::uint64_t> hashOfTexture;  // NiSourceTexture -> hash of its last upload
+
     std::atomic<std::uint32_t> seen{0}, nonStatic{0}, hashFailed{0}, hits{0}, misses{0}, applied{0}, failed{0},
         dumpedFiles{0}, dumpFailures{0}, dumpSkipped{0}, droppedPending{0};
     std::atomic<std::uint64_t> replacedBytes{0}, originalBytes{0};
@@ -1013,6 +1016,10 @@ void OnTextureUploaded(GpuRenderer& gpu, NiPCTextureData* data, ni::GuestPtr niT
             return;
         }
         m.seen.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard lock(m.hashMutex);
+            m.hashOfTexture[niTexture] = hash;
+        }
         if (m.dumpOn) {
             QueueDump(m, hash, info, pixelData);
         }
@@ -1035,6 +1042,20 @@ void OnTextureUploaded(GpuRenderer& gpu, NiPCTextureData* data, ni::GuestPtr niT
     } catch (...) {
         FUT_LOGE(Gfx, "texture pack: out of memory");
     }
+}
+
+bool UploadedHash(ni::GuestPtr niTexture, std::uint64_t* hash) noexcept {
+    if (!M().packOn && !M().dumpOn) {
+        return false;
+    }
+    Manager& m = M();
+    std::lock_guard lock(m.hashMutex);
+    const auto it = m.hashOfTexture.find(niTexture);
+    if (it == m.hashOfTexture.end()) {
+        return false;
+    }
+    *hash = it->second;
+    return true;
 }
 
 void ApplyPending(GpuRenderer& gpu, NiPCTextureData* data) noexcept {

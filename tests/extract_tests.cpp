@@ -574,7 +574,8 @@ TEST_CASE("extract: texture apply modes and the lighting switch (FUN_0015BF80, p
     REQUIRE(sc.State(&st) == ExtractStatus::Ok);
     CHECK(st.texturePath == TexturePath::MultiMap);
     CHECK(st.stages[0].colorOp == FF_TOP_MODULATE);
-    CHECK(sc.shadow.counters.multiMapApproximated == 1);
+    CHECK(sc.shadow.counters.multiMapDraws == 1);  // M3e-Rest: the multi-map path is reproduced, not approximated
+    CHECK(sc.shadow.counters.multiMapApproximated == 0);
 }
 
 TEST_CASE("extract: map clamp, filter, UV set, mipmaps (FUN_00161D60 / FUN_00161E40 / FUN_00163D60)") {

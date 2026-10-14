@@ -185,6 +185,10 @@ bool Enabled() noexcept;
 // dumps it ([render] texture_pack_dump) and, on a pack hit, sets kHostReplacementPending and queues the file.
 void OnTextureUploaded(GpuRenderer& gpu, NiPCTextureData* data, ni::GuestPtr niTexture, ni::GuestPtr pixelData) noexcept;
 
+// M3e-Rest diagnostics (gfx/multimap_census.h): the content hash of the image last uploaded for `niTexture` (static
+// source textures, only while a pack or the dump is on; an address reused by a later texture reports that one).
+bool UploadedHash(ni::GuestPtr niTexture, std::uint64_t* hash) noexcept;
+
 // From the texture resolver when kHostReplacementPending is set: swaps in the decoded replacement (creates the host
 // texture, destroys the original, sets kHostReplaced) or drops the request after a failure.
 void ApplyPending(GpuRenderer& gpu, NiPCTextureData* data) noexcept;

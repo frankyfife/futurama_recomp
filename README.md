@@ -21,7 +21,7 @@ playthrough without cheats has not been confirmed yet.
 | Graphics | Direct3D 11. Render resolution up to the full display height or beyond, MSAA 2x/4x/8x with alpha-to-coverage, supersampling, gamma-correct resolve, anisotropic filtering. No FXAA or TAA. "Classic" mode (640x480, no AA) is bit-identical to the Xbox output as captured in xemu |
 | Frame rate | Game logic at 60 Hz (NTSC timing with PAL content). Display at 60 Hz, 120 Hz, or the monitor rate capped at 120 Hz, with interpolation of the camera, objects and skinned meshes between logic ticks |
 | Widescreen | 4:3 (original), 16:9, 16:10, 21:9 or the monitor's aspect. Hor+ field of view; the HUD is anchored to the screen edges, menus and movies stay 4:3 |
-| Renderer extras | Render to texture, projected shadows and particles. Adjustable outlines (colour, opacity, thickness) |
+| Renderer extras | Render to texture, projected shadows, particles and the complete multi-pass texture pipeline of the original renderer (the toon-shading environment map on characters and props, glow, dark and detail maps). Adjustable outlines (colour, opacity, thickness) |
 | Texture packs | Replace any game texture by content hash (`[render] texture_pack`); dump all textures with `[render] texture_pack_dump`. `tools/texture_upscale.py` builds an AI-upscaled pack (waifu2x recommended) |
 | Movie packs | All 47 movies from an AI-upscaled H.264 pack (`[render] movie_pack`), frame-synced to the original audio. Built with `tools/movie_upscale.py` |
 | Audio | DirectSound HLE on XAudio2: Xbox ADPCM, streamed music, 3D sound with the exact DirectSound distance model, I3DL2 reverb, device hot-switching |
@@ -33,9 +33,9 @@ playthrough without cheats has not been confirmed yet.
 | Cheats | Optional, all off by default. See below |
 | Launcher | Qt launcher with a setup wizard, disc check, all settings and a result screen after the game; German and English |
 
-Still open: projected lights and the remaining multi-pass maps (environment, fog, dark, detail, glow, decal, bump),
-a comparison of shadows and particles against xemu, and the Vulkan/D3D12 back ends. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+Still open: an in-game check of the dark and detail maps (two levels, not reached by the automated runs), the bump-map
+perturbation (unused by the game), a comparison of shadows and particles against xemu, and the Vulkan/D3D12 back ends.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Quick start
 

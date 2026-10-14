@@ -9,6 +9,7 @@
 #include "core/guest.h"
 #include "core/guest_call.h"
 #include "gfx/guest_memory.h"
+#include "gfx/multimap_census.h"
 
 #include <cmath>
 #include <cstdio>
@@ -533,6 +534,9 @@ void StateShadow::Reset() noexcept {
     }
     skinCacheNext = 0;
     counters = ExtractCounters{};
+    // Default pipeline init FUN_001633F0 / FUN_00163A40 (stage arrays, counts 0).
+    effects = EffectStageCache{};
+    pipelinePassesDrawn = 0;
 }
 
 void BeginScene(StateShadow* shadow) noexcept {
@@ -546,6 +550,11 @@ void BeginScene(StateShadow* shadow) noexcept {
     shadow->lights.count = 0;
     shadow->lights.dropped = 0;
     shadow->lastEffectState = 0;
+    // FUN_00159EF0: pipeline vf6 0x162420 (effect stage counts 0) and manager +0xB08 = 0 (M3e-Rest).
+    EffectStageCache& fx = shadow->effects;
+    fx.effectState = 0;
+    fx.stageCount = fx.lightCount = fx.lightClippedCount = fx.shadowClippedCount = fx.shadowCount = 0;
+    fx.envOn = fx.fogOn = false;
 }
 
 std::uint32_t PurgeLight(StateShadow* shadow, GuestPtr niLight) noexcept {
@@ -958,33 +967,58 @@ void ApplyNormalize(StateShadow& s, float scale) noexcept {
 
 // ---- texture pipeline
 // ----------------------------------------------------------------------------------------
+//
+// The default pipeline (vtable 0x2AC104) as a whole (M3e-Rest, docs/m8b_report.md): vf2 0x164360 (Ghidra gap code,
+// read with capstone) turns the NiTexturingProperty maps and the texture effects of the NiDynamicEffectState into
+// passes of up to four stages; vf3 0x1628B0 applies them one by one (FUN_00149AE0 draws the geometry once per pass).
+// The objects mirror the pipeline's own: stage objects (PipelineStage, ctor FUN_00161B20), pass objects of 0x44 bytes
+// (ctor FUN_0015FE20: +0x08 stage count, +0x0C stages used or -1, +0x10 textured stages, +0x14.. stage pointers,
+// +0x38 the pass's NiAlphaProperty) and the pipeline fields +0x0C (current pass) and +0x6A0 (map stages used).
 
-// The fields of the pipeline's 0xCC-byte stage object (ctor FUN_00161B20) that reach D3D.
-struct PipeStage {
-    GuestPtr texture = 0;       // +0x0C
-    std::uint32_t ops[6] = {};  // +0x10..+0x24 COLOROP, COLORARG1, COLORARG2, ALPHAOP, ALPHAARG1, ALPHAARG2
-    std::uint32_t texCoordIndex = 0;            // +0x28
-    std::uint32_t addressU = 1;                 // +0x2C
-    std::uint32_t addressV = 1;                 // +0x30
-    std::uint32_t filter = 0;                   // +0x38 (NI filter mode)
-    std::uint32_t ttff = 0;                     // +0x48
-    std::uint32_t textureFactor = 0xFFFFFFFFu;  // +0x8C
-    bool notReplace = true;                     // +0x90 (applyMode != REPLACE)
-    std::uint32_t type = kMapTypeDefault;       // +0x94
-    // M8: texture effect stages - a host texture without NiTexture (the clipping texture +0xDEC) and the
-    // D3DTS_TEXTUREn matrix +0x4C (FUN_00161F70 sets it when +0x48 TTFF != 0).
-    rhi::TextureHandle hostTexture;
-    Matrix4 transform = IdentityMatrix();
+using PipeStage = PipelineStage;
+constexpr std::uint32_t kMaxPassStages = kMaxTextureStages;  // DAT_002D85D0 = DAT_002D85D4 = 4 (stages, textures)
+constexpr std::uint32_t kMaxPasses = 1 + kMaxExtraPasses;
+constexpr std::uint32_t kMapStagePool = 8;  // pipeline +0x40 .. +0x6A0 (8 x 0xCC)
+constexpr std::uint32_t kTciCameraSpacePosition = FF_TCI_CAMERASPACEPOSITION;
+
+// Pass +0x10 counts the stages whose +0x0C holds a texture (FUN_00160070); a clip stage holds the clipping texture.
+bool Textured(const PipeStage& st) noexcept {
+    return st.texture != 0 || st.clip;
+}
+
+struct PassBuild {
+    PipeStage* stages[kMaxPassStages] = {};
+    std::uint32_t count = 0;     // +0x08
+    std::int32_t used = -1;      // +0x0C (-1: empty)
+    std::uint32_t textured = 0;  // +0x10
 };
 
-// FUN_00163D60: a stage for a map; no texture or no UV sets -> none.
-bool MakeMapStage(StateShadow& s, GuestPtr texture, std::uint32_t clamp, std::uint32_t filter,
-                  std::uint32_t type, std::uint32_t uvSet, std::uint32_t uvSetCount,
-                  PipeStage* out) noexcept {
-    if (texture == 0 || uvSetCount == 0) {
-        return false;
+struct PipelineBuild {
+    PassBuild passes[kMaxPasses];
+    std::uint32_t index = 0;  // pipeline +0x0C: the pass stages are added to
+    bool overflow = false;    // more passes or stages than the port keeps (counted)
+    bool multi = false;       // the multi-map/effect path (0x164453 ff.)
+    PipeStage pool[kMapStagePool];
+    std::uint32_t poolUsed = 0;  // +0x6A0
+    PipeStage defaultStage;      // +0x6A4 (ctor: no texture, +0x90 = 1; FUN_001633F0: type 2)
+};
+
+// FUN_00163D60: the next stage of the pool for a map; no texture -> none (pool untouched), no UV sets -> none (the pool
+// slot is used up all the same).
+PipeStage* MakeMapStage(StateShadow& s, PipelineBuild& b, GuestPtr texture, std::uint32_t clamp, std::uint32_t filter,
+                        std::uint32_t type, std::uint32_t uvSet, std::uint32_t uvSetCount) noexcept {
+    if (texture == 0) {
+        return nullptr;
     }
-    PipeStage st;
+    if (b.poolUsed >= kMapStagePool) {
+        b.overflow = true;  // REN would write past its 8 pool stages (more than one decal map)
+        return nullptr;
+    }
+    PipeStage& st = b.pool[b.poolUsed++];
+    if (uvSetCount == 0) {
+        return nullptr;
+    }
+    st = PipeStage{};
     st.texture = texture;
     if (clamp > 3) {  // beyond DAT_0030FED8 (garbage in the original)
         ++s.counters.invalidMapModes;
@@ -997,14 +1031,25 @@ bool MakeMapStage(StateShadow& s, GuestPtr texture, std::uint32_t clamp, std::ui
     st.texCoordIndex = uvSet < uvSetCount ? uvSet : uvSetCount - 1;
     st.ttff = 0;
     st.notReplace = false;
-    *out = st;
-    return true;
+    st.bump = false;
+    return &st;
+}
+PipeStage* MakeMapStage(StateShadow& s, PipelineBuild& b, GuestPtr map, std::uint32_t type,
+                        std::uint32_t uvSetCount) noexcept {
+    if (!Plausible(map)) {
+        return nullptr;
+    }
+    const NiTexturingMap* m = G<NiTexturingMap>(map);
+    return MakeMapStage(s, b, m->texture, m->clamp, m->filter, type, m->uvSet, uvSetCount);
 }
 
-// FUN_001629C0 for a stage at position `index` of its pass (param_3 = 0).
-void SetupStageOps(PipeStage* st, std::uint32_t index) noexcept {
+// FUN_001629C0(stage, 0): the stage's ops from the manager's tables by its position in the pass and its type.
+void SetupStage(PipeStage* st) noexcept {
+    if (st == nullptr) {
+        return;
+    }
     const std::uint32_t type = st->type < 10 ? st->type : kMapTypeDefault;
-    if (index == 0) {
+    if (st->passIndex == 0) {
         for (int i = 0; i < 6; ++i) {
             st->ops[i] = kFirstStageOps[type][i];
         }
@@ -1013,7 +1058,7 @@ void SetupStageOps(PipeStage* st, std::uint32_t index) noexcept {
             st->ops[1] = 2;                // COLORARG1 TEXTURE
             st->ops[3] = kXTopSelectArg1;  // ALPHAOP
             st->ops[4] = 2;                // ALPHAARG1 TEXTURE
-        } else if (st->texture == 0) {
+        } else if (st->texture == 0 && !st->clip) {
             st->ops[0] = kXTopSelectArg2;
             st->ops[3] = kXTopSelectArg2;
             st->ops[2] = 0;  // COLORARG2 DIFFUSE
@@ -1026,12 +1071,141 @@ void SetupStageOps(PipeStage* st, std::uint32_t index) noexcept {
     }
 }
 
-// The single pass of the pipeline (stages in order).
-struct PassSetup {
-    PipeStage stages[kMaxTextureStages];
-    std::uint32_t count = 0;
-    TexturePath path = TexturePath::SingleStage;
-};
+// FUN_0015FDD0: free stages (DAT_002D85D0 - used) and free texture slots (DAT_002D85D4 - textured).
+void FreeSlots(const PassBuild& p, std::uint32_t* stages, std::uint32_t* textures) noexcept {
+    *stages = p.used < 0 ? kMaxPassStages : kMaxPassStages - static_cast<std::uint32_t>(p.used);
+    *textures = kMaxPassStages - p.textured;
+}
+// Next pass (the pipeline grows its pass array; the port keeps kMaxPasses and counts the rest).
+PassBuild& Advance(PipelineBuild& b) noexcept {
+    if (b.index + 1 < kMaxPasses) {
+        ++b.index;
+    } else {
+        b.overflow = true;  // the extra pass replaces the last one the port can keep
+    }
+    b.passes[b.index] = PassBuild{};
+    return b.passes[b.index];
+}
+// FUN_00162520(textures, stages): the current pass, or a new one if it lacks the room.
+PassBuild& GetPass(PipelineBuild& b, std::uint32_t textures, std::uint32_t stages) noexcept {
+    std::uint32_t freeStages, freeTextures;
+    FreeSlots(b.passes[b.index], &freeStages, &freeTextures);
+    if (freeStages < stages || freeTextures < textures) {
+        return Advance(b);
+    }
+    return b.passes[b.index];
+}
+// FUN_00162740: a new pass unless the current one is still empty.
+void NewPass(PipelineBuild& b) noexcept {
+    if (b.passes[b.index].used != -1) {
+        Advance(b);
+    }
+}
+// FUN_00162670(type, stages, textures): true = a new pass is needed - the current pass is not the first and starts
+// with another stage type, or it lacks the room. (For an empty current pass the answer does not matter: NewPass
+// keeps it.)
+bool NeedsNewPass(const PipelineBuild& b, std::uint32_t type, std::uint32_t stages, std::uint32_t textures) noexcept {
+    const PassBuild& p = b.passes[b.index];
+    if (b.index == 0 || (p.stages[0] != nullptr && p.stages[0]->type == type)) {
+        std::uint32_t freeStages, freeTextures;
+        FreeSlots(p, &freeStages, &freeTextures);
+        if (stages <= freeStages && textures <= freeTextures) {
+            return false;
+        }
+    }
+    return true;
+}
+void Append(PipelineBuild& b, PassBuild& p, PipeStage* st) noexcept {
+    if (p.count >= kMaxPassStages) {
+        b.overflow = true;
+        return;
+    }
+    st->passIndex = p.count;
+    p.stages[p.count++] = st;
+    if (p.used < 0 || static_cast<std::uint32_t>(p.used) < p.count) {
+        p.used = static_cast<std::int32_t>(p.count);
+    }
+    if (Textured(*st)) {
+        ++p.textured;
+    }
+}
+// FUN_00160070: appends one stage.
+bool AddOne(PipelineBuild& b, PassBuild& p, PipeStage* st) noexcept {
+    if (st == nullptr) {
+        return false;
+    }
+    Append(b, p, st);
+    return true;
+}
+// FUN_001600E0(first, second, needFirst): both if there is room for two textures, else the first (bit 0 / bit 1 of the
+// result = first / second added). Without a first stage: nothing if `needFirst`, else the second alone.
+std::uint32_t AddTwo(PipelineBuild& b, PassBuild& p, PipeStage* first, PipeStage* second, bool needFirst) noexcept {
+    if (p.textured >= kMaxPassStages) {
+        return 0;
+    }
+    if (second == nullptr) {
+        if (first == nullptr) {
+            return 0;
+        }
+        Append(b, p, first);
+        return 1;
+    }
+    if (first == nullptr) {
+        if (needFirst) {
+            return 0;
+        }
+        Append(b, p, second);
+        return 2;
+    }
+    const bool room = p.textured < kMaxPassStages - 1;
+    Append(b, p, first);
+    if (room) {
+        Append(b, p, second);
+        return 3;
+    }
+    return 1;
+}
+// FUN_00163E20(stage, textures, stages): the stage into the current pass or a new one.
+bool AddStage(PipelineBuild& b, PipeStage* st, std::uint32_t textures, std::uint32_t stages) noexcept {
+    if (st == nullptr) {
+        return false;
+    }
+    return AddOne(b, GetPass(b, textures, stages), st);
+}
+
+// Pass NiAlphaProperty objects of the manager (+0x2E8 + 4 * type of the pass's first stage, FUN_0015A120; ctor flags
+// 0xEC, ref 0): 0 / 8 ONE + ONE, 1 / 6 SRCALPHA + INVSRCALPHA, 2 ZERO + SRCCOLOR, 4 ZERO + SRCCOLOR with alpha test
+// GREATER 0x80, 3 / 5 / 7 / 9 opaque.
+constexpr std::uint16_t kPassAlphaFlags[10] = {0x0001, 0x00ED, 0x0043, 0x00EC, 0x1243,
+                                               0x00EC, 0x00ED, 0x00EC, 0x0001, 0x00EC};
+constexpr std::uint8_t kPassAlphaRef[10] = {0, 0, 0, 0, 0x80, 0, 0, 0, 0, 0};
+// Stand-ins for the pass property objects in the alpha cache (rs+0x164): never a plausible guest pointer.
+constexpr GuestPtr kPassAlphaPropertyBase = 0x100;
+
+// FUN_001628B0 -> FUN_00159270(pass +0x38) for passes >= 1.
+void ApplyPassAlpha(StateShadow& s, std::uint32_t type) noexcept {
+    const std::uint32_t t = type < 10 ? type : kMapTypeDefault;
+    const GuestPtr key = kPassAlphaPropertyBase + t;
+    if (s.lastAlphaProperty == key) {
+        return;
+    }
+    s.lastAlphaProperty = key;
+    const std::uint32_t f = kPassAlphaFlags[t];
+    if ((f & 1u) == 0) {
+        SetRs(s, rs::ALPHABLENDENABLE, 0);
+    } else {
+        SetRs(s, rs::ALPHABLENDENABLE, 1);
+        SetRs(s, rs::SRCBLEND, kBlendTable[(f >> 1) & 0xFu]);
+        SetRs(s, rs::DESTBLEND, kBlendTable[(f >> 5) & 0xFu]);
+    }
+    if (((f >> 9) & 1u) == 0) {
+        SetRs(s, rs::ALPHATESTENABLE, 0);
+    } else {
+        SetRs(s, rs::ALPHATESTENABLE, 1);
+        SetRs(s, rs::ALPHAFUNC, kAlphaTestTable[(f >> 10) & 7u]);
+        SetRs(s, rs::ALPHAREF, kPassAlphaRef[t]);
+    }
+}
 
 const NiTexturingMap* BaseMap(GuestPtr texturing) noexcept {
     const NiTexturingProperty* t = G<NiTexturingProperty>(texturing);
@@ -1041,67 +1215,252 @@ const NiTexturingMap* BaseMap(GuestPtr texturing) noexcept {
     const GuestPtr base = R32(t->maps);
     return Plausible(base) ? G<NiTexturingMap>(base) : nullptr;
 }
-
-// True if the effect state holds a projected light/shadow with the clipping flag (pipeline +0x770 != 0).
-bool HasClippedTextureEffects(GuestPtr effectState) noexcept {
-    if (!Plausible(effectState)) {
-        return false;
+GuestPtr MapAt(const NiTexturingProperty* t, std::uint32_t index) noexcept {
+    if (!Plausible(t->maps) || index >= t->mapsMaxSize) {
+        return 0;
     }
-    const NiDynamicEffectState* es = G<NiDynamicEffectState>(effectState);
-    for (GuestPtr list : {es->projectedLights, es->projectedShadows}) {
-        int guard = 0;
-        for (GuestPtr node = list; Plausible(node) && guard < 256; ++guard) {
-            const NiListNode* n = G<NiListNode>(node);
-            if (Plausible(n->item) && R8(n->item + kNiTextureEffectClipped) != 0) {
-                return true;
-            }
-            node = n->next;
-        }
-    }
-    return false;
+    const GuestPtr map = R32(t->maps + 4 * index);
+    return Plausible(map) ? map : 0;
 }
 
-// Default pipeline vf2 0x164360 (single-stage path 0x16437D..0x16444E, end 0x1650A8..0x1650DE) and the screen
-// pipeline vf2 FUN_00160270. Multi-map/effect paths (vf2 0x164453 ff.) keep only the base map stage (P2).
-void BuildPass(StateShadow& s, GuestPtr texturing, GuestPtr effectState, std::uint32_t uvSetCount,
-               bool screen, PassSetup* pass) noexcept {
+// Default pipeline vf2 0x164360 (FUN_00164200 ran before: CaptureEffectStages): the passes of one draw.
+void BuildPasses(const ExtractContext& context, StateShadow& s, GuestPtr texturing, GuestPtr alphaProperty,
+                 std::uint32_t uvSetCount, PipelineBuild* out) noexcept {
+    PipelineBuild& b = *out;
+    EffectStageCache& fx = s.effects;
     const NiTexturingProperty* t = G<NiTexturingProperty>(texturing);
     const NiTexturingMap* base = BaseMap(texturing);
-    const GuestPtr texture = base != nullptr ? base->texture : 0;
-    const std::uint32_t clamp = base != nullptr ? base->clamp : 3;
-    const std::uint32_t filter = base != nullptr ? base->filter : 0;
-    // Screen pipeline: UV set 0 (FUN_00160270 pushes 0); default pipeline: the map's UV set.
-    const std::uint32_t uvSet = screen ? 0 : (base != nullptr ? base->uvSet : 0);
-    const bool notReplace = t->applyMode != kApplyReplace;
-
-    if (screen) {
-        pass->path = TexturePath::Screen;
-    } else if (t->hasNonBaseMaps != 0 || HasClippedTextureEffects(effectState)) {
-        pass->path = TexturePath::MultiMap;
-        ++s.counters.multiMapApproximated;
-    } else {
-        pass->path = TexturePath::SingleStage;
+    const bool notReplace = t->applyMode != kApplyReplace;  // 0x1643B9 -> [esp+0x4C]
+    // 0x1643E2: the base map stage (type 2); a missing map counts as clamp 3, filter 0.
+    PipeStage* baseStage = MakeMapStage(s, b, base != nullptr ? base->texture : 0, base != nullptr ? base->clamp : 3,
+                                        base != nullptr ? base->filter : 0, kMapTypeBase,
+                                        base != nullptr ? base->uvSet : 0, uvSetCount);
+    b.defaultStage = PipeStage{};
+    b.defaultStage.type = kMapTypeBase;  // FUN_001633F0: +0x738 = 2 (the ctor's 9 is overwritten at init)
+    for (std::uint32_t i = 0; i < fx.lightClippedCount; ++i) {
+        fx.lightClips[i].hostTexture = context.clipTexture;
+    }
+    for (std::uint32_t i = 0; i < fx.shadowClippedCount; ++i) {
+        fx.shadowClips[i].hostTexture = context.clipTexture;
     }
 
-    PipeStage st;
-    if (MakeMapStage(s, texture, clamp, filter, kMapTypeBase, uvSet, uvSetCount, &st)) {
-        st.notReplace = notReplace;  // FUN_00163E20 succeeded: +0x90 = (applyMode != 0)
-    } else {
-        // Default stage +0x6A4 (ctor: no texture, type 9, +0x90 = 1; the screen pipeline sets +0x734 =
-        // applyMode != 0).
-        st = PipeStage{};
-        st.notReplace = screen ? notReplace : true;
+    if (fx.stageCount == 0 && t->hasNonBaseMaps == 0) {
+        // Single-stage path 0x16440C..0x16444E.
+        if (!AddStage(b, baseStage, 1, 1)) {
+            AddStage(b, &b.defaultStage, 1, 1);
+            SetupStage(&b.defaultStage);
+            return;
+        }
+        baseStage->notReplace = notReplace;
+        SetupStage(baseStage);
+        return;
     }
-    SetupStageOps(&st, 0);
-    pass->stages[0] = st;
-    pass->count = 1;
+    ++s.counters.multiMapDraws;
+    b.multi = true;
+
+    // 0x164453: the other maps (only with UV sets).
+    std::uint32_t decals = 0;
+    GuestPtr gloss = 0;
+    PipeStage *detailStage = nullptr, *glowStage = nullptr, *darkStage = nullptr;
+    if (uvSetCount != 0) {
+        decals = t->mapsSize >= 6 ? t->mapsSize - 6 : 0;  // 0x164477 (REN: size - 6 unsigned; sizes < 6 do not occur)
+        if (decals == 1 && MapAt(t, kMapDecal) == 0) {
+            decals = 0;
+        }
+        gloss = MapAt(t, kMapGloss);
+        detailStage = MakeMapStage(s, b, MapAt(t, kMapDetail), 3, uvSetCount);
+        glowStage = MakeMapStage(s, b, MapAt(t, kMapGlow), 0, uvSetCount);
+        darkStage = MakeMapStage(s, b, MapAt(t, kMapDark), 2, uvSetCount);
+    }
+
+    if (fx.lightCount == 0 && fx.lightClippedCount == 0) {
+        // 0x164530: base + detail in the current pass, then the dark map (0x1648F2).
+        PassBuild& p = GetPass(b, 2, 2);
+        if (AddTwo(b, p, baseStage, detailStage, true) != 0) {
+            baseStage->notReplace = notReplace;
+            SetupStage(baseStage);
+            SetupStage(detailStage);
+        } else if (darkStage != nullptr) {
+            darkStage->notReplace = notReplace;
+        } else {
+            AddStage(b, &b.defaultStage, 1, 1);
+            SetupStage(&b.defaultStage);
+        }
+        AddStage(b, darkStage, 1, 1);
+        SetupStage(darkStage);
+    } else {
+        // 0x1645B8: projected lights first - each clipped light opens a pass {light, clip} filled up with the dark map
+        // and non-clipped lights; then the remaining lights; the base map follows in a pass of its own (type 2:
+        // ZERO + SRCCOLOR, the lit picture times the base map).
+        std::uint32_t remaining = fx.lightCount;
+        bool darkPending = darkStage != nullptr;
+        for (std::uint32_t i = 0; i < fx.lightClippedCount; ++i) {
+            NewPass(b);
+            PassBuild& p = GetPass(b, 2, 2);
+            AddTwo(b, p, &fx.lightsClipped[i], &fx.lightClips[i], true);
+            SetupStage(&fx.lightsClipped[i]);
+            SetupStage(&fx.lightClips[i]);
+            std::uint32_t free = kMaxPassStages - 2;  // max(DAT_002D85D4, DAT_002D85D0) - 2
+            if (free == 0) {
+                continue;
+            }
+            if (darkPending) {
+                AddStage(b, darkStage, 1, 1);
+                darkPending = false;
+                SetupStage(darkStage);
+            }
+            while (remaining != 0) {
+                PipeStage* st = &fx.lights[--remaining];
+                AddOne(b, GetPass(b, 1, 1), st);
+                SetupStage(st);
+                if (--free == 0) {
+                    break;
+                }
+            }
+        }
+        if (darkPending) {
+            AddStage(b, darkStage, 1, 1);
+            SetupStage(darkStage);
+        }
+        while (remaining != 0) {
+            PipeStage* st = &fx.lights[--remaining];
+            AddOne(b, GetPass(b, 1, 1), st);
+            SetupStage(st);
+        }
+        NewPass(b);
+        PassBuild& p = GetPass(b, 2, 2);
+        if (AddTwo(b, p, baseStage, detailStage, true) != 0) {
+            baseStage->notReplace = notReplace;
+            SetupStage(baseStage);
+            SetupStage(detailStage);
+        } else {
+            AddStage(b, &b.defaultStage, 1, 1);
+            SetupStage(&b.defaultStage);
+        }
+    }
+
+    // 0x164908: decal maps, each in a pass of its own (type 1: SRCALPHA + INVSRCALPHA).
+    for (std::uint32_t i = 0; i < decals; ++i) {
+        PipeStage* st = MakeMapStage(s, b, MapAt(t, kMapDecal + i), 1, uvSetCount);
+        if (st == nullptr) {
+            continue;
+        }
+        st->notReplace = notReplace;
+        NewPass(b);
+        AddStage(b, st, 1, 1);
+        SetupStage(st);
+    }
+
+    // 0x164988: projected shadows - not on blended or alpha-tested geometry (0x1649A0..0x1649C2).
+    const std::uint32_t alpha = Plausible(alphaProperty) ? Flags(alphaProperty) : 0;
+    if ((fx.shadowCount != 0 || fx.shadowClippedCount != 0) && (alpha & 1u) == 0 && ((alpha >> 9) & 1u) == 0) {
+        std::uint32_t remaining = fx.shadowCount;
+        for (std::uint32_t i = 0; i < fx.shadowClippedCount; ++i) {
+            NewPass(b);
+            std::uint32_t free = kMaxPassStages;  // [esp+0x30] = max(DAT_002D85D4, DAT_002D85D0)
+            PassBuild& p = GetPass(b, 1, 1);
+            const std::uint32_t added = AddTwo(b, p, &fx.shadowsClipped[i], &fx.shadowClips[i], true);
+            SetupStage(&fx.shadowsClipped[i]);
+            if ((added & 2u) != 0) {
+                SetupStage(&fx.shadowClips[i]);
+            }
+            while (remaining != 0) {
+                PipeStage* st = &fx.shadows[--remaining];
+                st->type = 2;  // 0x164AFB
+                AddOne(b, GetPass(b, 1, 1), st);
+                SetupStage(st);
+                if (--free == 0) {
+                    break;
+                }
+            }
+        }
+        if (fx.shadowClippedCount == 0 && NeedsNewPass(b, 2, 1, 1)) {
+            NewPass(b);
+        }
+        while (remaining != 0) {
+            PipeStage* st = &fx.shadows[--remaining];
+            st->type = 2;
+            AddOne(b, GetPass(b, 1, 1), st);
+            SetupStage(st);
+        }
+    }
+
+    // 0x164CCD: environment map (with bump map and gloss map).
+    if (fx.envOn) {
+        PipeStage* env = &fx.env;
+        const GuestPtr bumpMap = MapAt(t, kMapBump);  // read without the UV set condition (0x164CE3)
+        std::uint32_t need = gloss != 0 ? 2 : 1;
+        PipeStage* bumpStage = bumpMap != 0 ? MakeMapStage(s, b, bumpMap, 8, uvSetCount) : nullptr;
+        if (bumpStage != nullptr) {
+            ++need;  // 0x164D3E (DAT_002D85D0 / DAT_002D85D4 are >= 3: a gloss map stays)
+        }
+        if (gloss != 0 || NeedsNewPass(b, 0, need, need)) {  // 0x164D44 / 0x164D46
+            NewPass(b);
+        }
+        bool envAdded = false;
+        // FUN_00162910: the bump stage takes the map's bump matrix; the manager's bump op (+0x104) is
+        // BUMPENVMAPLUMINANCE on the Xbox (TextureOpCaps 0x400000).
+        if (bumpStage != nullptr) {
+            bumpStage->bump = true;
+            bumpStage->notReplace = true;
+            PassBuild& p = GetPass(b, 2, 2);
+            AddTwo(b, p, bumpStage, env, true);
+            SetupStage(bumpStage);
+            SetupStage(env);
+            envAdded = true;
+            if (b.index != 0) {
+                env->ops[0] = kXTopSelectArg1;  // 0x164E2E: +0x2DEC = 2
+            }
+            ++s.counters.multiMapApproximated;  // the BUMPENVMAP perturbation is not emulated (ff_ubershader.hlsl)
+        }
+        if (gloss != 0) {
+            PipeStage* glossStage = MakeMapStage(s, b, gloss, 2, uvSetCount);
+            if (glossStage != nullptr) {
+                glossStage->notReplace = notReplace;
+            }
+            if (envAdded) {
+                AddStage(b, glossStage, 1, 1);
+            } else {
+                PassBuild& p = GetPass(b, 2, 2);
+                AddTwo(b, p, env, glossStage, true);
+                SetupStage(env);
+                envAdded = true;
+            }
+            SetupStage(glossStage);
+        }
+        if (!envAdded) {
+            AddOne(b, GetPass(b, 1, 1), env);
+            SetupStage(env);
+        }
+    }
+
+    // 0x164F4F: glow map - into the current pass if it is the first or starts with a type-0 stage (ADD), else a pass
+    // of its own (ONE + ONE).
+    if (glowStage != nullptr) {
+        if (NeedsNewPass(b, glowStage->type, 1, 1)) {
+            NewPass(b);
+        }
+        AddOne(b, GetPass(b, 1, 1), glowStage);
+        SetupStage(glowStage);
+    }
+
+    // 0x164FFD: fog map - a pass of its own (pipeline +8 = the passes vf3 drew for the previous draw, i.e. != 0 after
+    // the first draw), SRCALPHA + INVSRCALPHA.
+    if (fx.fogOn) {
+        if (s.pipelinePassesDrawn != 0) {
+            NewPass(b);
+        }
+        AddOne(b, GetPass(b, 1, 1), &fx.fog);
+        fx.fog.notReplace = false;  // +0x2F3C = 0
+        SetupStage(&fx.fog);
+    }
 }
 
 // Pass apply 0x15FFE0: FUN_00162020 per stage, FUN_00161CD0 for the next stage, TEXCOORDINDEX = stage after.
-void ApplyPass(const ExtractContext& context, StateShadow& s, const PassSetup& pass) noexcept {
+void ApplyStages(const ExtractContext& context, StateShadow& s, PipeStage* const* stages, std::uint32_t count) noexcept {
     std::uint32_t i = 0;
-    for (; i < pass.count && i < kMaxTextureStages; ++i) {
-        const PipeStage& st = pass.stages[i];
+    for (; i < count && i < kMaxTextureStages; ++i) {
+        const PipeStage& st = *stages[i];
         // FUN_00162020: texture through the texture manager vf2 0x15F930.
         if (st.texture == 0 && !st.hostTexture) {
             SetTexture(s, i, 0, {});
@@ -1143,6 +1502,7 @@ void ApplyPass(const ExtractContext& context, StateShadow& s, const PassSetup& p
         SetTss(s, i, tss::ALPHAARG1, st.ops[4]);
         SetTss(s, i, tss::ALPHAARG2, st.ops[5]);
         SetRs(s, rs::TEXTUREFACTOR, st.textureFactor);
+        // A bump stage's environment matrix (+0x98: BUMPENVMAT00..LOFFSET) has no consumer in the port.
     }
     if (i < kMaxTextureStages) {
         // FUN_00161CD0: no texture, COLOROP = ALPHAOP = DISABLE.
@@ -1155,23 +1515,33 @@ void ApplyPass(const ExtractContext& context, StateShadow& s, const PassSetup& p
     }
 }
 
-// ---- M8: projected shadows (NiTextureEffect type 1) -----------------------------------------------------------
-//
-// The default pipeline (vtable 0x2AC104) turns every switched-on texture effect with a texture into a stage
-// (FUN_00164200 -> FUN_00163F10): the effect's texture, its clamp (+0x164, FUN_00159E00) and filter (+0x160,
-// FUN_00159E20), TEXCOORDINDEX = CAMERASPACEPOSITION and TTFF COUNT2 with the matrix of the coordinate-mode handler
-// (+0x774 + 4 * mode; WORLD_PARALLEL 0x162C90). An effect with the clipping flag (+0x170) gets a second stage that
-// samples the 2 x 1 clipping texture with the plane distance (FUN_00162BB0). vf2 then builds the passes of the
-// projected shadows (0x164A20..0x164CCD) - only for geometry whose NiAlphaProperty neither blends nor alpha-tests:
-//   - each clipped shadow: a new pass {shadow stage, clip stage}, then non-clipped shadows into its free stages;
-//   - the remaining non-clipped shadows: stages of further passes, four per pass.
-// Every pass blends with the table entry of its first stage's type (2: ZERO / SRCCOLOR - the frame buffer is
-// multiplied by the shadow texture, white = no shadow); stage 0 selects the texture (+0x90 = 0), later stages use
-// the second op table (clip: ADD, shadow: MODULATE).
-// Deviation: with no clipped shadow REN puts the non-clipped ones into the first pass when its first stage is a base
-// map and has room (FUN_00162670(2, 1, 1)); here they always get their own passes (same result for opaque maps). The
-// game's own shadow (FUN_00038070 / FUN_0003B960) is clipped. Projected lights, environment and fog maps and other
-// coordinate modes are not reproduced (counted).
+// The screen pipeline (vtable 0x2ABDB0, vf2 FUN_00160270): the base map of the NiScreenTexture's property, UV set 0.
+void ScreenStage(StateShadow& s, GuestPtr texturing, PipeStage* out) noexcept {
+    const NiTexturingProperty* t = G<NiTexturingProperty>(texturing);
+    const NiTexturingMap* base = BaseMap(texturing);
+    PipeStage st;
+    const GuestPtr texture = base != nullptr ? base->texture : 0;
+    if (texture != 0) {
+        std::uint32_t clamp = base->clamp;
+        if (clamp > 3) {
+            ++s.counters.invalidMapModes;
+            clamp = 3;
+        }
+        st.texture = texture;
+        st.addressU = kClampTable[clamp][0];
+        st.addressV = kClampTable[clamp][1];
+        st.filter = base->filter;
+        st.type = kMapTypeBase;
+        st.texCoordIndex = 0;
+        st.ttff = 0;
+    } else {
+        st.type = kMapTypeDefault;  // default stage +0x6A4 of the screen pipeline (ctor type 9)
+    }
+    st.notReplace = t->applyMode != kApplyReplace;  // +0x90 (texture) / +0x734 (default stage) = applyMode != 0
+    st.passIndex = 0;
+    SetupStage(&st);
+    *out = st;
+}
 
 }  // namespace
 
@@ -1186,7 +1556,16 @@ Matrix4 ProjectedShadowTransform(const Float3 inverseView[4], const float projec
                                static_cast<double>(v.z) * projection[2][c];
             m.m[r][c] = static_cast<float>(r == 3 ? sum + translation[c] : sum);
         }
-        m.m[r][3] = 0.0f;  // stage ctor FUN_00161B20 zeroes +0x4C..+0x8B
+        m.m[r][3] = 0.0f;  // the stage arrays' init zeroes +0x4C..+0x8B (FUN_001633F0 / FUN_00163A40)
+    }
+    return m;
+}
+
+Matrix4 SphereMapTransform(const Float3 inverseView[4], const float projection[3][4],
+                           const float translation[3]) noexcept {
+    Matrix4 m = ProjectedShadowTransform(inverseView, projection, translation);
+    for (int c = 0; c < 3; ++c) {
+        m.m[3][c] = translation[c];  // 0x163143..0x163154: the translation alone (a normal has no position)
     }
     return m;
 }
@@ -1205,32 +1584,181 @@ Matrix4 ShadowClipTransform(const Float3 inverseView[4], const Float3& planeNorm
     return m;
 }
 
+Matrix4 LightClipTransform(const Float3 inverseView[4], const Float3& planeNormal, float planeConstant) noexcept {
+    Matrix4 m{};
+    const double nx = planeNormal.x, ny = planeNormal.y, nz = planeNormal.z;
+    for (int r = 0; r < 4; ++r) {
+        const Float3& v = inverseView[r];
+        double sum = nx * v.x + ny * v.y + nz * v.z;
+        if (r == 3) {
+            sum = sum + 0.5 - static_cast<double>(planeConstant);  // FUN_00162AD0: (... + 0.5) - d
+        }
+        m.m[r][0] = static_cast<float>(sum);
+    }
+    return m;
+}
+
 namespace {
 
-// NiTextureEffect fields (FUN_00163F10, FUN_00162BB0, handler 0x162C90; FUN_0003B960 fills the model data).
+// NiTextureEffect fields (FUN_00163F10, FUN_00162AD0 / FUN_00162BB0, handlers +0x774; FUN_0003B960 fills them for the
+// game's shadow).
 constexpr std::uint32_t kEffectOn = 0xC0;            // NiDynamicEffect switch
 constexpr std::uint32_t kEffectProjection = 0x120;   // world projection, 3 rows of 4 floats
 constexpr std::uint32_t kEffectTranslation = 0x150;  // world projection translation
 constexpr std::uint32_t kEffectTexture = 0x15C;      // NiTexture*
 constexpr std::uint32_t kEffectFilter = 0x160;
 constexpr std::uint32_t kEffectClamp = 0x164;
-constexpr std::uint32_t kEffectCoordMode = 0x16C;    // 0 WORLD_PARALLEL
+constexpr std::uint32_t kEffectCoordMode = 0x16C;    // 0 WORLD_PARALLEL .. 4 DIFFUSE_CUBE_MAP
 constexpr std::uint32_t kEffectWorldPlane = 0x184;   // normal (3 floats) + constant (+0x190)
-constexpr std::uint32_t kMaxEffectStages = 8;        // FUN_00163F10: pipeline +0x770 < 8
-constexpr std::uint32_t kTciCameraSpacePosition = 0x20000;
-void DeriveState(const StateShadow& s, TexturePath path, RenderStateDesc* out) noexcept;  // below
-constexpr GuestPtr kPassAlphaProperty = 1;  // stands for the pipeline's pass NiAlphaProperty (REN's object)
-// Pass NiAlphaProperty for a first stage of type 2 (FUN_0015A120: +0x2F0 flags 0x43 = blend, ZERO / SRCCOLOR).
-constexpr std::uint32_t kShadowPassAlphaFlags = 0x43;
+// WORLD_PERSPECTIVE handler 0x162E60: TTFF = manager +0x310 = 0x103 (COUNT3 | PROJECTED) when TextureCaps has
+// D3DPTEXTURECAPS_PROJECTED 0x400 (FUN_00159F40 tail), else 2.
+// ASSUMPTION: the Xbox caps table has the projected bit (the NV2A divides texture coordinates by q).
+constexpr std::uint32_t kPerspectiveTtff = FF_TTFF_COUNT3 | FF_TTFF_PROJECTED;
 
-void ApplyPassAlpha(StateShadow& s) noexcept {
-    // FUN_001628B0 -> FUN_00159270(pass +0x38) for passes >= 1; the cache now holds the pipeline's property.
-    s.lastAlphaProperty = kPassAlphaProperty;
-    SetRs(s, rs::ALPHABLENDENABLE, 1);
-    SetRs(s, rs::SRCBLEND, kBlendTable[(kShadowPassAlphaFlags >> 1) & 0xFu]);
-    SetRs(s, rs::DESTBLEND, kBlendTable[(kShadowPassAlphaFlags >> 5) & 0xFu]);
-    SetRs(s, rs::ALPHATESTENABLE, 0);
+// FUN_00163F10 with the coordinate handler (+0x774 + 4 * mode): false = no stage (off, no texture, 8 effect stages
+// already, the texture manager's vf4 0x15F8A0 fails (0xE), or a coordinate mode beyond the handler table).
+// `type` = the stage array's type (FUN_001633F0).
+bool MakeEffectStage(StateShadow& s, GuestPtr effect, const Float3 inverseView[4], std::uint32_t type,
+                     PipeStage* out) noexcept {
+    EffectStageCache& fx = s.effects;
+    if (fx.stageCount >= kMaxEffectStages || R8(effect + kEffectOn) == 0) {
+        return false;
+    }
+    const GuestPtr texture = R32(effect + kEffectTexture);
+    if (!Plausible(texture)) {
+        return false;
+    }
+    // Texture manager vf4: the renderer data's format, or slot 65 creates the data of a source texture; else 0xE.
+    if (!Plausible(R32(texture + kNiTextureRendererData)) && R32(texture) != kNiSourceTextureVtable) {
+        ++s.counters.shadowEffectsSkipped;
+        return false;
+    }
+    const std::uint32_t mode = R32(effect + kEffectCoordMode);
+    if (mode > 4) {
+        ++s.counters.shadowEffectsSkipped;  // REN would call through the word after its five handlers
+        return false;
+    }
+    PipeStage e;
+    e.effect = effect;
+    e.texture = texture;
+    float projection[3][4];
+    std::memcpy(projection, G<float>(effect + kEffectProjection), sizeof(projection));
+    const float* translation = G<float>(effect + kEffectTranslation);
+    switch (mode) {
+    case 0:  // WORLD_PARALLEL 0x162C90
+        e.texCoordIndex = kTciCameraSpacePosition;
+        e.ttff = FF_TTFF_COUNT2;
+        e.transform = ProjectedShadowTransform(inverseView, projection, translation);
+        break;
+    case 1:  // WORLD_PERSPECTIVE 0x162E60
+        e.texCoordIndex = kTciCameraSpacePosition;
+        e.ttff = kPerspectiveTtff;
+        e.transform = ProjectedShadowTransform(inverseView, projection, translation);
+        break;
+    case 2:  // SPHERE_MAP 0x163040
+        e.texCoordIndex = FF_TCI_CAMERASPACENORMAL;
+        e.ttff = FF_TTFF_COUNT2;
+        e.transform = SphereMapTransform(inverseView, projection, translation);
+        break;
+    case 3:  // SPECULAR_CUBE_MAP 0x163160
+        e.texCoordIndex = FF_TCI_CAMERASPACEREFLECTIONVECTOR;
+        e.ttff = FF_TTFF_COUNT3;
+        e.transform = SphereMapTransform(inverseView, projection, translation);
+        break;
+    default:  // DIFFUSE_CUBE_MAP 0x163280
+        e.texCoordIndex = FF_TCI_CAMERASPACENORMAL;
+        e.ttff = FF_TTFF_COUNT3;
+        e.transform = SphereMapTransform(inverseView, projection, translation);
+        break;
+    }
+    ++fx.stageCount;
+    std::uint32_t clamp = R32(effect + kEffectClamp);
+    if (clamp > 3) {
+        ++s.counters.invalidMapModes;
+        clamp = 3;
+    }
+    e.addressU = kClampTable[clamp][0];
+    e.addressV = kClampTable[clamp][1];
+    e.filter = R32(effect + kEffectFilter);
+    e.type = type;
+    e.notReplace = false;  // +0x90 = 0
+    *out = e;
+    return true;
 }
+// FUN_00162AD0 (light) / FUN_00162BB0 (shadow): the clip stage of a clipped effect (stage arrays +0x1450 / +0x2114,
+// FUN_00163A40: clip texture, CLAMP, NEAREST, CAMERASPACEPOSITION, COUNT2; type 2 for lights, 0 for shadows).
+void MakeClipStage(StateShadow& s, GuestPtr effect, const Float3 inverseView[4], bool light, PipeStage* out) noexcept {
+    PipeStage c;
+    c.clip = true;
+    c.addressU = 3;
+    c.addressV = 3;
+    c.filter = 0;
+    c.texCoordIndex = kTciCameraSpacePosition;
+    c.ttff = FF_TTFF_COUNT2;
+    c.type = light ? 2u : 0u;
+    c.notReplace = false;
+    c.effect = effect;
+    const float* plane = G<float>(effect + kEffectWorldPlane);
+    c.transform = light ? LightClipTransform(inverseView, {plane[0], plane[1], plane[2]}, plane[3])
+                        : ShadowClipTransform(inverseView, {plane[0], plane[1], plane[2]}, plane[3]);
+    *out = c;
+    ++s.effects.stageCount;
+}
+
+// FUN_00164200: the effect stages, rebuilt when the effect state differs from the cached one (manager +0xB08; vf6
+// 0x162420 clears the counts first). The camera is the one current at that moment (manager +0xB10..+0xB48).
+void CaptureEffectStages(StateShadow& s, GuestPtr effectState, const CameraDesc& camera) noexcept {
+    EffectStageCache& fx = s.effects;
+    if (effectState == fx.effectState) {
+        return;
+    }
+    fx.lightCount = fx.lightClippedCount = fx.shadowCount = fx.shadowClippedCount = 0;
+    fx.envOn = fx.fogOn = false;
+    fx.stageCount = 0;
+    fx.effectState = effectState;
+    if (!Plausible(effectState)) {
+        return;
+    }
+    const Float3 inverseView[4] = {camera.right, camera.up, camera.direction, camera.location};
+    const NiDynamicEffectState* es = G<NiDynamicEffectState>(effectState);
+    const GuestPtr lists[2] = {es->projectedLights, es->projectedShadows};
+    for (int l = 0; l < 2; ++l) {
+        int guard = 0;
+        for (GuestPtr node = lists[l]; Plausible(node) && guard < 256; ++guard) {
+            const NiListNode* n = G<NiListNode>(node);
+            node = n->next;
+            const GuestPtr e = n->item;
+            if (!Plausible(e)) {
+                continue;
+            }
+            const bool clipped = R8(e + kNiTextureEffectClipped) != 0;
+            const std::uint32_t type = l == 0 ? 0u : 2u;
+            if (!clipped) {
+                PipeStage* arr = l == 0 ? fx.lights : fx.shadows;
+                std::uint32_t& count = l == 0 ? fx.lightCount : fx.shadowCount;
+                if (count < kMaxEffectStages && MakeEffectStage(s, e, inverseView, type, &arr[count])) {
+                    ++count;
+                }
+            } else {
+                PipeStage* arr = l == 0 ? fx.lightsClipped : fx.shadowsClipped;
+                PipeStage* clips = l == 0 ? fx.lightClips : fx.shadowClips;
+                std::uint32_t& count = l == 0 ? fx.lightClippedCount : fx.shadowClippedCount;
+                if (count < kMaxEffectStages && MakeEffectStage(s, e, inverseView, type, &arr[count])) {
+                    MakeClipStage(s, e, inverseView, l == 0, &clips[count]);
+                    ++count;
+                }
+            }
+        }
+    }
+    if (Plausible(es->environmentMap)) {
+        fx.envOn = MakeEffectStage(s, es->environmentMap, inverseView, 2, &fx.env);
+    }
+    if (Plausible(es->fogMap)) {
+        fx.fogOn = MakeEffectStage(s, es->fogMap, inverseView, 1, &fx.fog);
+    }
+}
+
+void DeriveState(const StateShadow& s, TexturePath path, RenderStateDesc* out) noexcept;  // below
 
 void CopyPass(const RenderStateDesc& d, PassDesc* out) noexcept {
     out->alphaBlendEnable = d.alphaBlendEnable;
@@ -1246,109 +1774,29 @@ void CopyPass(const RenderStateDesc& d, PassDesc* out) noexcept {
     out->textureFactor = d.textureFactor;
 }
 
-void AddShadowPasses(const ExtractContext& context, StateShadow& s, GuestPtr alphaProperty, GuestPtr effectState,
-                     const CameraDesc& camera, RenderStateDesc* state) noexcept {
-    if (!Plausible(effectState)) {
-        return;
-    }
-    const NiDynamicEffectState* es = G<NiDynamicEffectState>(effectState);
-    if (Plausible(es->projectedLights) || Plausible(es->environmentMap) || Plausible(es->fogMap)) {
-        ++s.counters.shadowEffectsSkipped;  // not reproduced (none seen in the levels so far)
-    }
-    if (!Plausible(es->projectedShadows)) {
-        return;
-    }
-    // 0x164A2B..0x164A49: no shadow pass on blended or alpha-tested geometry.
-    const std::uint32_t alpha = Plausible(alphaProperty) ? Flags(alphaProperty) : 0;
-    if ((alpha & 1u) != 0 || ((alpha >> 9) & 1u) != 0) {
-        return;
-    }
-    const Float3 inverseView[4] = {camera.right, camera.up, camera.direction, camera.location};
-    PipeStage clipped[kMaxEffectStages], clips[kMaxEffectStages], plain[kMaxEffectStages];
-    std::uint32_t clippedCount = 0, plainCount = 0, effects = 0;
-    int guard = 0;
-    for (GuestPtr node = es->projectedShadows; Plausible(node) && guard < 256 && effects < kMaxEffectStages; ++guard) {
-        const NiListNode* n = G<NiListNode>(node);
-        node = n->next;
-        const GuestPtr e = n->item;
-        if (!Plausible(e) || R8(e + kEffectOn) == 0 || !Plausible(R32(e + kEffectTexture))) {
-            continue;  // FUN_00163F10 returns false
+// Pipeline vf3 0x1628B0 for passes 1.. (FUN_00149AE0 loop): pass alpha, pass apply - the draw's extra passes.
+void EmitExtraPasses(const ExtractContext& context, StateShadow& s, const PipelineBuild& b,
+                     RenderStateDesc* state) noexcept {
+    std::uint32_t extra = 0;
+    for (std::uint32_t p = 1; p <= b.index && p < kMaxPasses; ++p) {
+        const PassBuild& pass = b.passes[p];
+        if (pass.used < 0 || pass.count == 0) {
+            continue;  // 0x15FFEB: an empty pass returns 0x40000000 (no draw)
         }
-        if (R32(e + kEffectCoordMode) != 0) {
-            ++s.counters.shadowEffectsSkipped;
-            continue;
-        }
-        PipeStage st;
-        st.texture = R32(e + kEffectTexture);
-        std::uint32_t clamp = R32(e + kEffectClamp);
-        if (clamp > 3) {
-            ++s.counters.invalidMapModes;
-            clamp = 3;
-        }
-        st.addressU = kClampTable[clamp][0];
-        st.addressV = kClampTable[clamp][1];
-        st.filter = R32(e + kEffectFilter);
-        st.texCoordIndex = kTciCameraSpacePosition;
-        st.ttff = FF_TTFF_COUNT2;
-        float projection[3][4];
-        std::memcpy(projection, G<float>(e + kEffectProjection), sizeof(projection));
-        st.transform = ProjectedShadowTransform(inverseView, projection, G<float>(e + kEffectTranslation));
-        st.notReplace = false;  // FUN_00163F10 +0x90 = 0
-        st.type = 2;            // stage arrays +0x1AB4 / +0x2778: type 2 (FUN_001633F0)
-        ++effects;
-        if (R8(e + kNiTextureEffectClipped) == 0) {
-            plain[plainCount++] = st;
-            continue;
-        }
-        clipped[clippedCount] = st;
-        PipeStage& c = clips[clippedCount++];
-        c = PipeStage{};
-        c.hostTexture = context.clipTexture;  // +0xDEC; stages +0x2114: clamp, NEAREST, type 0 (FUN_00163A40)
-        c.addressU = 3;
-        c.addressV = 3;
-        c.filter = 0;
-        c.texCoordIndex = kTciCameraSpacePosition;
-        c.ttff = FF_TTFF_COUNT2;
-        const float* plane = G<float>(e + kEffectWorldPlane);
-        c.transform = ShadowClipTransform(inverseView, {plane[0], plane[1], plane[2]}, plane[3]);
-        c.type = 0;
-    }
-    // Passes: each clipped shadow with its clip stage, filled up with non-clipped shadows; then the rest, 4 per pass.
-    PassSetup passes[kMaxExtraPasses];
-    std::uint32_t passCount = 0, nextPlain = 0;
-    auto add = [](PassSetup& pass, const PipeStage& st) noexcept {
-        pass.stages[pass.count] = st;
-        SetupStageOps(&pass.stages[pass.count], pass.count);  // FUN_001629C0(stage, 0)
-        ++pass.count;
-    };
-    for (std::uint32_t i = 0; i < clippedCount && passCount < kMaxExtraPasses; ++i) {
-        PassSetup& pass = passes[passCount++];
-        add(pass, clipped[i]);
-        if (clips[i].hostTexture) {
-            add(pass, clips[i]);
-        }
-        while (nextPlain < plainCount && pass.count < kMaxTextureStages) {
-            add(pass, plain[nextPlain++]);
-        }
-    }
-    while (nextPlain < plainCount && passCount < kMaxExtraPasses) {
-        PassSetup& pass = passes[passCount++];
-        while (nextPlain < plainCount && pass.count < kMaxTextureStages) {
-            add(pass, plain[nextPlain++]);
-        }
-    }
-    for (std::uint32_t i = 0; i < passCount; ++i) {
-        passes[i].path = TexturePath::MultiMap;
-        ApplyPassAlpha(s);
-        ApplyPass(context, s, passes[i]);
+        ApplyPassAlpha(s, pass.stages[0]->type);
+        ApplyStages(context, s, pass.stages, pass.count);
         if (state != nullptr) {
             RenderStateDesc d;
             DeriveState(s, TexturePath::MultiMap, &d);
-            CopyPass(d, &state->extraPasses[i]);
-            state->passCount = 2 + i;
+            CopyPass(d, &state->extraPasses[extra]);
+            state->passCount = 2 + extra;
         }
+        if (pass.stages[0]->effect != 0 && R32(pass.stages[0]->effect + kNiTextureEffectType) == 1) {
+            ++s.counters.shadowPasses;
+        }
+        ++extra;
     }
-    s.counters.shadowPasses += passCount;
+    s.counters.extraPasses += extra;
 }
 
 // ---- lights (FUN_0015BF80 / FUN_0015BA40 / FUN_0015B6A0)
@@ -1759,11 +2207,26 @@ ExtractStatus ExtractState(const ExtractContext& context, const StateInput& inpu
     }
     const CameraDesc& camera = context.camera != nullptr ? *context.camera : *defaultCamera;
 
+    if (context.census != nullptr && !input.screenTexture) {
+        context.census->RecordDraw(p.texturing, input.effectState, Plausible(p.alpha) ? Flags(p.alpha) : 0u,
+                                   context.frame);
+    }
     // FUN_00159CD0
     ApplyProperties(s, p, camera, context.leftRightSwap);
-    // pipeline vf2 (stages of the pass; FUN_00164200 effect bookkeeping only matters for the P2 paths)
-    PassSetup pass;
-    BuildPass(s, p.texturing, input.effectState, input.uvSetCount, input.screenTexture, &pass);
+    // Pipeline vf2: FUN_00164200 (effect stages) and the passes of the draw (screen textures: the screen pipeline).
+    PipelineBuild build;
+    PipeStage screenStage;
+    PipeStage* const screenStages[1] = {&screenStage};
+    if (input.screenTexture) {
+        ScreenStage(s, p.texturing, &screenStage);
+    } else {
+        CaptureEffectStages(s, input.effectState, camera);
+        BuildPasses(context, s, p.texturing, p.alpha, input.uvSetCount, &build);
+        if (build.overflow) {
+            ++s.counters.passOverflows;
+            ++s.counters.multiMapApproximated;
+        }
+    }
     // VertexBlend (rs+0xE8 = 0, FUN_00158DE0) - no visible state.
     SetRs(s, rs::VERTEXBLEND, 0);
     // FUN_001489A0 -> FUN_00159200 (not for the screen pipeline: flags 0x800000)
@@ -1773,15 +2236,23 @@ ExtractStatus ExtractState(const ExtractContext& context, const StateInput& inpu
     // FUN_0015BF80
     ApplyLighting(context, s, input.effectState, p.texturing, p.vertexColor);
     // pass 1: vf3 0x1628B0 -> pass apply 0x15FFE0
-    ApplyPass(context, s, pass);
+    if (input.screenTexture) {
+        ApplyStages(context, s, screenStages, 1);
+    } else {
+        ApplyStages(context, s, build.passes[0].stages, build.passes[0].count);
+    }
 
     ++s.counters.states;
     if (state != nullptr) {
-        DeriveState(s, pass.path, state);
+        DeriveState(s,
+                    input.screenTexture ? TexturePath::Screen
+                                        : (build.multi ? TexturePath::MultiMap : TexturePath::SingleStage),
+                    state);
     }
-    // M8: the projected shadow passes (vf2 0x164A20 ff.; vf3 for passes >= 1, FUN_00149AE0 loop).
+    // Passes 2.. (vf3 for pass index >= 1 in the FUN_00149AE0 loop); pipeline +8 = the passes vf3 applied.
     if (!input.screenTexture) {
-        AddShadowPasses(context, s, p.alpha, input.effectState, camera, state);
+        EmitExtraPasses(context, s, build, state);
+        s.pipelinePassesDrawn = build.index + 1;
     }
     if (lights != nullptr) {
         *lights = s.lights;

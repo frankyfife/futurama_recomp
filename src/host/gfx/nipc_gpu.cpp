@@ -7,6 +7,7 @@
 #include "gfx/gfx_config.h"
 #include "gfx/interp_history.h"
 #include "gfx/movie_uv.h"
+#include "gfx/multimap_census.h"
 #include "gfx/outline.h"
 #include "gfx/rhi/d3d11/d3d11_device.h"
 #include "gfx/widescreen.h"
@@ -254,6 +255,7 @@ struct GpuRenderer::Impl {
     ff::FixedFunctionPipeline ff;
     ni::ExtractArena arena;
     ni::StateShadow shadow;
+    ni::MultiMapCensus census;  // M3e-Rest diagnostics (exit report)
     ni::DrawItem item;  // one draw at a time (guest main thread); too large for the slot stack frames
     ni::CameraDesc camera;
     rhi::Viewport viewport;
@@ -514,6 +516,7 @@ struct GpuRenderer::Impl {
         c.resolveUser = resolveUser;
         c.shadow = &shadow;
         c.clipTexture = clipTexture;
+        c.census = &census;
         return c;
     }
 
@@ -1956,18 +1959,22 @@ void GpuRenderer::LogStatistics() noexcept {
     const ni::ExtractCounters& e = d.shadow.counters;
     FUT_LOGI(
         Gfx,
-        "ni_extract: %llu states, %llu multi-map approximated, %llu with texture effects, %llu light "
+        "ni_extract: %llu states, %llu multi-map draws (%llu approximated, %llu pass overflows), %llu with texture "
+        "effects, %llu light "
         "evaluations (%llu lights dropped, %llu unknown types), %llu skinned draws (%llu deforms, %llu cache "
-        "hits), %llu invalid map modes, %llu unresolved textures, %llu enabled lights purged (slot 60), %llu projected "
-        "shadow passes, %llu texture effects not reproduced",
-        static_cast<unsigned long long>(e.states), static_cast<unsigned long long>(e.multiMapApproximated),
+        "hits), %llu invalid map modes, %llu unresolved textures, %llu enabled lights purged (slot 60), %llu extra "
+        "passes (%llu projected shadow passes), %llu texture effects not reproduced",
+        static_cast<unsigned long long>(e.states), static_cast<unsigned long long>(e.multiMapDraws),
+        static_cast<unsigned long long>(e.multiMapApproximated), static_cast<unsigned long long>(e.passOverflows),
         static_cast<unsigned long long>(e.textureEffectDraws),
         static_cast<unsigned long long>(e.lightEvaluations), static_cast<unsigned long long>(e.lightsDropped),
         static_cast<unsigned long long>(e.unknownLightTypes), static_cast<unsigned long long>(e.skinnedDraws),
         static_cast<unsigned long long>(e.skinDeforms), static_cast<unsigned long long>(e.skinCacheHits),
         static_cast<unsigned long long>(e.invalidMapModes),
         static_cast<unsigned long long>(e.unresolvedTextures), static_cast<unsigned long long>(e.lightsPurged),
-        static_cast<unsigned long long>(e.shadowPasses), static_cast<unsigned long long>(e.shadowEffectsSkipped));
+        static_cast<unsigned long long>(e.extraPasses), static_cast<unsigned long long>(e.shadowPasses),
+        static_cast<unsigned long long>(e.shadowEffectsSkipped));
+    d.census.Log();
     const rhi::DeviceStats ds = d.device->Stats();
     FUT_LOGI(Gfx,
              "d3d11 device: %llu draws, %llu primitives, %llu presents, %llu MiB transient, %u pipelines, %u "

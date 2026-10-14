@@ -1483,3 +1483,65 @@ TEST_CASE("ff render: an upscaled texture target without the B19 shift is covere
         }
     }
 }
+
+TEST_CASE("ff render: the game's sphere-mapped toon ramp (M3e-Rest environment map) as stage and as multiply pass") {
+    // Every level draws its characters and props with an NiTextureEffect environment map: SPHERE_MAP (handler
+    // 0x163040: CAMERASPACENORMAL, COUNT2, M = inverse view * P, row 3 = T) of a 16 x 1 ramp (white, then 0xDD) with
+    // P = rows (0, 0, 0) (0, -0.5, 0) (0.5, 0, 0) and T = (0.5, 0.5, 0) (Level1-1 measurement). Identity camera: u =
+    // 0.5 * n.z + 0.5. In the base pass it is stage 1 (MODULATE); after a shadow pass it gets a pass of its own with the
+    // pass alpha of type 2 (ZERO + SRCCOLOR) - both give base * ramp.
+    Harness h;
+    if (!h.Ok()) return;
+    std::vector<std::uint32_t> ramp(16);
+    for (int x = 0; x < 16; ++x) {
+        ramp[x] = x < 8 ? Bgra(255, 255, 255, 255) : (x == 8 ? Bgra(0xEE, 0xEE, 0xEE, 0xEE) : Bgra(0xDD, 0xDD, 0xDD, 0xDD));
+    }
+    const rhi::TextureHandle rampTexture = h.Texture(16, 1, ramp);
+    const Float3 inverseView[4] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}};
+    const float projection[3][4] = {{0, 0, 0, 0}, {0, -0.5f, 0, 0}, {0.5f, 0, 0, 0}};
+    const float translation[3] = {0.5f, 0.5f, 0.0f};
+    const Matrix4 sphere = ni::SphereMapTransform(inverseView, projection, translation);
+    const Rgba base{0.8f, 0.4f, 0.2f, 1.0f};
+    for (const float nz : {-0.5f, 0.5f}) {
+        CAPTURE(nz);
+        Quad quad(0.5f, base);
+        for (int i = 0; i < 4; ++i) {
+            quad.normals[i * 3 + 2] = nz;
+        }
+        const float shade = nz < 0 ? 1.0f : 0xDD / 255.0f;  // u = 0.25 (white) / 0.75 (0xDD)
+        const Rgba expected{base.r * shade, base.g * shade, base.b * shade, 1.0f};
+        ni::DrawItem item = quad.Item(true);
+        item.geometry.normals = {quad.normals, 12};
+        // One pass: diffuse, then MODULATE with the ramp (later-stage table type 2).
+        SetStage(item.state.stages[0], FF_TOP_SELECTARG2, FF_TA_TEXTURE, FF_TA_DIFFUSE, FF_TOP_SELECTARG2, FF_TA_TEXTURE,
+                 FF_TA_DIFFUSE);
+        SetStage(item.state.stages[1], FF_TOP_MODULATE, FF_TA_TEXTURE, FF_TA_CURRENT, FF_TOP_MODULATE, FF_TA_TEXTURE,
+                 FF_TA_CURRENT);
+        ni::TextureStageDesc& env = item.state.stages[1];
+        env.texture = rampTexture;
+        env.texCoordIndex = FF_TCI_CAMERASPACENORMAL;
+        env.transformFlags = FF_TTFF_COUNT2;
+        env.transform = sphere;
+        item.state.stageCount = 2;
+        h.Clear();
+        REQUIRE(h.Draw(item) == ff::DrawResult::Drawn);
+        CheckPixel(h.Read(32, 32), expected, 1, false);
+        // Two passes: the base, then the ramp alone (SELECTARG1) blended ZERO + SRCCOLOR (fog off, z LESSEQUAL).
+        ni::DrawItem first = item;
+        first.state.stages[1] = ni::TextureStageDesc{};
+        first.state.stageCount = 1;
+        ni::DrawItem second = item;
+        second.state.stages[0] = env;
+        SetStage(second.state.stages[0], FF_TOP_SELECTARG1, FF_TA_TEXTURE, FF_TA_CURRENT, FF_TOP_SELECTARG1, FF_TA_TEXTURE,
+                 FF_TA_CURRENT);
+        second.state.stages[1] = ni::TextureStageDesc{};
+        second.state.stageCount = 1;
+        second.state.alphaBlendEnable = true;
+        second.state.srcBlend = rhi::BlendFactor::Zero;
+        second.state.dstBlend = rhi::BlendFactor::SrcColor;
+        h.Clear();
+        REQUIRE(h.Draw(first) == ff::DrawResult::Drawn);
+        REQUIRE(h.Draw(second) == ff::DrawResult::Drawn);
+        CheckPixel(h.Read(32, 32), expected, 1, false);
+    }
+}

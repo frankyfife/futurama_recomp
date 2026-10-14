@@ -589,6 +589,8 @@ Report deviations from this contract in your result instead of silently divergin
   **M8:** render to texture (own target per rendered texture, render resolution, MSAA resolved), the projected
   shadow passes and slot 52 points (camera-facing quads) are done (`src\INTERFACES.md` 4.39, `docs\m8_report.md`);
   projected lights, environment/fog maps, the other multi-map passes, lines (53) and batch slots stay open.
+  **M3e-Rest (2026-10-14):** the whole multi-map/effect path of the default pipeline is reproduced (section 16); lines
+  (53) and batch slots stay open (the game calls neither).
 - DAT_002F91D4 (spot angle scale) lies in BSS; ASSUMPTION pi until read at runtime.
 - NiPalette entry byte order and PAL alpha: ASSUMPTION until verified with game data.
 - The pipeline's base-map stage setup lives partly in Ghidra gap code (0x164360..0x1650F0).
@@ -947,3 +949,44 @@ full-screen NiScreenPolygon with it between `D3DDevice_SetRenderState_YuvEnable(
   UVs keep addressing it: `ApplyTexelAddressing` scales by `gfx::MovieTexelScale(W, H, hostW, hostH)`
   (`gfx\movie_uv.h`; texel u -> host texel u * hostW / W -> / hostW), so a 1280x960 pack picture covers exactly the
   screen area of the 640x480 frame. Exit line `d3d11 movie pack pictures (M6b): N frame uploads, up to WxH`.
+
+## 16. M3e-Rest: the whole default texture pipeline (multi-map and texture effect passes)
+
+Report `docs\m8b_report.md`, interface `src\INTERFACES.md` 4.42, deviations `docs\loader_design.md` 8.23 P2-10..P2-12.
+`ni_extract` reproduces the default pipeline (vtable 0x2AC104) completely instead of the base map plus the M8 shadow
+passes:
+
+- **vf2 0x164360** (Ghidra gap code, read with capstone): `BuildPasses` follows it branch by branch - single-stage path
+  when the pipeline has no effect stage (+0x770 = 0) and the property no other map (+0x1C = 0); else base + detail
+  (`FUN_001600E0`), dark (`FUN_00163E20`), or with projected lights first the light passes ({clipped light, clip
+  stage} + dark + plain lights, `max(stages, textures) - 2` per pass) and then the base pass of its own; decals each in
+  a new pass (`FUN_00162740`); projected shadows (not on blended or alpha-tested geometry); the environment map (with
+  bump and gloss map: `FUN_00162910`, `FUN_00162670(0, n, n)`); the glow map (`FUN_00162670(type 0, 1, 1)`: into
+  the current pass if it is pass 0 or starts with a type-0 stage); the fog map (a new pass whenever the previous
+  draw's vf3 ran, pipeline +0x08). Pass objects (+0x08 count, +0x0C used / -1, +0x10 textured stages), the room
+  rules (`FUN_0015FDD0`, `FUN_00162520`: 4 stages and 4 textures, DAT_002D85D0/D4) and the op tables
+  (`FUN_001629C0`, manager +0x108 first stage / +0x1F8 later stages, FUN_0015A120) are the original's.
+- **Effect stages** (`FUN_00164200` -> `FUN_00163F10` + coordinate handler +0x774 + 4 * mode; clip stages
+  `FUN_00162AD0` lights / `FUN_00162BB0` shadows) live in `StateShadow::effects` (`EffectStageCache`) and are rebuilt
+  only when the effect state differs from the cached one (manager +0xB08; `BeginScene` clears it like `FUN_00159EF0`),
+  with the camera current at that moment. Handlers: 0 WORLD_PARALLEL (CAMERASPACEPOSITION, COUNT2,
+  `ProjectedShadowTransform`), 1 WORLD_PERSPECTIVE (same matrix, COUNT3 | PROJECTED = manager +0x310), 2 SPHERE_MAP
+  (CAMERASPACENORMAL, COUNT2, `SphereMapTransform`: rows 0..2 inverse view * P, row 3 = T), 3 SPECULAR_CUBE_MAP
+  (CAMERASPACEREFLECTIONVECTOR, COUNT3), 4 DIFFUSE_CUBE_MAP (CAMERASPACENORMAL, COUNT3).
+- **Pass alpha** (vf3 0x1628B0 -> `FUN_00159270` for passes >= 1): the manager's NiAlphaProperty per type of the
+  pass's first stage (+0x2E8 + 4 * type): 0 / 8 ONE + ONE, 1 / 6 SRCALPHA + INVSRCALPHA, 2 ZERO + SRCCOLOR, 4 ZERO +
+  SRCCOLOR with alpha test GREATER 0x80, 3 / 5 / 7 / 9 opaque. Stage types: glow and projected lights 0, decal and fog
+  map 1, base / dark / gloss / environment map / shadows 2, detail 3, bump 8. The first pass keeps the geometry's own
+  alpha property (pass 0 is not always the base pass: with projected lights it is the light pass).
+- **Drawing**: pass 0 = `RenderStateDesc` stages, passes 1.. = `RenderStateDesc::extraPasses` (at most
+  `kMaxExtraPasses` = 8; more are counted as `passOverflows`), drawn by `GpuRenderer::DrawExtraPasses` with the
+  geometry, z, stencil, cull and lighting of pass 0 and fog off (FUN_00149AE0) - unchanged from M8.
+- **Not emulated** (counted as `multiMapApproximated`): the BUMPENVMAP(LUMINANCE) perturbation of a bump map stage
+  (the game has no bump map, static scan). The ubershader already had every op, TCI mode and TTFF the pipeline sets.
+- **Measured use** (static scan of all 753 NIFs, `analysis\loader\scripts\m8b_multimap_scan.py`, and the census of
+  all 22 levels): environment map (sphere map, a 16 x 1 toon ramp white / 0xEE / 0xDD, NEAREST, WRAP) on characters
+  and props in every level, clipped projected shadows (M8), dark maps (1-6 fountain mist, 4-1 swamp), detail maps (4-1
+  swamp), glow maps (3-2 lava lamps). No gloss, bump or decal map, no projected light, no fog map.
+- **Diagnostics**: `gfx\multimap_census.h` (exit lines `multi-map census: ...`: draws per role, combinations,
+  textures with their G2 content hash); exit line `ni_extract: ... multi-map draws (N approximated, M pass overflows)
+  ... extra passes (S projected shadow passes), K texture effects not reproduced`.
