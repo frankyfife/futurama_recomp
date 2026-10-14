@@ -10,7 +10,7 @@
 //                          "min":<num>, "max":<num>, "step":<num>, "label":{..}, "help":{..},
 //                          "advanced":false, "restart_required":true,
 //                          "unit":"%",
-//                          "ui":{"tab":"game|graphics|audio|controls|paths|advanced", "order":10,
+//                          "ui":{"tab":"game|graphics|audio|controls|cheats|paths|advanced", "order":10,
 //                                "widget":"combo|check|spin|dspin|text|file|dir|resolution|monitor|binding|slider|
 //                                          audio_device"}}]}]}
 //
@@ -19,6 +19,7 @@
 // M5: tab "audio" (section [audio] falls back to it) and widget "audio_device" (a string holding a Windows audio
 // endpoint ID, empty = the Windows default device; [audio] device of type string is shown with it even when the
 // schema names no widget).
+// G8: tab "cheats" (section [cheats] falls back to it).
 //
 // Tolerant parsing: unknown fields are ignored; an unknown type is read as "string", an unknown widget
 // falls back to the type's widget, a missing ui.tab to the section's usual tab - each with a warning.
@@ -37,16 +38,17 @@
 namespace fl {
 
 enum class KeyType { Choice, Bool, Int, Float, String, PathFile, PathDir, Resolution };
-enum class UiTab { Game, Graphics, Paths, Advanced, Controls, Audio };
+enum class UiTab { Game, Graphics, Paths, Advanced, Controls, Audio, Cheats };
 enum class UiWidget { Combo, Check, Spin, DSpin, Text, File, Dir, Resolution, Monitor, Binding, Slider, AudioDevice, Color, Fraction };
 
-// Order of the main window's tabs (M4: "Steuerung" after "Grafik"; M5: "Audio" between them).
-inline constexpr UiTab kAllTabs[] = {UiTab::Game,     UiTab::Graphics, UiTab::Audio,
-                                     UiTab::Controls, UiTab::Paths,    UiTab::Advanced};
+// Order of the main window's tabs (M4: "Steuerung" after "Grafik"; M5: "Audio" between them; G8: "Cheats" after
+// "Steuerung").
+inline constexpr UiTab kAllTabs[] = {UiTab::Game,     UiTab::Graphics, UiTab::Audio, UiTab::Controls,
+                                     UiTab::Cheats,   UiTab::Paths,    UiTab::Advanced};
 
 QString KeyTypeName(KeyType type);
 std::optional<KeyType> ParseKeyType(const QString& name);
-QString UiTabName(UiTab tab);  // "game", "graphics", "audio", "controls", "paths", "advanced"
+QString UiTabName(UiTab tab);  // "game", "graphics", "audio", "controls", "cheats", "paths", "advanced"
 std::optional<UiTab> ParseUiTab(const QString& name);
 QString UiWidgetName(UiWidget widget);
 std::optional<UiWidget> ParseUiWidget(const QString& name);

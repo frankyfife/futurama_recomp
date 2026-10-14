@@ -84,6 +84,8 @@ const char* TabFileName(UiTab tab) {
         return "controls";
     case UiTab::Audio:
         return "audio";
+    case UiTab::Cheats:
+        return "cheats";
     case UiTab::Paths:
         return "paths";
     case UiTab::Advanced:

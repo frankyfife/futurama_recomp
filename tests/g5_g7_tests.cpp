@@ -298,7 +298,7 @@ TEST_CASE("G7: [cheats] level_skip schema row (formerly [game] level_skip_cheat)
     const core::ConfigKeyDef* key = core::FindConfigKey("cheats", "level_skip");
     REQUIRE(key != nullptr);
     CHECK(key->type == core::ConfigKeyType::Bool);
-    CHECK(key->tab == core::ConfigUiTab::Game);
+    CHECK(key->tab == core::ConfigUiTab::Cheats);
     CHECK(core::FindConfigKey("game", "level_skip_cheat") == nullptr);  // old name: only an accepted alias
 }
 

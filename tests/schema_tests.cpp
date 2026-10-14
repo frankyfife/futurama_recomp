@@ -524,7 +524,8 @@ TEST_CASE("schema: --print-config-schema JSON follows the shared contract (item 
             CHECK(key["dynamic_default"].IsBool());
             // M4 (input agent): tab "controls", widgets "binding" and "slider" (src/INTERFACES.md 4.26).
             // M5 (tooling/launcher agent): tab "audio", widget "audio_device" (src/INTERFACES.md 4.29).
-            static const std::set<std::string> kTabs = {"game", "graphics", "paths", "advanced", "controls", "audio"};
+            static const std::set<std::string> kTabs = {"game", "graphics", "paths", "advanced", "controls", "audio",
+                                                        "cheats"};
             static const std::set<std::string> kWidgets = {"combo",   "check",   "spin",   "dspin",
                                                            "text",    "file",    "dir",    "resolution",
                                                            "monitor", "binding", "slider", "audio_device",

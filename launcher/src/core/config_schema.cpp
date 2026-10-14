@@ -31,6 +31,7 @@ constexpr NamePair kTabNames[] = {
     {"advanced", static_cast<int>(UiTab::Advanced)},
     {"controls", static_cast<int>(UiTab::Controls)},
     {"audio", static_cast<int>(UiTab::Audio)},
+    {"cheats", static_cast<int>(UiTab::Cheats)},
 };
 constexpr NamePair kWidgetNames[] = {
     {"combo", static_cast<int>(UiWidget::Combo)},     {"check", static_cast<int>(UiWidget::Check)},
@@ -106,6 +107,9 @@ UiTab FallbackTab(const QString& section) {
     }
     if (section == QLatin1String("audio")) {
         return UiTab::Audio;
+    }
+    if (section == QLatin1String("cheats")) {
+        return UiTab::Cheats;
     }
     return UiTab::Advanced;
 }

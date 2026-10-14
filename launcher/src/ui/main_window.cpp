@@ -118,6 +118,8 @@ QString TabTitle(UiTab tab) {
         return T("tab.controls");
     case UiTab::Audio:
         return T("tab.audio");
+    case UiTab::Cheats:
+        return T("tab.cheats");
     case UiTab::Paths:
         return T("tab.paths");
     case UiTab::Advanced:

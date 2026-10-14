@@ -418,7 +418,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "(save, continue to the next level). Only works while the character is controllable (not in menus, "
               "cut scenes or the pause). The presses also reach the game (jump/attack). Formerly [game] "
               "level_skip_cheat."},
-     .tab = Tab::Game, .order = 69, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 69, .widget = W::Check},
     {.section = "cheats", .name = "invulnerable", .type = T::Bool, .defaultValue = "0",
      .label = {"Unverwundbar (↑ ↑ ↓ ↓ ← → ← →)", "Invulnerable (↑ ↑ ↓ ↓ ← → ← →)"},
      .help = {"Die Spielfigur nimmt keinen Schaden: Gegner, Geschosse, Explosionen, Fallen und schädliche Böden "
@@ -429,7 +429,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "reduce health, and no life is lost. As with the game's built-in god mode, only the death zones "
               "(bottomless pits, deadly water or lava) still kill - the character then restarts at the last "
               "checkpoint without losing a life."},
-     .tab = Tab::Game, .order = 70, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 70, .widget = W::Check},
     {.section = "cheats", .name = "one_hit_kill", .type = T::Bool, .defaultValue = "0",
      .label = {"Gegner sterben mit einem Treffer (← → ← → ↑ ↓ ↑ ↓)", "Enemies die with one hit (← → ← → ↑ ↓ ↑ ↓)"},
      .help = {"Jeder Treffer der Spielfigur tötet einen Gegner. Bosse (Panzer, Chickenwalker, Destructor) verlieren "
@@ -438,7 +438,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "Every hit of the character kills an enemy. Bosses (tank, chickenwalker, Destructor) lose a quarter "
               "of their health per hit so that their fight phases are kept. Characters the game itself makes "
               "invulnerable (e.g. plants, crocodile, sun god) stay invulnerable."},
-     .tab = Tab::Game, .order = 71, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 71, .widget = W::Check},
     {.section = "cheats", .name = "enemies_ignore", .type = T::Bool, .defaultValue = "0",
      .label = {"Feinde ignorieren mich (↓ ↑ ↓ ↑ → ← → ←)", "Enemies ignore me (↓ ↑ ↓ ↑ → ← → ←)"},
      .help = {"Gegner bemerken die Spielfigur nicht und greifen nicht an – so wie während der Zwischensequenzen. "
@@ -447,7 +447,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "Enemies do not notice the character and do not attack - just like during cut scenes. An enemy that "
               "is hit turns towards the character but does not attack. Bosses keep fighting; projectiles already "
               "in flight and traps still hit."},
-     .tab = Tab::Game, .order = 72, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 72, .widget = W::Check},
     // G8 part 2 (2026-10-14, xapi/cheats_player.cpp).
     {.section = "cheats", .name = "teleport_freecam", .type = T::Bool, .defaultValue = "0",
      .label = {"Zur Freecam teleportieren (Freecam: RB / T) (→ → ← ← ↑ ↑ ↓ ↓)",
@@ -462,7 +462,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "flash). Not in the Chicken Walker (1-7), at the cannon (2-6) and on the rat (4-1), and not while the "
               "character is being held. Careful: placing the character behind doors or triggers can skip level "
               "scripts and get stuck."},
-     .tab = Tab::Game, .order = 74, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 74, .widget = W::Check},
     {.section = "cheats", .name = "moon_jump", .type = T::Bool, .defaultValue = "0",
      .label = {"Mondsprung (LB + B halten) (↑ → ↓ ← ↑ → ↓ ←)", "Moon jump (hold LB + B) (↑ → ↓ ← ↑ → ↓ ←)"},
      .help = {"Solange LB und B (Springen) gedrückt sind, steigt die Spielfigur nach oben – auch Zoidberg mit der "
@@ -472,7 +472,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "While LB and B (jump) are held, the character rises - Zoidberg on the rat in level 4-1 too. Released: "
               "it falls normally, the landing afterwards causes no fall damage. Keyboard with the default bindings: "
               "1 + Space. Press B first, then LB: then Fry does not switch his weapon (LB = previous weapon)."},
-     .tab = Tab::Game, .order = 75, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 75, .widget = W::Check},
     {.section = "cheats", .name = "jump_distance", .type = T::Float, .defaultValue = "0.0", .ranged = true,
      .min = 0.0, .max = 2.0, .step = 0.1,
      .label = {"Sprungweite um x Meter erhöhen", "Increase the jump distance by x metres"},
@@ -483,7 +483,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "Every running jump lands this many metres further (Fry, Bender, Leela and the rat in 4-1); height and "
               "flight time stay. Standing jumps are unchanged. 0 = off. Scale: 10 game units = 1 m. Careful: on jump "
               "passages with narrow platforms the character can overshoot."},
-     .tab = Tab::Game, .order = 76, .widget = W::DSpin, .unit = "m"},
+     .tab = Tab::Cheats, .order = 76, .widget = W::DSpin, .unit = "m"},
     {.section = "cheats", .name = "infinite_ammo", .type = T::Bool, .defaultValue = "0",
      .label = {"Unendlich Munition (↓ ↓ ↑ ↑ ← ← → →)", "Infinite ammo (↓ ↓ ↑ ↑ ← ← → →)"},
      .help = {"Fry verbraucht keine Munition (Pistole, Schrotflinte, Maschinengewehr, Railgun); die Anzeige bleibt "
@@ -493,7 +493,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "Fry uses no ammo (pistol, shotgun, machine gun, railgun); the counter stays, an empty magazine is "
               "refilled. The Chicken Walker (1-7) always has full laser energy and loses no rockets, the cannon "
               "(2-6) no shots. Bender and Leela use no charge for their special attacks."},
-     .tab = Tab::Game, .order = 77, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 77, .widget = W::Check},
     {.section = "cheats", .name = "ingame_toggles", .type = T::Bool, .defaultValue = "0",
      .label = {"Cheats im Spiel per Steuerkreuz umschalten", "Toggle cheats in game with the D-pad"},
      .help = {"Im Level schaltet je eine Folge auf dem Steuerkreuz (Tastatur: Pfeiltasten) einen Cheat an oder aus, "
@@ -505,7 +505,7 @@ constexpr ConfigKeyDef kKeys[] = {
               "(8 presses within 5 seconds): invulnerable = ↑ ↑ ↓ ↓ ← → ← →; one hit = ← → ← → ↑ ↓ ↑ ↓; enemies ignore "
               "me = ↓ ↑ ↓ ↑ → ← → ←; teleport to the freecam = → → ← ← ↑ ↑ ↓ ↓; moon jump = ↑ → ↓ ← ↑ → ↓ ←; infinite "
               "ammo = ↓ ↓ ↑ ↑ ← ← → →. Confirmation: a green (on) or red (off) flash and a short rumble."},
-     .tab = Tab::Game, .order = 78, .widget = W::Check},
+     .tab = Tab::Cheats, .order = 78, .widget = W::Check},
 
     // [render] - window and output (M3, gfx/gfx_config.h)
     // M3c (integration): monitor selection, platform/window.h WindowOptions::monitor. Type string: the values are
@@ -1728,6 +1728,8 @@ const char* ConfigUiTabName(ConfigUiTab tab) noexcept {
         return "controls";
     case ConfigUiTab::Audio:
         return "audio";
+    case ConfigUiTab::Cheats:
+        return "cheats";
     }
     return "advanced";
 }

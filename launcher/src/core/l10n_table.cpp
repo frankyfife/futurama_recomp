@@ -628,6 +628,7 @@ constexpr TranslationEntry kTable[] = {
     {"status.retry", "Erneut versuchen", "Try again"},
     {"tab.advanced", "Erweitert", "Advanced"},
     {"tab.audio", "Audio", "Audio"},
+    {"tab.cheats", "Cheats", "Cheats"},
     {"tab.controls", "Steuerung", "Controls"},
     {"tab.default_empty", "leer", "empty"},
     {"tab.game", "Spiel", "Game"},

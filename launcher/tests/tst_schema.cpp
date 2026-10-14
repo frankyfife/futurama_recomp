@@ -93,7 +93,7 @@ void SchemaTest::tabsAndOrder() {
         QVERIFY(graphics[i - 1]->order <= graphics[i]->order);
     }
     // Advanced keys are only on the advanced tab, whatever their ui.tab says.
-    for (UiTab tab : {UiTab::Game, UiTab::Graphics, UiTab::Paths}) {
+    for (UiTab tab : {UiTab::Game, UiTab::Graphics, UiTab::Paths, UiTab::Cheats}) {
         for (const KeyDef* key : schema.keysForTab(tab)) {
             QVERIFY2(!key->advanced, qPrintable(key->fullName()));
         }

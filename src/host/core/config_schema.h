@@ -36,7 +36,8 @@ namespace core {
 enum class ConfigKeyType : std::uint8_t { Bool, Int, Float, Choice, String, PathFile, PathDir, Resolution };
 enum class ConfigUiTab : std::uint8_t { Game, Graphics, Paths, Advanced,
                                         Controls /* M4 input agent: "controls" ([input], the launcher's Steuerung tab) */,
-                                        Audio /* M5 tooling agent: "audio" (player keys of [audio], the launcher's Audio tab) */ };
+                                        Audio /* M5 tooling agent: "audio" (player keys of [audio], the launcher's Audio tab) */,
+                                        Cheats /* G8: "cheats" ([cheats], the launcher's Cheats tab) */ };
 enum class ConfigUiWidget : std::uint8_t {
     Combo, Check, Spin, DSpin, Text, File, Dir, Resolution, Monitor,
     // M4 (input agent, src/INTERFACES.md 4.26): "binding" = a string key holding a binding list (input/bindings.h),

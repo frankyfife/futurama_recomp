@@ -169,7 +169,7 @@ TEST_CASE("G8 player cheats: [cheats] schema rows, settings and hook conditions"
         REQUIRE(def != nullptr);
         CHECK(def->type == core::ConfigKeyType::Bool);
         CHECK(core::ConfigKeyDefault("cheats", key) == "0");
-        CHECK(def->tab == core::ConfigUiTab::Game);
+        CHECK(def->tab == core::ConfigUiTab::Cheats);
         CHECK(def->widget == core::ConfigUiWidget::Check);
     }
     const core::ConfigKeyDef* jd = core::FindConfigKey("cheats", "jump_distance");
@@ -182,7 +182,7 @@ TEST_CASE("G8 player cheats: [cheats] schema rows, settings and hook conditions"
     CHECK(jd->step == doctest::Approx(0.1));
     REQUIRE(jd->unit != nullptr);
     CHECK(std::string(jd->unit) == "m");
-    CHECK(jd->tab == core::ConfigUiTab::Game);
+    CHECK(jd->tab == core::ConfigUiTab::Cheats);
     // The labels name the buttons / sequences.
     CHECK(std::string(core::FindConfigKey("cheats", "moon_jump")->label.de).find("LB + B") !=
           std::string::npos);

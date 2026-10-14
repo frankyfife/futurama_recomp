@@ -154,7 +154,7 @@ TEST_CASE("G8: [cheats] schema rows, settings and hook conditions") {
         REQUIRE(def != nullptr);
         CHECK(def->type == core::ConfigKeyType::Bool);
         CHECK(core::ConfigKeyDefault("cheats", key) == "0");
-        CHECK(def->tab == core::ConfigUiTab::Game);
+        CHECK(def->tab == core::ConfigUiTab::Cheats);
     }
     CHECK(core::IsConfigSection("cheats"));
 
