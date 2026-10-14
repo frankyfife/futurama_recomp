@@ -15,6 +15,7 @@
 #include "input/chord_filter.h"
 #include "input/input_system.h"
 #include "input/kbm_source.h"
+#include "xapi/cheats_player.h"
 #include "xapi/game_timing.h"
 
 #include <algorithm>
@@ -249,7 +250,8 @@ void Consumer::Consume(int port, std::uint64_t tick, const inp::PadState& state)
     constexpr float kDead = 0.15f;
     constexpr float kDegToRad = 3.14159265f / 180.0f;
 
-    // Gamepad: LS move, RS look, RT/LT up/down, A faster, X slower, D-pad up/down zoom, BACK = back to the game camera.
+    // Gamepad: LS move, RS look, RT/LT up/down, A faster, X slower, D-pad up/down zoom, BACK = back to the game camera,
+    // RB = teleport the character here (G8 cheat).
     float fwd = StickAxis(state.thumb[inp::kAxisLY], kDead);
     float strafe = StickAxis(state.thumb[inp::kAxisLX], kDead);
     float rise = (static_cast<float>(state.analog[inp::kAnalogRightTrigger]) -
@@ -291,6 +293,11 @@ void Consumer::Consume(int port, std::uint64_t tick, const inp::PadState& state)
         s.hideHud = !s.hideHud;
         g_hudHidden.store(s.hideHud, std::memory_order_relaxed);
         FUT_LOGI(Gfx, "freecam: HUD %s", s.hideHud ? "hidden" : "shown");
+    }
+    // G8 [cheats] teleport_freecam: RB (BLACK) / T puts the character below the freecam (next logic tick).
+    if (analogEdge(inp::kAnalogBlack) || keyEdge('T')) {
+        const Pose p = s.rig.Current();
+        (void)xapi::cheats::RequestTeleport(p.position.x, p.position.y, p.position.z);
     }
     s.keysBefore = raw.keys;
 

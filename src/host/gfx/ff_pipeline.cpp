@@ -320,7 +320,7 @@ rhi::VertexLayoutDesc MakeVertexLayout() noexcept {
 }
 
 void FillFrameConstants(const ni::CameraDesc& camera, std::uint32_t targetWidth, std::uint32_t targetHeight,
-                        FFFrameConstants* out) noexcept {
+                        FFFrameConstants* out, float pixelCenterX, float pixelCenterY) noexcept {
     if (out == nullptr) {
         return;
     }
@@ -330,7 +330,7 @@ void FillFrameConstants(const ni::CameraDesc& camera, std::uint32_t targetWidth,
     c.viewProjection = ToFloat4x4(Multiply(camera.view, camera.projection));
     c.screenProjection = ToFloat4x4(camera.screenProjection);
     // Pre-transformed pixels -> NDC of the current viewport (the integration sets CameraDesc::viewport on
-    // the context): ndc.x = 2 (x + 0.5 - vx) / vw - 1, ndc.y = 1 - 2 (y + 0.5 - vy) / vh.
+    // the context): ndc.x = 2 (x + 0.5 - vx) / vw - 1, ndc.y = 1 - 2 (y + 0.5 - vy) / vh (+0.5 = pixelCenter).
     float vx = camera.viewport.x;
     float vy = camera.viewport.y;
     float vw = camera.viewport.width;
@@ -347,6 +347,7 @@ void FillFrameConstants(const ni::CameraDesc& camera, std::uint32_t targetWidth,
     const float w = static_cast<float>(targetWidth);
     const float h = static_cast<float>(targetHeight);
     c.targetSize = {w, h, w > 0.0f ? 1.0f / w : 0.0f, h > 0.0f ? 1.0f / h : 0.0f};
+    c.pixelCenter = {pixelCenterX, pixelCenterY, 0.0f, 0.0f};
     *out = c;
 }
 
@@ -942,7 +943,7 @@ bool FixedFunctionPipeline::IsReady() const noexcept {
 }
 
 void FixedFunctionPipeline::SetCamera(const ni::CameraDesc& camera, std::uint32_t targetWidth,
-                                      std::uint32_t targetHeight) noexcept {
+                                      std::uint32_t targetHeight, float pixelCenterX, float pixelCenterY) noexcept {
     if (impl_ == nullptr) {
         return;
     }
@@ -952,7 +953,7 @@ void FixedFunctionPipeline::SetCamera(const ni::CameraDesc& camera, std::uint32_
     d.targetHeight = targetHeight;
     const float4 fogColor = d.frame.fogColor;
     const float4 fogParams = d.frame.fogParams;
-    FillFrameConstants(camera, targetWidth, targetHeight, &d.frame);
+    FillFrameConstants(camera, targetWidth, targetHeight, &d.frame, pixelCenterX, pixelCenterY);
     d.frame.fogColor = fogColor;  // fog values belong to the draws (FillFogConstants)
     d.frame.fogParams = fogParams;
     d.frameDirty = true;

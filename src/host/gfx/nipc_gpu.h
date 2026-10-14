@@ -51,7 +51,8 @@
 //     screen camera of slot 54 and the NV2A 1/16-pixel snap (in guest pixels, i.e. 1/16 of a 640x480 pixel =
 //     internal_size / 640 / 16 internal pixels: the vertices stay where the original rasterizer put them).
 //     Lines and points (slots 52/53, wireframe fill) are P2; when they come they must be widened by the scale.
-//     Render to texture (slot 15 with a texture, P2) keeps the texture's own size (scale 1).
+//     Render to texture (M8) is rendered at the guest size times the back buffer's factor; there the B19 shift is
+//     TargetPixelCenter (0 when upscaled or multisampled, acid seam fix 2026-10-14).
 //   - Present: resolve (MSAA) -> downsample to the output size (render_scale > 1: box / Catmull-Rom with
 //     anti-ringing; with [render] linear_aa both on linear light) -> present pass into the window (1:1 when the
 //     output fills the view, else [render] scaling).
@@ -97,8 +98,19 @@ const char* DrawKindName(ni::DrawKind kind) noexcept;
 // geometry by +0.5 pixel right and down makes it cover the same pixels (the pre-transformed path does the
 // same in the shader): clip.x += clip.w / viewportWidth, clip.y -= clip.w / viewportHeight, i.e. column 3 of
 // the (row-vector) projection times the offsets is added to columns 0 and 1. Applied by GpuRenderer to the
-// projection and the screen projection it hands to the pipeline (design 8.3 B19).
-void HalfPixelShift(Matrix4* projection, float viewportWidth, float viewportHeight) noexcept;
+// projection and the screen projection it hands to the pipeline (design 8.3 B19). `shiftX` / `shiftY` = the shift
+// in viewport pixels (0.5 = B19; texture targets: TargetPixelCenter).
+void HalfPixelShift(Matrix4* projection, float viewportWidth, float viewportHeight, float shiftX = 0.5f,
+                    float shiftY = 0.5f) noexcept;
+
+// B19 on render-to-texture targets (M8; acid seam fix 2026-10-14, GFX_CONTRACT.md 12.2): the pixel-center shift in
+// guest pixels for one axis of a texture target of `guestSize` guest pixels drawn at `deviceSize` device pixels
+// with `samples` per pixel. 0.5 (B19) only when the device grid is the guest grid with one sample: D3D11 then
+// samples exactly where D3D8 did. Otherwise 0, so guest pixel edges land on device pixel edges: with 0.5 the
+// game's quads over the whole texture (edges on integer guest pixels, e.g. the Level1-2 acid NiScreenPolygons
+// 0..128) left the first 0.5 * factor device columns and rows - and with MSAA the samples left of / above the first
+// pixel centers - unwritten, and the wrapped texture showed them as dark lines on the acid.
+float TargetPixelCenter(std::uint32_t guestSize, std::uint32_t deviceSize, std::uint32_t samples) noexcept;
 
 // ---- M3c: render resolution and anti-aliasing ---------------------------------------------------------------
 

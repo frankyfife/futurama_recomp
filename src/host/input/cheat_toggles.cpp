@@ -5,6 +5,7 @@
 #include "input/input_system.h"
 #include "input/level_skip.h"
 #include "xapi/cheats.h"
+#include "xapi/cheats_player.h"
 #include "xapi/game_timing.h"
 
 #include <algorithm>
@@ -44,6 +45,9 @@ std::atomic<bool> g_enabled{false};
 std::array<DpadSequenceDetector, kPortCount> g_detectors{};  // router lock (one sample at a time)
 std::uint32_t g_configuredRate = 0;
 
+std::atomic<bool> g_moonEnabled{false};
+std::array<MoonJumpButtons, kPortCount> g_moonButtons{};  // router lock
+
 }  // namespace
 
 const char* SequenceText(int index) noexcept {
@@ -54,6 +58,12 @@ const char* SequenceText(int index) noexcept {
             return "LEFT RIGHT LEFT RIGHT UP DOWN UP DOWN";
         case 2:
             return "DOWN UP DOWN UP RIGHT LEFT RIGHT LEFT";
+        case 3:
+            return "RIGHT RIGHT LEFT LEFT UP UP DOWN DOWN";
+        case 4:
+            return "UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT";
+        case 5:
+            return "DOWN DOWN UP UP LEFT LEFT RIGHT RIGHT";
         default:
             return "?";
     }
@@ -160,6 +170,44 @@ void SampleFilter(int port, PadState& merged) noexcept {
     const float seconds = on ? kPulseOnSeconds : kPulseOffSeconds;
     GlobalRouter().PulseRumble(port, RumbleState{kPulseMotor, kPulseMotor},
                                static_cast<std::uint32_t>(std::lround(seconds * static_cast<float>(rate))));
+}
+
+MoonJumpButtons::Result MoonJumpButtons::Feed(bool jumpHeld, bool whiteHeld) noexcept {
+    Result r;
+    if (!whiteHeld) {
+        whiteHidden_ = false;
+    } else if (!prevWhite_ && jumpHeld) {
+        whiteHidden_ = true;  // LB pressed while B is held: the moon jump's, not Fry's weapon switch
+    }
+    prevWhite_ = whiteHeld;
+    r.lift = jumpHeld && whiteHeld;
+    r.hideWhite = whiteHidden_;
+    return r;
+}
+
+void ConfigureMoonJump() noexcept {
+    const xapi::cheats::Settings& s = xapi::cheats::ActiveSettings();
+    const bool on = s.moonJump || s.ingameToggles;
+    g_moonEnabled.store(on, std::memory_order_release);
+    if (on) {
+        FUT_LOGI(Game, "cheat: moon jump buttons LB + B held (keyboard with the default bindings: 1 + Space)%s",
+                 s.moonJump ? "" : " - off until toggled (D-pad UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT)");
+    }
+}
+
+void MoonJumpFilter(int port, PadState& merged) noexcept {
+    if (!g_moonEnabled.load(std::memory_order_acquire) || port < 0 || port >= kPortCount) {
+        return;
+    }
+    MoonJumpButtons& b = g_moonButtons[static_cast<std::size_t>(port)];
+    const bool jump = merged.analog[kAnalogB] >= kAnalogPressThreshold;
+    const bool white = merged.analog[kAnalogWhite] >= kAnalogPressThreshold;
+    const MoonJumpButtons::Result r = b.Feed(jump, white);
+    const bool active = xapi::cheats::Active(xapi::cheats::Cheat::MoonJump) && !GlobalRouter().Diverted(port);
+    xapi::cheats::SetMoonJumpHeld(port, active && r.lift);
+    if (active && r.hideWhite) {
+        merged.analog[kAnalogWhite] = 0;
+    }
 }
 
 }  // namespace inp::cheattoggles

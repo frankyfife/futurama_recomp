@@ -403,6 +403,8 @@ TEST_CASE("ff: constant buffer packing (C++ offsets = HLSL cbuffer packing)") {
     CHECK(offsetof(FFFrameConstants, fogColor) == 272);
     CHECK(offsetof(FFFrameConstants, fogParams) == 288);
     CHECK(offsetof(FFFrameConstants, targetSize) == 304);
+    CHECK(offsetof(FFFrameConstants, pixelCenter) == 320);
+    CHECK(sizeof(FFFrameConstants) == 336);
     CHECK(offsetof(FFDrawConstants, materialDiffuse) == 256);
     CHECK(offsetof(FFDrawConstants, features) == 368);
     CHECK(offsetof(FFDrawConstants, fog) == 416);
@@ -443,6 +445,13 @@ TEST_CASE("ff: frame constants and the pre-transform of D3D8 pixels") {
     CHECK(Near(ndc(99.5f, 49.5f).second, 1.0f));
     CHECK(Near(ndc(299.5f, 149.5f).first, 1.0f));
     CHECK(Near(ndc(299.5f, 149.5f).second, -1.0f));
+    // The B19 pixel-center shift: 0.5 by default, the given one on texture targets (gfx::TargetPixelCenter).
+    CHECK(c.pixelCenter.x == 0.5f);
+    CHECK(c.pixelCenter.y == 0.5f);
+    ff::FillFrameConstants(camera, 640, 480, &c, 0.0f, 0.25f);
+    CHECK(c.pixelCenter.x == 0.0f);
+    CHECK(c.pixelCenter.y == 0.25f);
+    ff::FillFrameConstants(camera, 640, 480, &c);
 
     ni::RenderStateDesc state;
     state.fogColor = {0.25f, 0.5f, 2.0f};

@@ -191,11 +191,14 @@ struct FFFrameConstants {
     FF_ROW_MAJOR float4x4 projection;        // CameraDesc::projection (this+0x650)
     FF_ROW_MAJOR float4x4 viewProjection;    // view * projection
     FF_ROW_MAJOR float4x4 screenProjection;  // CameraDesc::screenProjection (this+0x394), view = identity
-    float4 pretransform;    // pre-transformed pixels -> NDC: ndc.xy = (pixel.xy + 0.5) * pretransform.xy + pretransform.zw
-                            // (+0.5: D3D8 pixel centers at integer coordinates, D3D11 at +0.5)
+    float4 pretransform;    // pre-transformed pixels -> NDC: ndc.xy = (pixel.xy + pixelCenter.xy) * pretransform.xy +
+                            // pretransform.zw
     float4 fogColor;        // rgb (D3DRS_FOGCOLOR), a unused
     float4 fogParams;       // x start, y end, z density, w 1 / (end - start) (0 if end == start)
     float4 targetSize;      // x width, y height, z 1/width, w 1/height of the current render target
+    float4 pixelCenter;     // xy: the B19 shift in viewport pixels (D3D8 pixel centers at integer coordinates,
+                            // D3D11 at +0.5): 0.5; 0 on upscaled or multisampled texture targets
+                            // (gfx::TargetPixelCenter); zw unused
 };
 
 // b1: per draw.
@@ -249,7 +252,7 @@ struct FFStageConstants {
 };
 
 #ifdef __cplusplus
-static_assert(sizeof(FFFrameConstants) == 4 * 64 + 4 * 16);
+static_assert(sizeof(FFFrameConstants) == 4 * 64 + 5 * 16);
 static_assert(sizeof(FFDrawConstants) == 4 * 64 + 11 * 16);
 static_assert(sizeof(FFLight) == 7 * 16 && sizeof(FFLightConstants) == FF_MAX_LIGHTS * 7 * 16);
 static_assert(sizeof(FFStage) == 3 * 16 + 64 && sizeof(FFStageConstants) == FF_MAX_STAGES * (3 * 16 + 64));

@@ -63,9 +63,10 @@ rhi::SamplerDesc MakeSamplerDesc(const ni::TextureStageDesc& stage) noexcept;
 // The vertex layout of every ff draw (streams FF_STREAM_*, ff_shared.h).
 rhi::VertexLayoutDesc MakeVertexLayout() noexcept;
 // View/projection/screen matrices and the pre-transform of `camera` (fog fields reset: color 0, params
-// (0, 1, 1, 1); FillFogConstants sets them per draw).
+// (0, 1, 1, 1); FillFogConstants sets them per draw). `pixelCenterX/Y` = the B19 pixel-center shift in viewport
+// pixels the projections carry (FFFrameConstants::pixelCenter: pre-transformed quads and the 1/16-pixel snap).
 void FillFrameConstants(const ni::CameraDesc& camera, std::uint32_t targetWidth, std::uint32_t targetHeight,
-                        FFFrameConstants* out) noexcept;
+                        FFFrameConstants* out, float pixelCenterX = 0.5f, float pixelCenterY = 0.5f) noexcept;
 void FillDrawConstants(const ni::DrawItem& item, const ni::CameraDesc& camera, FFDrawConstants* out) noexcept;
 // Lights to view space (D3D8 lights are given in world space and lit in camera space).
 void FillLightConstants(const ni::LightSetDesc& lights, const ni::CameraDesc& camera, FFLightConstants* out) noexcept;
@@ -188,8 +189,10 @@ public:
     void Shutdown() noexcept;
     bool IsReady() const noexcept;
 
-    // After SetCameraData (slot 47) and after every render-target change (slot 15).
-    void SetCamera(const ni::CameraDesc& camera, std::uint32_t targetWidth, std::uint32_t targetHeight) noexcept;
+    // After SetCameraData (slot 47) and after every render-target change (slot 15). `pixelCenterX/Y`: the B19
+    // shift the camera's projections carry (0.5; texture targets: gfx::TargetPixelCenter).
+    void SetCamera(const ni::CameraDesc& camera, std::uint32_t targetWidth, std::uint32_t targetHeight,
+                   float pixelCenterX = 0.5f, float pixelCenterY = 0.5f) noexcept;
     // M3c: options of the current target (MSAA, alpha-to-coverage, anisotropy); default = M3.
     void SetRenderOptions(const RenderOptions& options) noexcept;
     RenderOptions GetRenderOptions() const noexcept;

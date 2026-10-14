@@ -131,6 +131,8 @@ void StartInput() noexcept {
         xapi::cheats::Configure();  // G8: [cheats] (hooks were installed by their conditions)
         cheattoggles::Configure();  // G8: D-pad sequences toggle the cheats ([cheats] ingame_toggles)
         router.AddSampleFilter(&cheattoggles::SampleFilter);
+        cheattoggles::ConfigureMoonJump();  // G8: LB + B held = moon jump ([cheats] moon_jump)
+        router.AddSampleFilter(&cheattoggles::MoonJumpFilter);
         // G5: [input] camera_response = precise - smaller dead zone of the controllers' right stick.
         xapi::camera::LogConfiguration();
         SetPadShaper(xapi::camera::ResponseFromConfig(core::GetConfig()) == xapi::camera::Response::Precise

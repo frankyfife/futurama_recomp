@@ -2,6 +2,8 @@
 
 Stand: 2026-10-13. Nutzerwunsch: „Ich brauche noch Cheats – erstens Unverwundbarkeit, zweitens One-Hit-Kill, drittens Feinde ignorieren mich.“ Analyse: [`analysis/loader/g8_cheats.md`](../analysis/loader/g8_cheats.md). Abweichungen vom Entwurf: [`loader_design.md`](loader_design.md) 8.25. Schnittstellen: `src\INTERFACES.md` 4.41.
 
+**Nachtrag 2026-10-14 (Nutzerwunsch: weitere Cheats):** Zur Freecam teleportieren, Mondsprung (vor allem für Zoidberg auf der Ratte in 4-1), Sprungweite um x Meter erhöhen und Unendlich Munition – Abschnitt 8.
+
 **Nachtrag 2026-10-13 (Fehlermeldung: Softlock mit den Tentakeln in 1-2):** behoben, siehe Abschnitt 7. Kurz: Mit „Feinde ignorieren mich“ bemerken die Kanalisations-Tentakel Fry nicht mehr, mit „Unverwundbar“ können sie ihn nicht mehr packen, und ein tödlicher Schaden, der länger als **10 s** ununterbrochen geblockt wird, läuft als Tod mit Neustart am Kontrollpunkt durch (kein Leben verloren).
 
 ## 1. Kurzfassung
@@ -13,7 +15,8 @@ Neuer Abschnitt `[cheats]`, im Launcher Reiter **„Spiel“**, Gruppe **„Chea
 | **Unverwundbar** (`invulnerable`) | Kein Schaden durch Gegner, Geschosse, Explosionen, Fallen, schädliche Böden und Skript-Schaden (z. B. der rollende Stein in 2-6 „Minentunnel“; Skript level2-6, „MINETUNNEL:: rolling stone killed player“). Es geht **kein Leben** verloren. Todeszonen (Abgründe, Lava, tödliches Wasser) töten weiter – die Figur beginnt dann ohne Lebensverlust am letzten Kontrollpunkt (wie der eingebaute Gott-Modus des Spiels) | Probe auf `Player::TakeDamage` 0x51AD0 (alle fünf Spielerklassen inkl. Chickenwalker, Kanone, Ratte) überspringt den Schaden, außer beim Aufruf der Todeszone (Rückkehr 0x38C49); Probe auf das Skript-Native FsDeductLives 0xC1240 überspringt den Lebensabzug |
 | **Gegner sterben mit einem Treffer** (`one_hit_kill`) | Jeder Treffer der Spielfigur tötet einen Gegner. **Bosse** (Panzer 1000, Chickenwalker-Gegner 2000, Destructor 10000 Gesundheit) verlieren ein Viertel ihrer Gesundheit je Treffer (vier Treffer), damit ihre Kampfphasen der Reihe nach laufen. Figuren, die das Spiel selbst unverwundbar macht (Gesundheit 55555: Pflanzen, Kaktusmonster, Krokodil, Sonnengott, Igner-Boss, Statuenkopf; Tentakel 55000; per Skript geschützte Figuren), bleiben es | Proben am Eingang der Schadensfunktionen der Gegnerklassen (0x47240 NPC-Basis, 0x60080, 0x80300, 0x86520, 0x88530, 0x90570) und auf `Actor::TakeDamage` 0x354B0: Treffer eines Spielers → Betrag = Restgesundheit. So läuft auch das „Todesstoß“-Ereignis des Spiels (Beute/Statistik, Vermutung) wie bei einem normalen letzten Treffer |
 | **Feinde ignorieren mich** (`enemies_ignore`) | Gegner bemerken die Figur nicht und greifen nicht an – wie in einer Zwischensequenz. Ein getroffener Gegner dreht sich zur Figur, greift aber nicht an. Bosse mit eigener Angriffslogik (Destructor, Sonnengott), schon fliegende Geschosse und Fallen treffen weiter. Gegner lassen sich weiter besiegen | Die KI des Spiels hat ein Flag „Feuer einstellen“ (0x2DBAA0), das das Gehirn der Spielfigur jeden Tick auf „Figur nicht steuerbar“ setzt. Probe auf das Gehirn-Update 0x2ECB0 setzt es danach auf 1: Wahrnehmung (0x2E2E0) findet kein Ziel, Angriff (0x2F720) unterbleibt |
-| **Cheats im Spiel per Steuerkreuz umschalten** (`ingame_toggles`) | Drei Tastenfolgen auf dem Steuerkreuz schalten die Cheats im Level an und aus (Abschnitt 2) | Filter in der Eingabekette (nach Freecam und G7), alle Hooks installiert |
+| **Zur Freecam teleportieren**, **Mondsprung**, **Sprungweite um x Meter erhöhen**, **Unendlich Munition** (2026-10-14) | siehe Abschnitt 8 | Abschnitt 8.3 |
+| **Cheats im Spiel per Steuerkreuz umschalten** (`ingame_toggles`) | Sechs Tastenfolgen (seit 2026-10-14; vorher drei) auf dem Steuerkreuz schalten die Cheats im Level an und aus (Abschnitt 2) | Filter in der Eingabekette (nach Freecam und G7), alle Hooks installiert |
 
 ## 2. Tastenfolgen im Spiel (`ingame_toggles = 1`)
 
@@ -24,6 +27,9 @@ Im Level, solange die Figur steuerbar ist (nicht in Menüs, Pause, Zwischenseque
 | Unverwundbar | ↑ ↑ ↓ ↓ ← → ← → |
 | Gegner sterben mit einem Treffer | ← → ← → ↑ ↓ ↑ ↓ |
 | Feinde ignorieren mich | ↓ ↑ ↓ ↑ → ← → ← |
+| Zur Freecam teleportieren (2026-10-14) | → → ← ← ↑ ↑ ↓ ↓ |
+| Mondsprung (2026-10-14) | ↑ → ↓ ← ↑ → ↓ ← (zwei Kreise im Uhrzeigersinn) |
+| Unendlich Munition (2026-10-14) | ↓ ↓ ↑ ↑ ← ← → → |
 
 * Jede Folge schaltet um (an ↔ aus). Bestätigung: Das Bild blitzt **grün** (an) bzw. **rot** (aus) auf – derselbe Effekt wie bei den eingebauten Cheatcodes des Spiels – und der Controller vibriert kurz (an 0,4 s, aus 0,15 s; nur mit `[input] rumble = 1`, Stärke nach `rumble_strength`). Im Protokoll: `cheat: invulnerable ON (Unverwundbar "an", UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT, port 1)`.
 * Ein anderer Knopf zwischendurch (A, B, X, Y, Schultertasten, START …) oder zwei Richtungen gleichzeitig (diagonal) beginnen von vorn; der Stick stört nicht. Das Steuerkreuz bewegt die Figur dabei ein paar Schritte (im Spiel läuft man auch mit dem Steuerkreuz) – sonst passiert nichts.
@@ -128,3 +134,73 @@ Nicht im Lauf geprüft: das Sicherheitsnetz (kein Fall im Spiel gefunden, der es
 2. Mit **Feinde ignorieren mich**: Die Tentakel bleiben in ihren Rohren.
 3. Gegenprobe ohne Cheats: Der Tentakel packt Fry, zieht ihn ins Rohr, Fry verliert ein Leben (wie im Original).
 4. Falls irgendwo anders ein Gegner oder ein Skript Fry trotz „Unverwundbar“ festhält: Nach spätestens 10 s stirbt Fry und beginnt ohne Lebensverlust am Kontrollpunkt. Bitte melden, wo das passiert (Protokollzeile `cheat: invulnerable - safety net: …`).
+
+## 8. Nachtrag 2026-10-14: Teleport, Mondsprung, Sprungweite, Unendlich Munition
+
+Nutzerwunsch (2026-10-14): drei weitere Cheats in der Gruppe „Cheats“ – zur Freecam-Position teleportieren, Mondsprung, unendlich Munition; danach präzisiert: Der Mondsprung ist vor allem für **Zoidberg auf der Ratte in 4-1** gedacht („äußerst schwierig“), und neu **„Sprungweite um x Meter erhöhen“** (0,0 bis 2,0 m). Analyse: [`analysis/loader/g8_cheats.md`](../analysis/loader/g8_cheats.md) Abschnitt 9. Schnittstelle `src\INTERFACES.md` 4.41.
+
+### 8.1 Kurzfassung
+
+| Schalter (`[cheats]`) | Bedienung | Wirkung |
+|---|---|---|
+| **Zur Freecam teleportieren (Freecam: RB / T) (→ → ← ← ↑ ↑ ↓ ↓)** (`teleport_freecam`) | In der Freecam (L3+R3 bzw. F6) **RB** drücken, Tastatur **T** | Die Figur steht danach auf dem Boden unter der Kamera (Strahltest des Spiels senkrecht nach unten, bis 300 m). Freecam verlassen: Die Figur ist dort, die Spielkamera folgt. Ohne Boden darunter, in Fahrzeugen (Chickenwalker 1-7, Kanone 2-6, Ratte 4-1) und während die Figur festgehalten wird: nichts (rotes Aufblitzen). Sonst grünes Aufblitzen |
+| **Mondsprung (LB + B halten) (↑ → ↓ ← ↑ → ↓ ←)** (`moon_jump`) | **B** (Springen) und **LB** gedrückt halten; Tastatur mit der Standardbelegung **Leertaste + 1** | Die Figur steigt mit 40 Einheiten/s (≈ 7 m/s), solange beide gehalten werden – **auch Zoidberg mit der Ratte in 4-1** (die Ratte läuft dabei weiter ihre Strecke entlang). Loslassen: normaler Fall mit der Schwerkraft des Spiels; die **Landung danach verursacht keinen Fallschaden** (sonst töten Stürze über 100 Einheiten ≈ 18 m). Erst B, dann LB drücken: Dann wechselt Fry dabei nicht die Waffe (LB = Waffe zurück, die einzige Belegung von LB im Spiel) |
+| **Sprungweite um x Meter erhöhen** (`jump_distance`, 0,0–2,0 in Schritten von 0,1, Einheit m) | – | Jeder Sprung **aus dem Lauf** landet x m weiter, Höhe und Flugzeit bleiben. Gilt für Fry, Bender, Leela und die Ratte. Sprünge aus dem Stand bleiben unverändert. 0 = aus (kein Hook) |
+| **Unendlich Munition (↓ ↓ ↑ ↑ ← ← → →)** (`infinite_ammo`) | – | Fry verbraucht keine Munition (Pistole, Schrotflinte, Maschinengewehr, Railgun): die Anzeige bleibt stehen; ein leeres Magazin der gehaltenen Waffe wird auf das Maximum des Spiels gefüllt (500/200/300/400). Chickenwalker (1-7): Laserenergie immer voll, keine Raketen weniger. Kanone (2-6): keine Schüsse weniger. Bender und Leela: Ihre **Aufladung** („Power“, bis 4,0, je Spezialangriff 1,0 – die einzige begrenzte Ressource der beiden) sinkt nicht |
+
+Alles aus = keine neuen Hooks (Lauf `default`: `hooks: 184 installed`, wie vorher). Mit `ingame_toggles` sind alle Hooks installiert (198), und die drei neuen Folgen schalten die Schalter um; `jump_distance` ist eine Zahl und hat keine Folge. Levelnummern wie im Spiel (Ordner: 1-7 = `Level1-6`, 2-6 = `Level2-5`).
+
+### 8.2 Maßstab: Spieleinheiten und Meter
+
+Das Spiel kennt keine Meter. Anhaltspunkte (Lauf `explore1`, Physik-Mitschrift mit `[debug] trace = game`): Frys Kollisionskörper ist ein Ellipsoid mit den Halbachsen 1,6 / 4,8 / 1,6, Mittelpunkt 4,8 über den Füßen – also **9,6 Einheiten hoch**. Für einen Mann von etwa 1,75 m (Annahme) sind das **5,5 Einheiten je Meter**. Das passt zu den übrigen Werten: Laufen 25 Einheiten/s = 4,5 m/s, Schwerkraft 95 Einheiten/s² = 17 m/s² (spieltypisch etwa 1,8 g), tödlicher Sturz ab 100 Einheiten = 18 m, Frys Sprung aus dem Lauf 13 Einheiten = 2,4 m weit und 5,6 Einheiten = 1 m hoch. 2,0 m sind also 11 Einheiten (`kUnitsPerMetre = 5.5`, `MetresToUnits`).
+
+### 8.3 Umsetzung
+
+| Teil | Wie (Spielcode, Adressen der Retail-EU-XBE) |
+|---|---|
+| Physik | Jede Figur hat einen Physikkörper (Spieler +0x5C): Schwerkraft +0x0C (Spieler −95; die Ratte −130 steigend, −180 fallend; während Frys/Benders/Leelas Sprunganimation 0), Dämpfungs-Flag +0x18 (waagerecht × 0,5 je Schritt), Geschwindigkeit +0x28 (Y = oben), „am Boden“ +0x45. Die Physikwelt rechnet alle Körper einmal je Logiktick: `FUN_000AE7E0` (vtable 0x2A1ECC +0xC) → je Körper `FUN_000AF170` |
+| Mondsprung | **`probe:Physics::Step`** 0xAE7E0 (`83 EC 64 53 56`): Solange LB + B gehalten sind, setzt die Probe vor dem Schritt die senkrechte Geschwindigkeit der gesteuerten Figur auf mindestens 40. Die Fallhöhe des Spiels (Spieler +0xB84; Fallschaden ab 40/100 Einheiten in `FUN_0005A700`) läuft bis zur Landung mit. Die Tasten erkennt ein Filter in der Eingabekette (`inp::cheattoggles::MoonJumpFilter`); er blendet ein LB, das bei gehaltenem B gedrückt wurde, für das Spiel aus |
+| Sprungweite | Dieselbe Probe erkennt den Absprung: **Animationssprung** (Fry, Bender, Leela: Sprungwunsch +0xB89 im Schritt davor am Boden, jetzt Schwerkraft 0) oder **Physiksprung** (Ratte: am Boden, Sprungwunsch, +56 nach oben). Flugzeit T: Animationssprung = gemessene Länge der Sprunganimation dieser Figur (Fry 0,48 s, Leela 0,58 s, Bender 0,45 s; bei jedem Sprung aus dem Lauf nachgemessen), Ratte aus 56 / 130 / 180 (0,80 s). Zusatz e = x / T entlang der Laufrichtung: vor dem Schritt e / k dazu (k = Dämpfung des Spiels), danach e wieder weg – jeder Schritt fliegt e·dt weiter, die Geschwindigkeit des Spiels bleibt unangetastet. Mit dem Ende der Animation bzw. der Landung, an einer Wand (waagerecht fast 0) oder nach 1,5 T endet der Zusatz. Jeder Sprung steht mit seiner Weite im Protokoll (`cheat: jump N (...) - landed ... units = ... m from the take-off`) |
+| Teleport | Freecam (`gfx\freecam.cpp`): RB/T merkt die Kameraposition vor. Beim nächsten Logiktick (`cheats::OnTick`): Strahltest des Spiels `FUN_000FB6F0` senkrecht nach unten (wie der Neustart der Ratte), dann die Platzierung des Spiels: `SetPosition` (vtable +0x1C = `FUN_000353B0`, Füße → Körpermitte), Kontakte des Kollisionsobjekts zurücksetzen (vf+4), Geschwindigkeit 0, Fallhöhe +0xB84 = neue Höhe – die Teile von `FUN_00057910`/`FUN_00057660` (Neustart am Kontrollpunkt), die die Figur setzen, ohne deren Gesundheits- und Waffen-Reset |
+| Munition | **`probe:Player::UseAmmo`** 0x50560 (vtable +0x90 aller Spielerklassen, `8B 44 24 04 8B 54 24 08`): bei „Unendlich Munition“ übersprungen – der Zähler +0xAD0[Slot] und die Anzeige bleiben. Leeres Magazin: `FUN_00051D50` (SetAmmo des Spiels, mit Anzeige). Ohne Hook, je Tick: Chickenwalker ([Spieler+0x7B0]) Energie +0xE4 = 500, Raketen +0xC4 nicht unter den höchsten Stand; Kanone ([Spieler+0x7A8]) Schüsse +0x90 nach einem Schuss (Abklingzeit > 0,2 s) zurück; Aufladung +0xAF8 nicht unter den höchsten Stand |
+
+Dateien: `src\host\xapi\cheats_player.h/.cpp` (neu: Konstanten, reine Entscheidungen, 2 Proben, Tick-Teil), `xapi\cheats.h/.cpp` (Schalter, Statistik, `QueueFlash`, `CountPlayerCheat`), `input\cheat_toggles.h/.cpp` (6 Folgen, `MoonJumpButtons`, `MoonJumpFilter`), `input\input_system.cpp` (Filter), `gfx\freecam.cpp` (RB/T), `core\config_schema.cpp` (4 Zeilen), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (2 Funktionsstarts), `tests\g8_player_cheats_tests.cpp` (neu, 7 Fälle), `tools\input_scripts\g8_player_cheats.txt`.
+
+### 8.4 Prüfung
+
+Bauten: MSVC RelWithDebInfo `build\cheats2` (`FUT_WERROR=ON`) und clang-cl Debug `build\cheats2-clang` (`fut_tests`, `FUT_WERROR=ON`) ohne Warnungen; `fut_tests` je **542/542** (1 übersprungen; vorher 535). Neue Fälle: Schema/Hook-Bedingungen (Standard keine Hooks, `jump_distance` geklemmt), Mondsprung-Geschwindigkeit und Maßstab, Flugzeit (symmetrisch, Ratte 0,80 s), Boost-Plan (Richtung, Sprung aus dem Stand), Schritt mit Dämpfung 0,5 und 1 (genau e·dt weiter, Geschwindigkeit danach unverändert, Wand), Sprung-Simulation (+11 Einheiten auf 0,1 %), Absprungerkennung (Animation, Physik, Rückstoß ohne Wunsch), Teleportziel, Zähler (Raketen/Aufladung, Kanone), Mondsprung-Tasten (B dann LB: LB ausgeblendet; LB dann B), die drei neuen Folgen, und gegen die Retail-XBE: beide Prologe, die vtable-Slots (Physikwelt, Körper, Spielerklassen +0x1C/+0x90/+0x104), Dämpfung 0,5, Schwerkraft −95/−130/−180, Sprungwunsch 0x50E2D, Fallhöhe 0x57935, Strahltest-Aufruf 0x620A3, Munitionsmaxima, Walker- und Kanonenfelder.
+
+Läufe (RelWithDebInfo, Lautstärke 0, Rumble 0, Filme übersprungen, je 30–60 s, nacheinander; `run\cheats2\<name>\` des Arbeitsbaums):
+
+| Lauf | Level, Schalter | Ergebnis | Bilder (angesehen) |
+|---|---|---|---|
+| `ratmoon` | 4-1 Ratte, Mondsprung | `moon jump - lifting (type 4 …)`, die Ratte steigt von −2,9 auf 16,6, fällt normal und landet auf der Strecke (`landed at 1498.5 2.9 1453.5 (highest 16.6), no fall damage`), Gesundheit bleibt | `frame_001296.png` (Ratte mit Zoidberg hoch über ihrem Schatten), `frame_001322.png` (im Fall), `frame_001364.png` (wieder auf dem Weg) |
+| `rat0` | 4-1, Mondsprung 60 Ticks | steigt auf 50,5, fliegt 131 Einheiten weit, landet ohne Fallschaden – aber im Sumpf (die Ratte läuft in der Luft weiter; der Sumpf schadet wie im Original) | `frame_001469.png` (Schatten tief unten), `frame_001545.png` (Füße der Ratte am oberen Bildrand) |
+| `explore1` | 1-1 Fry, Mondsprung 90 Ticks | von −2,1 auf 61, `landed … no fall damage` (ohne den Cheat wäre das ein tödlicher Sturz) | `frame_001796.png` (Frys Schatten, Fry über dem Bildrand) |
+| `ammo` | 1-2 Fry, `ingame_toggles` | 10 Schüsse ohne Cheat: Pistole 100 → 90; ↓↓↑↑←←→→ → `cheat: infinite_ammo ON`; **50 Schüsse: bleibt 90** (`50 shots kept`); ↑→↓←↑→↓← → `moon_jump ON`, B dann LB: Fry steigt, **die Pistole bleibt ausgerüstet** (LB ausgeblendet) | `frame_001591.png` (Anzeige 90 nach 10 Schüssen), `frame_002685.png` (90 nach weiteren 50), `frame_002820.png` (Fry hoch über den Kisten) |
+| `walker` | 1-7 Chickenwalker | 30 Laserschüsse: Energie jedes Mal von 476,7 auf 500 zurück; 8 Raketen: `rockets 4.0 -> 5.0`, Anzeige bleibt 5 | `frame_002227.png` (Raketen 5, Energiebalken voll) |
+| `tp` | 1-1, Teleport + Mondsprung | Freecam hoch und zurück, RB: `from 327.6 -2.1 336.2 to 313.3 22.3 290.1 (… ground 17.0 below)` – Fry steht oben auf der Galerie. Zweiter Teleport aus 73 Einheiten Höhe über dem Dach: Der Strahl trifft den Tisch im Besprechungsraum 47,8 tiefer, Fry steht darauf | `frame_001684.png` (Fry auf der Galerie nach dem Verlassen der Freecam), `frame_001927.png` (Fry auf dem Tisch) |
+| `fry0`/`fry1`/`fry2` | 1-1, Sprungweite 0 / 1,0 / 2,0 | gleicher Sprung aus dem Lauf: **13,0 / 17,8 / 23,1 Einheiten = 2,37 / 3,24 / 4,21 m** (+0,87 / +1,84 m); Rücksprung 14,7 / 20,4 / 26,1 = 2,67 / 3,71 / 4,74 m (+1,04 / +2,07 m); Sprung aus dem Stand je 0,03 m (unverändert) | `fry2\shots\frame_001546.png` (Fry im Sprung) |
+| `rat0j`/`rat1`/`rat2` | 4-1, Sprungweite 0 / 1,0 / 2,0 | gleicher Sprung: **53,0 / 59,0 / 65,1 Einheiten = 9,63 / 10,73 / 11,84 m** (+1,09 / +2,20 m; Landung je etwas tiefer, Flug 0,88 s) | – |
+| `bender0`, `leela0` | 2-1, 3-1, Sprungweite 0,1 | Animationsphase gemessen: Bender 0,45 s, Leela 0,58 s (jetzt Startwerte); Bender aus dem Lauf 2,30 m weit | – |
+| `default` | 1-1, ohne `[cheats]` | `hooks: 184 installed`, `cheats: all off (no hooks)` | – |
+| `toggles` | 1-1, nur `ingame_toggles` | 198 Hooks; LB + B gehalten ohne Umschalten: kein Steigen (`0 lifts`) | – |
+
+Abweichung der Weiten vom Sollwert: bis etwa 15 % (Fry Hinsprung +0,87 statt +1,0 m: Die Laufrichtung dreht sich während der Animation etwas; die Ratte etwas mehr, weil sie tiefer landet und länger fliegt).
+
+### 8.5 Checkliste für den Nutzer
+
+1. Launcher → **Spiel** → **Cheats**: **Mondsprung** anhaken, Startlevel **4-1**. Mit der Ratte erst **B** (springen), dann zusätzlich **LB** halten: Zoidberg und die Ratte steigen; loslassen: Sie fallen normal und landen ohne Schaden. Hinweis: Die Ratte läuft in der Luft weiter – über dem Sumpf über den Holzflößen loslassen.
+2. Mondsprung mit Fry (z. B. 1-1): B, dann LB halten – Fry steigt, die Waffe wechselt nicht. Tastatur: Leertaste, dann 1.
+3. **Sprungweite** auf 1,0 bzw. 2,0 m stellen: Sprünge aus dem Lauf werden sichtbar länger (Fry von etwa 2,4 m auf 3,2 bzw. 4,2 m, die Ratte von etwa 9,6 auf 10,7 bzw. 11,8 m), Sprünge aus dem Stand bleiben gleich. Vorsicht bei Sprungpassagen mit kleinen Plattformen.
+4. **Zur Freecam teleportieren** anhaken. Im Level L3+R3 (bzw. F6), mit der Freecam an eine andere Stelle fliegen, **RB** (Tastatur **T**) drücken – grünes Aufblitzen. Freecam verlassen: Die Figur steht auf dem Boden unter der Stelle, an der die Kamera war.
+5. **Unendlich Munition** mit Fry in 1-2: beliebig schießen, die Zahl unter der Waffe bleibt stehen. Im Chickenwalker (1-7): Laser und Raketen ohne Ende. Mit Bender/Leela: Spezialangriffe verbrauchen keine Aufladung.
+6. Mit **Cheats im Spiel per Steuerkreuz umschalten**: → → ← ← ↑ ↑ ↓ ↓ (Teleport), ↑ → ↓ ← ↑ → ↓ ← (Mondsprung), ↓ ↓ ↑ ↑ ← ← → → (Munition) schalten im Level um (grün an, rot aus).
+7. Gegenprobe: alles aus → Spiel wie bisher.
+
+### 8.6 Grenzen
+
+* **Teleport**: Gesucht wird nur senkrecht unter der Kamera (bis 300 m); darunter nichts → kein Teleport. Schwebt die Kamera von außen über einem Dach, trifft der Strahl die erste Fläche, die er von oben trifft (im Lauf: der Tisch unter dem Dach des Besprechungsraums). Wer die Figur hinter Türen, Auslöser oder Skriptgrenzen setzt, kann Levelskripte überspringen und festsitzen. Nicht in Fahrzeugen (Chickenwalker, Kanone, Ratte: deren Code bestimmt die Position; die Ratte folgt ihrer Strecke) und nicht während eines Griffs.
+* **Mondsprung**: Unter einer Decke oder einem Hindernis steigt die Figur nicht (im Lauf `tp` auf dem Tisch unter der Lampe: weder der normale Sprung noch der Mondsprung hoben ab). Im Chickenwalker und an der Kanone aus. Die Ratte läuft während des Mondsprungs ihre Strecke weiter ab (Sumpf und Abgründe schaden wie im Original). Die Fallschaden-Freiheit gilt bis zur nächsten Landung.
+* **Sprungweite**: nur waagerecht, in Laufrichtung beim Absprung; Höhe und Flugzeit unverändert. Bei Sprungpassagen (schmale Plattformen, Lücken mit genauer Weite) kann man über das Ziel hinausspringen – ein Opt-in-Cheat, bewusst so. Die Länge der Sprunganimation wird je Figur bei jedem Sprung aus dem Lauf nachgemessen; der erste Sprung nutzt die Messwerte von 2026-10-14. Bender und Leela: je ein Sprung gemessen; Doppel- oder Spezialsprünge mit anderer Animation nicht geprüft.
+* **Unendlich Munition**: Railgun (5-3) und Kanone (2-6) nicht im Lauf geprüft (die Railgun nutzt dieselbe UseAmmo-Funktion; die Kanone verwaltet ihre Schüsse mit dem Levelskript, das sie auch nachlädt – senkt das Skript den Zähler selbst, bleibt das so). Walker-Raketen und Aufladung werden einen Tick nach dem Verbrauch zurückgesetzt (die Anzeige kann einen Tick lang zucken). Bender/Leela-Aufladung nicht im Lauf geprüft (Levelstart mit Aufladung 0).

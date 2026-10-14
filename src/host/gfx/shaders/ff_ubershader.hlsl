@@ -231,18 +231,18 @@ void LightVertex(float3 P, float3 N, float4 vertexColor, out float4 diffuseOut, 
 // NV2A vertex snapping (M3 review finding 9): the rasterizer of the original sees screen positions with 4
 // fractional bits (1/16 pixel), D3D11 with 8. Without it an edge that the original puts exactly on a row of
 // pixel centers (the "Neues Spiel" button top edge at y = 189.000 .. 189.008 in D3D8 pixels) falls just below
-// the centers on the PC and the row stays uncovered. The clip position already carries the +0.5 pixel shift
-// of B19 (GpuRenderer::HalfPixelShift); the snap works on D3D8 pixels of the render target (pretransform
-// maps them to NDC) and keeps w (perspective-correct interpolation).
+// the centers on the PC and the row stays uncovered. The clip position already carries the pixel-center shift
+// of B19 (GpuRenderer::HalfPixelShift, g_frame.pixelCenter); the snap works on D3D8 pixels of the render target
+// (pretransform maps them to NDC) and keeps w (perspective-correct interpolation).
 float4 SnapToSubpixelGrid(float4 clip)
 {
     float4 result = clip;
     if (clip.w > 0.0f && g_frame.pretransform.x != 0.0f && g_frame.pretransform.y != 0.0f)
     {
         const float2 ndc = clip.xy / clip.w;
-        const float2 pixel = (ndc - g_frame.pretransform.zw) / g_frame.pretransform.xy - 0.5f;
+        const float2 pixel = (ndc - g_frame.pretransform.zw) / g_frame.pretransform.xy - g_frame.pixelCenter.xy;
         const float2 snapped = round(pixel * 16.0f) / 16.0f;
-        result.xy = ((snapped + 0.5f) * g_frame.pretransform.xy + g_frame.pretransform.zw) * clip.w;
+        result.xy = ((snapped + g_frame.pixelCenter.xy) * g_frame.pretransform.xy + g_frame.pretransform.zw) * clip.w;
     }
     return result;
 }
@@ -252,9 +252,10 @@ FFVertexOutput VSMain(FFVertexInput input)
     FFVertexOutput o;
     const float4 vertexColor = saturate(input.color);
 #if FF_PERM_PRETRANSFORMED
-    // D3DFVF_XYZRHW with rhw = 1: render-target pixels with D3D8 pixel centers on integers (+0.5 for D3D11),
-    // relative to the current viewport (pretransform, FillFrameConstants); z is the device depth.
-    o.position = float4((input.position.xy + 0.5f) * g_frame.pretransform.xy + g_frame.pretransform.zw,
+    // D3DFVF_XYZRHW with rhw = 1: render-target pixels with D3D8 pixel centers on integers (+0.5 for D3D11,
+    // g_frame.pixelCenter), relative to the current viewport (pretransform, FillFrameConstants); z is the device
+    // depth.
+    o.position = float4((input.position.xy + g_frame.pixelCenter.xy) * g_frame.pretransform.xy + g_frame.pretransform.zw,
                         input.position.z, 1.0f);
     const float3 viewPosition = float3(input.position.xy, 1.0f);
     const float3 viewNormal = float3(0.0f, 0.0f, 0.0f);

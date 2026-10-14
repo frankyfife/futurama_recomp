@@ -92,6 +92,29 @@ TEST_CASE("nipc_gpu: the half-pixel shift moves transformed vertices +0.5 pixel 
     Matrix4 same = p;
     HalfPixelShift(&same, 0.0f, 480.0f);
     CHECK(std::memcmp(&same, &p, sizeof(p)) == 0);
+    // Other shifts (texture targets, TargetPixelCenter): 0 leaves the matrix alone, x and y independently.
+    Matrix4 none = p;
+    HalfPixelShift(&none, 128.0f, 128.0f, 0.0f, 0.0f);
+    CHECK(std::memcmp(&none, &p, sizeof(p)) == 0);
+    Matrix4 quarter = p;
+    HalfPixelShift(&quarter, 128.0f, 64.0f, 0.25f, 0.0f);
+    const Float4 v{0.3f, 0.1f, 7.0f, 1.0f};
+    float ax, ay, cx, cy;
+    ToScreen(Mul(v, p), 128.0f, 64.0f, &ax, &ay);
+    ToScreen(Mul(v, quarter), 128.0f, 64.0f, &cx, &cy);
+    CHECK(cx - ax == doctest::Approx(0.25f).epsilon(1e-3));
+    CHECK(cy == ay);
+}
+
+TEST_CASE("nipc_gpu: B19 shift on texture targets only at the guest size with one sample (acid seam)") {
+    // Level1-2 acid seam (user report 2026-10-14): an upscaled or multisampled texture target gets no shift, so the
+    // game's quads over the whole texture cover its first device row and column (and all of their samples).
+    CHECK(TargetPixelCenter(128, 128, 1) == 0.5f);  // classic: D3D11 samples where D3D8 did
+    CHECK(TargetPixelCenter(128, 128, 0) == 0.5f);
+    CHECK(TargetPixelCenter(128, 256, 1) == 0.0f);  // 1280 x 960
+    CHECK(TargetPixelCenter(128, 576, 8) == 0.0f);  // 2880 x 2160, MSAA 8x (the user's settings)
+    CHECK(TargetPixelCenter(128, 128, 4) == 0.0f);  // 640 x 480 with MSAA: samples left of the first centers
+    CHECK(TargetPixelCenter(256, 256, 2) == 0.0f);
 }
 
 TEST_CASE("nipc_gpu: ClearBuffer clears the whole target, NiRect rectangles (y up) and texture targets") {

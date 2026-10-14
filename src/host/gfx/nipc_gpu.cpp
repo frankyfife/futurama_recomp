@@ -111,16 +111,21 @@ bool Listed(const std::vector<std::uint32_t>& frames, std::uint32_t frame) noexc
 
 }  // namespace
 
-void HalfPixelShift(Matrix4* projection, float viewportWidth, float viewportHeight) noexcept {
+void HalfPixelShift(Matrix4* projection, float viewportWidth, float viewportHeight, float shiftX,
+                    float shiftY) noexcept {
     if (projection == nullptr || !(viewportWidth > 0.0f) || !(viewportHeight > 0.0f)) {
         return;
     }
-    const float dx = 1.0f / viewportWidth;
-    const float dy = -1.0f / viewportHeight;
+    const float dx = 2.0f * shiftX / viewportWidth;
+    const float dy = -2.0f * shiftY / viewportHeight;
     for (int i = 0; i < 4; ++i) {
         projection->m[i][0] += projection->m[i][3] * dx;
         projection->m[i][1] += projection->m[i][3] * dy;
     }
+}
+
+float TargetPixelCenter(std::uint32_t guestSize, std::uint32_t deviceSize, std::uint32_t samples) noexcept {
+    return deviceSize == guestSize && samples <= 1 ? 0.5f : 0.0f;
 }
 
 RenderQuality RenderQualityOf(const Settings& settings) noexcept {
@@ -365,15 +370,22 @@ struct GpuRenderer::Impl {
     widescreen::Mapping WideMapping(widescreen::Placement p) const noexcept {
         return widescreen::MappingOf(p, backBufferWidth, backBufferHeight, sizes.internalWidth, sizes.internalHeight);
     }
-    // The pipeline's camera (+ the B19 half-pixel shift) for the guest viewport `v`.
+    // The pipeline's camera (+ the B19 half-pixel shift) for the guest viewport `v`. Texture targets (M8) take the
+    // shift of TargetPixelCenter: none when the target is upscaled or multisampled (acid seam fix 2026-10-14).
     void SetPipelineCamera(const ni::CameraDesc& desc, const rhi::Viewport& v) noexcept {
         ni::CameraDesc c = desc;
         c.viewport = v;
-        if (v.width > 0.0f && v.height > 0.0f) {
-            HalfPixelShift(&c.projection, v.width, v.height);  // design 8.3 B19
-            HalfPixelShift(&c.screenProjection, v.width, v.height);
+        float shiftX = 0.5f, shiftY = 0.5f;
+        if (textureTarget && currentTarget < renderTargets.size()) {
+            const RenderTarget& t = renderTargets[currentTarget];
+            shiftX = TargetPixelCenter(targetWidth, t.width, t.samples);
+            shiftY = TargetPixelCenter(targetHeight, t.height, t.samples);
         }
-        ff.SetCamera(c, targetWidth, targetHeight);
+        if (v.width > 0.0f && v.height > 0.0f) {
+            HalfPixelShift(&c.projection, v.width, v.height, shiftX, shiftY);  // design 8.3 B19
+            HalfPixelShift(&c.screenProjection, v.width, v.height, shiftX, shiftY);
+        }
+        ff.SetCamera(c, targetWidth, targetHeight, shiftX, shiftY);
     }
     // Black bars left and right of the centred 4:3 area, once per frame before its first draw or colour clear (the
     // game never clears the whole back buffer; without this, centred pictures would keep old pixels beside them).

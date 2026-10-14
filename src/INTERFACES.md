@@ -1804,6 +1804,14 @@ ipc_renderer.h`);
 - **Tests:** `tests\extract_m8_tests.cpp`, `tests\nipc_gpu_tests.cpp` (texture targets, MSAA resolve at factor 2,
   `RenderTargetDimension`). Script `tools\input_scripts\m8_level.txt`. Report `docs\m8_report.md`,
   `loader_design.md` 8.23.
+- **Pixel centers on texture targets (acid seam fix 2026-10-14, additive):** `gfx::TargetPixelCenter(guestSize,
+  deviceSize, samples)` = the B19 shift in guest pixels for one axis of a texture target (0.5 at the guest size with
+  one sample, else 0); `gfx::HalfPixelShift(projection, w, h, shiftX = 0.5f, shiftY = 0.5f)`;
+  `ff::FillFrameConstants(..., pixelCenterX = 0.5f, pixelCenterY = 0.5f)` and
+  `ff::FixedFunctionPipeline::SetCamera(camera, w, h, pixelCenterX = 0.5f, pixelCenterY = 0.5f)`; new
+  `FFFrameConstants::pixelCenter` (offset 320, size 336; xy used by the pre-transformed path and `SnapToSubpixelGrid`
+  instead of the constant 0.5). `GpuRenderer` passes `TargetPixelCenter` of the current texture target, 0.5 on the back
+  buffer (unchanged). GFX_CONTRACT 12.2.
 
 ### 4.40 M6b movie packs (AI-upscaled movie pictures) - `video\movie_pack.h`, `video\movie_pack_reader.h`, `gfx\d3d_shim.h`, `gfx\movie_uv.h`
 
@@ -1841,13 +1849,43 @@ ipc_renderer.h`);
 - **Tests**: `tests\movie_pack_tests.cpp` (index, lookup, pts/queue/100-ns rules, texel scale, host image, schema;
   optional real reader test on `run\moviepack_ai_x2`). Report `docs\m6b_report.md`, `loader_design.md` 8.24.
 
-### 4.41 G8 cheats - `xapi\cheats.h`, `input\cheat_toggles.h`, `input\host_router.h`
+### 4.41 G8 cheats - `xapi\cheats.h`, `xapi\cheats_player.h`, `input\cheat_toggles.h`, `input\host_router.h`
 
 - **`[cheats]`** (new section, Game tab, group "Cheats"; all bool, default `0`; `xapi::cheats::SettingsFromConfig`):
-  `invulnerable`, `one_hit_kill`, `enemies_ignore`, `ingame_toggles`. Hook conditions (`FUT_PROBE_IF`): a cheat's
+  `invulnerable`, `one_hit_kill`, `enemies_ignore`, `ingame_toggles`; since 2026-10-14 also `teleport_freecam`,
+  `moon_jump`, `infinite_ammo` (bool) and `jump_distance` (float metres 0.0..2.0, step 0.1, DSpin, unit "m";
+  `Settings::jumpDistanceMetres`, `JumpDistanceFromConfig` clamps). Hook conditions (`FUT_PROBE_IF`): a cheat's
   probes are installed when it is on at start **or** `ingame_toggles = 1`; all off = no hook (`hooks: 184 installed`
-  as without G8; with toggles 196 since the tentacle fix). Runtime switches `xapi::cheats::Active(Cheat)`,
-  `Toggle(Cheat, port, text)`.
+  as without G8; with toggles 198 since the player cheats). Runtime switches `xapi::cheats::Active(Cheat)`,
+  `Toggle(Cheat, port, text)`; `enum class Cheat` = Invulnerable, OneHitKill, EnemiesIgnore, TeleportFreecam,
+  MoonJump, InfiniteAmmo (`kCheatCount` 6; index = D-pad sequence index). `QueueFlash(on)`, `CountPlayerCheat(&Stats::
+  field)` (additive).
+- **Player cheats** (2026-10-14, `xapi\cheats_player.h`; analysis `g8_cheats.md` 9):
+  - `probe:Physics::Step` 0xAE7E0 (physics world vtable 0x2A1ECC +0xC, `83 EC 64 53 56`, thiscall plain ret; condition
+    `PhysicsHooksWanted` = moon_jump, jump_distance > 0 or toggles). **Moon jump**: while `SetMoonJumpHeld(port, true)`
+    (input filter, below) and the controlled player is controllable (+0x630, not grabbed, not in the Chicken Walker
+    +0x7B0 or at the cannon +0x7A8; the rat counts) the body's (+0x5C) vertical velocity +0x2C becomes
+    `MoonJumpVelocity(vy)` = max(vy, 40) before the step; the fall start height +0xB84 follows the feet until the next
+    landing (no fall damage). **Jump distance**: `DetectTakeoff(previous step sample, grounded, jump request +0xB89,
+    gravity, vy)` - animation jumps (gravity 0 after a grounded step with the request) and physics jumps (rat);
+    `PlanJumpBoostFlight(extraUnits, vx, vz, T)` (T = measured animation phase per player type,
+    `AnimJumpDefaultSeconds`, or `JumpFlightTime(vy, gUp, gDown)`), `BoostBeforeStep(v, e, k)` /
+    `BoostAfterStep(vx, vz, ex, ez)` around the step (k = damping 0.5 with body +0x18). `kUnitsPerMetre` 5.5,
+    `MetresToUnits`. Logs `cheat: moon jump - lifting|landed ...`, `cheat: jump N (animation|physics, type T) -
+    take-off ... | landed ... units = ... m from the take-off`; with `[debug] trace = game` one `physics trace: ...`
+    line per step (20000 at most).
+  - `probe:Player::UseAmmo` 0x50560 (player vtables +0x90, `8B 44 24 04 8B 54 24 08`, thiscall `(slot, amount)` ret 8;
+    condition `AmmoHooksWanted` = infinite_ammo or toggles): skipped while infinite ammo is on (counter +0xAD0[slot]
+    and HUD stay). Per tick (`PlayerCheatsTick` from `OnTick`, no hook): empty slot of the equipped weapon refilled
+    with the game's SetAmmo 0x51D50 to the maximum (0x29A1B4); Chicken Walker energy +0xE4 = 500, rockets +0xC4 and
+    Bender's/Leela's charge +0xAF8 kept by `CounterFloor`; cannon shots +0x90 by `KeepCannonShots(now, last,
+    cooldown +0x8C)`.
+  - **Teleport**: `RequestTeleport(x, y, z)` (freecam RB / key T, `gfx\freecam.cpp`; false and a debug line while
+    the cheat is off) - at the next tick the game's ray test 0xFB6F0 (cdecl, length in/out) straight down,
+    `TeleportFeet(camera, hit, distance, feet)`, then Actor vtable +0x1C SetPosition, collision vf+4, body velocity
+    and player +0x4E4 zero, +0xB84 = feet height; refused (red flash) without ground within 300 m, in a vehicle
+    (+0x7A8/+0x7AC/+0x7B0) or while grabbed (+0x7A0). Logs `cheat: teleport to the freecam - from ... to ...`.
+  - Exit summary line `cheats summary (player): ...`.
 - **Invulnerable**: `probe:Player::TakeDamage` 0x51AD0 (`55 8B EC 83 E4 F0`; vtable +0x7C of the five player
   classes, thiscall `(float amount, Actor* attacker)` ret 8) skips the call (no health loss, no hit reaction) unless
   the return address is 0x38C49 (instant-death floor, material flag 8 in `FUN_00038880` - passes like the game's own
@@ -1886,12 +1924,20 @@ ipc_renderer.h`);
 - **In-game toggles** (`inp::cheattoggles`, router chain filter after the G7 filter): D-pad sequences of 8 presses
   within 5 s (at most 1 s apart) while `inp::levelskip::InputCheatArmed(port, reason)` (new, shared with G7; the
   former G7 `Armed` conditions): invulnerable `UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT`, one-hit kill `LEFT RIGHT LEFT
-  RIGHT UP DOWN UP DOWN`, enemies ignore `DOWN UP DOWN UP RIGHT LEFT RIGHT LEFT`. Pure `DpadSequenceDetector`.
+  RIGHT UP DOWN UP DOWN`, enemies ignore `DOWN UP DOWN UP RIGHT LEFT RIGHT LEFT`; since 2026-10-14 teleport
+  `RIGHT RIGHT LEFT LEFT UP UP DOWN DOWN`, moon jump `UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT`, infinite ammo `DOWN DOWN
+  UP UP LEFT LEFT RIGHT RIGHT` (`kSequences` has 6 entries). Pure `DpadSequenceDetector`.
   Log `cheat: <key> ON|OFF (<label> "an|aus", <sequence>, port N)`.
+- **Moon jump buttons** (`inp::cheattoggles`, additive; second chain filter `MoonJumpFilter`, registered at input
+  start after `SampleFilter`, `ConfigureMoonJump`): LB (WHITE) + B held on a port that is not diverted ->
+  `xapi::cheats::SetMoonJumpHeld(port, true)` while the cheat is active. Pure `MoonJumpButtons::Feed(jump, white)`:
+  an LB press while B is held is cleared from the game's state until LB is released (Fry's weapon switch is the
+  only game use of LB).
 - **Router feedback pulse** (`input\host_router.h`, additive): `HostRouter::PulseRumble(port, strength, samples)`,
   `PulseActive(port)` - motors at least `strength` for the next `samples` samples of the port, scaled and muted like
   the game's rumble. Toggle on = 0.4 s, off = 0.15 s.
-- **Tests**: `tests\g8_cheats_tests.cpp` (8 cases since the tentacle fix). Script `tools\input_scripts\g8_cheat_toggles.txt`. Report:
+- **Tests**: `tests\g8_cheats_tests.cpp` (8 cases since the tentacle fix), `tests\g8_player_cheats_tests.cpp` (7
+  cases). Scripts `tools\input_scripts\g8_cheat_toggles.txt`, `g8_player_cheats.txt`. Report:
   `docs\g8_cheats_report.md`, analysis `analysis\loader\g8_cheats.md`.
 
 ## 5. Cross-module contracts
@@ -2121,3 +2167,5 @@ ipc_gpu.cpp` (`DrawScreenPolygon`, exit line), `tests\outline_tests.cpp` (4 case
 | 2026-10-13 | G2 alpha/font fix | `gfx\ff_pipeline.h/.cpp` (additive: `DiscardsTransparentFragments`, used by `FillDrawConstants`), `tests\ff_pipeline_tests.cpp` (1 case), `gfx\GFX_CONTRACT.md` 6.4, `tools\texture_upscale.py` v3 (`--method waifu2x`, separate alpha path, `--text-method`, `--text-overlay` default none), `tools\package.py`, `docs\g2_report.md` | 4.38: menu text without dark word rectangles (with and without pack); packs keep the original alpha and the colour under alpha 0 of lamps/glows; waifu2x pack recommended. |
 | 2026-10-13 | G8 cheats | new `xapi\cheats.h/.cpp`, `input\cheat_toggles.h/.cpp`, `tests\g8_cheats_tests.cpp`, `analysis\loader\g8_cheats.md`, `tools\input_scripts\g8_cheat_toggles.txt`, `docs\g8_cheats_report.md`; `input\host_router.h/.cpp` (additive: `PulseRumble`, `PulseActive`), `input\level_skip.h/.cpp` (additive: `InputCheatArmed`), `input\input_system.cpp` (wiring), `xapi\save_probes.cpp` (tick calls `cheats::OnTick`), `core\config_schema.cpp` (section `cheats`, 4 rows), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (5 starts), `tools\input_scripts\README.md` | `[cheats] invulnerable / one_hit_kill / enemies_ignore / ingame_toggles` (10 conditional probes, none by default), D-pad toggles. Section 4.41, `loader_design.md` 8.25. |
 | 2026-10-13 | G8 tentacle softlock fix | `xapi\cheats.h/.cpp` (additive: `kTentacle*`, `kPlayerGrabber`, `kActorGetPosition`, `TentacleHooksWanted`, `IsLethalHit`, `SkipTentacleGrab`, `TentacleHoldCooldown`, `kLethalBlockLimitSeconds` = 10 s, `kLethalBlockGapSeconds`, `LethalBlockWatch`, 4 `Stats` fields; `BlockPlayerDamage` also passes return 0x8C6FC), `tests\g8_cheats_tests.cpp` (+2 cases), `docs\g8_cheats_report.md`, `analysis\loader\g8_cheats.md` | Sewer tentacle (1-2) softlock with invulnerable: 2 conditional probes `probe:Tentacle::Update` 0x8C4F0, `probe:Tentacle::AnimEvent` 0x8CAD0 (enemies ignore me: no detection; invulnerable/enemies ignore me: no grab), pull-through kill passes, safety net for lethal damage blocked > 10 s. Section 4.41. |
+| 2026-10-14 | acid seam fix (M8 render to texture) | `gfx\nipc_gpu.h/.cpp` (additive: `TargetPixelCenter`; `HalfPixelShift` gains `shiftX`/`shiftY` with default 0.5; `SetPipelineCamera` passes the texture target's shift), `gfx\ff_pipeline.h/.cpp` (`FillFrameConstants`/`SetCamera` gain `pixelCenterX/Y` with default 0.5), `gfx\shaders\ff_shared.h` (`FFFrameConstants::pixelCenter`, 336 bytes), `gfx\shaders\ff_ubershader.hlsl` (pre-transformed path and 1/16-pixel snap use it), `tests\nipc_gpu_tests.cpp` (+1 case, +1 check block), `tests\ff_pipeline_tests.cpp` (offsets, frame constants), `tests\ff_render_tests.cpp` (+1 case), `gfx\GFX_CONTRACT.md` 12.2, `docs\m8_report.md` (Nachtrag 2026-10-14), `docs\loader_design.md` 8.23 P2-9 | 4.39: no dark line across the Level1-2 acid at render resolutions above 640x480 or with MSAA. The acid texture is a 128x128 render target the game fills with NiScreenPolygons 0..128; the guest-pixel half-pixel shift left its first device row/column black, and the wrapped texture showed it as a line. Texture targets now get no shift when upscaled or multisampled; classic 640x480 without MSAA and the back buffer are unchanged. No option. |
+| 2026-10-14 | G8 player cheats | new `xapi\cheats_player.h/.cpp`, `tests\g8_player_cheats_tests.cpp`, `tools\input_scripts\g8_player_cheats.txt`; `xapi\cheats.h/.cpp` (additive: `Cheat::TeleportFreecam/MoonJump/InfiniteAmmo`, `Settings` fields, 9 `Stats` fields, `CountPlayerCheat`, `QueueFlash`; `OnTick` calls `PlayerCheatsTick`), `input\cheat_toggles.h/.cpp` (additive: 3 sequences, `MoonJumpButtons`, `ConfigureMoonJump`, `MoonJumpFilter`), `input\input_system.cpp` (wiring), `gfx\freecam.cpp` (RB / T -> `RequestTeleport`), `core\config_schema.cpp` (4 rows, `ingame_toggles` order 78), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (2 starts), `docs\g8_cheats_report.md` 8, `analysis\loader\g8_cheats.md` 9, `tools\input_scripts\README.md` | `[cheats] teleport_freecam / moon_jump / infinite_ammo / jump_distance` (2 conditional probes `probe:Physics::Step` 0xAE7E0, `probe:Player::UseAmmo` 0x50560; none by default), 3 more D-pad sequences. Section 4.41. |

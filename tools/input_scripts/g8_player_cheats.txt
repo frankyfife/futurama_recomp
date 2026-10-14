@@ -1,0 +1,91 @@
+# g8_player_cheats.txt - G8 player cheats in Level1-2 ([cheats] ingame_toggles = 1, infinite_ammo = 0 at the start):
+# 10 shots without the cheat (the counter goes down), the D-pad sequence DOWN DOWN UP UP LEFT LEFT RIGHT RIGHT
+# switches infinite ammo on, 50 shots (the counter stays); then UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT switches the moon
+# jump on and B + LB lifts Fry. About 50 s. Format: README.md in this folder.
+loop timeout 120s until context Frontend
+  press START 3t
+  wait 30t
+end
+wait main_menu timeout 60s
+wait 30t
+loop timeout 30s until context Ingame
+  expect no_dialog
+  press A 3t
+  wait 60t
+end
+wait level_loaded timeout 180s
+loop timeout 300s until controllable
+  wait 160t
+  press A 3t
+end
+wait 60t
+log "X: start"
+game state
+screenshot a_start
+wait 10t
+log "X: 10 shots, cheat off"
+repeat 10
+  press A 3t
+  wait 15t
+end
+wait 30t
+game state
+screenshot a_after10_off
+log "X: toggle infinite ammo"
+press DOWN 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press UP 3t
+wait 6t
+press UP 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+wait log "cheat: infinite_ammo ON" timeout 5s
+wait 30t
+screenshot a_toggle_on
+log "X: 50 shots, cheat on"
+repeat 50
+  press A 3t
+  wait 15t
+end
+wait 30t
+game state
+screenshot a_after50_on
+log "X: toggle moon jump"
+press UP 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press LEFT 3t
+wait 6t
+press UP 3t
+wait 6t
+press RIGHT 3t
+wait 6t
+press DOWN 3t
+wait 6t
+press LEFT 3t
+wait 6t
+wait log "cheat: moon_jump ON" timeout 5s
+wait 30t
+hold B
+wait 3t
+hold WHITE
+wait 20t
+screenshot a_moon
+release WHITE
+release B
+wait 90t
+game state
+log "X: end"
+quit 0

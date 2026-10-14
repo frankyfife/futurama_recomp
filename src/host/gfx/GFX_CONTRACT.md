@@ -640,7 +640,13 @@ D3D11 side grows (`gfx::RenderSizes`: output, internal = output x render_scale):
   position the original rasterizer gave them; the high-resolution picture is a supersampled version of that
   geometry and box-downscaled matches the xemu captures (X1 of m3c_check);
 - render to texture (slot 15 with a texture; M8: rendered at the guest size times the back buffer's factor with its
-  MSAA samples, `RenderTargetDimension`) - the old P2 note "scale 1" is superseded; scissor is never enabled
+  MSAA samples, `RenderTargetDimension`) - the old P2 note "scale 1" is superseded. Exception to the guest-pixel
+  B19 shift (acid seam fix 2026-10-14): on a texture target the shift is `gfx::TargetPixelCenter` - 0.5 only when the
+  device grid is the guest grid with one sample, otherwise 0 (guest pixel edges on device pixel edges), handed to the
+  projections (`HalfPixelShift(..., shiftX, shiftY)`) and to the shader (`FFFrameConstants::pixelCenter`: pre-
+  transformed quads and the 1/16-pixel snap). With 0.5 the game's quads over the whole texture (Level1-2 acid,
+  NiScreenPolygons 0..128) left the first device row and column unwritten and the wrapped texture showed them as a
+  dark line on the acid. The back buffer keeps 0.5 (section 15 movie edge unchanged); scissor is never enabled
   (a future one goes through `ScaleRect`); lines and points (slots 52/53, wireframe fill) are P2 and 1 internal
   pixel wide - they must be widened by the scale when they are implemented.
 

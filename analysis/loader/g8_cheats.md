@@ -1,6 +1,6 @@
-# G8: Cheats – Schaden, Leben, Gegner-KI
+# G8: Cheats – Schaden, Leben, Gegner-KI, Physik, Munition
 
-Stand: 2026-10-13. Basis: Retail-EU-XBE (`orig\retail_eu\default.xbe`, Capstone), Ghidra-Export `analysis\retail_eu_export`, Levelskripte `scripts\levelN-M.ful/.dbg` (FutPAL01, nur gelesen) und `chars\*.ucf` (FutPAL00, Eigenschaft `maxhealth`), dazu Läufe des Ports unter `run\cheats\` des Arbeitsbaums (git-ignoriert). Umsetzung: `src\host\xapi\cheats.*`, `src\host\input\cheat_toggles.*`; Bericht [`docs\g8_cheats_report.md`](../../docs/g8_cheats_report.md).
+Stand: 2026-10-13, Nachtrag 2026-10-14 (Abschnitt 9: Physikkörper, Sprünge, Fallschaden, Munition, Teleport; `src\host\xapi\cheats_player.*`). Basis: Retail-EU-XBE (`orig\retail_eu\default.xbe`, Capstone), Ghidra-Export `analysis\retail_eu_export`, Levelskripte `scripts\levelN-M.ful/.dbg` (FutPAL01, nur gelesen) und `chars\*.ucf` (FutPAL00, Eigenschaft `maxhealth`), dazu Läufe des Ports unter `run\cheats\` des Arbeitsbaums (git-ignoriert). Umsetzung: `src\host\xapi\cheats.*`, `src\host\input\cheat_toggles.*`; Bericht [`docs\g8_cheats_report.md`](../../docs/g8_cheats_report.md).
 
 Adressen sind VAs der Retail-EU-XBE. „Vermutung“ kennzeichnet Deutungen ohne direkten Beleg.
 
@@ -147,3 +147,73 @@ Die Angriffsflags +0x506/+0x507/+0x508 der NPCs schreiben (Capstone-Suche nach `
 | `FUN_00061A70` 0x621AE | Strahl: 100 × dt je Tick auf ein getroffenes Ziel, Angreifer 0 (Aufruf 0x94497 aus einer Spielerwaffe, Vermutung) | geblockt, falls er die Figur trifft; Sicherheitsnetz nur bei tödlichem Betrag |
 | `FUN_000639C0` 0x63B30 / 0x63D2C (vtable 0x29BA08) | Explosion mit Abstandsabfall bzw. 20,0 | einmalig, geblockt |
 | Gegner-Nahkampf 0x46CC9 (Rücksprung 0x46CCE) | turdman 20, eyestalk 15 usw. | geblockt |
+
+## 9. Nachtrag 2026-10-14: Physik, Sprünge, Munition, Teleport
+
+Nutzerwunsch: Teleport zur Freecam, Mondsprung (vor allem die Ratte in 4-1), unendlich Munition, Sprungweite + x m. Umsetzung `src\host\xapi\cheats_player.*`, Bericht [`docs\g8_cheats_report.md`](../../docs/g8_cheats_report.md) Abschnitt 8. Läufe `run\cheats2\` des Arbeitsbaums mit `[debug] trace = game` (Zeilen `physics trace: …` je Physikschritt).
+
+### 9.1 Physikkörper und Physikwelt
+
+| Stelle | Inhalt |
+|---|---|
+| Körper (vtable **0x2A1FB8**, ctor `FUN_000AF040`, 0x48 Byte; Basis `FUN_000AEF90` hängt ihn in die Liste `DAT_002E9BA0`) | +0x0C Schwerkraft (vec3; Startwert 0/−100/0 aus 0x2D678C), +0x18 Dämpfung an (vf+0x2C), +0x1A/+0x1B/+0x1C Flags, +0x24 aktiv, +0x28 **Geschwindigkeit** (vec3, Y = oben), +0x34 Position (Kopie), +0x40 **Kollisionsobjekt** (`FUN_000A9150`, vtable 0x2A1E68; +0x14 Position = Körpermitte, +0x90/+0x94/+0x98 Halbachsen aus dem Def, +0x9C Kontaktflags, +0xB8 „festgehalten“), +0x45 **am Boden** nach dem letzten Schritt |
+| Körper-vtable | +0x04 `0xAEC00` Position setzen (+0x34 und Kollision +0x14), +0x08 Position lesen, +0x10 `0xAEBE0` Schwerkraft setzen, +0x14 **`0xAF170` Integrieren**, +0x2C `0xAEF70` Dämpfung, +0x48 `0xAF160` am Boden (+0x45), +0x4C `0xAED10` Kontaktflag 0x80, +0x50 **`0xAF740` Geschwindigkeit addieren** |
+| `FUN_000AF170` (Integrieren, thiscall(dt) ret 4) | Kontaktflags 0x11 (Boden): +0x45 = 1, vy ≤ 0 → 0; 0x40 (Decke): vy höchstens −50; dann Dämpfung (+0x18: vx, vz × **0,5** = `0x293A00`), v += g·dt, Position += v·dt |
+| Physikwelt (vtable **0x2A1ECC**) | +0x8 `0xAE7D0`: Tickzeit sammeln (+0x24 += dt `0x2D6748`); **+0xC `0xAE7E0`: Schritt** – alle Körper der Liste mit vf+0x14(+0x24), danach +0x24 = 0. Einmal je Logiktick (Läufe: dt 0,0167) |
+| Spieler-Update `FUN_000530C0` (vtable +0x54) | setzt jeden Tick die Schwerkraft: Spieler **−95** (`0x2D656C`), Ratte (Typ 4) **−130** bei vy > 0 bzw. **−180** (0x532D7/0x532E9); addiert die Bewegung der Animation über vf+0x50; Dämpfung an (vf+0x2C(1)) |
+
+### 9.2 Maßstab (Einheiten je Meter)
+
+Frys Kollisionsellipsoid (Halbachsen 1,6/4,8/1,6, Mittelpunkt +0x4D0 = 4,8 über den Füßen, Lauf `explore1`) ist **9,6 Einheiten hoch**. Mit 1,75 m für Fry (Annahme) sind das **5,5 Einheiten/m** (`kUnitsPerMetre`). Gegenproben: Laufen 25 Einheiten/s = 4,5 m/s, Schwerkraft 95 = 17 m/s², tödlicher Sturz 100 = 18 m (9.4), Frys Sprung 5,6 hoch = 1,0 m.
+
+### 9.3 Sprünge
+
+* **B** = Aktion 24 → Spieler vf+0x104 = `FUN_00050D10`: setzt den Sprungwunsch **+0xB89 = 1** (0x50E2D); nur die Ratte (Typ 4) bekommt dort direkt +50 nach oben (vf+0x50), wenn sie am Boden ist.
+* **Animationssprung** (Fry, Bender, Leela): Das Zustandsupdate (`FUN_00052C20`) nimmt den Wunsch (Zustand 0x21) und löscht ihn. Während der Sprunganimation ist die Schwerkraft **0** und die Geschwindigkeit folgt der Animation (Fry: vy 33, 64, 52, 43 … −51), danach wieder −95 für den Rest des Falls. Gemessen (Phase mit Schwerkraft 0, Sprung aus dem Lauf): Fry **0,48 s** (29 Schritte), Leela **0,58 s**, Bender **0,45 s**; aus dem Stand etwa 0,52 s. Weite aus dem Lauf: Fry 13,0–14,7 Einheiten (2,4–2,7 m), Bender 12,7 (2,3 m), Leela 17,8 (3,2 m) – Bender und Leela mit Sprungweite +0,1 m gemessen; Höhe Fry 5,6.
+* **Physiksprung** (Ratte, `FUN_00061A70`): bei Wunsch, am Boden (Körper vf+0x48) und Luftzeit-Zähler Ratte+0x24 < 0,1: Spieler +0xB89 = 1, vy = 0, dann + Ratte+0x38 (40) × 1,4 = **56** über vf+0x50. Flug 0,80 s gerechnet (56/130 hoch, Fall mit 180), gemessen 0,88 s bei 7 Einheiten tieferer Landung; Weite 53 Einheiten (9,6 m) bei etwa 60 Einheiten/s. Der Rattenkörper ist **nicht gedämpft** (+0x18 = 0); die Ratte setzt vx/vz selbst und folgt einer Spline-Strecke (`FUN_00061640`, nächster Parameter `FUN_00061900` im Fenster ±10).
+* Absprungerkennung im Cheat (`DetectTakeoff`): Animation = im Schritt davor am Boden mit Wunsch und Schwerkraft ≠ 0, jetzt Schwerkraft 0; Physik = am Boden, Wunsch gesetzt, vy > 20, Schwerkraft < 0.
+
+### 9.4 Fallschaden und Mondsprung
+
+* Spieler **+0xB84** = Höhe, an der der Fall begann: Das Update `FUN_0005A700` schreibt sie, solange die Figur am Boden ist (oder hängt/klettert), die Neustart-Platzierung `FUN_00057910` setzt sie auf die neue Höhe (0x57935).
+* Landung: Fallhöhe = +0xB84 − aktuelle Höhe. > 41 bei vy < −40: harte Landung, > **100**: `vf+0x7C(55555)` (tödlich, auch für den Gott-Modus des Spiels); in anderen Zuständen schon > 40 bzw. > 21 (Rolle).
+* Mondsprung: vor dem Schritt vy = max(vy, **40**) (Körper +0x2C), solange LB + B gehalten sind; nach dem Schritt +0xB84 = aktuelle Fußhöhe bis zur nächsten Landung. Gemessen: Fry von −2,1 auf 61 (90 Schritte), Landung ohne Schaden; Ratte von −2,9 auf 16,6 (28 Schritte) bzw. auf 50,5 (60 Schritte).
+* Tasten (Aktionstabelle, `m4_input.md` 5.1): LB/RB (WHITE/BLACK, Aktionen 27/28) → vtable +0x10C; nur Fry belegt sie (`0x85AE0` Waffe zurück/vor), Bender, Leela, Ratte und die Basis haben dort die leere Funktion 0xAED30. Die Levelskripte lesen sie nicht (Skript-Tasten 5.2). Deshalb **LB + B**; ein LB, das bei gehaltenem B gedrückt wird, blendet der Eingabefilter für das Spiel aus.
+* Decke: Auf dem Tisch des Besprechungsraums in 1-1 (Lauf `tp`) hoben weder der Sprung des Spiels noch der Mondsprung ab (Kontaktflags 0x7, Position bleibt) – ein Hindernis darüber; nicht weiter untersucht.
+
+### 9.5 Munition
+
+| Stelle | Inhalt |
+|---|---|
+| Spieler **+0xAD0** s32[5] | Munition je Slot; Waffe (+0x524 gewählt / +0x528 ausgerüstet) +0x74 = Slot, −1 = keine (Hammer) |
+| vtable +0x8C `FUN_000504D0` | Aufsammeln: +Betrag bis zum Maximum `0x29A1B4` = {500, 200, 300, 400, 0}; mit Chickenwalker `FUN_00042700` (Raketen); bei genau 999 nichts |
+| vtable **+0x90 `FUN_00050560`** | **Verbrauch** `(slot, n)`: +0xAD0[slot] −= n, nicht unter 0. Einziger Verbraucher: die Waffen (`FUN_0007DEF0`, `vf+0x94` > 0 prüfen, dann `vf+0x90(slot, 1 …)`) |
+| vtable +0x94 `FUN_00050AF0` | Munition eines Slots lesen |
+| `FUN_00051D50` | Setzen `(slot, n)` mit Anzeige (`"weapons"`/`"ammo"`); der Cheatcode 3853856702 setzt so 999 |
+| Anzeige | Das Spieler-Update `FUN_0005A700` vergleicht +0xAD0[i] mit der Kopie +0xAE4[i] und schreibt die Zahl der ausgerüsteten Waffe neu – bleibt der Zähler, bleibt die Anzeige |
+| Chickenwalker ([Spieler+0x7B0], Update `FUN_000445A0`) | Laser: Energie **+0xE4** −25 je Schuss (Taste A), +100/s, höchstens 500 (0x457B1), Anzeige `cw_hud` = Energie × 0,002. Raketen: **+0xC4** −1 je Schuss (Taste X, Abklingzeit +0xC8 0,55 s), höchstens 99 |
+| Kanone ([Spieler+0x7A8], Update `FUN_00032FB0`) | Schüsse **+0x90** (−1 = unbegrenzt, Startwert), −1 je Schuss, Abklingzeit +0x8C = 0,3; das Skript setzt sie mit dem Native SetAmmo (`FUN_00032E00`) und lädt nach (`m_fBlueCannonRechargeTime`, 2-5) |
+| Bender/Leela | Aufladung **+0xAF8** (float, vtable +0x15C addieren bis 4,0, +0x160 verbrauchen, +0x164 lesen): Spezialangriff (A + X) kostet 1,0 (Bender `FUN_00080520`, Leela `FUN_0008AB70`); Anzeige über +0xAFC |
+
+### 9.6 Teleport
+
+* Strahltest **`FUN_000FB6F0`** (cdecl `(float* start, float* richtung, float* länge, 1, 3)` → Treffer ≠ 0, die Länge wird auf den Abstand des Treffers gekürzt; Lauf `explore1`: aus 39,5 Höhe Abstand 41,63, Start unverändert). Das Spiel nutzt ihn für den Neustart der Ratte (Aufruf 0x620A3, Strahl nach unten).
+* Platzierung des Spiels: `FUN_00057910` (Neustart der Ratte am Knoten „Start“) = vtable +0x1C `FUN_000353B0` (Füße + Mittelpunkthöhe +0x4D0 → Körper vf+4), +0x24 Drehung, `FUN_00057660` (setzt **alles** zurück: Geschwindigkeit, Zustände, Gesundheit = Maximum, Waffe abgelegt, Anzeige), +0xB84 = neue Höhe.
+* Der Cheat nimmt davon nur: SetPosition, Kollision vf+4 (Kontaktflags 0), Körpergeschwindigkeit und Spieler +0x4E4 (Kopie) = 0, +0xB84 = Füße. Ziel = Kamera − Trefferabstand + 0,5.
+* Freecam-Tasten (`gfx\freecam.cpp`): belegt sind A, X, Y, B, BACK, Steuerkreuz, Sticks, LT/RT bzw. W A S D E Q, Umschalt, Strg, H, B, R, +/−. Frei: LB, RB, START → **RB** und **T**.
+
+### 9.7 Probes
+
+| Probe | Adresse | Prolog | Bedingung |
+|---|---|---|---|
+| `probe:Physics::Step` | 0xAE7E0 | `83 EC 64 53 56` | moon_jump, jump_distance > 0 oder ingame_toggles |
+| `probe:Player::UseAmmo` | 0x50560 | `8B 44 24 04 8B 54 24 08` | infinite_ammo oder ingame_toggles |
+
+Beide Funktionen kannte Ghidra nicht als Funktionen (`tools\gen\extra_function_starts.tsv`: `PhysicsWorld_vfStep` 0x54 Byte, `Player_vfUseAmmo` 0x1F Byte). Rohscan E8/E9/EB/Jcc über `.text`: kein Sprung in die gestohlenen Bytes. UseAmmo steht nur in den fünf Spieler-vtables (+0x90).
+
+### 9.8 Offen / Vermutungen
+
+* 5,5 Einheiten/m beruht auf der angenommenen Größe Frys (1,75 m).
+* Kollisionsobjekt +0xB8 („festgehalten“) und die Decke über dem Tisch in 1-1: nicht untersucht.
+* Kanone und Railgun mit unendlich Munition nicht im Lauf; Bender/Leela-Aufladung nicht im Lauf (Start mit 0).
+* Doppel- oder Spezialsprünge (andere Animationen) mit der Sprungweite nicht gemessen.

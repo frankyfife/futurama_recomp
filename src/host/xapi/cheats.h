@@ -1,5 +1,7 @@
 // G8: cheats - [cheats] invulnerable, one_hit_kill, enemies_ignore, ingame_toggles (analysis/loader/g8_cheats.md,
 // docs/g8_cheats_report.md). Default: all off, no hook installed (FUT_PROBE_IF, core::HookDesc::condition).
+// The player cheats teleport_freecam, moon_jump, jump_distance and infinite_ammo (2026-10-14) live in
+// xapi/cheats_player.h; their switches share Settings, Active and Toggle below.
 //
 // Invulnerable (probe:Player::TakeDamage 0x51AD0, probe:Script::FsDeductLives 0xC1240):
 //   Every character's damage goes through its vtable slot +0x7C, thiscall(this, float amount, Actor* attacker)
@@ -106,18 +108,36 @@ inline constexpr float kBossMaxHealth = 1000.0f;        // tank 1000, chickenwal
 inline constexpr float kBossHitFraction = 0.25f;        // bosses: a quarter of the maximum health per hit
 
 // ---- options ----------------------------------------------------------------------------------------------------
-enum class Cheat : std::uint8_t { Invulnerable, OneHitKill, EnemiesIgnore, Count };
+// G8 part 2 (2026-10-14, xapi/cheats_player.h): TeleportFreecam, MoonJump, InfiniteAmmo. [cheats] jump_distance is a
+// number, not a switch (Settings::jumpDistanceMetres).
+enum class Cheat : std::uint8_t {
+    Invulnerable,
+    OneHitKill,
+    EnemiesIgnore,
+    TeleportFreecam,
+    MoonJump,
+    InfiniteAmmo,
+    Count
+};
 inline constexpr int kCheatCount = static_cast<int>(Cheat::Count);
-const char* CheatKey(Cheat c) noexcept;      // INI key: invulnerable | one_hit_kill | enemies_ignore
+// INI key: invulnerable | one_hit_kill | enemies_ignore | teleport_freecam | moon_jump | infinite_ammo
+const char* CheatKey(Cheat c) noexcept;
 const char* CheatLabelDe(Cheat c) noexcept;  // "Unverwundbar" ...
 
 struct Settings {
     bool invulnerable = false;
     bool oneHitKill = false;
     bool enemiesIgnore = false;
+    bool teleportFreecam = false;
+    bool moonJump = false;
+    bool infiniteAmmo = false;
+    float jumpDistanceMetres = 0.0f;  // 0 = off
     bool ingameToggles = false;
     bool Enabled(Cheat c) const noexcept;
-    bool AnyHook() const noexcept { return invulnerable || oneHitKill || enemiesIgnore || ingameToggles; }
+    bool AnyHook() const noexcept {
+        return invulnerable || oneHitKill || enemiesIgnore || teleportFreecam || moonJump || infiniteAmmo ||
+               jumpDistanceMetres > 0.0f || ingameToggles;
+    }
 };
 Settings SettingsFromConfig(const core::Config& config) noexcept;
 // Hook conditions (FUT_PROBE_IF): a cheat's hooks are installed when it is on at start or can be toggled in game.
@@ -184,6 +204,8 @@ bool Active(Cheat c) noexcept;
 bool Toggle(Cheat c, int port, std::string_view sequenceText) noexcept;
 // Logic tick heartbeat (xapi::RunPendingGameActions): pending flash, player health trace (only with cheat hooks).
 void OnTick() noexcept;
+// The game's cheat confirmation flash at the next tick (green = on/done, red = off/refused).
+void QueueFlash(bool on) noexcept;
 // Exit reporter "cheats": "cheats summary: ...".
 void LogSummary() noexcept;
 
@@ -201,7 +223,19 @@ struct Stats {
     std::uint32_t protectedHits = 0;    // one-hit kill: protected target left unchanged
     std::uint32_t holdFireTicks = 0;    // brain updates with the hold-fire flag forced
     std::uint32_t toggles = 0;
+    // Player cheats (cheats_player.cpp).
+    std::uint32_t teleports = 0;          // teleports done
+    std::uint32_t teleportsRefused = 0;   // no ground below, vehicle, grabbed, no player
+    std::uint32_t moonJumpTicks = 0;      // physics steps with the moon jump lifting
+    std::uint32_t moonJumps = 0;          // lifts started (buttons pressed)
+    std::uint32_t fallsProtected = 0;     // landings after a moon jump with the fall start height carried along
+    std::uint32_t boostedJumps = 0;       // jumps with the extra distance
+    std::uint32_t ammoKept = 0;           // UseAmmo calls skipped
+    std::uint32_t ammoRefills = 0;        // empty slot of the equipped weapon refilled
+    std::uint32_t countersKept = 0;       // walker/cannon/power counters put back
 };
+// The player cheats count into the same statistics (cheats_player.cpp). Returns the new count.
+std::uint32_t CountPlayerCheat(std::uint32_t Stats::*field) noexcept;
 Stats GetStats() noexcept;
 
 }  // namespace xapi::cheats

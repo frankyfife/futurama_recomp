@@ -3,7 +3,7 @@
 // Sources:   analysis/retail_eu_export/functions.tsv, tools/gen/extra_function_starts.tsv
 //
 // Initializer rows for guest::FunctionInfo (core/guest.h), sorted by address.
-// 7021 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
+// 7023 entries; 24329 initializer stubs in 0x17E010..0x233880 collapsed into one range.
 // { address, size, flags (0 ghidra, 1 extra start, 2 synthetic range), name },
 { 0x00011000u, 0x69u, 0, "FUN_00011000" },
 { 0x00011070u, 0x69u, 0, "FUN_00011070" },
@@ -846,6 +846,7 @@
 { 0x000503B0u, 0x2Au, 0, "FUN_000503b0" },
 { 0x000503E0u, 0x3Cu, 0, "FUN_000503e0" },
 { 0x000504D0u, 0x69u, 0, "FUN_000504d0" },
+{ 0x00050560u, 0x1Fu, 1, "Player_vfUseAmmo" },
 { 0x00050580u, 0x49u, 0, "FUN_00050580" },
 { 0x00050600u, 0x9Bu, 0, "FUN_00050600" },
 { 0x000506A0u, 0x90u, 0, "FUN_000506a0" },
@@ -1920,6 +1921,7 @@
 { 0x000ADFE0u, 0xE1u, 0, "FUN_000adfe0" },
 { 0x000AE0D0u, 0x292u, 0, "FUN_000ae0d0" },
 { 0x000AE370u, 0x454u, 0, "FUN_000ae370" },
+{ 0x000AE7E0u, 0x54u, 1, "PhysicsWorld_vfStep" },
 { 0x000AE910u, 0x2Cu, 0, "FUN_000ae910" },
 { 0x000AE940u, 0x97u, 0, "FUN_000ae940" },
 { 0x000AE9E0u, 0x76u, 0, "FUN_000ae9e0" },

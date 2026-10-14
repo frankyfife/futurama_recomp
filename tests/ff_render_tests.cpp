@@ -492,6 +492,14 @@ public:
         pipeline_.SetCamera(camera_, 64, 64);
         device_.SetViewport(camera_.viewport);
     }
+    // A guest target of the camera's viewport size drawn on the whole 64 x 64 device target (render to texture at
+    // a higher render resolution) with the B19 shift `pixelCenter` in guest pixels.
+    void SetScaledCamera(const ni::CameraDesc& camera, float pixelCenter) {
+        camera_ = camera;
+        pipeline_.SetCamera(camera_, static_cast<std::uint32_t>(camera.viewport.width),
+                            static_cast<std::uint32_t>(camera.viewport.height), pixelCenter, pixelCenter);
+        device_.SetViewport({0.0f, 0.0f, 64.0f, 64.0f, 0.0f, 1.0f});
+    }
     void Clear(Rgba c = {0, 0, 0, 0}) {
         const float color[4] = {c.r, c.g, c.b, c.a};
         device_.Clear(rhi::kClearColor | rhi::kClearDepth | rhi::kClearStencil, color, 1.0f, 0, nullptr);
@@ -1426,5 +1434,52 @@ TEST_CASE("ff render: the debug layer reports nothing for a mixed frame") {
     const std::vector<std::string> problems = h.Device().TakeDebugProblems();
     for (const std::string& p : problems) {
         FAIL_CHECK("D3D11 debug layer: " << p);
+    }
+}
+
+TEST_CASE("ff render: an upscaled texture target without the B19 shift is covered to its first row and column") {
+    // Level1-2 acid (user report 2026-10-14): the game draws its acid texture as NiScreenPolygons over the whole
+    // 128 x 128 target (corners on integer guest pixels). Rendered at twice the size with the half-pixel shift of B19
+    // in guest pixels, the first device column and row stayed unwritten (black) and the wrapped texture drew them
+    // as a dark line across the acid. Without the shift (gfx::TargetPixelCenter) the quad covers every pixel.
+    Harness h;
+    if (!h.Ok()) return;
+    ni::CameraDesc camera;
+    camera.view = camera.projection = camera.screenProjection = IdentityMatrix();
+    camera.viewport = {0.0f, 0.0f, 32.0f, 32.0f, 0.0f, 1.0f};  // guest 32 x 32 -> device 64 x 64
+    // Pre-transformed quad (D3D8 pixels) over the whole guest target.
+    const float positions[12] = {0.0f, 0.0f, 0.5f, 32.0f, 0.0f, 0.5f, 0.0f, 32.0f, 0.5f, 32.0f, 32.0f, 0.5f};
+    const float colors[16] = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+    const std::uint16_t indices[6] = {0, 1, 2, 2, 1, 3};
+    ni::DrawItem screen;
+    screen.kind = ni::DrawKind::ScreenPolygon;
+    screen.geometry.vertexCount = 4;
+    screen.geometry.positions = {positions, 12};
+    screen.geometry.colors = {colors, 16};
+    screen.geometry.indices = indices;
+    screen.geometry.indexCount = 6;
+    screen.geometry.pretransformed = true;
+    screen.state.zFunc = rhi::CompareFunc::Always;
+    screen.state.cullMode = rhi::CullMode::None;
+    // Transformed quad over the whole viewport (NDC -1..1), the projection shifted like GpuRenderer does.
+    const Quad full(0.5f, {0, 1, 0, 1});
+    const Rgba green{0, 1, 0, 1}, empty{0, 0, 0, 0};
+    for (const float pixelCenter : {0.5f, 0.0f}) {
+        CAPTURE(pixelCenter);
+        const bool covered = pixelCenter == 0.0f;
+        for (const bool pretransformed : {true, false}) {
+            CAPTURE(pretransformed);
+            ni::CameraDesc c = camera;
+            HalfPixelShift(&c.projection, 32.0f, 32.0f, pixelCenter, pixelCenter);
+            h.SetScaledCamera(c, pixelCenter);
+            h.Clear();
+            REQUIRE(h.Draw(pretransformed ? screen : full.Item()) == ff::DrawResult::Drawn);
+            CheckPixel(h.Read(0, 0), covered ? green : empty);
+            CheckPixel(h.Read(0, 40), covered ? green : empty);
+            CheckPixel(h.Read(40, 0), covered ? green : empty);
+            CheckPixel(h.Read(1, 1), green);
+            CheckPixel(h.Read(63, 63), green);
+            CheckPixel(h.Read(63, 0), covered ? green : empty);
+        }
     }
 }

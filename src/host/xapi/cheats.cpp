@@ -1,6 +1,8 @@
 // G8: cheats (see cheats.h).
 #include "xapi/cheats.h"
 
+#include "xapi/cheats_player.h"
+
 #include "core/config_schema.h"
 #include "core/guest_call.h"
 #include "core/hooks.h"
@@ -455,6 +457,12 @@ const char* CheatKey(Cheat c) noexcept {
             return "one_hit_kill";
         case Cheat::EnemiesIgnore:
             return "enemies_ignore";
+        case Cheat::TeleportFreecam:
+            return "teleport_freecam";
+        case Cheat::MoonJump:
+            return "moon_jump";
+        case Cheat::InfiniteAmmo:
+            return "infinite_ammo";
         default:
             return "?";
     }
@@ -468,6 +476,12 @@ const char* CheatLabelDe(Cheat c) noexcept {
             return "Gegner sterben mit einem Treffer";
         case Cheat::EnemiesIgnore:
             return "Feinde ignorieren mich";
+        case Cheat::TeleportFreecam:
+            return "Zur Freecam teleportieren";
+        case Cheat::MoonJump:
+            return "Mondsprung";
+        case Cheat::InfiniteAmmo:
+            return "Unendlich Munition";
         default:
             return "?";
     }
@@ -481,6 +495,12 @@ bool Settings::Enabled(Cheat c) const noexcept {
             return oneHitKill;
         case Cheat::EnemiesIgnore:
             return enemiesIgnore;
+        case Cheat::TeleportFreecam:
+            return teleportFreecam;
+        case Cheat::MoonJump:
+            return moonJump;
+        case Cheat::InfiniteAmmo:
+            return infiniteAmmo;
         default:
             return false;
     }
@@ -498,6 +518,10 @@ Settings SettingsFromConfig(const core::Config& config) noexcept {
     s.invulnerable = get("invulnerable");
     s.oneHitKill = get("one_hit_kill");
     s.enemiesIgnore = get("enemies_ignore");
+    s.teleportFreecam = get("teleport_freecam");
+    s.moonJump = get("moon_jump");
+    s.infiniteAmmo = get("infinite_ammo");
+    s.jumpDistanceMetres = JumpDistanceFromConfig(config);
     s.ingameToggles = get("ingame_toggles");
     return s;
 }
@@ -605,12 +629,17 @@ void Configure() noexcept {
             return;
         }
         FUT_LOGI(Game,
-                 "cheats: invulnerable %s, one-hit kill %s, enemies ignore me %s; in-game toggles %s%s",
+                 "cheats: invulnerable %s, one-hit kill %s, enemies ignore me %s, teleport to the freecam %s, moon "
+                 "jump %s, jump distance +%.1f m, infinite ammo %s; in-game toggles %s%s",
                  OnOff(g_settings.invulnerable), OnOff(g_settings.oneHitKill), OnOff(g_settings.enemiesIgnore),
+                 OnOff(g_settings.teleportFreecam), OnOff(g_settings.moonJump),
+                 static_cast<double>(g_settings.jumpDistanceMetres), OnOff(g_settings.infiniteAmmo),
                  OnOff(g_settings.ingameToggles),
                  g_settings.ingameToggles ? " (D-pad: invulnerable UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT, one-hit "
                                             "kill LEFT RIGHT LEFT RIGHT UP DOWN UP DOWN, enemies ignore DOWN UP DOWN "
-                                            "UP RIGHT LEFT RIGHT LEFT)"
+                                            "UP RIGHT LEFT RIGHT LEFT, teleport RIGHT RIGHT LEFT LEFT UP UP DOWN DOWN, "
+                                            "moon jump UP RIGHT DOWN LEFT UP RIGHT DOWN LEFT, infinite ammo DOWN DOWN "
+                                            "UP UP LEFT LEFT RIGHT RIGHT)"
                                           : "");
         core::AddExitReporter("cheats", &LogSummary);
     });
@@ -656,6 +685,7 @@ void OnTick() noexcept {
     if (!g_settings.AnyHook()) {
         return;
     }
+    PlayerCheatsTick();  // teleport, vehicle/charge counters (cheats_player.cpp)
     try {
         const guest::GuestAddr session = ReadU32(kSessionPtr);
         const int flash = g_pendingFlash.exchange(0);
@@ -708,6 +738,15 @@ Stats GetStats() noexcept {
     return g_stats;
 }
 
+std::uint32_t CountPlayerCheat(std::uint32_t Stats::*field) noexcept {
+    std::lock_guard<std::mutex> lock(g_statsLock);
+    return ++(g_stats.*field);
+}
+
+void QueueFlash(bool on) noexcept {
+    g_pendingFlash.store(on ? 1 : 2);
+}
+
 void LogSummary() noexcept {
     const Stats s = GetStats();
     FUT_LOGI(Game,
@@ -719,6 +758,7 @@ void LogSummary() noexcept {
              s.safetyNetKills, s.livesKept, OnOff(Active(Cheat::OneHitKill)), s.lethalHits, s.bossHits,
              s.protectedHits, OnOff(Active(Cheat::EnemiesIgnore)), s.holdFireTicks, s.tentacleHolds, s.grabsPrevented,
              s.toggles);
+    LogPlayerCheatsSummary();
 }
 
 }  // namespace xapi::cheats

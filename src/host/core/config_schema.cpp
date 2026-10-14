@@ -20,8 +20,9 @@
 //              positional, trim_3d (audio/spatial_x3d.cpp, codec/3D/reverb agent)
 //   [game]     xapi/game_timing.cpp (tick_rate, frame_clock); M6 video/movie_skip.cpp (skip_videos);
 //              G4 xapi/game_select.cpp (start_level, play_as), G7 input/level_skip.cpp ([cheats] level_skip)
-//   [cheats]   G8 xapi/cheats.cpp (invulnerable, one_hit_kill, enemies_ignore, ingame_toggles; the toggles' D-pad
-//              sequences in input/cheat_toggles.cpp)
+//   [cheats]   G8 xapi/cheats.cpp (invulnerable, one_hit_kill, enemies_ignore, ingame_toggles),
+//              xapi/cheats_player.cpp (teleport_freecam, moon_jump, jump_distance, infinite_ammo); the toggles'
+//              D-pad sequences in input/cheat_toggles.cpp
 //   [input]    input/input_config.cpp (M4 input agent; binding lists input/bindings.h, src/INTERFACES.md 4.26);
 //              G5 xapi/camera_response.cpp (camera_response); G6 xapi/first_person.cpp (first_person,
 //              first_person_look_speed)
@@ -447,16 +448,64 @@ constexpr ConfigKeyDef kKeys[] = {
               "is hit turns towards the character but does not attack. Bosses keep fighting; projectiles already "
               "in flight and traps still hit."},
      .tab = Tab::Game, .order = 72, .widget = W::Check},
+    // G8 part 2 (2026-10-14, xapi/cheats_player.cpp).
+    {.section = "cheats", .name = "teleport_freecam", .type = T::Bool, .defaultValue = "0",
+     .label = {"Zur Freecam teleportieren (Freecam: RB / T) (→ → ← ← ↑ ↑ ↓ ↓)",
+               "Teleport to the freecam (freecam: RB / T) (→ → ← ← ↑ ↑ ↓ ↓)"},
+     .help = {"In der Freecam (L3+R3 bzw. F6) setzt RB (Tastatur: T) die Spielfigur auf den Boden unter der "
+              "Kamera. Nach dem Verlassen der Freecam steht sie dort. Ohne Boden darunter (bis 300 m) passiert "
+              "nichts (rotes Aufblitzen). Nicht im Chickenwalker (1-7), an der Kanone (2-6) und auf der Ratte (4-1) "
+              "und nicht, während die Figur festgehalten wird. Achtung: Wer die Figur hinter Türen oder Auslöser "
+              "setzt, kann Levelskripte überspringen und festsitzen.",
+              "In the freecam (L3+R3 or F6) RB (keyboard: T) puts the character on the ground below the camera. "
+              "After leaving the freecam it stands there. Without ground below (up to 300 m) nothing happens (red "
+              "flash). Not in the Chicken Walker (1-7), at the cannon (2-6) and on the rat (4-1), and not while the "
+              "character is being held. Careful: placing the character behind doors or triggers can skip level "
+              "scripts and get stuck."},
+     .tab = Tab::Game, .order = 74, .widget = W::Check},
+    {.section = "cheats", .name = "moon_jump", .type = T::Bool, .defaultValue = "0",
+     .label = {"Mondsprung (LB + B halten) (↑ → ↓ ← ↑ → ↓ ←)", "Moon jump (hold LB + B) (↑ → ↓ ← ↑ → ↓ ←)"},
+     .help = {"Solange LB und B (Springen) gedrückt sind, steigt die Spielfigur nach oben – auch Zoidberg mit der "
+              "Ratte in Level 4-1. Loslassen: Sie fällt normal, die Landung danach verursacht keinen Fallschaden. "
+              "Tastatur mit der Standardbelegung: 1 + Leertaste. Erst B, dann LB drücken: Dann wechselt Fry dabei "
+              "nicht die Waffe (LB = Waffe zurück).",
+              "While LB and B (jump) are held, the character rises - Zoidberg on the rat in level 4-1 too. Released: "
+              "it falls normally, the landing afterwards causes no fall damage. Keyboard with the default bindings: "
+              "1 + Space. Press B first, then LB: then Fry does not switch his weapon (LB = previous weapon)."},
+     .tab = Tab::Game, .order = 75, .widget = W::Check},
+    {.section = "cheats", .name = "jump_distance", .type = T::Float, .defaultValue = "0.0", .ranged = true,
+     .min = 0.0, .max = 2.0, .step = 0.1,
+     .label = {"Sprungweite um x Meter erhöhen", "Increase the jump distance by x metres"},
+     .help = {"Jeder Sprung aus dem Lauf landet so viele Meter weiter (Fry, Bender, Leela und die Ratte in 4-1); "
+              "Höhe und Flugzeit bleiben. Sprünge aus dem Stand bleiben unverändert. 0 = aus. Maßstab: 10 "
+              "Spieleinheiten = 1 m. Achtung: Bei Sprungpassagen mit schmalen Plattformen kann man über das Ziel "
+              "hinausspringen.",
+              "Every running jump lands this many metres further (Fry, Bender, Leela and the rat in 4-1); height and "
+              "flight time stay. Standing jumps are unchanged. 0 = off. Scale: 10 game units = 1 m. Careful: on jump "
+              "passages with narrow platforms the character can overshoot."},
+     .tab = Tab::Game, .order = 76, .widget = W::DSpin, .unit = "m"},
+    {.section = "cheats", .name = "infinite_ammo", .type = T::Bool, .defaultValue = "0",
+     .label = {"Unendlich Munition (↓ ↓ ↑ ↑ ← ← → →)", "Infinite ammo (↓ ↓ ↑ ↑ ← ← → →)"},
+     .help = {"Fry verbraucht keine Munition (Pistole, Schrotflinte, Maschinengewehr, Railgun); die Anzeige bleibt "
+              "stehen, ein leeres Magazin wird aufgefüllt. Der Chickenwalker (1-7) hat immer volle Laserenergie und "
+              "verliert keine Raketen, die Kanone (2-6) keine Schüsse. Bender und Leela verbrauchen keine "
+              "Aufladung für ihre Spezialangriffe.",
+              "Fry uses no ammo (pistol, shotgun, machine gun, railgun); the counter stays, an empty magazine is "
+              "refilled. The Chicken Walker (1-7) always has full laser energy and loses no rockets, the cannon "
+              "(2-6) no shots. Bender and Leela use no charge for their special attacks."},
+     .tab = Tab::Game, .order = 77, .widget = W::Check},
     {.section = "cheats", .name = "ingame_toggles", .type = T::Bool, .defaultValue = "0",
      .label = {"Cheats im Spiel per Steuerkreuz umschalten", "Toggle cheats in game with the D-pad"},
      .help = {"Im Level schaltet je eine Folge auf dem Steuerkreuz (Tastatur: Pfeiltasten) einen Cheat an oder aus, "
               "zügig gedrückt (8 Drücke in höchstens 5 Sekunden): Unverwundbar = ↑ ↑ ↓ ↓ ← → ← →; Ein Treffer = "
-              "← → ← → ↑ ↓ ↑ ↓; Feinde ignorieren mich = ↓ ↑ ↓ ↑ → ← → ←. Bestätigung: grünes (an) bzw. rotes (aus) "
-              "Aufblitzen und ein kurzes Vibrieren.",
+              "← → ← → ↑ ↓ ↑ ↓; Feinde ignorieren mich = ↓ ↑ ↓ ↑ → ← → ←; Zur Freecam teleportieren = "
+              "→ → ← ← ↑ ↑ ↓ ↓; Mondsprung = ↑ → ↓ ← ↑ → ↓ ←; Unendlich Munition = ↓ ↓ ↑ ↑ ← ← → →. Bestätigung: "
+              "grünes (an) bzw. rotes (aus) Aufblitzen und ein kurzes Vibrieren.",
               "In a level one D-pad sequence (keyboard: arrow keys) each switches a cheat on or off, pressed quickly "
               "(8 presses within 5 seconds): invulnerable = ↑ ↑ ↓ ↓ ← → ← →; one hit = ← → ← → ↑ ↓ ↑ ↓; enemies ignore "
-              "me = ↓ ↑ ↓ ↑ → ← → ←. Confirmation: a green (on) or red (off) flash and a short rumble."},
-     .tab = Tab::Game, .order = 73, .widget = W::Check},
+              "me = ↓ ↑ ↓ ↑ → ← → ←; teleport to the freecam = → → ← ← ↑ ↑ ↓ ↓; moon jump = ↑ → ↓ ← ↑ → ↓ ←; infinite "
+              "ammo = ↓ ↓ ↑ ↑ ← ← → →. Confirmation: a green (on) or red (off) flash and a short rumble."},
+     .tab = Tab::Game, .order = 78, .widget = W::Check},
 
     // [render] - window and output (M3, gfx/gfx_config.h)
     // M3c (integration): monitor selection, platform/window.h WindowOptions::monitor. Type string: the values are
@@ -1263,12 +1312,14 @@ constexpr ConfigKeyDef kKeys[] = {
               "bewegen, rechter Stick umsehen, RT/LT hoch/runter, A schneller, X langsamer, Steuerkreuz hoch/runter "
               "zoomen, links/rechts Tempo, Y HUD aus/ein, B Wände von außen, BACK zurück zur Spielkamera. Tastatur/Maus: WASD bewegen, "
               "E/Q hoch/runter, Maus umsehen, Umschalt schneller, Strg langsamer, Mausrad zoomen, +/- Tempo, H HUD "
-              "aus/ein, B Wände von außen, R zurück zur Spielkamera.",
+              "aus/ein, B Wände von außen, R zurück zur Spielkamera. Mit dem Cheat „Zur Freecam teleportieren“: RB "
+              "bzw. T setzt die Spielfigur unter die Kamera.",
               "A freely movable camera for screenshots and looking around, in the main menu, in levels and cut "
               "scenes. While it is active the game receives no input. Gamepad: left stick move, right stick look, "
               "RT/LT up/down, A faster, X slower, D-pad up/down zoom, left/right speed, Y HUD off/on, B walls from outside, BACK back to the "
               "game camera. Keyboard/mouse: WASD move, E/Q up/down, mouse look, Shift faster, Ctrl slower, mouse "
-              "wheel zoom, +/- speed, H HUD off/on, B walls from outside, R back to the game camera."},
+              "wheel zoom, +/- speed, H HUD off/on, B walls from outside, R back to the game camera. With the cheat "
+              "\"Teleport to the freecam\": RB or T puts the character below the camera."},
      .tab = Tab::Controls, .order = 300, .widget = W::Check},
     {.section = "freecam", .name = "toggle_pad", .type = T::Choice, .defaultValue = "l3r3",
      .choices = kFreecamPadChoices, .label = {"Ein/aus am Gamepad", "On/off on the gamepad"},
