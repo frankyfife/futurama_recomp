@@ -47,6 +47,19 @@
 //     continuously for more than kLethalBlockLimitSeconds is let through once (death, respawn, life kept) - covers
 //     other scripted grab/crush kills that repeat their damage until the player is dead.
 //
+// Fall death (user report 2026-10-15: soft lock after a deep fall with "invulnerable"): every fall of more than 41
+//   units is fatal in the game - in the air FUN_0005A700 starts the "death_fall" animation and switches the input
+//   off (+0x630 = 0), above 100 units and on landing it deals 55555 (kFallDeathReturn, kFallLandingDeathReturn).
+//   Blocked, the character stayed alive without input and the level script never respawned it.
+//   - Fall guard (xapi/cheats_player.h FallGuard, logic tick, no hook): while invulnerable, the fall start height
+//     +0xB84 is kept at most kFallGuardHeight above the character - every fall lands like a short one (no death,
+//     no damage, control kept). Falls with no ground below (ray test 300 m; or still falling 10 s after passing
+//     100 units) get their real start height back: the game's fall death runs (abyss).
+//   - The fall death calls pass like the instant-death floor (respawn, life kept) - also for a fall that started
+//     before the cheat was switched on.
+//   - LockedAfterLethalWatch: any other blocked lethal hit followed by more than 10 s without control lets the
+//     death through.
+//
 // In-game toggles ([cheats] ingame_toggles): the D-pad sequences of input/cheat_toggles.h flip the three switches at
 // run time (Toggle); with the option on, all hooks are installed (each passes through while its switch is off).
 // Feedback: the game's own cheat confirmation (camera colour flash FUN_00013130 on [[0x2DABC4]+0x8C], green = on,
@@ -75,6 +88,13 @@ inline constexpr guest::GuestAddr kStormtrooperTakeDamage = 0x00090570;
 inline constexpr guest::GuestAddr kDeductLives = 0x000C1240;       // FsDeductLives, cdecl no args (opcode 0x149)
 inline constexpr guest::GuestAddr kAiBrainUpdate = 0x0002ECB0;     // thiscall(brain) -> al, plain ret
 inline constexpr guest::GuestAddr kKillFloorReturn = 0x00038C49;   // FUN_00038880: player on a material with flag 8
+// Fall death (2026-10-15, g8_cheats.md 11): the player update FUN_0005A700 (vtable slot +0x5C of all five player
+// classes) deals vf+0x7C(55555, 0) for a fall of more than 100 units in the air (call 0x5AE34) and on landing after
+// more than 40 units or with the "death_fall" animation 0x66 playing (call 0x5C59A); in the air (> 41 units) it also
+// switches the input off (+0x630 = 0, 0x5AE92) - only the death and the level script's respawn switch it on again.
+inline constexpr guest::GuestAddr kPlayerUpdate = 0x0005A700;
+inline constexpr guest::GuestAddr kFallDeathReturn = 0x0005AE37;         // in the air, fall > 100
+inline constexpr guest::GuestAddr kFallLandingDeathReturn = 0x0005C59D;  // landing, fall > 40 or death_fall playing
 // Sewer tentacle (tentacle_dude, vtable kTentacleVtable).
 inline constexpr guest::GuestAddr kTentacleVtable = 0x0029F790;
 inline constexpr guest::GuestAddr kTentacleUpdate = 0x0008C4F0;     // slot +0x5C, thiscall(this, arg) ret 4
@@ -153,9 +173,11 @@ bool TentacleHooksWanted(const core::Config& config) noexcept;
 
 // ---- pure decisions (unit-tested) -------------------------------------------------------------------------------
 // Player::TakeDamage while invulnerable: true = skip the call (the damage is lost). Only the instant-death floor
-// (return address kKillFloorReturn), the tentacle's pull-through kill (kTentacleKillReturn) and non-positive amounts
-// pass.
+// (return address kKillFloorReturn), the tentacle's pull-through kill (kTentacleKillReturn), the fall death
+// (kFallDeathReturn, kFallLandingDeathReturn; 2026-10-15) and non-positive amounts pass.
 bool BlockPlayerDamage(bool invulnerable, float amount, guest::GuestAddr returnAddress) noexcept;
+// The fall death of the player update (kFallDeathReturn or kFallLandingDeathReturn).
+bool IsFallDeathCall(guest::GuestAddr returnAddress) noexcept;
 // A lethal hit: the amount takes all of the (positive) current health.
 bool IsLethalHit(float amount, float health) noexcept;
 
@@ -186,6 +208,27 @@ private:
     std::uint32_t attacker_ = 0;
     double first_ = 0.0;
     double last_ = 0.0;
+};
+
+// Safety net, second part (2026-10-15): a single blocked lethal hit after which the controlled character stays
+// uncontrollable (+0x630 == 0) and alive - the pattern of the fall death (input switched off, then only the death
+// and the respawn give control back). A lock that starts within kLockArmSeconds of a blocked lethal hit and lasts
+// longer than kLethalBlockLimitSeconds lets the death through (respawn at the checkpoint, the life is kept).
+inline constexpr double kLockArmSeconds = 2.0;
+
+class LockedAfterLethalWatch {
+public:
+    void OnBlockedLethal(double now) noexcept;
+    // Once per logic tick for the controlled character. True = force the death now (the watch disarms).
+    bool Tick(double now, bool controllable, bool alive) noexcept;
+    void Reset() noexcept { armed_ = false; }
+    bool Armed() const noexcept { return armed_; }
+    double LockedSeconds(double now) const noexcept { return armed_ && lockedSince_ >= 0.0 ? now - lockedSince_ : 0.0; }
+
+private:
+    bool armed_ = false;
+    double armedAt_ = 0.0;
+    double lockedSince_ = -1.0;
 };
 
 enum class HitKind : std::uint8_t { Unchanged, Lethal, Boss };
@@ -219,6 +262,10 @@ struct Stats {
     std::uint32_t killFloorDeaths = 0;  // instant-death floor passed through while invulnerable
     std::uint32_t grabKills = 0;        // tentacle pull-through kill passed through while invulnerable
     std::uint32_t safetyNetKills = 0;   // lethal series blocked > kLethalBlockLimitSeconds, let through
+    std::uint32_t lockNetKills = 0;     // locked and alive > kLethalBlockLimitSeconds after a blocked lethal hit
+    std::uint32_t fallDeaths = 0;       // fall death of the player update passed through while invulnerable
+    std::uint32_t fallsCaught = 0;      // falls deeper than the hurt height that landed normally (fall guard)
+    std::uint32_t abyssFalls = 0;       // falls with no ground below: the game's fall death let through
     std::uint32_t grabsPrevented = 0;   // tentacle "morph:grab" turned into a miss
     std::uint32_t tentacleHolds = 0;    // enemies ignore me: tentacle detection cooldown raised from <= 0
     std::uint32_t livesKept = 0;        // FsDeductLives skipped

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -41,6 +42,12 @@ std::uint8_t ReadU8(guest::GuestAddr p) noexcept {
 }
 Vec3f ReadVec(guest::GuestAddr p) noexcept {
     return {ReadF32(p), ReadF32(p + 4), ReadF32(p + 8)};
+}
+
+double NowSeconds() noexcept {
+    using Clock = std::chrono::steady_clock;
+    static const Clock::time_point start = Clock::now();
+    return std::chrono::duration<double>(Clock::now() - start).count();
 }
 
 guest::GuestAddr ControlledPlayer() noexcept {
@@ -546,6 +553,60 @@ void TeleportTick(guest::GuestAddr player) noexcept {
     QueueFlash(true);
 }
 
+// ---- fall guard (invulnerable)
+// ----------------------------------------------------------------------------
+FallGuard g_fallGuard;
+guest::GuestAddr g_fallPlayer = 0;
+
+void FallGuardTick(guest::GuestAddr player) noexcept {
+    const guest::GuestAddr body = PlayerBody(player);
+    if (!Active(Cheat::Invulnerable) || body == 0) {
+        g_fallGuard.Reset();
+        g_fallPlayer = 0;
+        return;
+    }
+    if (player != g_fallPlayer) {
+        g_fallGuard.Reset();
+        g_fallPlayer = player;
+    }
+    // The height the player update measures the fall with: Actor vf+0x34 GetPosition (0x5AA45).
+    alignas(16) float pos[3] = {};
+    core::CallGuestThiscall(ReadU32(ReadU32(player) + kActorGetPosition), player, {guest::Addr(pos)});
+    const float fallStart = ReadF32(player + kPlayerFallStartY);
+    const bool grounded = ReadU8(body + kBodyGrounded) != 0;
+    const auto groundBelow = [&pos]() noexcept {
+        alignas(16) float origin[3] = {pos[0], pos[1] + 1.0f, pos[2]};
+        alignas(16) float dir[3] = {0.0f, -1.0f, 0.0f};
+        alignas(16) float dist[1] = {kTeleportRayLength};
+        return core::CallGuest(kRayTest, {guest::Addr(origin), guest::Addr(dir), guest::Addr(dist), 1u, 3u}) != 0;
+    };
+    const FallGuardDecision d = g_fallGuard.Step(fallStart, pos[1], grounded, NowSeconds(), groundBelow);
+    if (d.landed && d.drop > kFallHurtHeight) {
+        const std::uint32_t n = CountPlayerCheat(&Stats::fallsCaught);
+        if (Detail(n)) {
+            FUT_LOGI(Game,
+                     "cheat: invulnerable - fall of %.1f units (%.1f m; the game: %s) landed normally at %.1f %.1f "
+                     "%.1f (%u.)",
+                     static_cast<double>(d.drop), static_cast<double>(d.drop / kUnitsPerMetre),
+                     d.drop > kFallLandingDeathHeight ? "fatal" : "25 damage", static_cast<double>(pos[0]),
+                     static_cast<double>(pos[1]), static_cast<double>(pos[2]), n);
+        }
+    }
+    if (d.abyss) {
+        const std::uint32_t n = CountPlayerCheat(&Stats::abyssFalls);
+        FUT_LOGI(Game,
+                 "cheat: invulnerable - fall of %.1f units at %.1f %.1f %.1f with no ground below (ray %.0f units) or "
+                 "falling for more than %.0f s: the game's fall death runs; respawn at the checkpoint, no life is "
+                 "lost (%u.)",
+                 static_cast<double>(g_fallGuard.RealStart() - pos[1]), static_cast<double>(pos[0]),
+                 static_cast<double>(pos[1]), static_cast<double>(pos[2]), static_cast<double>(kTeleportRayLength),
+                 kFallAbyssSeconds, n);
+    }
+    if (d.write) {
+        guest::Write<float>(player + kPlayerFallStartY, d.fallStart);
+    }
+}
+
 }  // namespace
 
 // ---- options
@@ -718,6 +779,7 @@ void PlayerCheatsTick() noexcept {
     try {
         const guest::GuestAddr player = ControlledPlayer();
         TeleportTick(player);
+        FallGuardTick(player);  // after a teleport: its new fall start height counts
         AmmoTick(player);
     } catch (...) {
     }

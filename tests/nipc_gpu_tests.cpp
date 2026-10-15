@@ -117,6 +117,26 @@ TEST_CASE("nipc_gpu: B19 shift on texture targets only at the guest size with on
     CHECK(TargetPixelCenter(256, 256, 2) == 0.0f);
 }
 
+TEST_CASE("nipc_gpu: B19 shift on the back buffer only at scale 1 with one sample (edge seam)") {
+    // Movies, fades and letterbox bars (user report 2026-10-15, 2880x1620 at 16:9, MSAA 8x): the same rule as on
+    // texture targets, per axis and per G3 placement scale. Classic (640x480, 1 sample) keeps 0.5.
+    CHECK(PixelCenterShift(1.0, 1) == 0.5f);
+    CHECK(PixelCenterShift(1.0, 0) == 0.5f);
+    CHECK(PixelCenterShift(1.0, 4) == 0.0f);     // 640 x 480 with MSAA
+    CHECK(PixelCenterShift(2.0, 1) == 0.0f);     // 1280 x 960
+    CHECK(PixelCenterShift(3.375, 8) == 0.0f);   // 1620 lines (the user's settings)
+    CHECK(PixelCenterShift(4.5, 1) == 0.0f);     // 2160 lines
+    CHECK(PixelCenterShift(854.0 / 640.0, 1) == 0.0f);  // Stretch at 854 x 480: x 0, y (scale 1) 0.5
+    for (std::uint32_t guest : {128u, 640u, 480u}) {
+        for (std::uint32_t factor : {1u, 2u}) {
+            for (std::uint32_t samples : {1u, 4u}) {
+                CHECK(PixelCenterShift(static_cast<double>(guest * factor) / guest, samples) ==
+                      TargetPixelCenter(guest, guest * factor, samples));
+            }
+        }
+    }
+}
+
 TEST_CASE("nipc_gpu: ClearBuffer clears the whole target, NiRect rectangles (y up) and texture targets") {
     GpuRenderer::CreateParams params;
     params.window = nullptr;  // headless back buffer

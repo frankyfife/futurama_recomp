@@ -484,14 +484,26 @@ float2 StageUv(uint stage, float2 uv, float2 size)
     return (g_stages.stages[stage].coord.w & FF_STAGE_SHARP_NEAREST) != 0 ? sharp : uv;
 }
 
+// Edge seam fix (2026-10-15): on upscaled or multisampled targets the B19 shift is 0 so full-screen 2D covers the
+// picture to its edges; pre-transformed quads (slot 55: NiScreenTexture - loading pictures, movies) then sample their
+// texture coordinates g_frame.pixelCenter.zw device pixels back, where D3D8 put the texels. Without this the last
+// rows/columns of a wrapped picture blended in its first texels (a stripe along the bottom of loading screens).
+// Not for slot 54 (screen camera): NiScreenPolygons and the NiOutline ribbons of the HUD portrait are not affine
+// pictures, shifting their coordinates showed texels across UV seams (a line through the portrait, user report).
+float2 PixelAlignedUv(float2 uv)
+{
+    const float2 aligned = uv - ddx(uv) * g_frame.pixelCenter.z - ddy(uv) * g_frame.pixelCenter.w;
+    return HasFeature(FF_FEATURE_PRETRANSFORMED) ? aligned : uv;
+}
+
 float4 PSMain(FFVertexOutput input) : SV_Target
 {
     // All stages are sampled up front (no gradients inside flow control; unused stages see white).
     float4 texels[FF_MAX_STAGES];
-    texels[0] = g_texture0.Sample(g_sampler0, StageUv(0, ProjectStageCoordinates(0, input.tex0), TextureSize(g_texture0)));
-    texels[1] = g_texture1.Sample(g_sampler1, StageUv(1, ProjectStageCoordinates(1, input.tex1), TextureSize(g_texture1)));
-    texels[2] = g_texture2.Sample(g_sampler2, StageUv(2, ProjectStageCoordinates(2, input.tex2), TextureSize(g_texture2)));
-    texels[3] = g_texture3.Sample(g_sampler3, StageUv(3, ProjectStageCoordinates(3, input.tex3), TextureSize(g_texture3)));
+    texels[0] = g_texture0.Sample(g_sampler0, StageUv(0, PixelAlignedUv(ProjectStageCoordinates(0, input.tex0)), TextureSize(g_texture0)));
+    texels[1] = g_texture1.Sample(g_sampler1, StageUv(1, PixelAlignedUv(ProjectStageCoordinates(1, input.tex1)), TextureSize(g_texture1)));
+    texels[2] = g_texture2.Sample(g_sampler2, StageUv(2, PixelAlignedUv(ProjectStageCoordinates(2, input.tex2)), TextureSize(g_texture2)));
+    texels[3] = g_texture3.Sample(g_sampler3, StageUv(3, PixelAlignedUv(ProjectStageCoordinates(3, input.tex3)), TextureSize(g_texture3)));
 
     const float4 diffuse = input.diffuse;
     const float4 specular = input.specular;

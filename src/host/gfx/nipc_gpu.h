@@ -51,8 +51,10 @@
 //     screen camera of slot 54 and the NV2A 1/16-pixel snap (in guest pixels, i.e. 1/16 of a 640x480 pixel =
 //     internal_size / 640 / 16 internal pixels: the vertices stay where the original rasterizer put them).
 //     Lines and points (slots 52/53, wireframe fill) are P2; when they come they must be widened by the scale.
-//     Render to texture (M8) is rendered at the guest size times the back buffer's factor; there the B19 shift is
-//     TargetPixelCenter (0 when upscaled or multisampled, acid seam fix 2026-10-14).
+//     Render to texture (M8) is rendered at the guest size times the back buffer's factor. The B19 shift is 0.5
+//     guest pixels only where the device grid is the guest grid with one sample (classic); upscaled or multisampled
+//     it is 0 on texture targets (TargetPixelCenter, acid seam fix 2026-10-14) and on the back buffer per G3
+//     placement (PixelCenterShift, edge seam fix 2026-10-15), so full-screen 2D covers the 4:3 area to its edges.
 //   - Present: resolve (MSAA) -> downsample to the output size (render_scale > 1: box / Catmull-Rom with
 //     anti-ringing; with [render] linear_aa both on linear light) -> present pass into the window (1:1 when the
 //     output fills the view, else [render] scaling).
@@ -111,6 +113,13 @@ void HalfPixelShift(Matrix4* projection, float viewportWidth, float viewportHeig
 // 0..128) left the first 0.5 * factor device columns and rows - and with MSAA the samples left of / above the first
 // pixel centers - unwritten, and the wrapped texture showed them as dark lines on the acid.
 float TargetPixelCenter(std::uint32_t guestSize, std::uint32_t deviceSize, std::uint32_t samples) noexcept;
+
+// The same rule for one axis drawn with `scale` device pixels per guest pixel (the back buffer: internal / guest
+// size, or the G3 placement's Mapping scale) and `samples` per pixel: 0.5 only at scale exactly 1 with one sample
+// (classic stays bit-identical), else 0. Edge seam fix 2026-10-15 (GFX_CONTRACT.md 12.2): with 0.5 on the upscaled
+// back buffer the movie quad, fades and letterbox bars started 0.5 * scale device pixels inside the 4:3 area (1.69 at
+// 2880x1620, 2.25 at 2160 lines); the first two rows and columns kept the picture of two presents ago.
+float PixelCenterShift(double scale, std::uint32_t samples) noexcept;
 
 // ---- M3c: render resolution and anti-aliasing ---------------------------------------------------------------
 

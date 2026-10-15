@@ -9,6 +9,7 @@
 #include "input/cheat_toggles.h"
 #include "input/host_router.h"
 #include "xapi/cheats.h"
+#include "xapi/cheats_player.h"
 
 #include <windows.h>
 
@@ -548,4 +549,323 @@ TEST_CASE("G8: probe sites and data agree with the retail XBE") {
     const std::uint32_t bits = 0x47590300;
     std::memcpy(&marker, &bits, 4);
     CHECK(marker == ch::kProtectedHealth);
+}
+
+// ---- fall death (2026-10-15) ----------------------------------------------------------------------------------
+
+TEST_CASE("G8: invulnerable - the fall death passes, the hard landing stays blocked") {
+    CHECK(ch::IsFallDeathCall(ch::kFallDeathReturn));
+    CHECK(ch::IsFallDeathCall(ch::kFallLandingDeathReturn));
+    CHECK_FALSE(ch::IsFallDeathCall(0x0005C213));  // landing after 21..40 units: 25 damage
+    CHECK_FALSE(ch::BlockPlayerDamage(true, 55555.0f, ch::kFallDeathReturn));
+    CHECK_FALSE(ch::BlockPlayerDamage(true, 55555.0f, ch::kFallLandingDeathReturn));
+    CHECK(ch::BlockPlayerDamage(true, 25.0f, 0x0005C213));
+    CHECK(ch::BlockPlayerDamage(true, 25.0f, 0x0005C162));
+    CHECK_FALSE(ch::BlockPlayerDamage(false, 25.0f, 0x0005C213));
+}
+
+TEST_CASE("G8: safety net - locked and alive after a blocked lethal hit") {
+    constexpr double kTick = 1.0 / 60.0;
+    // One blocked lethal hit, then the input stays off and nothing more happens: through after 10 s, not before.
+    {
+        ch::LockedAfterLethalWatch w;
+        w.OnBlockedLethal(5.0);
+        int fired = -1;
+        for (int i = 0; i <= 12 * 60 && fired < 0; ++i) {
+            if (w.Tick(5.0 + i * kTick, false, true)) {
+                fired = i;
+            }
+        }
+        REQUIRE(fired > 0);
+        CHECK(fired * kTick > ch::kLethalBlockLimitSeconds);
+        CHECK(fired * kTick < ch::kLethalBlockLimitSeconds + 2 * kTick);
+        CHECK_FALSE(w.Armed());
+        CHECK_FALSE(w.Tick(20.0, false, true));  // once
+    }
+    // Control kept: never; the watch disarms after the arm window.
+    {
+        ch::LockedAfterLethalWatch w;
+        w.OnBlockedLethal(0.0);
+        bool fired = false;
+        for (int i = 0; i < 15 * 60; ++i) {
+            fired = fired || w.Tick(i * kTick, true, true);
+        }
+        CHECK_FALSE(fired);
+        CHECK_FALSE(w.Armed());
+    }
+    // A lock that ends (the script gives control back) disarms; a later lock does not count.
+    {
+        ch::LockedAfterLethalWatch w;
+        w.OnBlockedLethal(0.0);
+        bool fired = false;
+        for (int i = 0; i < 3 * 60; ++i) {
+            fired = fired || w.Tick(i * kTick, false, true);
+        }
+        for (int i = 3 * 60; i < 4 * 60; ++i) {
+            fired = fired || w.Tick(i * kTick, true, true);
+        }
+        for (int i = 4 * 60; i < 20 * 60; ++i) {
+            fired = fired || w.Tick(i * kTick, false, true);
+        }
+        CHECK_FALSE(fired);
+    }
+    // A lock starting after the arm window (a cut scene): no.
+    {
+        ch::LockedAfterLethalWatch w;
+        w.OnBlockedLethal(0.0);
+        bool fired = false;
+        for (int i = 0; i < 20 * 60; ++i) {
+            const double t = i * kTick;
+            fired = fired || w.Tick(t, t < ch::kLockArmSeconds + 0.5, true);
+        }
+        CHECK_FALSE(fired);
+    }
+    // Dead (the game handles it) or never armed: no.
+    {
+        ch::LockedAfterLethalWatch w;
+        CHECK_FALSE(w.Tick(1.0, false, true));
+        w.OnBlockedLethal(0.0);
+        CHECK_FALSE(w.Tick(0.1, false, false));
+        CHECK_FALSE(w.Armed());
+    }
+}
+
+namespace {
+
+// The fall rules of FUN_0005A700 for a character falling straight down under gravity 95, one tick at a time: on
+// the ground the update writes +0xB84 = y; in the air more than 41 (vy < -40) starts the death fall and more than
+// 100 kills; landing after more than 40 (or in the death fall) kills, after more than 21 hurts.
+struct FallSim {
+    float y = 0.0f;
+    float vy = 0.0f;
+    float fallStart = 0.0f;
+    bool grounded = true;
+    bool deathFall = false;
+    bool dead = false;
+    bool hurt = false;
+    float maxSeen = 0.0f;  // the largest drop the game measured
+    void GameUpdate() {
+        const float drop = fallStart - y;
+        maxSeen = std::max(maxSeen, drop);
+        if (!grounded) {
+            if (drop > ch::kFallDeathAirHeight && vy < -40.0f) {
+                deathFall = true;
+                dead = dead || drop > ch::kFallDeathHeight;
+            }
+        } else {
+            if (drop > ch::kFallLandingDeathHeight || deathFall) {
+                dead = true;
+            } else if (drop > ch::kFallHurtHeight) {
+                hurt = true;
+            }
+            fallStart = y;
+        }
+    }
+    void Physics(float floor, bool hasFloor, float dt) {
+        vy -= 95.0f * dt;
+        y += vy * dt;
+        grounded = hasFloor && y <= floor;
+        if (grounded) {
+            y = floor;
+            vy = 0.0f;
+        }
+    }
+};
+
+struct FallRun {
+    FallSim sim;
+    int ticks = 0;
+    bool abyss = false;
+    bool landed = false;
+    float landedDrop = 0.0f;
+    int groundChecks = 0;
+};
+
+// Stands on a ledge at `top` for 10 ticks, then falls to `floor` (none: forever). `guard` = invulnerable's fall
+// guard; `guardFirst` = the guard runs before the physics step (the worst order: one tick of falling before the
+// game's check).
+FallRun RunFall(float top, float floor, bool hasFloor, bool groundSeen, bool guard, bool guardFirst = false,
+                double seconds = 30.0) {
+    constexpr float kDt = 1.0f / 60.0f;
+    FallRun r;
+    r.sim.y = top;
+    r.sim.fallStart = top;
+    ch::FallGuard g;
+    for (int i = 0; i < static_cast<int>(seconds * 60.0); ++i) {
+        const auto guardStep = [&] {
+            const ch::FallGuardDecision d =
+                g.Step(r.sim.fallStart, r.sim.y, r.sim.grounded, i * static_cast<double>(kDt), [&r, groundSeen] {
+                    ++r.groundChecks;
+                    return groundSeen;
+                });
+            if (d.write) {
+                r.sim.fallStart = d.fallStart;
+            }
+            r.abyss = r.abyss || d.abyss;
+            if (d.landed) {
+                r.landed = true;
+                r.landedDrop = d.drop;
+            }
+        };
+        if (guard && guardFirst) {
+            guardStep();
+        }
+        r.sim.Physics(i < 10 ? top : floor, i < 10 || hasFloor, kDt);
+        if (guard && !guardFirst) {
+            guardStep();
+        }
+        r.sim.GameUpdate();
+        ++r.ticks;
+        if (r.sim.dead || (r.landed && r.sim.grounded)) {
+            break;
+        }
+    }
+    return r;
+}
+
+}  // namespace
+
+TEST_CASE("G8: fall guard - a deep fall lands normally while invulnerable, the abyss still kills") {
+    // A 3000-unit fall moves 12.6 units per tick: guard height + one tick stays below the hurt height.
+    CHECK(ch::kFallGuardHeight + 12.7f < ch::kFallHurtHeight);
+    // Without the guard (the game): 30 hurts, 60 and 500 kill - every fall over 41 is fatal.
+    CHECK(RunFall(30.0f, 0.0f, true, true, false).sim.hurt);
+    CHECK_FALSE(RunFall(30.0f, 0.0f, true, true, false).sim.dead);
+    CHECK(RunFall(60.0f, 0.0f, true, true, false).sim.dead);
+    CHECK(RunFall(60.0f, 0.0f, true, true, false).sim.deathFall);
+    CHECK(RunFall(500.0f, 0.0f, true, true, false).sim.dead);
+    // With the guard: no damage, no death fall, no death - in both orders.
+    for (const bool first : {false, true}) {
+        for (const float top : {8.0f, 30.0f, 60.0f, 150.0f, 500.0f, 2500.0f}) {
+            CAPTURE(first);
+            CAPTURE(top);
+            const FallRun r = RunFall(top, 0.0f, true, true, true, first);
+            CHECK_FALSE(r.sim.dead);
+            CHECK_FALSE(r.sim.hurt);
+            CHECK_FALSE(r.sim.deathFall);
+            CHECK(r.sim.maxSeen <= ch::kFallHurtHeight);
+            CHECK(r.landed);
+            CHECK(r.landedDrop == doctest::Approx(top).epsilon(0.01));
+            CHECK_FALSE(r.abyss);
+            CHECK(r.groundChecks == (top > ch::kFallDeathHeight ? 1 : 0));
+            CHECK(r.sim.fallStart == doctest::Approx(0.0f));  // on the ground: the game's own value again
+        }
+    }
+    // No ground below (the ray misses): the real start height comes back at 100 units, the game's fall death runs.
+    {
+        const FallRun r = RunFall(0.0f, 0.0f, false, false, true);
+        CHECK(r.abyss);
+        CHECK(r.sim.dead);
+        CHECK(r.groundChecks == 1);
+        CHECK(r.ticks < 3 * 60);
+    }
+    // Ground "seen" but still falling 10 s after passing 100 units: abyss as well.
+    {
+        const FallRun r = RunFall(0.0f, 0.0f, false, true, true, false, 40.0);
+        CHECK(r.abyss);
+        CHECK(r.sim.dead);
+        CHECK(r.ticks / 60.0 > ch::kFallAbyssSeconds);
+    }
+}
+
+TEST_CASE("G8: fall guard - new falls, respawn, invalid values") {
+    const auto never = [] {
+        FAIL("no ground check expected");
+        return true;
+    };
+    const float h = ch::kFallGuardHeight;
+    ch::FallGuard g;
+    // Standing: the game writes +0xB84 = y every tick, the guard writes nothing.
+    for (int i = 0; i < 5; ++i) {
+        CHECK_FALSE(g.Step(10.0f, 10.0f, true, i, never).write);
+    }
+    // 15 below the start: lowered to y + h, then it follows the character.
+    ch::FallGuardDecision d = g.Step(10.0f, -5.0f, false, 5.0, never);
+    CHECK(d.write);
+    CHECK(d.fallStart == doctest::Approx(-5.0f + h));
+    d = g.Step(d.fallStart, -9.0f, false, 6.0, never);
+    CHECK(d.write);
+    CHECK(d.fallStart == doctest::Approx(-9.0f + h));
+    CHECK(g.Guarding());
+    CHECK(g.RealStart() == doctest::Approx(10.0f));
+    // A jump (above the start): nothing.
+    ch::FallGuard j;
+    CHECK_FALSE(j.Step(0.0f, 0.0f, true, 0.0, never).write);
+    CHECK_FALSE(j.Step(0.0f, 5.6f, false, 0.1, never).write);
+    // The game writes the landing height: a guarded fall of 19 units ended.
+    d = g.Step(-9.0f, -9.0f, true, 7.0, never);
+    CHECK(d.landed);
+    CHECK(d.drop == doctest::Approx(19.0f));
+    CHECK_FALSE(d.write);
+    CHECK_FALSE(g.Guarding());
+    // NaN: reset, nothing written.
+    CHECK_FALSE(g.Step(std::nanf(""), 0.0f, false, 8.0, never).write);
+    CHECK_FALSE(g.Step(0.0f, std::nanf(""), false, 8.0, never).write);
+    // Abyss: the real start height comes back once, stays, and the respawn starts a new fall (no landing report).
+    ch::FallGuard a;
+    a.Step(0.0f, 0.0f, true, 0.0, never);
+    float fs = 0.0f;
+    bool abyss = false;
+    for (int i = 1; i < 400 && !abyss; ++i) {
+        const float y = -0.5f * static_cast<float>(i);
+        const ch::FallGuardDecision r = a.Step(fs, y, false, i / 60.0, [] { return false; });
+        if (r.write) {
+            fs = r.fallStart;
+        }
+        abyss = r.abyss;
+    }
+    CHECK(abyss);
+    CHECK(fs == doctest::Approx(0.0f));
+    CHECK_FALSE(a.Step(fs, -150.0f, false, 10.0, never).write);  // stays (the game kills)
+    const ch::FallGuardDecision respawn = a.Step(42.0f, 42.0f, true, 12.0, never);
+    CHECK_FALSE(respawn.landed);
+    CHECK_FALSE(respawn.write);
+}
+
+TEST_CASE("G8: fall death sites agree with the retail XBE") {
+    const auto xbe = LoadRetailXbe();
+    if (!xbe) {
+        MESSAGE("skipped: retail XBE not found (FUT_TEST_XBE)");
+        return;
+    }
+    const auto floatAt = [&xbe](std::uint32_t va) {
+        float f = 0.0f;
+        const std::uint32_t u = xbe->U32(va);
+        std::memcpy(&f, &u, 4);
+        return f;
+    };
+    // The player update is slot +0x5C of all five player classes.
+    for (std::uint32_t vt : ch::kPlayerVtables) {
+        CHECK(xbe->U32(vt + 0x5C) == ch::kPlayerUpdate);
+    }
+    // push 0; push 55555.0f; mov ecx, esi; call [eax+0x7C]
+    const auto kill = Hex({0x6A, 0x00, 0x68, 0x00, 0x03, 0x59, 0x47, 0x8B, 0xCE, 0xFF, 0x50, 0x7C});
+    CHECK(xbe->At(ch::kFallDeathReturn - 12, 12) == kill);
+    CHECK(xbe->At(ch::kFallLandingDeathReturn - 12, 12) == kill);
+    // The fall height: fld [esi+0xB84]; fsub [esp+0x1C] (= GetPosition().y: call [edx+0x34] at 0x5AA45).
+    const auto fallHeight = Hex({0xD9, 0x86, 0x84, 0x0B, 0x00, 0x00, 0xD8, 0x64, 0x24, 0x1C});
+    CHECK(xbe->At(0x0005ADEC, 10) == fallHeight);
+    CHECK(xbe->At(0x0005BE72, 10) == fallHeight);
+    CHECK(xbe->At(0x0005C1E4, 10) == fallHeight);
+    CHECK(xbe->At(0x0005AA45, 10) == Hex({0xFF, 0x52, 0x34, 0x8B, 0x48, 0x04, 0x89, 0x4C, 0x24, 0x1C}));
+    CHECK(static_cast<std::uint32_t>(ch::kActorGetPosition) == 0x34u);
+    // Thresholds (compare constants).
+    CHECK(xbe->U32(0x0005ADF8) == 0x0029A5F4u);
+    CHECK(floatAt(0x0029A5F4) == ch::kFallDeathAirHeight);
+    CHECK(floatAt(0x002975AC) == -40.0f);
+    CHECK(xbe->U32(0x0005AE1E) == 0x00295570u);
+    CHECK(floatAt(0x00295570) == ch::kFallDeathHeight);
+    CHECK(xbe->U32(0x0005BE7E) == 0x0029719Cu);
+    CHECK(floatAt(0x0029719C) == ch::kFallLandingDeathHeight);
+    CHECK(xbe->U32(0x0005C1F0) == 0x0029A528u);
+    CHECK(floatAt(0x0029A528) == ch::kFallHurtHeight);
+    // In the air: animation 0x66 ("death_fall", name table 0x2D6188) and the input switched off.
+    CHECK(xbe->At(0x0005AE65, 2) == Hex({0x6A, 0x66}));
+    CHECK(xbe->U32(0x002D6188 + 0x66 * 4) == 0x00296760u);
+    CHECK(xbe->At(0x00296760, 11) == Hex({'d', 'e', 'a', 't', 'h', '_', 'f', 'a', 'l', 'l', 0}));
+    CHECK(xbe->At(0x0005AE92, 7) == Hex({0xC6, 0x86, 0x30, 0x06, 0x00, 0x00, 0x00}));
+    CHECK(static_cast<std::uint32_t>(ch::kPlayerInputOn) == 0x630u);
+    // On the ground the update writes the fall start height (0x5D5D1).
+    CHECK(xbe->At(0x0005D5D1, 6) == Hex({0x89, 0x86, 0x84, 0x0B, 0x00, 0x00}));
+    CHECK(static_cast<std::uint32_t>(ch::kPlayerFallStartY) == 0xB84u);
 }

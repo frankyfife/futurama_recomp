@@ -320,7 +320,8 @@ rhi::VertexLayoutDesc MakeVertexLayout() noexcept {
 }
 
 void FillFrameConstants(const ni::CameraDesc& camera, std::uint32_t targetWidth, std::uint32_t targetHeight,
-                        FFFrameConstants* out, float pixelCenterX, float pixelCenterY) noexcept {
+                        FFFrameConstants* out, float pixelCenterX, float pixelCenterY, float attributeShiftX,
+                        float attributeShiftY) noexcept {
     if (out == nullptr) {
         return;
     }
@@ -347,7 +348,7 @@ void FillFrameConstants(const ni::CameraDesc& camera, std::uint32_t targetWidth,
     const float w = static_cast<float>(targetWidth);
     const float h = static_cast<float>(targetHeight);
     c.targetSize = {w, h, w > 0.0f ? 1.0f / w : 0.0f, h > 0.0f ? 1.0f / h : 0.0f};
-    c.pixelCenter = {pixelCenterX, pixelCenterY, 0.0f, 0.0f};
+    c.pixelCenter = {pixelCenterX, pixelCenterY, attributeShiftX, attributeShiftY};
     *out = c;
 }
 
@@ -943,7 +944,8 @@ bool FixedFunctionPipeline::IsReady() const noexcept {
 }
 
 void FixedFunctionPipeline::SetCamera(const ni::CameraDesc& camera, std::uint32_t targetWidth,
-                                      std::uint32_t targetHeight, float pixelCenterX, float pixelCenterY) noexcept {
+                                      std::uint32_t targetHeight, float pixelCenterX, float pixelCenterY,
+                                      float attributeShiftX, float attributeShiftY) noexcept {
     if (impl_ == nullptr) {
         return;
     }
@@ -953,7 +955,8 @@ void FixedFunctionPipeline::SetCamera(const ni::CameraDesc& camera, std::uint32_
     d.targetHeight = targetHeight;
     const float4 fogColor = d.frame.fogColor;
     const float4 fogParams = d.frame.fogParams;
-    FillFrameConstants(camera, targetWidth, targetHeight, &d.frame, pixelCenterX, pixelCenterY);
+    FillFrameConstants(camera, targetWidth, targetHeight, &d.frame, pixelCenterX, pixelCenterY, attributeShiftX,
+                       attributeShiftY);
     d.frame.fogColor = fogColor;  // fog values belong to the draws (FillFogConstants)
     d.frame.fogParams = fogParams;
     d.frameDirty = true;

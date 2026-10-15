@@ -92,6 +92,9 @@ Stats g_stats;
 
 std::mutex g_watchLock;
 LethalBlockWatch g_lethalWatch;  // invulnerable safety net (player damage probe)
+LockedAfterLethalWatch g_lockWatch;  // second part: locked and alive after a blocked lethal hit (g_watchLock)
+// OnTick forces a death through the player's own TakeDamage: the probe lets that one call pass (main thread).
+std::atomic<bool> g_forceLethal{false};
 
 double NowSeconds() noexcept {
     using Clock = std::chrono::steady_clock;
@@ -122,7 +125,7 @@ std::uint32_t __fastcall PlayerTakeDamageProbe(std::uint32_t player, std::uint32
     EnsureConfigured();
     const guest::GuestAddr from = guest::Addr(_ReturnAddress());
     const bool invulnerable = Active(Cheat::Invulnerable);
-    bool block = BlockPlayerDamage(invulnerable, amount, from);
+    bool block = BlockPlayerDamage(invulnerable, amount, from) && !g_forceLethal.load();
     if (block) {
         // Safety net: a lethal hit that keeps coming (scripted grab/crush kills wait for the death).
         const float health = ReadF32(player + kActorHealth);
@@ -130,7 +133,11 @@ std::uint32_t __fastcall PlayerTakeDamageProbe(std::uint32_t player, std::uint32
             bool letThrough = false;
             {
                 std::lock_guard<std::mutex> lock(g_watchLock);
-                letThrough = g_lethalWatch.OnBlockedLethal(attacker, NowSeconds());
+                const double now = NowSeconds();
+                letThrough = g_lethalWatch.OnBlockedLethal(attacker, now);
+                if (!letThrough) {
+                    g_lockWatch.OnBlockedLethal(now);
+                }
             }
             if (letThrough) {
                 block = false;
@@ -181,6 +188,21 @@ std::uint32_t __fastcall PlayerTakeDamageProbe(std::uint32_t player, std::uint32
                  "cheat: invulnerable - instant-death floor (pit, deadly water or lava): %.1f damage passes like in "
                  "the game's god mode; the level script respawns the player at the checkpoint, no life is lost (%u.)",
                  static_cast<double>(amount), n);
+    }
+    if (invulnerable && IsFallDeathCall(from)) {
+        std::uint32_t n = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_statsLock);
+            n = ++g_stats.fallDeaths;
+        }
+        if (Detail(n)) {
+            FUT_LOGI(Game,
+                     "cheat: invulnerable - fatal fall (%s, %.1f damage, fall start %.1f): passes like an "
+                     "instant-death floor; the level script respawns the player at the checkpoint, no life is "
+                     "lost (%u.)",
+                     from == kFallDeathReturn ? "in the air" : "landing", static_cast<double>(amount),
+                     static_cast<double>(ReadF32(player + kPlayerFallStartY)), n);
+        }
     }
     if (invulnerable && from == kTentacleKillReturn) {
         std::uint32_t n = 0;
@@ -446,6 +468,44 @@ std::uint32_t __fastcall BrainUpdateProbe(std::uint32_t brain, std::uint32_t /*e
     return r;
 }
 
+// Second part of the safety net (OnTick, guest main thread): the controlled character locked and alive for more than
+// kLethalBlockLimitSeconds after a blocked lethal hit -> its own TakeDamage with the full health, let through.
+void LockWatchTick(guest::GuestAddr player, float health) noexcept {
+    const bool controllable =
+        guest::IsReadable(player + kPlayerInputOn, 1) && guest::Read<std::uint8_t>(player + kPlayerInputOn) != 0;
+    bool fire = false;
+    double locked = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(g_watchLock);
+        if (!Active(Cheat::Invulnerable)) {
+            g_lockWatch.Reset();
+            return;
+        }
+        const double now = NowSeconds();
+        locked = g_lockWatch.LockedSeconds(now);
+        fire = g_lockWatch.Tick(now, controllable, health > 0.0f);
+    }
+    if (!fire) {
+        return;
+    }
+    std::uint32_t n = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_statsLock);
+        n = ++g_stats.lockNetKills;
+    }
+    try {
+        FUT_LOGI(Game,
+                 "cheat: invulnerable - safety net: %s has no control for more than %.0f s after a blocked lethal "
+                 "hit (%.1f s, health %.1f): the death is let through; the level script respawns the player at the "
+                 "checkpoint, no life is lost (%u.)",
+                 ActorName(player).c_str(), kLethalBlockLimitSeconds, locked, static_cast<double>(health), n);
+    } catch (...) {
+    }
+    g_forceLethal.store(true);
+    core::CallGuestThiscall(ReadU32(ReadU32(player) + 0x7C), player, {FloatBits(health), 0u});
+    g_forceLethal.store(false);
+}
+
 }  // namespace
 
 // ---- options ----------------------------------------------------------------------------------------------------
@@ -554,8 +614,13 @@ bool TentacleHooksWanted(const core::Config& config) noexcept {
     return s.invulnerable || s.enemiesIgnore || s.ingameToggles;
 }
 
+bool IsFallDeathCall(guest::GuestAddr returnAddress) noexcept {
+    return returnAddress == kFallDeathReturn || returnAddress == kFallLandingDeathReturn;
+}
+
 bool BlockPlayerDamage(bool invulnerable, float amount, guest::GuestAddr returnAddress) noexcept {
-    return invulnerable && amount > 0.0f && returnAddress != kKillFloorReturn && returnAddress != kTentacleKillReturn;
+    return invulnerable && amount > 0.0f && returnAddress != kKillFloorReturn && returnAddress != kTentacleKillReturn &&
+           !IsFallDeathCall(returnAddress);
 }
 
 bool IsLethalHit(float amount, float health) noexcept {
@@ -588,6 +653,43 @@ bool LethalBlockWatch::OnBlockedLethal(std::uint32_t attacker, double now) noexc
     last_ = now;
     if (now - first_ > kLethalBlockLimitSeconds) {
         active_ = false;
+        return true;
+    }
+    return false;
+}
+
+void LockedAfterLethalWatch::OnBlockedLethal(double now) noexcept {
+    if (!armed_ || lockedSince_ < 0.0) {
+        armed_ = true;
+        armedAt_ = now;
+        lockedSince_ = -1.0;
+    }
+}
+
+bool LockedAfterLethalWatch::Tick(double now, bool controllable, bool alive) noexcept {
+    if (!armed_) {
+        return false;
+    }
+    if (!alive || now < armedAt_) {
+        armed_ = false;  // dead (the game handles it) or a clock going backwards
+        return false;
+    }
+    if (controllable) {
+        lockedSince_ = -1.0;
+        if (now - armedAt_ > kLockArmSeconds) {
+            armed_ = false;  // the character kept (or got back) control
+        }
+        return false;
+    }
+    if (lockedSince_ < 0.0) {
+        if (now - armedAt_ > kLockArmSeconds) {
+            armed_ = false;  // a lock that starts later is not caused by the hit (cut scene, door, ...)
+            return false;
+        }
+        lockedSince_ = now;
+    }
+    if (now - lockedSince_ > kLethalBlockLimitSeconds) {
+        armed_ = false;
         return true;
     }
     return false;
@@ -719,6 +821,7 @@ void OnTick() noexcept {
             return;
         }
         const float health = ReadF32(player + kActorHealth);
+        LockWatchTick(player, health);
         if (player != g_tracePlayer) {
             g_tracePlayer = player;
             g_traceHealth = health;
@@ -760,11 +863,13 @@ void LogSummary() noexcept {
     const Stats s = GetStats();
     FUT_LOGI(Game,
              "cheats summary: invulnerable %s (%u hits blocked, %.1f damage, %u instant-death floors, %u grab kills, "
-             "%u safety-net deaths, %u lives kept), one-hit kill %s (%u lethal hits, %u boss hits, %u protected), "
+             "%u safety-net deaths, %u locked-after-lethal deaths, %u fatal falls passed, %u falls caught, %u abyss "
+             "falls, %u lives kept), one-hit kill %s (%u lethal hits, %u boss hits, %u protected), "
              "enemies ignore me %s (hold fire forced %u times, %u tentacle holds), %u tentacle grabs skipped, %u "
              "in-game toggles",
              OnOff(Active(Cheat::Invulnerable)), s.blockedHits, s.blockedDamage, s.killFloorDeaths, s.grabKills,
-             s.safetyNetKills, s.livesKept, OnOff(Active(Cheat::OneHitKill)), s.lethalHits, s.bossHits,
+             s.safetyNetKills, s.lockNetKills, s.fallDeaths, s.fallsCaught, s.abyssFalls, s.livesKept,
+             OnOff(Active(Cheat::OneHitKill)), s.lethalHits, s.bossHits,
              s.protectedHits, OnOff(Active(Cheat::EnemiesIgnore)), s.holdFireTicks, s.tentacleHolds, s.grabsPrevented,
              s.toggles);
     LogPlayerCheatsSummary();

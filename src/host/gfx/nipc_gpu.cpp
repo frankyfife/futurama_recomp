@@ -125,6 +125,10 @@ void HalfPixelShift(Matrix4* projection, float viewportWidth, float viewportHeig
     }
 }
 
+float PixelCenterShift(double scale, std::uint32_t samples) noexcept {
+    return scale == 1.0 && samples <= 1 ? 0.5f : 0.0f;
+}
+
 float TargetPixelCenter(std::uint32_t guestSize, std::uint32_t deviceSize, std::uint32_t samples) noexcept {
     return deviceSize == guestSize && samples <= 1 ? 0.5f : 0.0f;
 }
@@ -374,22 +378,55 @@ struct GpuRenderer::Impl {
     widescreen::Mapping WideMapping(widescreen::Placement p) const noexcept {
         return widescreen::MappingOf(p, backBufferWidth, backBufferHeight, sizes.internalWidth, sizes.internalHeight);
     }
-    // The pipeline's camera (+ the B19 half-pixel shift) for the guest viewport `v`. Texture targets (M8) take the
-    // shift of TargetPixelCenter: none when the target is upscaled or multisampled (acid seam fix 2026-10-14).
+    // The B19 pixel-center shift (guest pixels) of the current target and placement: 0.5 only where the device grid
+    // is the guest grid with one sample (classic), otherwise 0 so guest pixel edges lie on device pixel edges - texture
+    // targets (acid seam fix 2026-10-14) and the back buffer (edge seam fix 2026-10-15: movies, fades and letterbox
+    // bars left the first 0.5 * scale device rows and columns of the 4:3 area unwritten).
+    // `scaleX/Y` (optional): device pixels per guest pixel of the current target / placement.
+    void CurrentPixelCenter(float* x, float* y, double* scaleX = nullptr, double* scaleY = nullptr) const noexcept {
+        double sx = 1.0, sy = 1.0;
+        if (textureTarget && currentTarget < renderTargets.size()) {
+            const RenderTarget& t = renderTargets[currentTarget];
+            *x = TargetPixelCenter(targetWidth, t.width, t.samples);
+            *y = TargetPixelCenter(targetHeight, t.height, t.samples);
+            sx = targetWidth != 0 ? static_cast<double>(t.width) / targetWidth : 1.0;
+            sy = targetHeight != 0 ? static_cast<double>(t.height) / targetHeight : 1.0;
+        } else if (wide) {
+            const widescreen::Mapping m = WideMapping(placed);
+            *x = PixelCenterShift(m.scaleX, samples);
+            *y = PixelCenterShift(m.scaleY, samples);
+            sx = m.scaleX;
+            sy = m.scaleY;
+        } else {
+            *x = TargetPixelCenter(targetWidth, targetInternalWidth, samples);
+            *y = TargetPixelCenter(targetHeight, targetInternalHeight, samples);
+            sx = targetWidth != 0 ? static_cast<double>(targetInternalWidth) / targetWidth : 1.0;
+            sy = targetHeight != 0 ? static_cast<double>(targetInternalHeight) / targetHeight : 1.0;
+        }
+        if (scaleX != nullptr) {
+            *scaleX = sx;
+        }
+        if (scaleY != nullptr) {
+            *scaleY = sy;
+        }
+    }
+    float pixelCenterX = 0.5f, pixelCenterY = 0.5f;  // the shift the pipeline's camera carries
+    // The pipeline's camera (+ the B19 shift of CurrentPixelCenter) for the guest viewport `v`.
     void SetPipelineCamera(const ni::CameraDesc& desc, const rhi::Viewport& v) noexcept {
         ni::CameraDesc c = desc;
         c.viewport = v;
         float shiftX = 0.5f, shiftY = 0.5f;
-        if (textureTarget && currentTarget < renderTargets.size()) {
-            const RenderTarget& t = renderTargets[currentTarget];
-            shiftX = TargetPixelCenter(targetWidth, t.width, t.samples);
-            shiftY = TargetPixelCenter(targetHeight, t.height, t.samples);
-        }
+        double scaleX = 1.0, scaleY = 1.0;
+        CurrentPixelCenter(&shiftX, &shiftY, &scaleX, &scaleY);
+        pixelCenterX = shiftX;
+        pixelCenterY = shiftY;
         if (v.width > 0.0f && v.height > 0.0f) {
             HalfPixelShift(&c.projection, v.width, v.height, shiftX, shiftY);  // design 8.3 B19
             HalfPixelShift(&c.screenProjection, v.width, v.height, shiftX, shiftY);
         }
-        ff.SetCamera(c, targetWidth, targetHeight, shiftX, shiftY);
+        // Screen-space draws sample where D3D8 put the texels (ff_ubershader.hlsl PixelAlignedUv).
+        ff.SetCamera(c, targetWidth, targetHeight, shiftX, shiftY, static_cast<float>((0.5 - shiftX) * scaleX),
+                     static_cast<float>((0.5 - shiftY) * scaleY));
     }
     // Black bars left and right of the centred 4:3 area, once per frame before its first draw or colour clear (the
     // game never clears the whole back buffer; without this, centred pictures would keep old pixels beside them).
@@ -410,7 +447,9 @@ struct GpuRenderer::Impl {
         }
         const widescreen::Mapping m = WideMapping(widescreen::Placement::Center);
         const auto left = static_cast<std::int32_t>(m.offsetX);
-        const auto right = static_cast<std::int32_t>(std::floor(m.offsetX + backBufferWidth * m.scaleX + 0.5));
+        // floor: a column the 4:3 area covers only partly (fractional area width) is cleared too, so its samples
+        // outside the area are black instead of an old picture (edge seam fix 2026-10-15).
+        const auto right = static_cast<std::int32_t>(std::floor(m.offsetX + backBufferWidth * m.scaleX));
         static const float kBlack[4] = {0.0f, 0.0f, 0.0f, 1.0f};
         rhi::Rect r;
         r.top = 0;
@@ -860,6 +899,11 @@ ff::DrawResult GpuRenderer::Impl::DrawWide(ni::DrawKind kind, ni::GuestPtr objec
     if (p != placed) {
         placed = p;
         Ctx().SetViewport(ws::PlaceViewport(viewport, WideMapping(p)));
+        float x = 0.5f, y = 0.5f;
+        CurrentPixelCenter(&x, &y);  // the placements may differ in scale (Stretch vs Center at 480 lines)
+        if (x != pixelCenterX || y != pixelCenterY) {
+            SetPipelineCamera(camera, viewport);
+        }
     }
     // M8: the extra passes (projected shadows) with the same placement and camera as the item.
     if (!unwidenedQuad) {

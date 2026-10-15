@@ -648,7 +648,25 @@ D3D11 side grows (`gfx::RenderSizes`: output, internal = output x render_scale):
   projections (`HalfPixelShift(..., shiftX, shiftY)`) and to the shader (`FFFrameConstants::pixelCenter`: pre-
   transformed quads and the 1/16-pixel snap). With 0.5 the game's quads over the whole texture (Level1-2 acid,
   NiScreenPolygons 0..128) left the first device row and column unwritten and the wrapped texture showed them as a
-  dark line on the acid. The back buffer keeps 0.5 (section 15 movie edge unchanged); scissor is never enabled
+  dark line on the acid. **Back buffer (edge seam fix 2026-10-15):** the same rule per axis, `gfx::PixelCenterShift(scale,
+  samples)` with scale = internal / guest size, or with G3 the scale of the current placement's `Mapping` (Stretch and
+  Center differ at 480 lines; a placement change re-sets the camera when the shift changes). Classic (scale 1, one
+  sample) keeps 0.5 and stays bit-identical; upscaled or multisampled it is 0 for 3D, pre-transformed quads, the
+  screen camera and the 1/16 snap alike, so they stay mutually aligned. With 0.5 the movie quad, fades and the
+  letterbox bars started 0.5 * scale device pixels inside the 4:3 area (1.69 at 2880x1620, 2.25 at 2160 lines) and
+  the first two rows and columns kept the picture of two presents ago (user report, measured: columns 0-1 differ
+  from column 2 on 1259-1619 of 1620 rows, rows 0-1 on the boot movies and the fade; `run\edge\before_user`).
+  Alternatives rejected: half a device pixel (covers the first pixel centres but not the MSAA samples left/above
+  them - still a seam with MSAA) and stretching edge quads (a special case for one symptom). With 0 integer-aligned
+  2D lands exactly on the guest pixel areas (box-downscaled = the guest's coverage); 3D moves by half a guest pixel
+  against the 4:3 frame (a phase, not a visible change). **Texel position of pre-transformed quads:** dropping the
+  shift also moved where slot-55 quads (NiScreenTexture: loading pictures, movies) sample - the last rows of a
+  wrapped loading picture blended in its first texels (a stripe along the bottom, user report). The pixel shader
+  (`PixelAlignedUv`) therefore samples their texture coordinates `FFFrameConstants::pixelCenter.zw` = (0.5 - shift)
+  * device pixels per guest pixel back via ddx/ddy: coverage reaches the edges, the texels stay where D3D8 puts
+  them. Only slot 55: applied to slot 54 (screen camera) it showed texels across UV seams of the HUD portrait's
+  ribbons (a line through the face, user report). The G3 bars (`ClearBars`) clear up to floor of the area's
+  right edge, so a partly covered last column is black outside the area. Scissor is never enabled
   (a future one goes through `ScaleRect`); lines and points (slots 52/53, wireframe fill) are P2 and 1 internal
   pixel wide - they must be widened by the scale when they are implemented.
 
@@ -938,9 +956,9 @@ full-screen NiScreenPolygon with it between `D3DDevice_SetRenderState_YuvEnable(
   column at the picture edges). Without the scale every pixel sampled texel (0, 0): one flat colour.
 - **Statistics**: exit line `d3d11 movie textures (YUY2): N frame uploads, S texel-addressed stage draws, R draws
   without YuvEnable, F failures`; the resolver line counts `movie (YUY2)`.
-- **Known difference**: at 2x internal resolution the top row and the left column of the picture are black (half a
-  guest pixel), the same half-pixel rule as every pre-transformed draw (section 9 viewport rule); not compared with
-  xemu.
+- **Known difference** (fixed 2026-10-15): at 2x internal resolution the top row and the left column of the picture
+  were black or showed an old picture (half a guest pixel of B19). The back buffer's shift is now 0 when upscaled or
+  multisampled (section 12.2, `PixelCenterShift`): the movie covers the 4:3 area to its edges.
 - **M6b movie packs** (`video\movie_pack.h`, `[render] movie_pack`): the XMV HLE may attach a host-side YUY2 picture
   of any even size to the movie texture (`d3d::SetHostImage(texture or surface, shared_ptr<const HostImage>)`,
   before `NoteResourceWritten`; removed at `CloseDecoder` and with the resource). `MovieTexture` then uploads that

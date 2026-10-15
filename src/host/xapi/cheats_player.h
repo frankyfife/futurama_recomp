@@ -58,7 +58,9 @@
 #include "core/config.h"
 #include "core/guest.h"
 
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 
 namespace xapi::cheats {
 
@@ -208,6 +210,109 @@ private:
 // Cannon shots: -1 (unlimited) stays; a count lowered by firing (just fired: cooldown > 0.2) goes back up; a
 // count the script lowers (no shot) is taken over.
 int KeepCannonShots(int now, int last, float cooldown) noexcept;
+
+// ---- fall guard (invulnerable; 2026-10-15, g8_cheats.md 11)
+// The player update FUN_0005A700 measures a fall as +0xB84 - GetPosition().y (vf+0x34): in the air more than 41
+// (and falling faster than 40/s) starts the death fall (animation 0x66, input off), more than 100 deals 55555;
+// landing after more than 40 deals 55555, after more than 21 25 damage and the hard landing "high_land".
+inline constexpr float kFallHurtHeight = 21.0f;        // 0x29A528: landing damage 25 above this
+inline constexpr float kFallLandingDeathHeight = 40.0f;  // 0x29719C: landing death above this
+inline constexpr float kFallDeathAirHeight = 41.0f;    // 0x29A5F4: death fall in the air above this (vy < -40)
+inline constexpr float kFallDeathHeight = 100.0f;      // 0x295570: lethal in the air above this
+// The fall guard keeps +0xB84 at most this far above the character - below kFallHurtHeight even with one more
+// tick of falling between the guard and the game's check (a 3000-unit fall moves 12.6 units per tick at 60 Hz).
+inline constexpr float kFallGuardHeight = 5.0f;
+// A fall deeper than kFallDeathHeight with no ground found below (ray test, kTeleportRayLength) or still falling
+// this long after passing it is an abyss: the game's fall death runs.
+inline constexpr double kFallAbyssSeconds = 10.0;
+
+struct FallGuardDecision {
+    bool write = false;  // write `fallStart` to +0xB84
+    float fallStart = 0.0f;
+    bool abyss = false;    // decided in this step: the real start height is back, the game's fall death runs
+    bool landed = false;   // a guarded fall ended (the game wrote +0xB84 again); `drop` = its real height
+    float drop = 0.0f;
+};
+
+// Pure state machine, one Step per logic tick for the controlled character while invulnerable. `fallStart` =
+// +0xB84 now, `y` = GetPosition().y, `grounded` = body +0x45; `groundBelow()` (ray test) is called at most once
+// per fall, when the real drop passes kFallDeathHeight in the air.
+class FallGuard {
+public:
+    template <class GroundBelow>
+    FallGuardDecision Step(float fallStart, float y, bool grounded, double now, GroundBelow&& groundBelow) {
+        FallGuardDecision d;
+        if (!std::isfinite(fallStart) || !std::isfinite(y)) {
+            Reset();
+            return d;
+        }
+        if (!tracking_ || !wrote_ || Bits(fallStart) != written_) {
+            // The game (or the respawn, teleport, moon jump) wrote the fall start: a new fall begins here.
+            if (tracking_ && guarded_) {
+                d.landed = true;
+                d.drop = realStart_ - fallStart;
+            }
+            tracking_ = true;
+            realStart_ = fallStart;
+            wrote_ = false;
+            guarded_ = false;
+            abyss_ = false;
+            checked_ = false;
+            ground_ = false;
+            deepSince_ = -1.0;
+        }
+        if (abyss_) {
+            return d;
+        }
+        if (!grounded && realStart_ - y > kFallDeathHeight) {
+            if (deepSince_ < 0.0) {
+                deepSince_ = now;
+            }
+            if (!checked_) {
+                checked_ = true;
+                ground_ = groundBelow();
+            }
+            if (!ground_ || now - deepSince_ > kFallAbyssSeconds) {
+                abyss_ = true;
+                guarded_ = false;
+                d.abyss = true;
+                return Write(d, realStart_);
+            }
+        }
+        const float limit = y + kFallGuardHeight;
+        if (fallStart > limit) {
+            guarded_ = true;
+            return Write(d, limit);
+        }
+        return d;
+    }
+    void Reset() noexcept { tracking_ = false; }
+    bool Guarding() const noexcept { return tracking_ && guarded_ && !abyss_; }
+    float RealStart() const noexcept { return realStart_; }
+
+private:
+    static std::uint32_t Bits(float f) noexcept {
+        std::uint32_t u = 0;
+        std::memcpy(&u, &f, sizeof(u));
+        return u;
+    }
+    FallGuardDecision& Write(FallGuardDecision& d, float value) noexcept {
+        d.write = true;
+        d.fallStart = value;
+        wrote_ = true;
+        written_ = Bits(value);
+        return d;
+    }
+    bool tracking_ = false;
+    float realStart_ = 0.0f;  // the game's fall start of this fall
+    bool wrote_ = false;      // +0xB84 holds our value `written_`
+    std::uint32_t written_ = 0;
+    bool guarded_ = false;  // lowered at least once in this fall
+    bool abyss_ = false;
+    bool checked_ = false;  // ground below looked for
+    bool ground_ = false;
+    double deepSince_ = -1.0;
+};
 
 // ---- run time
 // --------------------------------------------------------------------------------------------------- Input

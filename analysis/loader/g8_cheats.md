@@ -176,7 +176,7 @@ Frys Kollisionsellipsoid (Halbachsen 1,6/4,8/1,6, Mittelpunkt +0x4D0 = 4,8 über
 ### 9.4 Fallschaden und Mondsprung
 
 * Spieler **+0xB84** = Höhe, an der der Fall begann: Das Update `FUN_0005A700` schreibt sie, solange die Figur am Boden ist (oder hängt/klettert), die Neustart-Platzierung `FUN_00057910` setzt sie auf die neue Höhe (0x57935).
-* Landung: Fallhöhe = +0xB84 − aktuelle Höhe. > 41 bei vy < −40: harte Landung, > **100**: `vf+0x7C(55555)` (tödlich, auch für den Gott-Modus des Spiels); in anderen Zuständen schon > 40 bzw. > 21 (Rolle).
+* Landung: Fallhöhe = +0xB84 − aktuelle Höhe. > 41 bei vy < −40: harte Landung, > **100**: `vf+0x7C(55555)` (tödlich, auch für den Gott-Modus des Spiels); in anderen Zuständen schon > 40 bzw. > 21 (Rolle). **Korrigiert 2026-10-15 (Abschnitt 11):** > 41 in der Luft ist der Todessturz („death_fall“, Eingabe aus), jede Landung über 40 tödlich, über 21 25 Schaden.
 * Mondsprung: vor dem Schritt vy = max(vy, **40**) (Körper +0x2C), solange LB + B gehalten sind; nach dem Schritt +0xB84 = aktuelle Fußhöhe bis zur nächsten Landung. Gemessen: Fry von −2,1 auf 61 (90 Schritte), Landung ohne Schaden; Ratte von −2,9 auf 16,6 (28 Schritte) bzw. auf 50,5 (60 Schritte).
 * Tasten (Aktionstabelle, `m4_input.md` 5.1): LB/RB (WHITE/BLACK, Aktionen 27/28) → vtable +0x10C; nur Fry belegt sie (`0x85AE0` Waffe zurück/vor), Bender, Leela, Ratte und die Basis haben dort die leere Funktion 0xAED30. Die Levelskripte lesen sie nicht (Skript-Tasten 5.2). Deshalb **LB + B**; ein LB, das bei gehaltenem B gedrückt wird, blendet der Eingabefilter für das Spiel aus.
 * Decke: Auf dem Tisch des Besprechungsraums in 1-1 (Lauf `tp`) hoben weder der Sprung des Spiels noch der Mondsprung ab (Kontaktflags 0x7, Position bleibt) – ein Hindernis darüber; nicht weiter untersucht.
@@ -272,3 +272,38 @@ Für Prüfläufe: Debug-Aktion `game snap_to_node <Knoten>` = Native 0x52 FsPlay
 
 * 3-5 Raum 9 und die Rätsel in 5-1/5-2/5-3 nicht im Lauf erreicht (gleiche Mechanik wie 2-4; Signaturen gegen die Skripte geprüft). Bedeutung des Ablaufs in 3-5 (Tür, „NibblerB1“) nicht gespielt.
 * Der natürliche Ablauf in 4-1 (Film, Neustart) ist nur aus dem Skript belegt (ohne Steuerung stirbt die Ratte alle 8–10 s, jeder Tod hält die Uhr an).
+
+## 11. Nachtrag 2026-10-15: Sturztod und „Unverwundbar“ (Softlock)
+
+Nutzermeldung: Mit „Unverwundbar“ ist die Figur nach einem tiefen Sturz (Teleport auf eine hohe Stelle, Herunterspringen) nicht mehr steuerbar. Umsetzung `xapi\cheats_player.*` (`FallGuard`), `xapi\cheats.*` (Rücksprünge, `LockedAfterLethalWatch`); Bericht [`docs\g8_cheats_report.md`](../../docs/g8_cheats_report.md) Abschnitt 10. Nur statisch (Capstone, Ghidra-Dekompilat), keine Läufe.
+
+**Korrektur zu 9.4:** Über 41 Einheiten ist ein Sturz nicht „harte Landung“, sondern immer tödlich (unten).
+
+### 11.1 Ablauf im Spiel
+
+`FUN_0005A700` ist vtable-Slot **+0x5C** aller fünf Spielerklassen (0x29A1E8, Fry 0x29E1E8, Bender 0x29D8E0, Leela 0x29F0C0, Rodent 0x2A0DB0). Fallhöhe = Spieler **+0xB84** − `GetPosition().y` (vf+0x34, Aufruf 0x5AA45, Ergebnis `[esp+0x1C]`). +0xB84 schreibt das Update am Ende (0x5D5D1), wenn der Körper Bodenkontakt hat (Kontaktflag 0x80, vf+0x4C), an der Decke (0x40), hängt oder klettert (+0xB8C/+0xB8D); dazu der Neustart (0x57935).
+
+| Stelle | Bedingung | Wirkung |
+|---|---|---|
+| 0x5ADEC (in der Luft, kein Bodenkontakt) | Fallhöhe > **41** (0x29A5F4) und vy < −40 (0x2975AC) | Fallhöhe > **100** (0x295570): `vf+0x7C(55555, 0)` (Aufruf 0x5AE34, Rücksprung **0x5AE37**), tot → Todesart +0x778 = 7. Dann Animation **0x66** (Namenstabelle 0x2D6188 → „death_fall“, `FUN_0003CE70`), bei Kameramodus 7/8 `FUN_00054DA0`, **+0x630 = 0** (Eingabe aus, 0x5AE92) |
+| 0x5BE72 (Landung) | Fallhöhe > **40** (0x29719C) oder „death_fall“ läuft (`FUN_00033E20(0x66)`) | `vf+0x7C(55555, 0)` (Aufruf 0x5C59A, Rücksprung **0x5C59D**), +0x778 = 7, Kamerawackeln `FUN_00011290`, Rumble `FUN_0005EF70`, Ton 0x4E |
+| 0x5C1E4 (Landung) | sonst Fallhöhe > **21** (0x29A528) | 25 Schaden (Rücksprung 0x5C213), „high_land“ (0x65) bzw. Waffenvarianten; Figur bleibt steuerbar |
+| 0x5C13D (anderer Zustand) | Fallhöhe > 21 | 25 Schaden (Rücksprung 0x5C162) |
+
++0x630 = 1 setzen nur: Konstruktor (0x3D5CC), Figurenwechsel `FUN_00036D20` (0x36E32), Skript-Native `FUN_00037010` (0x37040, über 0x3A930/0xB0C40) und Loslassen `FUN_00055860` (0x55893) – nach dem Todessturz also nur der Neustart durch das Levelskript (das auf den Tod wartet, FsCharIsDead). 55555 tötet auch den eingebauten Gott-Modus.
+
+**Softlock:** „Unverwundbar“ blockte die 55555-Treffer (0x5AE37, 0x5C59D) → Gesundheit > 0, +0x630 = 0, kein Neustart. `LethalBlockWatch` braucht eine Serie über 10 s; hier kommen ein bis zwei Treffer.
+
+**Andere Figuren:** Chickenwalker (Spieler +0x7B0): das Update springt bei `FUN_00042690(walker)` (Walker +8) an das Ende (0x5D5D7, hinter die Schreibstelle) – kein Sturztod; das Walker-Update `FUN_000445A0` ruft keinen Schaden. Ratte: dasselbe Update (Rodent-vtable), dazu in `FUN_00061A70` Sumpfschaden 100 × dt je Tick (Aufruf 0x621AC, Angreifer 0, Todesart 0x11) auf Material 0x10; der tödliche Boden darunter tötet (Lauf `run\timer\rat`, 2026-10-14: blockierter Sumpfschaden, dann `instant-death floor`, Neustart, Leben bleibt).
+
+### 11.2 Entscheidungen
+
+* **Fallschutz** (`FallGuard`, rein, unit-getestet; `FallGuardTick` in `PlayerCheatsTick`, also `cheats::OnTick` je Logiktick, kein Hook): Solange „Unverwundbar“ an ist, +0xB84 = min(+0xB84, y + **5**) (`kFallGuardHeight`; y über GetPosition wie das Spiel). Auch mit einem Tick Fall zwischen Schutz und Prüfung bleibt die gemessene Höhe unter 21 (3000 Einheiten Fall: 12,6 je Tick) – kein Todessturz, kein Schaden, keine harte Landung. Die echte Starthöhe merkt sich der Schutz (jeder Wert in +0xB84, den er nicht selbst geschrieben hat, beginnt einen neuen Fall: Boden, Neustart, Teleport, Mondsprung).
+* **Abgrund:** Ab 100 Einheiten echter Fallhöhe in der Luft einmal der Strahltest `FUN_000FB6F0` senkrecht nach unten (3000 Einheiten, wie der Teleport). Kein Treffer, oder 10 s (`kFallAbyssSeconds`) nach 100 Einheiten noch in der Luft → +0xB84 = echte Starthöhe: Der Sturztod des Spiels läuft (sonst fiele die Figur ohne Boden endlos).
+* **Rücksprünge 0x5AE37/0x5C59D** (`kFallDeathReturn`, `kFallLandingDeathReturn`, `IsFallDeathCall`) werden nicht geblockt, wie die Todeszone: Tod, Neustart, `FsDeductLives` übersprungen. Die 25 der harten Landung bleiben geblockt.
+* **Sicherheitsnetz Teil 2** (`LockedAfterLethalWatch`, rein): ein geblockter tödlicher Treffer (der keine Serie auslöst) macht die Wache scharf; beginnt innerhalb von 2 s (`kLockArmSeconds`) eine ununterbrochene Sperre der Eingabe (+0x630 == 0) der gesteuerten, lebenden Figur und dauert sie länger als 10 s (`kLethalBlockLimitSeconds`), ruft `OnTick` deren `vf+0x7C(Gesundheit, 0)` und die Probe lässt diesen Aufruf durch. Steuerung zurück nach den 2 s, Tod oder „Unverwundbar“ aus entschärfen. Grenze: `FUN_00051AD0` ignoriert Schaden, solange 0x2DD5F4 gesetzt ist – dann bleibt der erzwungene Tod wirkungslos (nur protokolliert).
+
+### 11.3 Offen
+
+* Keine Läufe (Nutzerwunsch). Ob der Strahltest Wasser-/Lavaflächen trifft, ist offen (ohne Treffer: Sturztod ohne Lebensverlust).
+* Fallschutz nur für die gesteuerte Figur (Session +0x94).

@@ -2,6 +2,8 @@
 
 Stand: 2026-10-13. Nutzerwunsch: „Ich brauche noch Cheats – erstens Unverwundbarkeit, zweitens One-Hit-Kill, drittens Feinde ignorieren mich.“ Analyse: [`analysis/loader/g8_cheats.md`](../analysis/loader/g8_cheats.md). Abweichungen vom Entwurf: [`loader_design.md`](loader_design.md) 8.25. Schnittstellen: `src\INTERFACES.md` 4.41.
 
+**Nachtrag 2026-10-15 (Fehlermeldung: Softlock nach tiefem Sturz mit „Unverwundbar“):** behoben, siehe Abschnitt 10. Kurz: Jeder Sturz über 41 Einheiten (≈ 7,5 m) ist im Spiel tödlich und schaltet die Steuerung ab; „Unverwundbar“ blockte den Tod, die Steuerung kam nie zurück. Jetzt landet die Figur mit „Unverwundbar“ normal; nur ein Sturz ins Leere tötet (ohne Lebensverlust). Ein neues Sicherheitsnetz lässt den Tod durch, wenn die Figur nach einem geblockten tödlichen Treffer länger als 10 s nicht steuerbar ist.
+
 **Nachtrag 2026-10-14 (Nutzerwunsch: Timer einfrieren):** Ein Schalter **„Timer einfrieren“** hält alle Countdowns des Spiels an – die Sumpf-Uhr in 4-1, das Stromkasten-Tor in 2-4, Raum 9 in 3-5 und die Zeitlampen der Rätsel in 5-1/5-2/5-3 – Abschnitt 9.
 
 **Nachtrag 2026-10-14 (Nutzerwunsch: weitere Cheats):** Zur Freecam teleportieren, Mondsprung (vor allem für Zoidberg auf der Ratte in 4-1), Sprungweite um x Meter erhöhen und Unendlich Munition – Abschnitt 8.
@@ -148,7 +150,7 @@ Nutzerwunsch (2026-10-14): drei weitere Cheats in der Gruppe „Cheats“ – zu
 | Schalter (`[cheats]`) | Bedienung | Wirkung |
 |---|---|---|
 | **Zur Freecam teleportieren (Freecam: RB / T) (→ → ← ← ↑ ↑ ↓ ↓)** (`teleport_freecam`) | In der Freecam (L3+R3 bzw. F6) **RB** drücken, Tastatur **T** | Die Figur steht danach auf dem Boden unter der Kamera (Strahltest des Spiels senkrecht nach unten, bis 300 m). Freecam verlassen: Die Figur ist dort, die Spielkamera folgt. Ohne Boden darunter, in Fahrzeugen (Chickenwalker 1-7, Kanone 2-6, Ratte 4-1) und während die Figur festgehalten wird: nichts (rotes Aufblitzen). Sonst grünes Aufblitzen |
-| **Mondsprung (LB + B halten) (↑ → ↓ ← ↑ → ↓ ←)** (`moon_jump`) | **B** (Springen) und **LB** gedrückt halten; Tastatur mit der Standardbelegung **Leertaste + 1** | Die Figur steigt mit 40 Einheiten/s (≈ 7 m/s), solange beide gehalten werden – **auch Zoidberg mit der Ratte in 4-1** (die Ratte läuft dabei weiter ihre Strecke entlang). Loslassen: normaler Fall mit der Schwerkraft des Spiels; die **Landung danach verursacht keinen Fallschaden** (sonst töten Stürze über 100 Einheiten ≈ 18 m). Erst B, dann LB drücken: Dann wechselt Fry dabei nicht die Waffe (LB = Waffe zurück, die einzige Belegung von LB im Spiel) |
+| **Mondsprung (LB + B halten) (↑ → ↓ ← ↑ → ↓ ←)** (`moon_jump`) | **B** (Springen) und **LB** gedrückt halten; Tastatur mit der Standardbelegung **Leertaste + 1** | Die Figur steigt mit 40 Einheiten/s (≈ 7 m/s), solange beide gehalten werden – **auch Zoidberg mit der Ratte in 4-1** (die Ratte läuft dabei weiter ihre Strecke entlang). Loslassen: normaler Fall mit der Schwerkraft des Spiels; die **Landung danach verursacht keinen Fallschaden** (sonst töten Stürze über 41 Einheiten ≈ 7,5 m; korrigiert 2026-10-15, Abschnitt 10). Erst B, dann LB drücken: Dann wechselt Fry dabei nicht die Waffe (LB = Waffe zurück, die einzige Belegung von LB im Spiel) |
 | **Sprungweite um x Meter erhöhen** (`jump_distance`, 0,0–2,0 in Schritten von 0,1, Einheit m) | – | Jeder Sprung **aus dem Lauf** landet x m weiter, Höhe und Flugzeit bleiben. Gilt für Fry, Bender, Leela und die Ratte. Sprünge aus dem Stand bleiben unverändert. 0 = aus (kein Hook) |
 | **Unendlich Munition (↓ ↓ ↑ ↑ ← ← → →)** (`infinite_ammo`) | – | Fry verbraucht keine Munition (Pistole, Schrotflinte, Maschinengewehr, Railgun): die Anzeige bleibt stehen; ein leeres Magazin der gehaltenen Waffe wird auf das Maximum des Spiels gefüllt (500/200/300/400). Chickenwalker (1-7): Laserenergie immer voll, keine Raketen weniger. Kanone (2-6): keine Schüsse weniger. Bender und Leela: Ihre **Aufladung** („Power“, bis 4,0, je Spezialangriff 1,0 – die einzige begrenzte Ressource der beiden) sinkt nicht |
 
@@ -271,3 +273,54 @@ Läufe (RelWithDebInfo, Lautstärke 0, Rumble 0, Filme übersprungen, nacheinand
 * Der natürliche Ablauf in 4-1 (Film, Neustart) ist nur aus dem Skript belegt, nicht im Lauf. Ohne Steuerung stürzt die Ratte alle 8–10 s in den Sumpf, und jeder Tod hält die Uhr an.
 * Wer während eines eingefrorenen Skript-Countdowns (2-4, 3-5, 5-x) ausschaltet, hat die volle Restzeit. Ein Countdown, der beim Einschalten schon bei 0 war, ist abgelaufen.
 * Andere lange Wartezeiten in den Skripten (Dialoge, Kamerafahrten, zeitgesteuerte Plattformen und Türen) sind keine Countdowns und bleiben unverändert.
+
+## 10. Nachtrag 2026-10-15: Softlock nach tiefem Sturz mit „Unverwundbar“
+
+### 10.1 Fehler und Ursache
+
+Meldung des Nutzers (2026-10-15): Mit `[cheats] invulnerable = 1` hängt das Spiel nach einem tiefen Sturz (z. B. nach dem Teleport auf eine hohe Stelle oder beim Herunterspringen von hoch oben): Nach der Landung lässt sich die Figur nicht mehr steuern. Ohne „Unverwundbar“ stirbt die Figur und beginnt am Kontrollpunkt.
+
+Ursache (statische Analyse, [`analysis/loader/g8_cheats.md`](../analysis/loader/g8_cheats.md) Abschnitt 11): Im Spiel ist **jeder Sturz über 41 Einheiten (≈ 7,5 m) tödlich**. Das Update aller Spielerklassen `FUN_0005A700` (Fry, Leela, Bender, Ratte) misst die Fallhöhe als Spieler +0xB84 (Höhe, an der der Fall begann) minus die aktuelle Höhe:
+
+* **In der Luft**, Fallhöhe > 41 und schneller als 40/s nach unten: Todessturz-Animation „death_fall“, **Eingabe aus** (+0x630 = 0); ab 100 Einheiten sofort `TakeDamage(55555)` (Aufruf 0x5AE34).
+* **Landung** nach mehr als 40 Einheiten oder während „death_fall“ läuft: `TakeDamage(55555)` (Aufruf 0x5C59A). Zwischen 21 und 40: 25 Schaden und harte Landung (die Figur bleibt steuerbar).
+* Die Eingabe schaltet danach nur der Tod mit dem Neustart des Levelskripts wieder ein.
+
+„Unverwundbar“ blockte beide 55555-Treffer: Die Figur lebte, die Eingabe blieb aus, das Skript sah keinen Tod und setzte sie nie an den Kontrollpunkt – Softlock. Das Sicherheitsnetz aus Abschnitt 7 griff nicht: Es braucht 10 s lang wiederholte tödliche Treffer, hier kamen nur ein oder zwei.
+
+### 10.2 Behebung
+
+| Fall | Verhalten jetzt | Wie |
+|---|---|---|
+| Tiefer Sturz mit Boden darunter („Unverwundbar“) | Die Figur **landet normal**: kein Todessturz, kein Schaden, keine harte Landung, volle Steuerung | **Fallschutz** (ohne Hook, einmal je Logiktick): Solange „Unverwundbar“ an ist, hält der Port die Fallhöhe +0xB84 höchstens 5 Einheiten über der Figur – wie beim Mondsprung. Für das Spiel ist die Landung ein kurzer Hüpfer. Protokoll `cheat: invulnerable - fall of N units (… m; the game: fatal) landed normally …` |
+| Sturz ins Leere (kein Boden in 300 m unter der Figur, oder nach 100 Einheiten Fall noch 10 s weiter fallend) | Wie bisher im Spiel: Todessturz, Neustart am Kontrollpunkt, **kein Leben weg** | Ab 100 Einheiten Fall einmal der Strahltest des Spiels senkrecht nach unten (wie beim Teleport); trifft er nichts, bekommt die Figur ihre echte Fallhöhe zurück und der Sturztod des Spiels läuft. Protokoll `… with no ground below …` |
+| Todeszonen (Abgründe mit tödlichem Boden, Lava, tödliches Wasser, Sumpf in 4-1) | unverändert: Tod ohne Lebensverlust | wie Abschnitt 1; der Fallschutz lässt die Figur dort landen, der Boden tötet |
+| Sturztod, der trotzdem ausgelöst wird (z. B. „Unverwundbar“ erst während des Falls eingeschaltet) | Tod, Neustart, kein Leben weg – kein Softlock | Die beiden 55555-Aufrufe (Rücksprung 0x5AE37 und 0x5C59D) werden nicht mehr geblockt, wie die Todeszone. Protokoll `cheat: invulnerable - fatal fall (…): passes …` |
+| **Sicherheitsnetz, Teil 2** (alle anderen Fälle) | Wird ein tödlicher Treffer geblockt und ist die Figur danach (Beginn innerhalb von 2 s) **mehr als 10 s ununterbrochen nicht steuerbar**, aber am Leben, stirbt sie: Neustart, kein Leben weg | `LockedAfterLethalWatch`; Protokoll `cheat: invulnerable - safety net: … has no control for more than 10 s after a blocked lethal hit …` |
+| „Unverwundbar“ aus | unverändert (jeder Sturz über 41 Einheiten tödlich, ein Leben weg) | – |
+
+**Keine neuen Hooks:** Fallschutz und Sicherheitsnetz Teil 2 laufen im Tick der Cheats (`cheats::OnTick`), die Sturz-Rücksprünge prüft die vorhandene Probe `probe:Player::TakeDamage`. Alles aus: weiter `cheats: all off (no hooks)`, Hook-Zahlen unverändert.
+
+**Figuren:** Fry, Leela, Bender und die Ratte (Zoidberg, 4-1) teilen das Update `FUN_0005A700` (vtable +0x5C aller fünf Spielerklassen, Unit-Test) – der Fallschutz gilt für alle. Die Ratte stürzt in 4-1 meist in den Sumpf: Der Sumpf zieht 100 × dt je Tick ab (geblockt), der tödliche Boden darunter tötet nach etwa 2,5 s (Lauf `run\timer\rat` vom 2026-10-14: viermal `instant-death floor … passes`, Leben bleibt) – kein Softlock. Der **Chickenwalker** (1-7, Ordner `Level1-6`) hat keinen Sturztod: Solange Fry im Walker sitzt, überspringt das Update den ganzen Fallteil, und der Walker-Code (`FUN_000445A0`) ruft keinen Schaden auf.
+
+### 10.3 Prüfung
+
+Bauten: MSVC RelWithDebInfo `build\fall` (`FUT_WERROR=ON`) und clang-cl Debug `build\fall-clang` (`fut_tests`, `FUT_WERROR=ON`) ohne Warnungen; `fut_tests` je **568/568** (1 übersprungen). Neue Fälle in `tests\g8_cheats_tests.cpp`: Sturz-Rücksprünge laufen durch, harte Landung (25) bleibt geblockt; Sicherheitsnetz Teil 2 (nach 10 s durch, nicht vorher; Steuerung zurück; spätere Sperre wie eine Zwischensequenz; tot); Fallsimulation mit den Regeln des Spiels (Schwerkraft 95, je Tick): ohne Schutz tötet ein Sturz aus 60 bzw. 500 Einheiten, mit Schutz landen Stürze aus 8 bis 2500 Einheiten ohne Schaden, Todessturz und Tod – in beiden Reihenfolgen von Schutz und Physik; Abgrund ohne Boden und die 10-s-Grenze töten; Neustart nach dem Abgrund; NaN. Gegen die Retail-XBE: Update-Slot +0x5C der fünf Klassen, beide 55555-Aufrufe, die drei Messstellen der Fallhöhe, GetPosition 0x5AA45, die Schwellen 21/40/41/100/−40, Animation 0x66 = „death_fall“, Eingabe aus 0x5AE92, Schreibstelle +0xB84 0x5D5D1.
+
+**Keine Spielläufe** (Wunsch des Nutzers 2026-10-15: er prüft selbst). Hänger und Behebung sind aus dem Code und der Simulation belegt.
+
+### 10.4 Checkliste für den Nutzer
+
+1. Launcher → **Cheats**: **Unverwundbar** und **Zur Freecam teleportieren** anhaken, z. B. Startlevel 1-1. Freecam (L3+R3 bzw. F6) hoch auf ein Dach oder eine Galerie, **RB** (Tastatur **T**), Freecam verlassen, von dort hinunterspringen. Erwartet: Die Figur landet normal und lässt sich sofort weiter bewegen; im Protokoll `cheat: invulnerable - fall of … units … landed normally`.
+2. Mit dem **Mondsprung** sehr hoch steigen und loslassen (lief schon vorher ohne Schaden).
+3. Mit Leela (3-x) und Bender (2-x) je einmal tief springen; mit der Ratte (4-1) bleibt der Sumpf tödlich (Neustart ohne Lebensverlust).
+4. In Lava, tödliches Wasser oder einen Abgrund springen: Tod, Neustart am Kontrollpunkt, Lebenszahl gleich (wie bisher).
+5. Gegenprobe ohne „Unverwundbar“: Ein Sturz aus großer Höhe tötet wie im Original (ein Leben weg, Neustart).
+6. Falls die Figur trotzdem irgendwo hängen bleibt: Nach spätestens 10 s ohne Steuerung sollte sie sterben und am Kontrollpunkt beginnen (Protokoll `safety net`). Bitte das Protokoll melden.
+
+### 10.5 Grenzen
+
+* Nicht im Spiel geprüft (10.3).
+* Ob der Strahltest jeden Boden trifft (z. B. Wasser- oder Lavaflächen), ist nicht geprüft. Trifft er bei einem Sturz über 100 Einheiten nichts, läuft der Sturztod des Spiels (Neustart ohne Lebensverlust) – kein Softlock, aber ein Tod, wo eine Landung möglich gewesen wäre. Ein Abgrund ohne tödlichen Boden, dessen Grund der Strahl trifft, tötet erst nach 10 s Fall.
+* Der Fallschutz gilt nur für die gesteuerte Figur.
+* Sicherheitsnetz Teil 2: Spielt das Spiel innerhalb von 2 s nach einem geblockten tödlichen Treffer eine Zwischensequenz von mehr als 10 s, stirbt die Figur dabei (Neustart ohne Lebensverlust). Kein solcher Fall bekannt.

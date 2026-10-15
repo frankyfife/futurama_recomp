@@ -198,7 +198,9 @@ struct FFFrameConstants {
     float4 targetSize;      // x width, y height, z 1/width, w 1/height of the current render target
     float4 pixelCenter;     // xy: the B19 shift in viewport pixels (D3D8 pixel centers at integer coordinates,
                             // D3D11 at +0.5): 0.5; 0 on upscaled or multisampled texture targets
-                            // (gfx::TargetPixelCenter); zw unused
+                            // (gfx::TargetPixelCenter); zw: device pixels by which pre-transformed draws (slot
+                            // 55) sample their texture coordinates back towards the D3D8 position, (0.5 - xy) *
+                            // device pixels per viewport pixel (0 where xy = 0.5)
 };
 
 // b1: per draw.

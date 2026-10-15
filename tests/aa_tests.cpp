@@ -27,6 +27,7 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace gfx;
@@ -1006,4 +1007,124 @@ TEST_CASE("aa: present pass into a window - 1:1, upscale and downsample (WARP)")
         }
     }
     platform::DestroyMainWindow();
+}
+
+TEST_CASE("aa: full-screen 2D covers the upscaled multisampled 4:3 area to its edges (edge seam, WARP)") {
+    // User report 2026-10-15 (2880x2160 -> 2880x1620 at 16:9, MSAA 8x): movies, fades and letterbox bars showed an
+    // old picture in the first two rows and columns of the centred 4:3 area. The guest's full-screen quads start on
+    // integer D3D8 pixels; with the B19 shift of 0.5 guest pixels they started 0.5 * scale device pixels inside the
+    // area. gfx::PixelCenterShift keeps 0.5 only at scale 1 with one sample. Scale 3.375 like the user's 1620 lines:
+    // guest 64 x 48 -> a 216 x 162 area at x = 36 of a 288 x 162 (16:9) target.
+    struct Case {
+        std::uint32_t w, h, samples, offsetX;
+    };
+    static const std::uint16_t kIndices[6] = {0, 1, 2, 2, 1, 3};
+    auto quad = [](float qx0, float qx1) {
+        return std::vector<float>{qx0, 0.0f, 0.5f, qx1, 0.0f, 0.5f, qx0, 48.0f, 0.5f, qx1, 48.0f, 0.5f};
+    };
+    auto item = [](const std::vector<float>& positions, const float* colors, bool pretransformed) {
+        ni::DrawItem it;
+        it.geometry.vertexCount = 4;
+        it.geometry.positions = {positions.data(), 12};
+        it.geometry.colors = {colors, 16};
+        it.geometry.indices = kIndices;
+        it.geometry.indexCount = 6;
+        it.geometry.pretransformed = pretransformed;
+        it.state.zFunc = rhi::CompareFunc::Always;
+        it.state.zWriteEnable = false;
+        it.state.cullMode = rhi::CullMode::None;
+        it.state.lightingEnable = false;  // vertex colours (the game's screen polygons are unlit)
+        return it;
+    };
+    const float green[16] = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+    const float half[16] = {0, 0.5f, 0, 1, 0, 0.5f, 0, 1, 0, 0.5f, 0, 1, 0, 0.5f, 0, 1};
+    const std::vector<float> ndc = {-1, 1, 0.5f, 1, 1, 0.5f, -1, -1, 0.5f, 1, -1, 0.5f};
+    for (const Case cs : {Case{288, 162, 8, 36}, Case{288, 162, 1, 36}, Case{64, 48, 1, 0}, Case{64, 48, 4, 0}}) {
+        CAPTURE(cs.w);
+        CAPTURE(cs.samples);
+        auto device = MakeDevice(cs.w, cs.h, cs.samples);
+        if (device == nullptr) {
+            return;
+        }
+        const std::uint32_t samples = device->Info().sampleCount;
+        const double scale = static_cast<double>(cs.h) / 48.0;
+        const float rule = PixelCenterShift(scale, samples);
+        CHECK(rule == (scale == 1.0 && samples == 1 ? 0.5f : 0.0f));
+        ff::FixedFunctionPipeline pipeline;
+        std::string error;
+        REQUIRE_MESSAGE(pipeline.Init(*device, &error), error);
+        ff::RenderOptions options;
+        options.sampleCount = samples;
+        pipeline.SetRenderOptions(options);
+        rhi::CommandContext& ctx = device->Context();
+        ctx.SetRenderTargets({}, {});
+        const auto areaW = static_cast<std::uint32_t>(64 * scale);
+        const std::uint32_t x0 = cs.offsetX, x1 = cs.offsetX + areaW;
+        const std::vector<float> fullQuad = quad(0.0f, 64.0f);
+        for (const float shift : {0.5f, rule}) {
+            CAPTURE(shift);
+            ni::CameraDesc camera;
+            camera.view = camera.projection = camera.screenProjection = IdentityMatrix();
+            camera.viewport = {0.0f, 0.0f, 64.0f, 48.0f, 0.0f, 1.0f};
+            HalfPixelShift(&camera.projection, 64.0f, 48.0f, shift, shift);
+            pipeline.SetCamera(camera, 64, 48, shift, shift);
+            ctx.SetViewport({static_cast<float>(x0), 0.0f, static_cast<float>(areaW), static_cast<float>(cs.h), 0, 1});
+            const bool exact = shift == rule;
+            // Pre-transformed (slot 55, NiScreenTexture) and transformed over the viewport (the movie NiScreenPolygon
+            // of the slot-54 screen camera, fades).
+            for (int kind = 0; kind < 2; ++kind) {
+                CAPTURE(kind);
+                const float red[4] = {1, 0, 0, 1};  // "the picture of two presents ago"
+                ctx.Clear(rhi::kClearColor | rhi::kClearDepth | rhi::kClearStencil, red, 1.0f, 0, nullptr);
+                REQUIRE(pipeline.Draw(item(kind == 0 ? fullQuad : ndc, green, kind == 0)) == ff::DrawResult::Drawn);
+                rhi::Image image;
+                REQUIRE(device->CaptureBackBuffer(image));
+                auto off = [&image](std::uint32_t x, std::uint32_t y) {
+                    return At(image, x, y).r != 0 || At(image, x, y).g != 255 ? 1 : 0;
+                };
+                int uncovered = 0;
+                for (std::uint32_t y = 0; y < cs.h; ++y) {
+                    uncovered += off(x0, y) + off(x0 + 1, y) + off(x1 - 2, y) + off(x1 - 1, y);
+                }
+                for (std::uint32_t x = x0; x < x1; ++x) {
+                    uncovered += off(x, 0) + off(x, 1) + off(x, cs.h - 2) + off(x, cs.h - 1);
+                }
+                if (exact) {
+                    CHECK(uncovered == 0);
+                } else {
+                    CHECK(uncovered > 0);  // the old shift on an upscaled or multisampled target: the seam
+                }
+                if (x0 > 0) {  // nothing spills into the bars
+                    CHECK(At(image, x0 - 1, cs.h / 2).r == 255);
+                    CHECK(At(image, x1, cs.h / 2).r == 255);
+                }
+            }
+            if (!exact) {
+                continue;
+            }
+            // Tiled 2D pieces (HUD frames, letterbox bars beside the movie): additive halves meet without a gap or a
+            // double-covered column, also where the shared edge (guest 21 -> 70.875 device pixels) splits a pixel.
+            const float black[4] = {0, 0, 0, 1};
+            ctx.Clear(rhi::kClearColor | rhi::kClearDepth | rhi::kClearStencil, black, 1.0f, 0, nullptr);
+            for (const auto& [a, b] : {std::pair{0.0f, 21.0f}, std::pair{21.0f, 64.0f}}) {
+                const std::vector<float> positions = quad(a, b);
+                ni::DrawItem tile = item(positions, half, true);
+                tile.state.alphaBlendEnable = true;
+                tile.state.srcBlend = rhi::BlendFactor::One;
+                tile.state.dstBlend = rhi::BlendFactor::One;
+                REQUIRE(pipeline.Draw(tile) == ff::DrawResult::Drawn);
+            }
+            rhi::Image image;
+            REQUIRE(device->CaptureBackBuffer(image));
+            int wrong = 0;
+            for (std::uint32_t y = 0; y < cs.h; y += 7) {
+                for (std::uint32_t x = x0; x < x1; ++x) {
+                    wrong += std::abs(At(image, x, y).g - 128) > 2 ? 1 : 0;
+                }
+            }
+            CHECK(wrong == 0);
+        }
+        CHECK(DebugProblems(*device) == 0);
+        pipeline.Shutdown();
+    }
 }
