@@ -64,8 +64,19 @@ float WidenedFactor(std::uint32_t camera) noexcept;
 std::span<const AnchorException> AnchorExceptions() noexcept;
 // HUD anchoring allowed: the game is in a level (context "Ingame"). Evaluated once per displayed frame.
 bool AnchoringAllowed(std::uint32_t frame) noexcept;
-// Statistics and the first classifications of screen-space draws (GFX/info, at most a few dozen lines).
-void NoteDraw(const DrawFacts& facts, Placement placement, std::uint32_t object, std::uint32_t frame) noexcept;
+// HUD groups (widescreen_math.h HudGroups, 2026-10-14): the rectangle an anchored HUD draw of `frame` is placed by.
+// `camera` != 0: the draw is a screen polygon of that NiCamera; its screen polygon list (+0x164 array, +0x16C size,
+// drawn by NiCamera::Click 0x100C50) is read once per camera and frame - all pieces of the frame are known before the
+// first of them is drawn. `viewport` = the guest viewport the polygons map to (normalised 0..1, y up). `object` = the
+// polygon (0 for geometry: the digits of a HUD camera join the group they touch). Draws before the first list of the
+// frame use the groups of the previous frame. False: no group, the draw is anchored by `bounds`.
+bool HudGroupOf(std::uint32_t camera, const GuestRect& viewport, std::uint32_t object, const GuestRect& bounds,
+                std::uint32_t frame, GuestRect* group) noexcept;
+// Statistics and the first classifications of screen-space draws (GFX/info, at most a few dozen lines per level
+// entered). `camera` = the NiCamera of the draw (0 = unknown), `transform` = the NiTransform* of a geometry draw
+// (its NiAVObject and parents are named in the line; 0 = none).
+void NoteDraw(const DrawFacts& facts, Placement placement, std::uint32_t object, std::uint32_t frame,
+              std::uint32_t camera = 0, std::uint32_t transform = 0) noexcept;
 // A full-screen quad of a Hor+ camera drawn with the unwidened projection (it covers the whole width).
 void NoteUnwidenedQuad() noexcept;
 // "widescreen: ..." exit line.

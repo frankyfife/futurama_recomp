@@ -1,6 +1,6 @@
 # G3: Breitbild – Bericht
 
-Stand: 2026-10-12. Abweichungen vom Entwurf: [`loader_design.md`](loader_design.md) 8.21. Schnittstellen: [`src/INTERFACES.md`](../src/INTERFACES.md) 4.37.
+Stand: 2026-10-12, Nachträge 2026-10-13 (Abschnitt 6) und 2026-10-14 (Abschnitt 7). Abweichungen vom Entwurf: [`loader_design.md`](loader_design.md) 8.21. Schnittstellen: [`src/INTERFACES.md`](../src/INTERFACES.md) 4.37.
 
 ## Kurzfassung
 
@@ -58,7 +58,7 @@ Vorgetransformierte Pixel (Slot 55) und Bildschirm-Polygone (Slot 54) liegen rel
 3. **Geometrie einer anderen Kamera über die ganze Breite** (nicht HUD-Kamera, z. B. das Hauptmenü) → Center. Die Szene bleibt ein unverzerrtes 4:3-Bild.
 4. **Zeichenaufruf über das ganze Raster:** ohne Textur (Abblendung) → Stretch, mit Textur (Bild) → Center.
 5. **Bildschirmtexturen (Slot 55)** → Center. Ladebilder bestehen aus 256-Pixel-Kacheln und dürfen nicht auseinanderfallen.
-6. **Nur im Level** (Kontext „Ingame“): erst die Ausnahmetabelle, dann das Drittel, in dem die Mitte des Rechtecks liegt: links → Left, rechts → Right, Mitte → Center.
+6. **Nur im Level** (Kontext „Ingame“): erst die Ausnahmetabelle, dann das Drittel, in dem die Mitte des Rechtecks liegt: links → Left, rechts → Right, Mitte → Center. Seit 2026-10-14 zählt bei Bildschirm-Polygonen und HUD-Ziffern die Mitte ihrer **HUD-Gruppe** (Abschnitt 7).
 7. Sonst Center.
 
 **Sonderfall Abdunklung:** Eine Fläche mit höchstens 8 Ecken einer Hor+-Kamera, die mit der Projektion des Spiels den ganzen Bildschirm bedeckt, zeichnet der Renderer mit dieser Projektion, gestreckt. Das betrifft die Abdunklung des Pausenmenüs: ein Quad mit 137 % Breite, das ab 21:9 sonst schmaler als das Bild wäre.
@@ -118,7 +118,7 @@ Exit-Zeile im 16:9-Lauf: `widescreen: 16:9, 517 widened camera clicks; placement
 ## 5. Bekannte Grenzen
 
 * **Was das Spiel selbst projiziert**, etwa Zielmarkierungen oder Namen über Figuren, liegt im 4:3-Raster. In der Mitte stimmt die Platzierung „Center“ dafür genau. Liegt so ein Element im linken oder rechten Drittel, würde es an den Rand verschoben und säße neben dem Ziel. Nicht im Lauf geprüft (keine Gegner in den Prüfszenen). Abhilfe wäre ein Eintrag in der Ausnahmetabelle oder ein eigenes Kennzeichen.
-* **Elemente, die über zwei Drittel reichen**, werden nach ihrer Mitte eingeordnet. Ein HUD-Teil, der so aus der Gruppe fällt, braucht einen Eintrag in der Ausnahmetabelle.
+* **Elemente, die über zwei Drittel reichen**, wurden bis 2026-10-14 Teil für Teil nach ihrer Mitte eingeordnet und fielen so auseinander (4-1). Seitdem gilt die HUD-Gruppe (Abschnitt 7).
 * **Levelränder:** Hor+ zeigt mehr vom Level. Die Level sind für 4:3 gebaut. Am Rand können unfertige Stellen oder Objekte auftauchen, die das Spiel selbst (außerhalb des NetImmerse-Kullings) erst später einblendet. In 1-1 und 2-6 nicht gesehen.
 * **Nicht in Läufen geprüft:** Filme mit `movies` an (laufen als bildfüllende Textur und sollten 4:3 bleiben), Todesbildschirm, Leelas HUD, Waffen-HUD von Fry, Speicher-Dialoge, 16:10. Ebenso das Avatarbild über Render-to-Texture (M8); es wird als Bildschirm-Polygon oben links nach den Regeln an den linken Rand gesetzt.
 * Ohne echten Controller geprüft (Eingabeskript).
@@ -134,3 +134,55 @@ Exit-Zeile im 16:9-Lauf: `widescreen: 16:9, 517 widened camera clicks; placement
 **Behebung (`nipc_gpu.cpp`, `ClearBars`):** Ob die Balken schwarz werden, entscheidet jetzt der erste Zeichenaufruf bzw. das erste Farblöschen des Bildes nach seiner Platzierung. Ist er über die Breite gestreckt (Hor+-Szene, bildschirmfüllendes Löschen), gehören die Seiten zur Szene und werden nicht schwarz gelöscht; Löcher zeigen wie in der Mitte die Löschfarbe des Spiels. Ein reines Tiefen-/Stencil-Löschen entscheidet nichts. Zentrierte Bilder (Hauptmenü, Ladebilder, Titelkarten, Filme) bekommen wie bisher schwarze Balken. Neue Abschlusszeile `d3d11 widescreen bars: N frames with the sides left to the stretched scene …`. Unit-Test „nipc_gpu: G3 bars …“ (WARP).
 
 **Prüfung (`run\fix\user_before` mit dem alten Bau, `run\fix\user_after` mit der Behebung, gleiches Skript: Start 1-2, schräg nach links vorn, Kamera schrittweise nach rechts, 16:9, MSAA 8×):** Bild `frame_001460.png` zeigt vorher hinter dem Gitter rechts den schwarzen Halbkreis mit gerader linker Kante bei x = 1120 von 1280 (= 4:3-Rand), genau wie beim Nutzer; nachher ist die Stelle nebelgrün (Pixel 1130/262: (0, 0, 0) → (33, 114, 25)), Vergleich `run\fix\user_compare.png`. Hauptmenü weiter mit schwarzen Balken (`run\fix\hole_after\shots\frame_000751.png`).
+
+## 7. Nachtrag 2026-10-14: HUD-Gruppen (Zeitleiste in Level 4-1)
+
+**Meldung:** In Level 4-1 (Bogad-Sumpf, Zoidberg auf der Ratte) war bei 16:9 die Zeitanzeige unten zerrissen: Stoppuhr und das linke Endstück des Balkens am linken Rand, der Rest des Balkens mit den Ziffern „1:36“ in der Mitte, dazwischen eine Lücke. Im Protokoll des Nutzers fehlten die HUD-Zeilen, weil die höchstens 64 protokollierten Zeichenaufrufe schon im Hauptmenü verbraucht waren.
+
+**Nachgestellt** (`run\hud\before41`, 16:9, 1280×720, Startlevel 4-1, Protokoll neu ab Levelbeginn): Die Zeitleiste besteht aus vier `NiScreenPolygon`s in der Polygonliste der Szenenkamera (`NiCamera` +0x164, Größe +0x16C; `NiCamera::Click` 0x100C50 zeichnet sie nach der Szene) und den Ziffern einer HUD-Kamera. Das Spiel legt jedes Teil einzeln mit fester Lage im 640×480-Raster an (`FUN_000ECB70` → `FUN_000E5ED0`/`FUN_000E5B70`); einen gemeinsamen Knoten gibt es nicht.
+
+| Teil | Quelle | Rechteck (640×480) | allein (Drittel der Mitte) |
+|---|---|---|---|
+| Balken `HUD\swamp_bar.nif` (dunkel, Material 0/0,3/0,4) | Polygon, Liste 1/7 | (192, 400)–(448, 432) | Center |
+| Stoppuhr `swamp_cl.nif` | Polygon, Liste 2/7 | (156, 400)–(188, 432) | **Left** |
+| Zielfahne `swamp_fl.nif` | Polygon, Liste 3/7 | (452, 384)–(484, 448) | **Right** |
+| Fortschrittsfüllung (zweites `swamp_bar.nif`, hell, wächst von links) | Polygon, Liste 4/7 | (192, 400)–(192 + Fortschritt, 432) | **Left** bis 42 px Breite, dann Center |
+| Ziffern „1:56“ | Geometrie der HUD-Kamera (l 0, b 0) | (265, 370)–(375, 405) | Center |
+
+Die übrigen Polygone der Liste: Porträtring (36, 49)–(143, 156), Fisch-Zähler (520, 352)–(584, 416), Nibbler (56, 352)–(120, 416); Ziffern „0/5“ (56, 416)–(120, 443). Die Hilfskamera hat zwei Polygone am linken Rand (0, 93)–(144, 157).
+
+**Ursache:** Regel 6 setzte jedes Teil nach der Mitte **seines eigenen** Rechtecks. Die Teile eines Elements, das über die Drittelgrenzen (213 und 427 px) reicht, landeten so an verschiedenen Stellen. Die Füllung sprang zudem während des Levels vom linken Rand in die Mitte, sobald sie breiter als 42 px wurde. Das Endstück „(“ im Bild des Nutzers ist die Füllung.
+
+**Behebung (allgemein, ohne Ausnahmetabelle):** Bildschirm-Polygone und Ziffern der HUD-Kameras werden im Level **je HUD-Gruppe** verankert (`widescreen_math.h` `HudGroups`, `widescreen.cpp` `HudGroupOf`, Aufruf in `nipc_gpu.cpp` `DrawWide`):
+
+1. Beim ersten Polygon einer Kamera in einem Bild liest der Port deren ganze Polygonliste und berechnet für jedes Polygon (3–64 Ecken, kein `NiOutline`-Band) das Rechteck im Gastraster. So sind alle Teile bekannt, bevor das erste gezeichnet wird; es gibt kein Bild mit falscher Lage.
+2. Teile, die in x und in y höchstens **16 px** auseinanderliegen, bilden eine Gruppe (transitiv). Die Teile eines Elements liegen 4 px auseinander, getrennte Elemente 36 px und mehr (gemessen in 1-1, 2-4, 4-1).
+3. Keine Gruppenteile: leere und bildschirmfüllende Flächen (Abblendung) sowie Flächen über 320 px Breite (Banner, Kinobalken), damit sie keine Randelemente in die Mitte ziehen.
+4. Das Polygon wird nach der Mitte der Vereinigung seiner Gruppe verankert. Ziffern (Geometrie der HUD-Kameras) schließen sich der nächsten Gruppe in 16 px an; Ziffern, die vor der ersten Liste eines Bildes kommen, nutzen die Gruppen des Bildes davor.
+5. Die Ausnahmetabelle prüft weiter das eigene Rechteck und bleibt leer. Außerhalb des Levels ändert sich nichts.
+
+Die Zeitleiste ist danach eine Gruppe (156, 384)–(484, 448) mit der Mitte 320 → Center, wie im Original zusammen in der Mitte. Ring, Nibbler und Fisch-Zähler bleiben am Rand.
+
+**Protokoll:** Die Liste der Zeichenaufrufe beginnt bei jedem Levelbeginn neu (höchstens 16-mal, je 96 Objekte; Zeile `widescreen: frame N in a level …`). Neu sind die Kamera, bei Polygonen der Platz in der Kameraliste, bei Geometrie Knoten und Eltern sowie `widescreen: frame N HUD groups: …`, wenn sich die Gruppen ändern. Für jedes Teil, das die Gruppe anders setzt als sein eigenes Rechteck, gibt es eine Zeile `… alone -> left, with its HUD group (…) -> center`. Die Abschlusszeile zählt beides, z. B. `(11388 HUD draws anchored by their group, 2594 of them placed differently than alone)`.
+
+**Prüfung:** Läufe unter `run\hud\` (Skripte `run\hud\scripts\level.txt`: Start, zwei Strecken vorwärts, Pause, `game level_end` → Statistik; `console.txt` für 2-4 mit `game snap_to_node nPowerConsole` und Y). Alle mit Lautstärke 0, Rumble aus, `movies = skip`, Unverwundbar, Rückgabe 0. Je Level vier Läufe: `o43_*` Original 960×720, `b169_*` alter Bau (HEAD f0c53c9) 16:9, `a169_*` neuer Bau 16:9, `a219_*` neuer Bau 21:9 (1280×540). Vergleichsbilder `run\hud\cmp\<Level>_<Bild>.png` (oben Original | vorher 16:9, unten nachher 16:9 | nachher 21:9; Bild 1 = Fahrt/Spiel, 3 = Pause, 5 = Statistik), alle selbst angesehen.
+
+| Level (Ordner) | HUD | Vom Fehler betroffen | Nachher (16:9 und 21:9) | Bild |
+|---|---|---|---|---|
+| 1-1 (Level1-1) | Fry: Porträt, Gesundheit, Munition, Geld, Nibbler | nein | unverändert: links/rechts am Rand, 0 Teile verschoben | `11_1`, `11_3` (Pause), `11_5` (Statistik) |
+| 1-7 Chickenwalker (Level1-6) | Cockpit, Energiebögen, Raketen, Geld | nein (Gruppen links x8, rechts x5, alle Teile schon vorher gleich gesetzt) | unverändert, 0 verschoben | `16_1` |
+| 2-4 Stromkasten (Level2-3) | Bender, Zeit „0:57“ nur als Text | nein (Text in der Mitte) | Zeit mittig, 0 verschoben | `23_1`, `23_3` |
+| Level2-4, Level2-5 | Bender | nein | unverändert | `24_1`, `25_1` |
+| 3-5 (Level3-4) | Leela (Start des Levels) | nein | unverändert | `34_1` |
+| **4-1 (Level4-1)** | Zoidberg, **Zeitleiste**, Fisch-Zähler | **ja**: Stoppuhr/Füllung links, Fahne rechts | Zeitleiste geschlossen in der Mitte wie im Original; 2594 (16:9) bzw. 2705 (21:9) Zeichenaufrufe anders gesetzt als allein | `41_1`, `41_2`, `41_5` |
+| 5-1, 5-2, 5-3 (Level5-x) | Bender (5-1), Fry (5-3, mit Anzeige oben rechts); Levelstart | nein | unverändert | `51_1`, `52_1`, `53_1` |
+
+Pausenmenü und Statistikbildschirm stehen in allen Läufen weiter in der Mitte, das HUD dahinter wie zuvor (`11_3`, `11_5`, `41_5`; in `41_5` liegt die Zeitleiste jetzt wie im Original unter der Tafel). Ladebilder und Hauptmenü sind nicht betroffen (keine Verankerung außerhalb des Levels).
+
+**Unit-Tests:** `tests\widescreen_tests.cpp` hat 4 neue Fälle (13 statt 9): die gemessene 4-1-Liste (vorher zerrissen, nachher alle vier Teile Center, Ring/Nibbler/Fisch am Rand, Ziffern in ihrer Gruppe), die wachsende Füllung (1–256 px, immer Center), Abstand 16/17 px in x und y, Kettenbildung, Banner/Abblendung/doppelte Objekte/Kapazität 64, das HUD von 1-1 sowie Vorrang der Ausnahmetabelle und keine Verankerung außerhalb des Levels. `fut_tests` 563 bestanden, 1 übersprungen, in `build\hud` (MSVC RelWithDebInfo) und `build\hud-clang` (clang-cl Debug), beide `FUT_WERROR=ON` ohne Warnungen.
+
+**Grenzen:**
+
+* Nicht im Lauf erreicht: 3-5 Raum 9 (dasselbe Textelement „timer“ wie 2-4), die Zeitlampen in 5-1…5-3 (3D-Objekte im Level, kein HUD), der Endkampf in 5-3, Todesbildschirm, Leelas HUD im Kampf und die Kanone in 2-6. Ihre HUD-Teile laufen durch dieselbe Regel.
+* Die Gruppe entsteht nur aus der **Lage**. Zwei verschiedene Elemente, die näher als 16 px beieinanderliegen, werden gemeinsam gesetzt. Liegt ihre gemeinsame Mitte im mittleren Drittel, stehen beide in der Mitte, also wie im Original (unschädlich). In den geprüften Leveln trat das nicht auf.
+* Polygone mit mehr als 64 Ecken und Polygone außerhalb der Kameralisten werden wie bisher einzeln gesetzt (Ziffern ausgenommen, sie suchen ihre Gruppe nach der Lage).

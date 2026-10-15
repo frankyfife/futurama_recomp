@@ -365,6 +365,8 @@ struct GpuRenderer::Impl {
     ni::CameraDesc unwidened;          // the current camera with the game's own frustum (cameraWiden != 1)
     bool cameraPort = false;           // the camera's port does not span the width (avatar portrait)
     bool hudCamera = false;            // off-axis camera (l >= 0, b >= 0): the HUD digit cameras
+    std::uint32_t cameraObject = 0;    // the NiCamera of the current camera data (0 = unknown)
+    ni::GuestPtr drawTransform = 0;    // NiTransform* of the geometry being submitted (0 = not geometry)
     widescreen::GuestRect portRect;    // its viewport in guest pixels
     bool barsCleared = false;          // the bars of this frame are decided (black or left to the scene)
     std::uint64_t barFramesScene = 0;  // frames whose bars the stretched scene owns (not cleared black)
@@ -842,9 +844,19 @@ ff::DrawResult GpuRenderer::Impl::DrawWide(ni::DrawKind kind, ni::GuestPtr objec
                (f.camera == ws::DrawFacts::Camera::FullWidth && f.hudCamera)) {  // (the rules need no box otherwise)
         f.hasBounds = ScreenBounds(item, applied, &f.bounds.x0, &f.bounds.y0, &f.bounds.x1, &f.bounds.y1);
     }
+    // HUD groups (widescreen_math.h HudGroups): the screen polygons of the cameras' lists and the digits of the HUD
+    // cameras are anchored by the group they belong to, so a HUD element keeps its 4:3 layout (4-1 swamp timer).
+    if (f.anchoring && f.hasBounds && !f.ribbon && f.camera != ws::DrawFacts::Camera::Port &&
+        (f.source == ws::DrawSource::ScreenPolygon ||
+         (f.source == ws::DrawSource::Geometry && f.camera == ws::DrawFacts::Camera::FullWidth && f.hudCamera))) {
+        const bool polygon = f.source == ws::DrawSource::ScreenPolygon;
+        const ws::GuestRect port{viewport.x, viewport.y, viewport.x + viewport.width, viewport.y + viewport.height};
+        f.grouped = ws::HudGroupOf(polygon ? cameraObject : 0u, port, polygon ? object : 0u, f.bounds, framesDone + 1,
+                                   &f.group);
+    }
     const ws::Placement p = unwidenedQuad ? ws::Placement::Stretch : ws::Classify(f, ws::AnchorExceptions());
     ClearBars(p == ws::Placement::Stretch);
-    ws::NoteDraw(f, p, object, framesDone + 1);
+    ws::NoteDraw(f, p, object, framesDone + 1, cameraObject, drawTransform);
     if (p != placed) {
         placed = p;
         Ctx().SetViewport(ws::PlaceViewport(viewport, WideMapping(p)));
@@ -1473,6 +1485,7 @@ void GpuRenderer::SetCameraData(const ni::CameraInput& input) noexcept {
         const std::uint32_t cameraObject =
             input.location != nullptr ? guest::Addr(input.location) - ni::kNiCameraWorldLocation : 0u;
         d.cameraWiden = widescreen::WidenedFactor(cameraObject);
+        d.cameraObject = cameraObject;
         if (d.cameraWiden != 1.0f) {
             ni::NiFrustum game = *in.frustum;
             game.left /= d.cameraWiden;
@@ -1544,7 +1557,9 @@ void GpuRenderer::DrawGeometry(ni::DrawKind kind, const ni::GeometryInput& input
     if (status == ni::ExtractStatus::Ok && interp::TintColor(interpolated.tint, tint)) {
         interp::ApplyTint(&d.item, tint);  // [render] interpolation_debug = tint
     }
+    d.drawTransform = input.transform;
     d.Submit(kind, input.data, status);
+    d.drawTransform = 0;
 }
 
 // M8: slot 52 RenderPoints - camera-facing quads (ni::ExtractPoints). The particles are not interpolated (M3d: they

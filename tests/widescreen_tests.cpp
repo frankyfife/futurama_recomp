@@ -1,6 +1,7 @@
 // Unit tests of G3 widescreen without the game: Hor+ frustum, placement mapping, the classification rules (with the
-// draws measured in Level 1-1, the pause menu, a loading screen and the front end, docs/g3_report.md 3), the
-// [render] aspect parser, the render sizes and the view layout of a widescreen display.
+// draws measured in Level 1-1, the pause menu, a loading screen and the front end, docs/g3_report.md 3), the HUD
+// groups (Level 4-1 swamp timer, docs/g3_report.md 7), the [render] aspect parser, the render sizes and the view
+// layout of a widescreen display.
 #include "doctest.h"
 
 #include "gfx/nipc_gpu.h"
@@ -217,6 +218,172 @@ TEST_CASE("widescreen: exceptions table overrides the thirds") {
     CHECK(ws::Classify(bar) == ws::Placement::Left);
     CHECK(ws::Classify(bar, table) == ws::Placement::Center);
     CHECK(ws::AnchorExceptions().empty());
+}
+
+// HUD groups (2026-10-14): the pieces of the 4-1 swamp timer as measured in run\hud (guest pixels). Anchored one by
+// one, the clock and the progress fill went to the left edge, the flag to the right edge and the bar stayed in the
+// centre (user report).
+namespace {
+
+struct Piece {
+    std::uint32_t object;
+    ws::GuestRect rect;
+};
+// Scene camera list of Level 4-1: ring, bar, clock, flag, progress fill, fish counter, Nibbler; helper camera list:
+// the two polygons at the left edge.
+constexpr Piece kSwamp[] = {
+    {0x0332D040u, {36, 49, 143, 156}},   {0x0332C330u, {192, 400, 448, 432}}, {0x0332D050u, {156, 400, 188, 432}},
+    {0x0332C7C0u, {452, 384, 484, 448}}, {0x0332CA40u, {192, 400, 212, 432}}, {0x038BCB90u, {520, 352, 584, 416}},
+    {0x03A722E0u, {56, 352, 120, 416}},  {0x03327250u, {0, 93, 128, 157}},    {0x033275C0u, {128, 125, 144, 157}}};
+
+ws::HudGroups SwampGroups() {
+    ws::HudGroups g;
+    for (const Piece& p : kSwamp) {
+        CHECK(g.Add(p.object, p.rect));
+    }
+    g.Build();
+    return g;
+}
+
+ws::Placement Placed(const ws::HudGroups& g, std::uint32_t object, const ws::GuestRect& r,
+                     ws::DrawSource source = ws::DrawSource::ScreenPolygon) {
+    ws::DrawFacts d = Screen(source, r.x0, r.y0, r.x1, r.y1);
+    if (source == ws::DrawSource::Geometry) {
+        d.camera = ws::DrawFacts::Camera::FullWidth;
+        d.hudCamera = true;
+    }
+    d.grouped = g.GroupRect(object, r, &d.group);
+    return ws::Classify(d);
+}
+
+}  // namespace
+
+TEST_CASE("widescreen: HUD groups keep the 4-1 swamp timer together") {
+    const ws::HudGroups g = SwampGroups();
+    CHECK(g.PieceCount() == 9);
+    CHECK(g.GroupCount() == 4);  // portrait (ring + helper polygons), timer, fish counter, Nibbler counter
+    // Before: each piece by its own centre - the timer is torn apart.
+    CHECK(ws::Classify(Screen(ws::DrawSource::ScreenPolygon, 156, 400, 188, 432)) == ws::Placement::Left);    // clock
+    CHECK(ws::Classify(Screen(ws::DrawSource::ScreenPolygon, 192, 400, 212, 432)) == ws::Placement::Left);    // fill
+    CHECK(ws::Classify(Screen(ws::DrawSource::ScreenPolygon, 192, 400, 448, 432)) == ws::Placement::Center);  // bar
+    CHECK(ws::Classify(Screen(ws::DrawSource::ScreenPolygon, 452, 384, 484, 448)) == ws::Placement::Right);   // flag
+    // After: clock, bar, fill and flag form one group (156..484, centre 320) and stay together in the centre.
+    ws::GuestRect u;
+    REQUIRE(g.GroupRect(0x0332D050u, {156, 400, 188, 432}, &u));
+    CHECK(u.x0 == 156.0f);
+    CHECK(u.x1 == 484.0f);
+    CHECK(u.y0 == 384.0f);
+    CHECK(u.y1 == 448.0f);
+    for (int i : {1, 2, 3, 4}) {
+        CHECK(Placed(g, kSwamp[i].object, kSwamp[i].rect) == ws::Placement::Center);
+    }
+    // The other elements keep their edges.
+    CHECK(Placed(g, kSwamp[0].object, kSwamp[0].rect) == ws::Placement::Left);   // portrait ring
+    CHECK(Placed(g, kSwamp[5].object, kSwamp[5].rect) == ws::Placement::Right);  // fish counter
+    CHECK(Placed(g, kSwamp[6].object, kSwamp[6].rect) == ws::Placement::Left);   // Nibbler counter
+    CHECK(Placed(g, kSwamp[7].object, kSwamp[7].rect) == ws::Placement::Left);   // helper polygons
+    CHECK(Placed(g, kSwamp[8].object, kSwamp[8].rect) == ws::Placement::Left);
+    // Digits of the HUD cameras (geometry, no piece) join the group they touch.
+    CHECK(Placed(g, 0, {265, 370, 375, 405}, ws::DrawSource::Geometry) == ws::Placement::Center);  // "1:36"
+    CHECK(Placed(g, 0, {56, 416, 120, 443}, ws::DrawSource::Geometry) == ws::Placement::Left);     // "0/5"
+    CHECK(Placed(g, 0, {540, 416, 564, 443}, ws::DrawSource::Geometry) == ws::Placement::Right);   // "5"
+    // A text far from every group is placed by itself.
+    ws::GuestRect none;
+    CHECK_FALSE(g.GroupRect(0, {231, 200, 409, 224}, &none));
+}
+
+TEST_CASE("widescreen: HUD groups - the growing progress fill never changes sides") {
+    // The fill grows from the bar's left end; alone it would jump from the left edge to the centre at 42 px.
+    for (float w = 1.0f; w <= 256.0f; w += 1.0f) {
+        ws::HudGroups g;
+        g.Add(1, {192, 400, 448, 432});      // bar
+        g.Add(2, {156, 400, 188, 432});      // clock
+        g.Add(3, {192, 400, 192 + w, 432});  // fill
+        g.Add(4, {452, 384, 484, 448});      // flag
+        g.Build();
+        CHECK(g.GroupCount() == 1);
+        CHECK(Placed(g, 3, {192, 400, 192 + w, 432}) == ws::Placement::Center);
+        CHECK(Placed(g, 2, {156, 400, 188, 432}) == ws::Placement::Center);
+    }
+    // A fill of width 0 is no piece; its (empty) draw still finds the bar's group by its rectangle.
+    ws::HudGroups g;
+    CHECK_FALSE(g.Add(3, {192, 400, 192, 432}));
+    g.Add(1, {192, 400, 448, 432});
+    g.Build();
+    ws::GuestRect u;
+    CHECK(g.GroupRect(3, {192, 400, 193, 432}, &u));
+}
+
+TEST_CASE("widescreen: HUD groups - gap, banners, fades, capacity") {
+    // Pieces up to kHudGroupGap (16 px) apart join, further apart they do not; the distance counts in x and in y.
+    ws::HudGroups g;
+    g.Add(1, {100, 100, 120, 120});
+    g.Add(2, {136, 100, 150, 120});  // 16 px to the right: joins
+    g.Add(3, {167, 100, 180, 120});  // 17 px further: separate
+    g.Add(4, {100, 137, 120, 150});  // 17 px below 1: separate
+    g.Add(5, {100, 136, 110, 140});  // 16 px below 1: joins (and is 0 px away from 4)
+    g.Build();
+    CHECK(g.GroupCount() == 2);
+    CHECK(g.GroupOfPiece(0) == g.GroupOfPiece(1));
+    CHECK(g.GroupOfPiece(0) == g.GroupOfPiece(4));
+    CHECK(g.GroupOfPiece(0) == g.GroupOfPiece(3));  // through piece 5
+    CHECK(g.GroupOfPiece(0) != g.GroupOfPiece(2));
+    // Transitive: a chain of close pieces is one group.
+    g.Clear();
+    for (std::uint32_t i = 0; i < 10; ++i) {
+        g.Add(i + 1, {10.0f + 30.0f * static_cast<float>(i), 10, 30.0f + 30.0f * static_cast<float>(i), 30});
+    }
+    g.Build();
+    CHECK(g.GroupCount() == 1);
+    // A banner (wider than half the raster) and a full-screen fade are no pieces and pull nothing into the centre.
+    g.Clear();
+    CHECK_FALSE(g.Add(1, {0, 0, 640, 60}));
+    CHECK_FALSE(g.Add(2, {0, 0, 640, 480}));
+    CHECK(g.Add(3, {36, 49, 143, 156}));
+    CHECK_FALSE(g.Add(3, {36, 49, 143, 156}));  // the same object once
+    g.Build();
+    CHECK(Placed(g, 3, {36, 49, 143, 156}) == ws::Placement::Left);
+    ws::GuestRect u;
+    CHECK_FALSE(g.GroupRect(1, {0, 0, 640, 60}, &u));
+    CHECK(ws::Classify(Screen(ws::DrawSource::ScreenPolygon, 0, 0, 640, 60)) == ws::Placement::Center);
+    // Capacity: at most kMaxPieces; an empty table has no groups.
+    g.Clear();
+    std::uint32_t added = 0;
+    for (std::uint32_t i = 0; i < ws::HudGroups::kMaxPieces + 8; ++i) {
+        const float x = static_cast<float>(i % 30) * 20.0f;
+        added += g.Add(i + 1, {x, 10, x + 5, 20}) ? 1u : 0u;
+    }
+    CHECK(added == ws::HudGroups::kMaxPieces);
+    g.Clear();
+    g.Build();
+    CHECK(g.GroupCount() == 0);
+    CHECK_FALSE(g.GroupRect(1, {10, 10, 20, 20}, &u));
+}
+
+TEST_CASE("widescreen: HUD groups keep the measured Level 1-1 HUD at its edges") {
+    ws::HudGroups g;
+    g.Add(1, {36, 49, 143, 156});    // ring of the health display
+    g.Add(2, {77, 88, 141, 152});    // health bar
+    g.Add(3, {516, 49, 604, 137});   // top right
+    g.Add(4, {56, 161, 104, 209});   // ammo (5 px below the ring)
+    g.Add(5, {520, 352, 584, 416});  // money
+    g.Add(6, {56, 352, 120, 416});   // Nibbler
+    g.Build();
+    CHECK(g.GroupCount() == 4);
+    CHECK(Placed(g, 1, {36, 49, 143, 156}) == ws::Placement::Left);
+    CHECK(Placed(g, 2, {77, 88, 141, 152}) == ws::Placement::Left);
+    CHECK(Placed(g, 3, {516, 49, 604, 137}) == ws::Placement::Right);
+    CHECK(Placed(g, 4, {56, 161, 104, 209}) == ws::Placement::Left);
+    CHECK(Placed(g, 5, {520, 352, 584, 416}) == ws::Placement::Right);
+    CHECK(Placed(g, 6, {56, 352, 120, 416}) == ws::Placement::Left);
+    // Grouping changes nothing outside a level, and the exceptions table still decides by the draw's own rectangle.
+    ws::DrawFacts d = Screen(ws::DrawSource::ScreenPolygon, 56, 352, 120, 416, true, false);
+    d.grouped = g.GroupRect(6, d.bounds, &d.group);
+    CHECK(d.grouped);
+    CHECK(ws::Classify(d) == ws::Placement::Center);
+    const ws::AnchorException table[] = {{ws::DrawSource::ScreenPolygon, {0, 340, 640, 480}, ws::Placement::Right}};
+    d.anchoring = true;
+    CHECK(ws::Classify(d, table) == ws::Placement::Right);
 }
 
 TEST_CASE("widescreen: [render] aspect values") {

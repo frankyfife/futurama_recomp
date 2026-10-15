@@ -1716,6 +1716,14 @@ ipc_renderer.h`);
   non-HUD cameras centred; full-raster draws untextured stretched (fades), textured centred; slot-55 screen textures
   centred; otherwise, only in the context "Ingame" (`AnchoringAllowed(frame)`), anchored by the third of the 640x480
   raster the bounding box centre lies in (`AnchorOf`), after the exceptions table `AnchorExceptions()` (empty so far).
+  **HUD groups (2026-10-14):** an anchored screen polygon or HUD-camera digit is anchored by the centre of its HUD group
+  instead of its own box (`DrawFacts::grouped/group`). `widescreen::HudGroupOf(camera, viewport, object, bounds, frame,
+  &group)` reads the screen polygon list of the polygon's NiCamera (+0x164 array, +0x16C size) once per camera and
+  frame, turns every polygon (3..64 vertices, no NiOutline ribbon) into a guest-pixel rectangle and groups them with
+  `widescreen_math.h` `HudGroups` (single linkage: at most `kHudGroupGap` = 16 px apart in x and y; no pieces: empty,
+  full-screen, wider than `kHudPieceMaxWidth` = 320 px; at most 64 pieces). Geometry (object 0) joins the nearest group
+  within 16 px; before the first list of a frame the previous frame's groups are used. The exceptions table still
+  decides by the draw's own box.
   A quad (<= 8 vertices) of a Hor+ camera that covers the screen with the game's own projection (pause dimming) is
   drawn with that projection, stretched. Bars outside the centred 4:3 area are cleared black once per frame before its
   first draw/colour clear - only if that one is not stretched over the width (fix 2026-10-13: when the Hor+ scene or
@@ -1726,8 +1734,13 @@ ipc_renderer.h`);
   0 x 0 = 4:3), `ViewLayout(clientW, clientH, fullscreen, aspectW, aspectH)` (the 3-argument form unchanged).
   `platform::StageCreateWindow` passes `widescreen::GetDisplay()`.
 - **Logs**: "widescreen: [render] aspect = ..." at start, one line per first-seen screen-space draw ("widescreen: frame
-  N screen polygon 0x... (camera ..., ...) bounds (...) -> left", at most 64), exit reporter "widescreen" (placements,
-  widened clicks, unwidened quads).
+  N screen polygon 0x... (camera 0x... hor+, ...) bounds (...) -> left[, node 0x... 'name' < parents][, list i/n]", at
+  most 96; since 2026-10-14 the list starts over each time a level is entered, at most 16 times, "widescreen: frame N
+  in a level ..."), "widescreen: frame N HUD groups: ..." when the grouping of a frame changes (at most 24 per level
+  entered), "widescreen: frame N screen polygon 0x... bounds (...) alone -> left, with its HUD group (...) -> center"
+  for each draw the grouping moved (at most 48 per level entered), exit reporter "widescreen" (placements, HUD draws
+  anchored by their group and how many of them it moved, widened clicks, unwidened quads). `NoteDraw` gained the
+  optional arguments `camera` and `transform` (defaults 0).
 - **Tests**: `tests\widescreen_tests.cpp`. Report: `docs\g3_report.md`.
 
 ### 4.38 G2 texture packs and texture dump - `gfx\texture_pack.h`, `tools\texture_upscale.py`
@@ -2227,3 +2240,4 @@ ipc_gpu.cpp` (`DrawScreenPolygon`, exit line), `tests\outline_tests.cpp` (4 case
 | 2026-10-14 | launcher: Cheats tab | `core\config_schema.h/.cpp` (additive: `ConfigUiTab::Cheats`, name "cheats"; the `[cheats]` rows use it), `launcher\src\core\config_schema.h/.cpp` (`UiTab::Cheats` after Controls, section fallback), `launcher\src\ui\main_window.cpp`, `automation.cpp`, `core\l10n_table.cpp` ("tab.cheats"), tests | Schema JSON `ui.tab` may be "cheats"; an older launcher shows those keys on its section fallback tab with a warning. The `[cheats]` keys moved from the Spiel tab to their own Cheats tab. |
 | 2026-10-14 | G8 freeze timer | new `xapi\cheats_timer.h/.cpp`, `tests\g8_timer_cheat_tests.cpp`, `tools\input_scripts\g8_freeze_timer.txt`; `xapi\cheats.h/.cpp` (additive: `Cheat::FreezeTimer`, `Settings::freezeTimer`, 3 `Stats` fields; summary calls `LogTimerSummary`), `input\cheat_toggles.h/.cpp` (`kFreezeTimerSequence`, `kSequences` 7 entries, `SequenceText(6)`), `core\config_schema.cpp` (row `[cheats] freeze_timer`, order 78; `ingame_toggles` order 79 and help with the new sequence), `xapi\save_probes.h/.cpp` (additive: `RequestSnapToNode`, `kGameNativeSnapToNode`, `kSnapToNodeUnits`), `input\input_script.cpp` (`game snap_to_node <node>`), `tools\gen\extra_function_starts.tsv` + `gen\xbe_functions.gen.inc` (`HudTimer_vfUpdate` 0xEC6D0), `tests\g8_player_cheats_tests.cpp` (`kCheatCount` 7), `tools\input_scripts\README.md` | `[cheats] freeze_timer`: 2 conditional probes `probe:HudTimer::Update` 0xEC6D0, `probe:Script::RunThreads` 0xBA060 (none by default); D-pad `UP LEFT DOWN RIGHT UP LEFT DOWN RIGHT`. Section 4.41, `loader_design.md` 8.25, `g8_cheats.md` 10. |
 | 2026-10-14 | M3e-Rest (multi-map/effect passes) | `gfx\ni_extract.h/.cpp`, new `gfx\multimap_census.h/.cpp`, `gfx\nipc_gpu.cpp`, `gfx\texture_pack.h/.cpp`, `gfx\GFX_CONTRACT.md` 16, new `tests\extract_multimap_tests.cpp`, `tests\ff_render_tests.cpp`, `tests\extract_tests.cpp`, new `analysis\loader\scripts\m8b_multimap_scan.py`, new `docs\m8b_report.md` | 4.42: the default texture pipeline vf2 0x164360 complete (all maps and texture effects in REN's passes and stages; visible: the toon ramp environment map on characters and props in every level, glow maps of the 3-2 lava lamps). Add-only types `PipelineStage`, `EffectStageCache`, `StateShadow::effects/pipelinePassesDrawn`, `SphereMapTransform`, `LightClipTransform`, counters `multiMapDraws/extraPasses/passOverflows`, `ExtractContext::census`, `texpack::UploadedHash`; `multiMapApproximated` and `shadowEffectsSkipped` now count only what is not reproduced. No option. |
+| 2026-10-14 | G3 HUD groups (4-1 timer fix) | `gfx\widescreen_math.h` (additive: `HudGroups`, `RectDistance`, `RectUnion`, `HudPiece`, `kHudGroupGap`, `kHudPieceMaxWidth`, `DrawFacts::grouped/group`; `Classify` rule 6 anchors by the group), `gfx\widescreen.h/.cpp` (additive: `HudGroupOf`; `NoteDraw(..., camera = 0, transform = 0)`; log starts over per level entered, group/moved lines, exit line counts), `gfx\nipc_gpu.cpp` (`DrawWide` asks `HudGroupOf`; current camera object and geometry transform kept for it and the log), `tests\widescreen_tests.cpp` (4 cases), `docs\g3_report.md` 7, `docs\loader_design.md` 8.21 W8 | A HUD element made of several screen polygons keeps its 4:3 layout at 16:9/21:9: the 4-1 swamp timer (clock, bar, progress fill, finish flag) was torn apart between the left edge, the centre and the right edge. Section 4.37. |

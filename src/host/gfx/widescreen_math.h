@@ -138,6 +138,146 @@ inline Placement AnchorOf(const GuestRect& r) noexcept {
     return Placement::Center;
 }
 
+// ---- HUD groups (2026-10-14) ----------------------------------------------------------------------------------------
+// A HUD element of the game is several screen polygons (the 4-1 swamp timer: clock, bar, progress fill and finish
+// flag, each its own NiScreenPolygon at a fixed guest-pixel position, FUN_000E5B70) plus the digits of a HUD camera.
+// Anchored one by one, the pieces of an element that straddles the thirds were torn apart (clock and fill at the
+// left edge, bar in the centre, flag at the right edge). The pieces of one frame are therefore grouped by proximity:
+// two pieces belong to one group if their rectangles are at most kHudGroupGap guest pixels apart in x and in y
+// (transitively). A group is anchored as a whole by the centre of its union, so it keeps its 4:3 layout.
+//   - Gap: the pieces of one element are 4 px apart (4-1: clock 156..188, bar 192..448, flag 452..484); separate
+//     elements are 36 px and more apart (Nibbler counter 56..120 and the clock; 1-1, 4-1 measured).
+//   - Pieces wider than half the raster (banners, letterbox bars) join no group: they would pull the edge elements
+//     next to them into the centre.
+//   - Full-screen rectangles (fades) and empty ones are no pieces.
+inline constexpr float kHudGroupGap = 16.0f;
+inline constexpr float kHudPieceMaxWidth = kGuestWidth / 2.0f;
+
+// Largest of the horizontal and vertical distance between two rectangles (0 or negative when they overlap).
+inline float RectDistance(const GuestRect& a, const GuestRect& b) noexcept {
+    const float dx = std::fmax(a.x0 - b.x1, b.x0 - a.x1);
+    const float dy = std::fmax(a.y0 - b.y1, b.y0 - a.y1);
+    return std::fmax(dx, dy);
+}
+inline GuestRect RectUnion(const GuestRect& a, const GuestRect& b) noexcept {
+    return {std::fmin(a.x0, b.x0), std::fmin(a.y0, b.y0), std::fmax(a.x1, b.x1), std::fmax(a.y1, b.y1)};
+}
+// Can `r` be a piece of a HUD group (finite, not empty, not full-screen, not a banner)?
+inline bool HudPiece(const GuestRect& r) noexcept {
+    const bool finite = std::isfinite(r.x0) && std::isfinite(r.y0) && std::isfinite(r.x1) && std::isfinite(r.y1);
+    return finite && r.x1 > r.x0 && r.y1 > r.y0 && !CoversScreen(r) && r.x1 - r.x0 <= kHudPieceMaxWidth;
+}
+
+// The HUD pieces of one frame and their groups (fixed capacity, no allocation; the renderer fills it from the screen
+// polygon lists of the cameras, gfx/widescreen.cpp).
+class HudGroups {
+public:
+    static constexpr std::uint32_t kMaxPieces = 64;
+
+    void Clear() noexcept {
+        count_ = 0;
+        groups_ = 0;
+    }
+    // Adds a piece (`object` = the guest object, e.g. the NiScreenPolygon). Ignored: no HudPiece, a known object, a
+    // full table. Call Build() after a batch of Add()s.
+    bool Add(std::uint32_t object, const GuestRect& r) noexcept {
+        if (!HudPiece(r) || count_ >= kMaxPieces) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < count_; ++i) {
+            if (pieces_[i].object == object) {
+                return false;
+            }
+        }
+        pieces_[count_++] = {object, r, 0};
+        return true;
+    }
+    // Single-linkage grouping of all pieces: within `gap` of any piece of a group -> that group.
+    void Build(float gap = kHudGroupGap) noexcept {
+        std::uint8_t root[kMaxPieces];
+        for (std::uint32_t i = 0; i < count_; ++i) {
+            root[i] = static_cast<std::uint8_t>(i);
+        }
+        auto find = [&root](std::uint32_t i) {
+            while (root[i] != i) {
+                root[i] = root[root[i]];
+                i = root[i];
+            }
+            return i;
+        };
+        for (std::uint32_t i = 0; i < count_; ++i) {
+            for (std::uint32_t j = i + 1; j < count_; ++j) {
+                if (RectDistance(pieces_[i].rect, pieces_[j].rect) <= gap) {
+                    const std::uint32_t a = find(i), b = find(j);
+                    if (a != b) {
+                        root[a > b ? a : b] = static_cast<std::uint8_t>(a > b ? b : a);
+                    }
+                }
+            }
+        }
+        groups_ = 0;
+        std::uint8_t groupOfRoot[kMaxPieces];
+        for (std::uint32_t i = 0; i < count_; ++i) {
+            const std::uint32_t r = find(i);
+            if (r == i) {
+                groupOfRoot[i] = static_cast<std::uint8_t>(groups_);
+                unions_[groups_++] = pieces_[i].rect;
+            }
+        }
+        for (std::uint32_t i = 0; i < count_; ++i) {
+            const std::uint8_t g = groupOfRoot[find(i)];
+            pieces_[i].group = g;
+            unions_[g] = RectUnion(unions_[g], pieces_[i].rect);
+        }
+    }
+    std::uint32_t PieceCount() const noexcept { return count_; }
+    std::uint32_t GroupCount() const noexcept { return groups_; }
+    // Group of piece `i` (Build() first) and the union of group `g`.
+    std::uint32_t GroupOfPiece(std::uint32_t i) const noexcept { return i < count_ ? pieces_[i].group : 0; }
+    std::uint32_t PieceObject(std::uint32_t i) const noexcept { return i < count_ ? pieces_[i].object : 0; }
+    GuestRect GroupUnion(std::uint32_t g) const noexcept { return g < groups_ ? unions_[g] : GuestRect{}; }
+    // The rectangle a draw is anchored by: the union of its group with `r` - the group of the piece `object`, else
+    // the nearest group within `gap` of `r` (a draw that is no piece, e.g. the digits of a HUD camera next to their
+    // icon). False if there is none (the draw is anchored by `r` alone).
+    bool GroupRect(std::uint32_t object, const GuestRect& r, GuestRect* out, float gap = kHudGroupGap) const noexcept {
+        std::uint32_t best = groups_;
+        if (object != 0) {
+            for (std::uint32_t i = 0; i < count_; ++i) {
+                if (pieces_[i].object == object) {
+                    best = pieces_[i].group;
+                    break;
+                }
+            }
+        }
+        if (best == groups_ && HudPiece(r)) {
+            float nearest = gap;
+            for (std::uint32_t g = 0; g < groups_; ++g) {
+                const float d = RectDistance(unions_[g], r);
+                if (d <= nearest) {
+                    nearest = d;
+                    best = g;
+                }
+            }
+        }
+        if (best == groups_) {
+            return false;
+        }
+        *out = RectUnion(unions_[best], r);
+        return true;
+    }
+
+private:
+    struct Piece {
+        std::uint32_t object = 0;
+        GuestRect rect;
+        std::uint8_t group = 0;
+    };
+    Piece pieces_[kMaxPieces] = {};
+    GuestRect unions_[kMaxPieces] = {};
+    std::uint32_t count_ = 0;
+    std::uint32_t groups_ = 0;
+};
+
 // Exceptions to the anchoring rule: a draw of `source` whose rectangle lies within `area` (guest pixels) gets
 // `placement`. Empty = no exceptions (Level 1-1, the pause menu, loading screens and the front end need none; the
 // table is the place for elements found later, docs/g3_report.md).
@@ -161,6 +301,8 @@ struct DrawFacts {
     GuestRect bounds;          // screen bounding box in guest pixels
     bool textured = false;     // stage 0 has a texture
     bool anchoring = false;    // HUD anchoring allowed (the game is in a level: context "Ingame")
+    bool grouped = false;      // `group` valid: the draw belongs to a HUD group (HudGroups::GroupRect)
+    GuestRect group;           // the union of its group (with `bounds`); rule 6 anchors by it instead of `bounds`
 };
 
 // The placement rules (docs/g3_report.md 2.3):
@@ -170,7 +312,8 @@ struct DrawFacts {
 //     without Hor+ (the front end) stays one undistorted 4:3 picture.
 //  4. Anything covering the whole raster: untextured (fades) -> Stretch, textured (loading pictures, movies) -> Center.
 //  5. Screen textures (slot 55: loading screens, tiles of one picture) -> Center.
-//  6. Exceptions table, then - only in a level - the third of the raster the draw's centre lies in.
+//  6. Exceptions table (by the draw's own rectangle), then - only in a level - the third of the raster the centre
+//     of the draw's HUD group lies in (2026-10-14; without a group the draw's own centre).
 //  7. Otherwise Center.
 inline Placement Classify(const DrawFacts& d, std::span<const AnchorException> exceptions = {}) noexcept {
     if (d.camera == DrawFacts::Camera::Widened && (d.source == DrawSource::Geometry || d.ribbon)) {
@@ -200,7 +343,7 @@ inline Placement Classify(const DrawFacts& d, std::span<const AnchorException> e
     if (!d.anchoring) {
         return Placement::Center;
     }
-    return AnchorOf(d.bounds);
+    return AnchorOf(d.grouped ? d.group : d.bounds);
 }
 
 }  // namespace gfx::widescreen
